@@ -48,3 +48,18 @@
 - **Stabilizzazione Spike Rate:** L'omeostasi intrinseca della soglia ALIF sostituisce i vincoli competitivi manuali.
 - **e-prop Deterministico:** Tracce di eligibilità duali ($V$ ed $A$) accoppiate a feedback di errore privo di rumore, preservando l'ingombro di memoria $\mathcal{O}(1)$.
 - **Estensione Orizzonte:** Dataset e dinamica portati a $T=150$ con validazione di rollout fino a $H=50$.
+
+---
+
+## Release SPWM-v3.1: Numerical Stabilization & Trace Normalization
+
+### Diagnosi Empirica delle Anomalie v3 (Post-Mortem)
+- **Oscillazioni e Divergenza della Val Loss:** L'estensione della sequenza a $T=150$ senza normalizzazione dell'accumulo locale ha incrementato la magnitudo del tensore $\Delta W$ di un fattore $5\times$. Ciò ha provocato continui scavalcamenti dei minimi locali durante l'ottimizzazione forward-only.
+- **Collasso Predittivo (Rollout Piatto a ~0.65):** In risposta agli scossoni caotici dei pesi, il predittore latente ha collassato sulla predizione statica media dell'arena, rendendo l'errore di posizione insensibile all'orizzonte $H$ ($H=1 \approx H=50 \approx 0.65$).
+- **Mantenimento Stabilità E/I:** Confermato il corretto funzionamento dell'adattamento della soglia (ALIF), con SpikeRate stabilizzato monotonicamente attorno a $0.30$.
+
+### Interventi e Fix Implementati
+- **Normalizzazione $1/T$ su e-prop:** Introdotto il fattore di scala inverso rispetto alla lunghezza temporale della sequenza ($1/T$) nell'accumulo delle tracce di eligibilità duali, rendendo l'ampiezza degli aggiornamenti invariante rispetto alla durata della traiettoria.
+- **Ricalibrazione Tassi di Apprendimento:** Ridotti `learning_rate` e `local_lr` da $10^{-3}$ a $2 \cdot 10^{-4}$ per garantire un regime di variazione dei pesi compatibile con la costante biofisica di decadimento lento della soglia ALIF ($\beta_{\text{adapt}} = 0.985$).
+- **Sblocco del Rollout Cinematico:** Ripristinata la dinamica predittiva attiva nello spazio latente, eliminando l'attrattore statico e consentendo la corretta propagazione temporale degli stati.
+

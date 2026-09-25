@@ -50,6 +50,8 @@ class Trainer:
         history: Optional[List[Dict[str, float]]] = None,
         optimizer_state: Optional[Dict] = None,
     ) -> None:
+        # Track which epoch produced the best validation loss
+        self.best_epoch: int | None = None
         self.learning_algorithm = learning_algorithm.lower()
         self.learning_rate = learning_rate
 
@@ -145,6 +147,9 @@ class Trainer:
                         pred_res = self.model.predictor(z_in)
                         pred_loss = nn.functional.mse_loss(pred_res.predicted_latent, z_target)
                         pred_loss.backward()
+                        if self.grad_clip_norm is not None and self.grad_clip_norm > 0:
+                            for group in self.predictor_optimizer.param_groups:
+                                torch.nn.utils.clip_grad_norm_(group["params"], self.grad_clip_norm)
                         self.predictor_optimizer.step()
 
             # Online local probe update (instantaneous frame-level MSE for decoder)
@@ -155,6 +160,9 @@ class Trainer:
                     decoded = self.model.physical_decoder(z_detached)
                     probe_loss = nn.functional.mse_loss(decoded, true_kin)
                     probe_loss.backward()
+                    if self.grad_clip_norm is not None and self.grad_clip_norm > 0:
+                        for group in self.probe_optimizer.param_groups:
+                            torch.nn.utils.clip_grad_norm_(group["params"], self.grad_clip_norm)
                     self.probe_optimizer.step()
                 epoch_losses["l_probe"] += probe_loss.item()
                 # Compute overall gradient norm for predictor and probe optimizers

@@ -54,7 +54,7 @@ class SPWMSequenceOutput:
 
 class SPWM(nn.Module):
     """
-    SPWM-v3: Spiking Predictive World Model with ALIF Core and Deterministic e-prop.
+    SPWM-v3.1: Spiking Predictive World Model with ALIF Core, Normalized e-prop, and Recalibrated Dynamics.
     """
 
     def __init__(
@@ -127,16 +127,26 @@ class SPWM(nn.Module):
             hidden_dim=latent_dim,
         )
 
-        # Plasticity buffer for online forward-only weight updates
-        self.delta_w_buffer: Dict[str, torch.Tensor] = {}
+        # Register plasticity buffers for online forward-only weight updates
         self.init_buffer()
 
     def init_buffer(self) -> None:
-        """Initializes the plasticity accumulation buffer ΔW_buffer."""
-        self.delta_w_buffer.clear()
+        """Initializes the plasticity accumulation buffer ΔW_buffer as PyTorch buffers."""
         for name, param in self.named_parameters():
             if param.requires_grad:
-                self.delta_w_buffer[name] = torch.zeros_like(param.data)
+                buf_name = f"delta_w_{name.replace('.', '_')}"
+                self.register_buffer(buf_name, torch.zeros_like(param.data), persistent=False)
+
+    @property
+    def delta_w_buffer(self) -> Dict[str, torch.Tensor]:
+        """Provides a dictionary view of delta_w buffers keyed by parameter name."""
+        bufs = {}
+        for name, param in self.named_parameters():
+            if param.requires_grad:
+                buf_name = f"delta_w_{name.replace('.', '_')}"
+                if hasattr(self, buf_name):
+                    bufs[name] = getattr(self, buf_name)
+        return bufs
 
     def init_state(self, batch_size: int, device: Optional[torch.device] = None) -> SPWMState:
         """Initializes quiescent model state across all sub-modules."""
@@ -152,6 +162,7 @@ class SPWM(nn.Module):
         target_next_latent: Optional[torch.Tensor] = None,
         accumulate_local_updates: bool = True,
         learning_rate: Optional[float] = None,
+        seq_len: Optional[int] = None,
     ) -> Tuple[SPWMStepOutput, SPWMState]:
         """
         Executes a single forward-only O(1) step:
@@ -160,7 +171,7 @@ class SPWM(nn.Module):
             3. Error neuron routing: ϵ_t = x_t - x_hat_t
             4. Latent dynamics update with ϵ_t -> z_t
             5. Latent state prediction: z_hat_(t+1) = predictor(z_t)
-            6. Accumulate forward-only e-prop updates
+            6. Accumulate forward-only e-prop updates normalized by 1/T
         """
         B = event_frame.shape[0]
         device = event_frame.device
@@ -168,6 +179,8 @@ class SPWM(nn.Module):
 
         if state is None:
             state = self.init_state(B, device=device)
+
+        seq_len_val = 1.0 if seq_len is None else float(seq_len)
 
         with torch.no_grad():
             # 1. Encode sensory input frame
@@ -198,10 +211,11 @@ class SPWM(nn.Module):
             # Kinematics decoding probe
             decoded_kinematics = self.physical_decoder(z_t)
 
-            # 6. Forward-Only e-prop Plasticity Update Accumulation
+            # 6. Forward-Only e-prop Plasticity Update Accumulation (Normalized by B and T)
             if accumulate_local_updates:
-                # Top-down sensory predictor update: ΔW_pred = (ϵ_t ⊗ z_prev) / B
-                delta_w_pred = (epsilon_t.T @ z_prev) / B
+                scale = B * seq_len_val
+                # Top-down sensory predictor update: ΔW_pred = (ϵ_t ⊗ z_prev) / (B * T)
+                delta_w_pred = (epsilon_t.T @ z_prev) / scale
                 if "sensory_predictor.weight" in self.delta_w_buffer:
                     self.delta_w_buffer["sensory_predictor.weight"].add_(delta_w_pred)
 
@@ -211,13 +225,13 @@ class SPWM(nn.Module):
                 # Project feedback through fuse_spikes to total memory dimension: [B, total_mem_dim]
                 l_mem = l_lat @ self.dynamics.fuse_spikes.weight
 
-                # Input projection update: ΔW_in = (L_mem^T @ ϵ_t) / B
-                delta_w_in = (l_mem.T @ epsilon_t) / B
+                # Input projection update: ΔW_in = (L_mem^T @ ϵ_t) / (B * T)
+                delta_w_in = (l_mem.T @ epsilon_t) / scale
                 if "dynamics.input_proj.weight" in self.delta_w_buffer:
                     self.delta_w_buffer["dynamics.input_proj.weight"].add_(delta_w_in)
 
-                # Recurrent projection update: ΔW_rec = (L_mem^T @ z_prev) / B
-                delta_w_rec = (l_mem.T @ z_prev) / B
+                # Recurrent projection update: ΔW_rec = (L_mem^T @ z_prev) / (B * T)
+                delta_w_rec = (l_mem.T @ z_prev) / scale
                 if "dynamics.recurrent_proj.weight" in self.delta_w_buffer:
                     self.delta_w_buffer["dynamics.recurrent_proj.weight"].add_(delta_w_rec)
 
@@ -277,6 +291,7 @@ class SPWM(nn.Module):
                 state=state,
                 accumulate_local_updates=accumulate_local_updates,
                 learning_rate=learning_rate,
+                seq_len=T,
             )
 
             latent_steps.append(step_out.latent)

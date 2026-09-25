@@ -120,9 +120,6 @@ def main() -> None:
     parser.add_argument("--output-dir", type=str, default=None, help="Output results directory")
     args = parser.parse_args()
 
-
-
-
     # 1. Load configuration
     config = load_config(args.config)
     if args.seed is not None:
@@ -130,19 +127,20 @@ def main() -> None:
     seed = config.get("project", {}).get("seed", 42)
     set_seed(seed)
 
-    # Device selection
+    # Hardware & Device Selection (Cross-Platform)
     if args.device is not None:
         device = torch.device(args.device)
-    elif torch.backends.mps.is_available():
-        device = torch.device("mps")
     elif torch.cuda.is_available():
         device = torch.device("cuda")
+        # Attiva l'autotuner CuDNN su Windows/Linux per ottimizzare le convoluzioni
+        torch.backends.cudnn.benchmark = True 
+    elif torch.backends.mps.is_available():
+        device = torch.device("mps")
     else:
         device = torch.device("cpu")
 
     # Output directory (reuse existing if present)
     raw_exp_name = config.get("project", {}).get("name", "experiment")
-    # If the experiment name contains "v2", rename it to "v3" to avoid overwriting corrupted v2 results
     exp_name = raw_exp_name.replace("v2", "v3")
     if args.output_dir is not None:
         save_dir = Path(args.output_dir)
@@ -151,9 +149,8 @@ def main() -> None:
         pattern = f"{exp_name}_seed{seed}_"
         candidate_dirs = [d for d in base.iterdir() if d.is_dir() and d.name.startswith(pattern)]
         if candidate_dirs:
-            # Pick the most recently modified folder
             save_dir = max(candidate_dirs, key=lambda p: p.stat().st_mtime)
-            print(f"🔁 Reusing existing folder {save_dir} for resume")
+            print(f"Reusing existing folder {save_dir} for resume")
         else:
             run_id = f"{exp_name}_seed{seed}_{int(time.time())}"
             save_dir = base / run_id
@@ -188,6 +185,8 @@ def main() -> None:
 
     # 3. Build Model & Loss
     model = build_model(config, device=device)
+    model.init_buffer()
+    
     loss_cfg = config.get("loss", {})
     loss_fn = SPWMLoss(
         lambda_pred=loss_cfg.get("lambda_pred", 1.0),
@@ -202,20 +201,20 @@ def main() -> None:
     epochs = args.epochs if args.epochs is not None else train_cfg.get("epochs", 20)
     lr = train_cfg.get("learning_rate", 1e-3)
 
-    # 4. Train Model
-    # Load existing model.pt if present
+    # 4. Train Model (Checkpoints logic strictly preserved)
     model_path = save_dir / "model.pt"
     ckpt = None
     if model_path.is_file():
         ckpt = torch.load(model_path, map_location=device)
         if isinstance(ckpt, dict) and "model_state" in ckpt:
             model.load_state_dict(ckpt["model_state"])
-            print(f"🔁 Loaded checkpoint (state dict) from {model_path}")
+            print(f"Loaded checkpoint (state dict) from {model_path}")
         else:
             model.load_state_dict(ckpt)
-            print(f"🔁 Loaded plain model.pt from {model_path}")
+            print(f"Loaded plain model.pt from {model_path}")
     else:
-        print("⚡ No existing model.pt, starting fresh.")
+        print("No existing model.pt, starting fresh.")
+        
     start_epoch = 1
     best_val_loss = float("inf")
     history = None
@@ -237,7 +236,6 @@ def main() -> None:
         optimizer_state=optimizer_state,
     )
 
-    # If we loaded only a plain model.pt (no full checkpoint), compute its validation loss as baseline
     if ckpt is not None and not (isinstance(ckpt, dict) and "model_state" in ckpt):
         baseline = trainer.evaluate()
         trainer.best_val_loss = baseline["val_total_loss"]
@@ -261,7 +259,6 @@ def main() -> None:
     print(f"Extrapolation TF MSE: {extrap_results.teacher_forcing_mse:.4e}")
     if test_results.position_error_per_horizon:
         print(f"Test Pos Error by Horizon: {test_results.position_error_per_horizon}")
-
 
     # 6. Save Artifacts & Metadata
     save_config(config, save_dir / "config.yaml")
@@ -307,7 +304,6 @@ def main() -> None:
     plot_architecture_diagram(figures_dir / "fig1_architecture.png")
 
     if hasattr(model, "dynamics") and hasattr(model.dynamics, "memory"):
-        # Sample trajectory forward pass to extract spike raster and membrane potentials
         with torch.no_grad():
             eval_loader = dataloaders.get("test") or dataloaders.get("val") or dataloaders.get("train")
             if eval_loader is not None and len(eval_loader) > 0:

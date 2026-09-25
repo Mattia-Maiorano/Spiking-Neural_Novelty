@@ -1,6 +1,6 @@
-# Primary SPWM-v3 (ALIF Long-Horizon Forward-Only Core) Experiment Configuration
+# Primary SPWM-v3.1 (Numerical Stabilization & Trace Normalization) Experiment Configuration
 project:
-  name: "spwm_v3_primary"
+  name: "spwm_v3_1_primary"
   seed: 42
 
 environment:
@@ -21,7 +21,7 @@ model:
   encoder_dim: 128
   latent_dim: 128
   predictor_hidden_dim: 256
-  local_lr: 0.001
+  local_lr: 0.0002
 
 neuron:
   model: "alif"
@@ -38,8 +38,9 @@ memory:
 
 training:
   epochs: 20
-  learning_rate: 0.001
+  learning_rate: 0.0002
   batch_size: 32
+  grad_clip_norm: 1.0
 
 loss:
   lambda_pred: 1.0

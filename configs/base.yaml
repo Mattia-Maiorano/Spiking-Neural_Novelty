@@ -1,7 +1,7 @@
-# SPWM-v3 Base Configuration
+# SPWM-v3.1 Base Configuration
 project:
-  name: "spwm_v3"
-  description: "Spiking Predictive World Model with ALIF Core and Forward-Only e-prop"
+  name: "spwm_v3_1"
+  description: "Spiking Predictive World Model with ALIF Core, Trace Normalization and Forward-Only e-prop"
   seed: 42
 
 environment:

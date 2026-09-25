@@ -1,0 +1,13 @@
+{
+  "run_id": "spwm_v3",
+  "experiment_name": "spwm_v3_primary",
+  "seed": 42,
+  "epochs": 25,
+  "learning_rate": 0.0002,
+  "device": "mps",
+  "pytorch_version": "2.14.0",
+  "cuda_available": false,
+  "mps_available": true,
+  "git_commit": "5c54c9e6d76a912ce747ca45382b228a8a959ecc",
+  "timestamp": "2026-09-25 23:54:13"
+}

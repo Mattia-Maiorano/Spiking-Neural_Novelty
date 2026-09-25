@@ -1,0 +1,43 @@
+project:
+  name: spwm_v1_primary
+  seed: 42
+environment:
+  num_objects: 1
+  height: 32
+  width: 32
+  event_threshold: 0.08
+data:
+  total_trajectories: 600
+  train_split: 0.8
+  val_split: 0.1
+  sequence_length: 30
+  batch_size: 32
+model:
+  type: spwm
+  encoder_dim: 128
+  latent_dim: 128
+  predictor_hidden_dim: 256
+memory:
+  num_timescales: 2
+  timescale_dims:
+  - 64
+  - 64
+  betas:
+  - 0.8
+  - 0.98
+training:
+  epochs: 20
+  learning_rate: 0.001
+  batch_size: 32
+loss:
+  lambda_pred: 1.0
+  lambda_multi: 0.5
+  lambda_var: 0.1
+  lambda_sparse: 0.001
+  lambda_probe: 0.5
+evaluation:
+  rollout_horizons:
+  - 1
+  - 5
+  - 10
+  - 25

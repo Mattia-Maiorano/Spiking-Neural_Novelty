@@ -1,0 +1,13 @@
+{
+  "run_id": "baseline_vanilla_snn",
+  "experiment_name": "baseline_vanilla_snn",
+  "seed": 42,
+  "epochs": 15,
+  "learning_rate": 0.001,
+  "device": "mps",
+  "pytorch_version": "2.14.0",
+  "cuda_available": false,
+  "mps_available": true,
+  "git_commit": "git_not_committed",
+  "timestamp": "2026-09-23 09:28:47"
+}

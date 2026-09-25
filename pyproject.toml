@@ -1,0 +1,43 @@
+[build-system]
+requires = ["setuptools>=61.0", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "spwm"
+version = "0.1.0"
+description = "SPWM-v1: Spiking Predictive World Model"
+authors = [
+    { name = "Antigravity Research", email = "research@spwm.local" }
+]
+readme = "README.md"
+requires-python = ">=3.11"
+license = { text = "MIT" }
+classifiers = [
+    "Programming Language :: Python :: 3",
+    "Topic :: Scientific/Engineering :: Artificial Intelligence",
+]
+dependencies = [
+    "torch>=2.0.0",
+    "numpy>=1.24.0",
+    "scipy>=1.10.0",
+    "matplotlib>=3.7.0",
+    "pandas>=2.0.0",
+    "pyyaml>=6.0",
+    "tensorboard>=2.12.0",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=7.0.0",
+    "pytest-cov>=4.0.0",
+]
+
+[project.scripts]
+spwm-train = "experiments.train:main"
+spwm-evaluate = "experiments.evaluate:main"
+spwm-ablation = "experiments.ablation:main"
+spwm-visualize = "experiments.generate_figures:main"
+
+[tool.setuptools.packages.find]
+where = ["."]
+include = ["spwm*", "experiments*"]

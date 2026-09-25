@@ -1,0 +1,34 @@
+# Baseline Vanilla SNN Configuration (Single Timescale)
+project:
+  name: "baseline_vanilla_snn"
+  seed: 42
+
+environment:
+  num_objects: 1
+  height: 32
+  width: 32
+
+data:
+  total_trajectories: 600
+  train_split: 0.8
+  val_split: 0.1
+  sequence_length: 30
+  batch_size: 32
+
+model:
+  type: "vanilla_snn"
+  encoder_dim: 128
+  latent_dim: 128
+  beta: 0.85
+
+training:
+  epochs: 20
+  learning_rate: 0.001
+  batch_size: 32
+
+loss:
+  lambda_pred: 1.0
+  lambda_multi: 0.5
+  lambda_var: 0.1
+  lambda_sparse: 0.001
+  lambda_probe: 0.5

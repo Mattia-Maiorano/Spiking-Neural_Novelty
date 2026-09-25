@@ -1,0 +1,32 @@
+# Baseline MLP Dynamics Configuration
+project:
+  name: "baseline_mlp"
+  seed: 42
+
+environment:
+  num_objects: 1
+  height: 32
+  width: 32
+
+data:
+  total_trajectories: 600
+  train_split: 0.8
+  val_split: 0.1
+  sequence_length: 30
+  batch_size: 32
+
+model:
+  type: "mlp"
+  latent_dim: 128
+
+training:
+  epochs: 15
+  learning_rate: 0.001
+  batch_size: 32
+
+loss:
+  lambda_pred: 1.0
+  lambda_multi: 0.5
+  lambda_var: 0.1
+  lambda_sparse: 0.0
+  lambda_probe: 0.5

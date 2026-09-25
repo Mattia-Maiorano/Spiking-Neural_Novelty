@@ -1,0 +1,11 @@
+{
+  "Full SPWM-v1": 0.09289361909031868,
+  "A: No Slow Memory": 0.07901463657617569,
+  "B: No Fast Memory": 0.07324328646063805,
+  "C: Single-Timescale SNN": 0.12903032451868057,
+  "D: No Prediction Loss": 1.0185491144657135,
+  "E: No Sparsity Reg": 0.08693965151906013,
+  "F: No Multi-Step Loss": 0.10751056671142578,
+  "G: FastSigmoid Surrogate": 0.09434856474399567,
+  "H: Sigmoid Surrogate": 0.07698701322078705
+}

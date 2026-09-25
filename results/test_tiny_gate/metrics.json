@@ -1,0 +1,40 @@
+{
+  "parameters": 775716,
+  "test": {
+    "teacher_forcing_mse": 0.0,
+    "mean_spike_rate": 0.0,
+    "latent_mse_per_horizon": {
+      "1": 0.0,
+      "5": 0.0,
+      "10": 0.0
+    },
+    "position_error_per_horizon": {
+      "1": 0.0,
+      "5": 0.0,
+      "10": 0.0
+    },
+    "velocity_error_per_horizon": {
+      "1": 0.0,
+      "5": 0.0,
+      "10": 0.0
+    }
+  },
+  "extrapolation": {
+    "teacher_forcing_mse": 0.35232675075531006,
+    "latent_mse_per_horizon": {
+      "1": 0.45237886905670166,
+      "5": 0.46154099702835083,
+      "10": 0.6569844484329224
+    },
+    "position_error_per_horizon": {
+      "1": 0.6682286763191223,
+      "5": 0.6900114178657532,
+      "10": 0.7095852220058441
+    },
+    "velocity_error_per_horizon": {
+      "1": 1.5516066884994506,
+      "5": 1.5512563705444335,
+      "10": 1.5583437299728393
+    }
+  }
+}

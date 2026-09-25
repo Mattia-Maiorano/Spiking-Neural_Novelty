@@ -1,0 +1,13 @@
+{
+  "run_id": "test_tiny_gate",
+  "experiment_name": "spwm_v2_tiny_gate",
+  "seed": 42,
+  "epochs": 15,
+  "learning_rate": 0.0005,
+  "device": "cpu",
+  "pytorch_version": "2.14.0+cpu",
+  "cuda_available": false,
+  "mps_available": false,
+  "git_commit": "1c73e7143ca8e6717b5f1857e60dbc5ea328f318",
+  "timestamp": "2026-09-25 15:06:30"
+}

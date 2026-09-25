@@ -70,7 +70,7 @@ class MovingObjectsWorld:
     def generate_trajectory(
         self,
         trajectory_id: int,
-        length: int = 50,
+        length: int = 150,
         num_objects: int = 1,
         velocity_range: Tuple[float, float] = (-1.0, 1.0),
         acceleration_std: float = 0.1,

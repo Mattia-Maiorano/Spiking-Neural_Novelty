@@ -36,7 +36,7 @@ class RolloutEvaluator:
         self,
         model: nn.Module,
         device: Optional[Union[str, torch.device]] = None,
-        horizons: Sequence[int] = (1, 5, 10, 25),
+        horizons: Sequence[int] = (1, 5, 10, 25, 50),
         num_objects: int = 1,
     ) -> None:
         if device is None:
@@ -84,31 +84,31 @@ class RolloutEvaluator:
                 spike_rates.append(out.mean_spike_rate.item())
 
             # Evaluate autonomous rollouts for each horizon
-            # We start rollout at an initial warm-up step, e.g. t = 5
-            t_warmup = min(5, T // 4)
-            z_warmup = latent_states[:, t_warmup]
+            # Ensure warm-up step allows maximum possible rollout without index out of bounds
+            t_warmup = min(10, max(1, T // 4))
+            if t_warmup < T - 1:
+                z_warmup = latent_states[:, t_warmup]
+                max_eval_h = min(max(self.horizons), T - t_warmup - 1)
 
-            max_eval_h = min(max(self.horizons), T - t_warmup - 1)
-            # Perform autonomous rollout up to max_eval_h
-            if max_eval_h > 0:
-                rollout_predictions = self.model.predict_future(z_warmup, horizon=max_eval_h)  # [B, max_h, D]
+                if max_eval_h > 0:
+                    rollout_predictions = self.model.predict_future(z_warmup, horizon=max_eval_h)  # [B, max_h, D]
 
-                for h in self.horizons:
-                    if h <= max_eval_h:
-                        pred_h = rollout_predictions[:, :h]
-                        target_h = latent_states[:, t_warmup + 1 : t_warmup + 1 + h]
+                    for h in self.horizons:
+                        if h <= max_eval_h and (t_warmup + 1 + h) <= T:
+                            pred_h = rollout_predictions[:, :h]
+                            target_h = latent_states[:, t_warmup + 1 : t_warmup + 1 + h]
 
-                        h_mse = torch.mean((pred_h - target_h) ** 2).item()
-                        latent_errors[h].append(h_mse)
+                            h_mse = torch.mean((pred_h - target_h) ** 2).item()
+                            latent_errors[h].append(h_mse)
 
-                        # Decoded physical errors from autonomous predictions
-                        if hasattr(self.model, "physical_decoder"):
-                            decoded_h = self.model.physical_decoder(pred_h)
-                            kin_target_h = true_kin[:, t_warmup + 1 : t_warmup + 1 + h]
-                            pos_err = position_error(decoded_h, kin_target_h, self.num_objects)
-                            vel_err = velocity_error(decoded_h, kin_target_h, self.num_objects)
-                            pos_errors[h].append(pos_err)
-                            vel_errors[h].append(vel_err)
+                            # Decoded physical errors from autonomous predictions
+                            if hasattr(self.model, "physical_decoder"):
+                                decoded_h = self.model.physical_decoder(pred_h)
+                                kin_target_h = true_kin[:, t_warmup + 1 : t_warmup + 1 + h]
+                                pos_err = position_error(decoded_h, kin_target_h, self.num_objects)
+                                vel_err = velocity_error(decoded_h, kin_target_h, self.num_objects)
+                                pos_errors[h].append(pos_err)
+                                vel_errors[h].append(vel_err)
 
             batch_count += 1
             if max_batches is not None and batch_count >= max_batches:

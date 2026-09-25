@@ -66,14 +66,15 @@ def build_model(config: Dict[str, Any], device: torch.device) -> torch.nn.Module
             encoder_dim=encoder_dim,
             latent_dim=latent_dim,
             timescale_dims=tuple(mem_cfg.get("timescale_dims", (latent_dim // 2, latent_dim // 2))),
-            betas=tuple(mem_cfg.get("betas", (0.80, 0.98))),
+            betas=tuple(mem_cfg.get("betas", (0.90, 0.985))),
+            beta_mem=neuron_cfg.get("beta_mem", 0.80),
             threshold=neuron_cfg.get("threshold", 1.0),
-            reset_mechanism=neuron_cfg.get("reset_mechanism", "hard"),
+            gamma=neuron_cfg.get("gamma", 0.18),
             surrogate_name=neuron_cfg.get("surrogate", "atan"),
             surrogate_alpha=neuron_cfg.get("surrogate_alpha", 2.0),
             predictor_hidden_dim=model_cfg.get("predictor_hidden_dim", 256),
             num_objects=num_objects,
-            predictive_coding_enabled=model_cfg.get("predictive_coding_enabled", False),
+            local_lr=model_cfg.get("local_lr", 1e-3),
         )
     elif model_type == "gru":
         model = GRUWorldModel(
@@ -119,6 +120,9 @@ def main() -> None:
     parser.add_argument("--output-dir", type=str, default=None, help="Output results directory")
     args = parser.parse_args()
 
+
+
+
     # 1. Load configuration
     config = load_config(args.config)
     if args.seed is not None:
@@ -136,13 +140,23 @@ def main() -> None:
     else:
         device = torch.device("cpu")
 
-    # Output directory
-    exp_name = config.get("project", {}).get("name", "experiment")
+    # Output directory (reuse existing if present)
+    raw_exp_name = config.get("project", {}).get("name", "experiment")
+    # If the experiment name contains "v2", rename it to "v3" to avoid overwriting corrupted v2 results
+    exp_name = raw_exp_name.replace("v2", "v3")
     if args.output_dir is not None:
         save_dir = Path(args.output_dir)
     else:
-        run_id = f"{exp_name}_seed{seed}_{int(time.time())}"
-        save_dir = Path("results") / run_id
+        base = Path("results")
+        pattern = f"{exp_name}_seed{seed}_"
+        candidate_dirs = [d for d in base.iterdir() if d.is_dir() and d.name.startswith(pattern)]
+        if candidate_dirs:
+            # Pick the most recently modified folder
+            save_dir = max(candidate_dirs, key=lambda p: p.stat().st_mtime)
+            print(f"🔁 Reusing existing folder {save_dir} for resume")
+        else:
+            run_id = f"{exp_name}_seed{seed}_{int(time.time())}"
+            save_dir = base / run_id
     save_dir.mkdir(parents=True, exist_ok=True)
     figures_dir = save_dir / "figures"
     figures_dir.mkdir(parents=True, exist_ok=True)
@@ -189,6 +203,24 @@ def main() -> None:
     lr = train_cfg.get("learning_rate", 1e-3)
 
     # 4. Train Model
+    # Load existing model.pt if present
+    model_path = save_dir / "model.pt"
+    ckpt = None
+    if model_path.is_file():
+        ckpt = torch.load(model_path, map_location=device)
+        if isinstance(ckpt, dict) and "model_state" in ckpt:
+            model.load_state_dict(ckpt["model_state"])
+            print(f"🔁 Loaded checkpoint (state dict) from {model_path}")
+        else:
+            model.load_state_dict(ckpt)
+            print(f"🔁 Loaded plain model.pt from {model_path}")
+    else:
+        print("⚡ No existing model.pt, starting fresh.")
+    start_epoch = 1
+    best_val_loss = float("inf")
+    history = None
+    optimizer_state = None
+    
     trainer = Trainer(
         model=model,
         train_loader=dataloaders["train"],
@@ -196,13 +228,25 @@ def main() -> None:
         loss_fn=loss_fn,
         learning_rate=lr,
         grad_clip_norm=train_cfg.get("grad_clip_norm", 1.0),
+        learning_algorithm=train_cfg.get("learning_algorithm", "online_eprop"),
         device=device,
         save_dir=str(save_dir),
+        start_epoch=start_epoch,
+        best_val_loss=best_val_loss,
+        history=history,
+        optimizer_state=optimizer_state,
     )
+
+    # If we loaded only a plain model.pt (no full checkpoint), compute its validation loss as baseline
+    if ckpt is not None and not (isinstance(ckpt, dict) and "model_state" in ckpt):
+        baseline = trainer.evaluate()
+        trainer.best_val_loss = baseline["val_total_loss"]
+        print(f"Baseline validation loss from existing model: {trainer.best_val_loss:.4e}")
 
     history = trainer.fit(epochs=epochs)
 
     # 5. Evaluate on Test and Extrapolation sets
+    print("\n--- Running Rollout & Generalization Evaluation ---")
     evaluator = RolloutEvaluator(
         model=model,
         device=device,
@@ -212,6 +256,12 @@ def main() -> None:
 
     test_results = evaluator.evaluate_dataset(dataloaders["test"])
     extrap_results = evaluator.evaluate_dataset(dataloaders["extrapolation"])
+
+    print(f"Test TF MSE: {test_results.teacher_forcing_mse:.4e} | Mean Spike Rate: {test_results.mean_spike_rate:.3f}")
+    print(f"Extrapolation TF MSE: {extrap_results.teacher_forcing_mse:.4e}")
+    if test_results.position_error_per_horizon:
+        print(f"Test Pos Error by Horizon: {test_results.position_error_per_horizon}")
+
 
     # 6. Save Artifacts & Metadata
     save_config(config, save_dir / "config.yaml")
@@ -259,12 +309,14 @@ def main() -> None:
     if hasattr(model, "dynamics") and hasattr(model.dynamics, "memory"):
         # Sample trajectory forward pass to extract spike raster and membrane potentials
         with torch.no_grad():
-            sample_batch = next(iter(dataloaders["test"]))
-            sample_events = sample_batch["events"][:1].to(device)
-            sample_out = model(sample_events)
-            fast_spk = sample_out.fast_spikes[0].cpu().numpy()
-            slow_spk = sample_out.slow_spikes[0].cpu().numpy()
-            plot_spike_raster(fast_spk, slow_spk, figures_dir / "fig4_spike_raster.png")
+            eval_loader = dataloaders.get("test") or dataloaders.get("val") or dataloaders.get("train")
+            if eval_loader is not None and len(eval_loader) > 0:
+                sample_batch = next(iter(eval_loader))
+                sample_events = sample_batch["events"][:1].to(device)
+                sample_out = model(sample_events)
+                fast_spk = sample_out.fast_spikes[0].cpu().numpy()
+                slow_spk = sample_out.slow_spikes[0].cpu().numpy()
+                plot_spike_raster(fast_spk, slow_spk, figures_dir / "fig4_spike_raster.png")
 
     print(f"=== Experiment {exp_name} Completed Successfully ===")
     print(f"Saved artifacts to {save_dir}")

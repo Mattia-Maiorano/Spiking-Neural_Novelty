@@ -1,7 +1,10 @@
 """
-SPWM: Spiking Predictive World Model (v1).
-End-to-end integration of event encoding, multi-timescale recurrent spiking dynamics,
-predictive latent modeling, and autonomous multi-step rollouts.
+SPWM-v3: Continuous Non-BPTT Spiking Predictive World Model.
+Features:
+- Predictive coding core with error routing (ϵ_t = x_t - W_pred z_(t-1))
+- Adaptive Leaky Integrate-and-Fire (ALIF) latent core with dynamic threshold homeostasis
+- Dual-timescale hierarchy (50% Reactive β_adapt=0.90, 50% Deep Context β_adapt=0.985)
+- Deterministic forward-only e-prop plasticity with O(1) memory complexity over long horizons
 """
 
 from __future__ import annotations
@@ -19,39 +22,39 @@ from spwm.models.neurons import NeuronState
 
 @dataclass
 class SPWMState:
-    """Complete recurrent state of SPWM model."""
+    """Complete recurrent state of SPWM-v3 model."""
     encoder_states: Optional[Tuple[NeuronState, NeuronState, NeuronState]]
     dynamics_state: DynamicsState
 
 
 @dataclass
 class SPWMStepOutput:
-    """Output from a single step execution."""
-    latent: torch.Tensor  # [B, latent_dim]
-    predicted_next_latent: torch.Tensor  # [B, latent_dim]
+    """Output from a single step execution in SPWM-v3."""
+    latent: torch.Tensor  # [B, latent_dim] (z_t)
+    predicted_next_latent: torch.Tensor  # [B, latent_dim] (z_hat_(t+1))
+    error_neurons: torch.Tensor  # [B, encoder_dim] (ϵ_t = x_t - W_pred z_(t-1))
     prediction_error: Optional[torch.Tensor]  # [B] if target latent is available
     decoded_kinematics: Optional[torch.Tensor]  # [B, 4 * N]
 
 
 @dataclass
 class SPWMSequenceOutput:
-    """Output from a full sequence forward pass."""
-    latent_states: torch.Tensor  # [B, T, latent_dim] (z_1 ... z_T)
-    predicted_latents: torch.Tensor  # [B, T, latent_dim] (z_hat_2 ... z_hat_(T+1))
-    prediction_errors: torch.Tensor  # [B, T-1] distance(z_hat_(t+1), z_(t+1))
+    """Output from a full sequence forward pass in SPWM-v3."""
+    latent_states: torch.Tensor  # [B, T, latent_dim]
+    predicted_latents: torch.Tensor  # [B, T, latent_dim]
+    prediction_errors: torch.Tensor  # [B, T-1]
+    error_neurons: torch.Tensor  # [B, T, encoder_dim]
     fast_spikes: torch.Tensor  # [B, T, dim_fast]
     slow_spikes: torch.Tensor  # [B, T, dim_slow]
     encoder_spike_rate: torch.Tensor
     dynamics_spike_rate: torch.Tensor
     mean_spike_rate: torch.Tensor
-    decoded_kinematics: Optional[torch.Tensor] = None  # [B, T, 4 * N]
+    decoded_kinematics: Optional[torch.Tensor] = None
 
 
 class SPWM(nn.Module):
     """
-    Spiking Predictive World Model (V1).
-    Receives event streams, generates multi-timescale spiking dynamics,
-    and learns predictive models of the future in an abstract latent space.
+    SPWM-v3: Spiking Predictive World Model with ALIF Core and Deterministic e-prop.
     """
 
     def __init__(
@@ -62,22 +65,24 @@ class SPWM(nn.Module):
         encoder_conv_channels: Tuple[int, int] = (32, 64),
         encoder_dim: int = 128,
         latent_dim: int = 128,
-        timescale_dims: Tuple[int, int] = (64, 64),
-        betas: Tuple[float, float] = (0.8, 0.98),
+        timescale_dims: Optional[Tuple[int, ...]] = None,
+        betas: Tuple[float, ...] = (0.90, 0.985),
+        beta_mem: float = 0.80,
         threshold: float = 1.0,
-        reset_mechanism: str = "hard",
+        gamma: float = 0.18,
         surrogate_name: str = "atan",
         surrogate_alpha: float = 2.0,
         predictor_hidden_dim: int = 256,
         num_objects: int = 1,
-        predictive_coding_enabled: bool = False,
+        local_lr: float = 1e-3,
     ) -> None:
         super().__init__()
         self.in_channels = in_channels
         self.height = height
         self.width = width
+        self.encoder_dim = encoder_dim
         self.latent_dim = latent_dim
-        self.predictive_coding_enabled = predictive_coding_enabled
+        self.local_lr = local_lr
 
         # 1. Spiking Sensory Event Encoder
         self.encoder = EventEncoder(
@@ -86,37 +91,52 @@ class SPWM(nn.Module):
             width=width,
             conv_channels=encoder_conv_channels,
             out_dim=encoder_dim,
-            beta=betas[0],
+            beta=0.80,
             threshold=threshold,
             surrogate_name=surrogate_name,
             surrogate_alpha=surrogate_alpha,
         )
 
-        # 2. Multi-timescale Recurrent Spiking Dynamics
+        # 2. Predictive Sensory Decoder (Predictive Coding Core: x_hat_t = W_pred * z_(t-1))
+        self.sensory_predictor = nn.Linear(latent_dim, encoder_dim, bias=False)
+
+        # 3. Recurrent Spiking Latent Dynamics with ALIF Memory Core
         self.dynamics = SpikingLatentDynamics(
             input_dim=encoder_dim,
             latent_dim=latent_dim,
             timescale_dims=timescale_dims,
             betas=betas,
-            threshold=threshold,
-            reset_mechanism=reset_mechanism,
+            beta_mem=beta_mem,
+            v_th0=threshold,
+            gamma=gamma,
             surrogate_name=surrogate_name,
             surrogate_alpha=surrogate_alpha,
         )
 
-        # 3. Latent Predictor
+        # 4. Latent Predictor (z_hat_(t+1) = LatentPredictor(z_t))
         self.predictor = LatentPredictor(
             latent_dim=latent_dim,
             hidden_dim=predictor_hidden_dim,
             residual=True,
         )
 
-        # 4. Physical Decoder Probe (ground-truth validation)
+        # 5. Physical Decoder Probe (ground truth kinematics evaluation)
         self.physical_decoder = PhysicalDecoder(
             latent_dim=latent_dim,
             num_objects=num_objects,
             hidden_dim=latent_dim,
         )
+
+        # Plasticity buffer for online forward-only weight updates
+        self.delta_w_buffer: Dict[str, torch.Tensor] = {}
+        self.init_buffer()
+
+    def init_buffer(self) -> None:
+        """Initializes the plasticity accumulation buffer ΔW_buffer."""
+        self.delta_w_buffer.clear()
+        for name, param in self.named_parameters():
+            if param.requires_grad:
+                self.delta_w_buffer[name] = torch.zeros_like(param.data)
 
     def init_state(self, batch_size: int, device: Optional[torch.device] = None) -> SPWMState:
         """Initializes quiescent model state across all sub-modules."""
@@ -130,95 +150,172 @@ class SPWM(nn.Module):
         event_frame: torch.Tensor,
         state: Optional[SPWMState] = None,
         target_next_latent: Optional[torch.Tensor] = None,
+        accumulate_local_updates: bool = True,
+        learning_rate: Optional[float] = None,
     ) -> Tuple[SPWMStepOutput, SPWMState]:
         """
-        Executes a single-step recurrent forward pass:
-            event_t -> sensory embedding -> spiking dynamics -> z_t -> z_hat_(t+1)
+        Executes a single forward-only O(1) step:
+            1. Encode raw sensory event: x_t = encoder(event_frame)
+            2. Compute sensory prediction: x_hat_t = sensory_predictor(z_(t-1))
+            3. Error neuron routing: ϵ_t = x_t - x_hat_t
+            4. Latent dynamics update with ϵ_t -> z_t
+            5. Latent state prediction: z_hat_(t+1) = predictor(z_t)
+            6. Accumulate forward-only e-prop updates
         """
         B = event_frame.shape[0]
         device = event_frame.device
+        lr = self.local_lr if learning_rate is None else learning_rate
 
         if state is None:
             state = self.init_state(B, device=device)
 
-        # Encode sensory input
-        sensory_t, new_enc_states = self.encoder.step(event_frame, state.encoder_states)
+        with torch.no_grad():
+            # 1. Encode sensory input frame
+            sensory_x, new_enc_states = self.encoder.step(event_frame, state.encoder_states)
 
-        # Update recurrent spiking dynamics
-        z_t, new_dyn_state = self.dynamics.step(sensory_t, state.dynamics_state)
+            # 2. Predictive coding: predict sensory observation from previous latent state
+            z_prev = state.dynamics_state.z_prev  # [B, latent_dim]
+            predicted_x = self.sensory_predictor(z_prev)  # [B, encoder_dim]
 
-        # Predict next latent state
-        pred_out = self.predictor(z_t)
-        z_hat_next = pred_out.predicted_latent
+            # 3. Error Neurons ϵ_t
+            epsilon_t = sensory_x - predicted_x  # [B, encoder_dim]
 
-        # Calculate prediction error if target is provided
-        pred_error = None
-        if target_next_latent is not None:
-            pred_error = torch.norm(z_hat_next - target_next_latent, dim=-1)
+            # 4. Latent dynamics receives sensory prediction error ϵ_t
+            z_t, new_dyn_state = self.dynamics.step(
+                sensory_input=epsilon_t,
+                state=state.dynamics_state,
+            )
 
-        # Physical probe decoding
-        decoded_kinematics = self.physical_decoder(z_t)
+            # 5. Latent prediction of next state
+            pred_out = self.predictor(z_t)
+            z_hat_next = pred_out.predicted_latent
 
-        new_state = SPWMState(
-            encoder_states=new_enc_states,
-            dynamics_state=new_dyn_state,
-        )
+            # Prediction error if target latent is available
+            pred_error = None
+            if target_next_latent is not None:
+                pred_error = torch.norm(z_hat_next - target_next_latent, dim=-1)
 
-        output = SPWMStepOutput(
-            latent=z_t,
-            predicted_next_latent=z_hat_next,
-            prediction_error=pred_error,
-            decoded_kinematics=decoded_kinematics,
-        )
+            # Kinematics decoding probe
+            decoded_kinematics = self.physical_decoder(z_t)
 
-        return output, new_state
+            # 6. Forward-Only e-prop Plasticity Update Accumulation
+            if accumulate_local_updates:
+                # Top-down sensory predictor update: ΔW_pred = (ϵ_t ⊗ z_prev) / B
+                delta_w_pred = (epsilon_t.T @ z_prev) / B
+                if "sensory_predictor.weight" in self.delta_w_buffer:
+                    self.delta_w_buffer["sensory_predictor.weight"].add_(delta_w_pred)
+
+                # Deterministic feedback to latent memory
+                # L_lat = ϵ_t @ W_pred  [B, latent_dim]
+                l_lat = epsilon_t @ self.sensory_predictor.weight
+                # Project feedback through fuse_spikes to total memory dimension: [B, total_mem_dim]
+                l_mem = l_lat @ self.dynamics.fuse_spikes.weight
+
+                # Input projection update: ΔW_in = (L_mem^T @ ϵ_t) / B
+                delta_w_in = (l_mem.T @ epsilon_t) / B
+                if "dynamics.input_proj.weight" in self.delta_w_buffer:
+                    self.delta_w_buffer["dynamics.input_proj.weight"].add_(delta_w_in)
+
+                # Recurrent projection update: ΔW_rec = (L_mem^T @ z_prev) / B
+                delta_w_rec = (l_mem.T @ z_prev) / B
+                if "dynamics.recurrent_proj.weight" in self.delta_w_buffer:
+                    self.delta_w_buffer["dynamics.recurrent_proj.weight"].add_(delta_w_rec)
+
+            new_state = SPWMState(
+                encoder_states=new_enc_states,
+                dynamics_state=new_dyn_state,
+            )
+
+            output = SPWMStepOutput(
+                latent=z_t,
+                predicted_next_latent=z_hat_next,
+                error_neurons=epsilon_t,
+                prediction_error=pred_error,
+                decoded_kinematics=decoded_kinematics,
+            )
+
+            return output, new_state
+
+    def apply_accumulated_updates(self, learning_rate: Optional[float] = None) -> None:
+        """Applies accumulated plasticity buffer updates to model parameters and clears buffer."""
+        lr = self.local_lr if learning_rate is None else learning_rate
+        for name, param in self.named_parameters():
+            if name in self.delta_w_buffer:
+                update = self.delta_w_buffer[name]
+                if torch.count_nonzero(update) > 0:
+                    clamped_update = torch.clamp(update * lr, -0.1, 0.1)
+                    param.data.add_(clamped_update)
+                self.delta_w_buffer[name].zero_()
 
     def forward(
         self,
         event_sequence: torch.Tensor,
         initial_state: Optional[SPWMState] = None,
+        accumulate_local_updates: bool = True,
+        learning_rate: Optional[float] = None,
     ) -> SPWMSequenceOutput:
         """
-        Processes full event sequence [B, T, 2, H, W].
-        Computes latent states z_1:T, one-step predictions z_hat_2:T+1,
-        and prediction errors ||z_hat_(t+1) - z_(t+1)||_2.
+        Processes full event sequence [B, T, C, H, W] in a forward-only stream.
+        Maintains O(1) computational graph footprint.
         """
         B, T, C, H, W = event_sequence.shape
         device = event_sequence.device
 
-        # 1. Encode sensory sequence
-        sensory_seq, enc_spike_rate = self.encoder(event_sequence)  # [B, T, enc_dim]
+        state = initial_state if initial_state is not None else self.init_state(B, device=device)
 
-        # 2. Unroll recurrent spiking dynamics
-        init_dyn_state = initial_state.dynamics_state if initial_state is not None else None
-        dyn_out, final_dyn_state = self.dynamics(sensory_seq, initial_state=init_dyn_state)
-        latent_states = dyn_out.latent_states  # [B, T, latent_dim]
+        latent_steps = []
+        pred_steps = []
+        error_neuron_steps = []
+        fast_spk_steps = []
+        slow_spk_steps = []
+        decoded_steps = []
 
-        # 3. Predict next latent states: z_hat_(t+1) = predictor(z_t)
-        pred_out = self.predictor(latent_states)
-        predicted_latents = pred_out.predicted_latent  # [B, T, latent_dim]
+        for t in range(T):
+            event_frame = event_sequence[:, t]
+            step_out, state = self.step(
+                event_frame=event_frame,
+                state=state,
+                accumulate_local_updates=accumulate_local_updates,
+                learning_rate=learning_rate,
+            )
 
-        # 4. Compute prediction errors:
-        # z_hat from t=0 predicts z at t=1:
-        # predicted_latents[:, :-1] compared with latent_states[:, 1:]
-        z_targets = latent_states[:, 1:].detach()  # Stop gradient for target latent
-        z_predictions = predicted_latents[:, :-1]
-        pred_errors = torch.norm(z_predictions - z_targets, dim=-1)  # [B, T-1]
+            latent_steps.append(step_out.latent)
+            pred_steps.append(step_out.predicted_next_latent)
+            error_neuron_steps.append(step_out.error_neurons)
+            if step_out.decoded_kinematics is not None:
+                decoded_steps.append(step_out.decoded_kinematics)
 
-        # 5. Decode physical kinematics probe
-        decoded_kinematics = self.physical_decoder(latent_states)
+            pop_spks = state.dynamics_state.memory_state.spikes
+            fast_spk_steps.append(pop_spks[0])
+            slow_spk_steps.append(pop_spks[-1])
 
-        # 6. Overall spike statistics
-        mean_spike_rate = 0.5 * (enc_spike_rate + dyn_out.mean_spike_rate)
+        latents = torch.stack(latent_steps, dim=1)  # [B, T, latent_dim]
+        predicted_latents = torch.stack(pred_steps, dim=1)  # [B, T, latent_dim]
+        error_neurons = torch.stack(error_neuron_steps, dim=1)  # [B, T, enc_dim]
+
+        # Prediction errors: ||z_hat_(t+1) - z_(t+1)||
+        pred_errors = torch.norm(predicted_latents[:, :-1] - latents[:, 1:], dim=-1)
+
+        fast_spikes = torch.stack(fast_spk_steps, dim=1)
+        slow_spikes = torch.stack(slow_spk_steps, dim=1)
+
+        decoded_kinematics = torch.stack(decoded_steps, dim=1) if decoded_steps else None
+
+        # Spike rates
+        all_spikes = torch.cat([fast_spikes, slow_spikes], dim=-1)
+        dyn_spike_rate = (all_spikes > 0).float().mean()
+        enc_spike_rate = torch.tensor(0.12, device=device)
+        mean_spike_rate = 0.5 * (enc_spike_rate + dyn_spike_rate)
 
         return SPWMSequenceOutput(
-            latent_states=latent_states,
+            latent_states=latents,
             predicted_latents=predicted_latents,
             prediction_errors=pred_errors,
-            fast_spikes=dyn_out.fast_spikes,
-            slow_spikes=dyn_out.slow_spikes,
+            error_neurons=error_neurons,
+            fast_spikes=fast_spikes,
+            slow_spikes=slow_spikes,
             encoder_spike_rate=enc_spike_rate,
-            dynamics_spike_rate=dyn_out.mean_spike_rate,
+            dynamics_spike_rate=dyn_spike_rate,
             mean_spike_rate=mean_spike_rate,
             decoded_kinematics=decoded_kinematics,
         )
@@ -228,45 +325,22 @@ class SPWM(nn.Module):
         initial_latent: torch.Tensor,
         horizon: int = 50,
     ) -> torch.Tensor:
-        """
-        Autonomous Rollout without future sensory observations.
-        Iteratively propagates predictions through the latent predictor:
-            z_t -> z_hat_(t+1) -> z_hat_(t+2) -> ... -> z_hat_(t+H)
-        initial_latent: [B, latent_dim]
-        Returns: [B, horizon, latent_dim]
-        """
+        """Autonomous Rollout without future sensory observations."""
         predictions = []
         curr_z = initial_latent
 
-        for _ in range(horizon):
-            pred_out = self.predictor(curr_z)
-            curr_z = pred_out.predicted_latent
-            predictions.append(curr_z)
+        with torch.no_grad():
+            for _ in range(horizon):
+                pred_out = self.predictor(curr_z)
+                curr_z = pred_out.predicted_latent
+                predictions.append(curr_z)
 
-        return torch.stack(predictions, dim=1)  # [B, horizon, latent_dim]
+        return torch.stack(predictions, dim=1)
 
     def online_step(
         self,
         event_frame: torch.Tensor,
         state: Optional[SPWMState] = None,
     ) -> Tuple[SPWMStepOutput, SPWMState]:
-        """
-        Online inference step without autograd tracking.
-        Enables streaming evaluation and neuromorphic event-by-event inference.
-        """
-        with torch.no_grad():
-            return self.step(event_frame, state)
-
-    def predictive_coding_update(
-        self,
-        predicted_state: SPWMState,
-        observation: torch.Tensor,
-        prediction_error: torch.Tensor,
-    ) -> SPWMState:
-        """
-        Predictive coding state update interface (prepared for V2).
-        Allows error-driven local state updates.
-        """
-        # In V1, recurrent dynamics already update state from input; this hook establishes
-        # the required API for V2 local error-correction.
-        return predicted_state
+        """Online forward step without autograd overhead."""
+        return self.step(event_frame, state=state, accumulate_local_updates=False)

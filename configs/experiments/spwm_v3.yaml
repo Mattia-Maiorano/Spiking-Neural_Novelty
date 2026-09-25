@@ -1,35 +1,23 @@
-# SPWM-v3 Base Configuration
+# Primary SPWM-v3 (ALIF Long-Horizon Forward-Only Core) Experiment Configuration
 project:
-  name: "spwm_v3"
-  description: "Spiking Predictive World Model with ALIF Core and Forward-Only e-prop"
+  name: "spwm_v3_primary"
   seed: 42
 
 environment:
-  box_size: 1.0
-  default_radius: 0.12
-  dt: 0.05
-  noise_std: 0.01
-  damping: 0.0
   num_objects: 1
   height: 32
   width: 32
   event_threshold: 0.08
 
 data:
-  total_trajectories: 1000
+  total_trajectories: 600
   train_split: 0.8
   val_split: 0.1
   sequence_length: 150
   batch_size: 32
-  standard_velocity_range: [-1.0, 1.0]
-  extrapolation_velocity_range: [-2.0, 2.0]
-  num_workers: 0
-  cache_data: true
 
 model:
   type: "spwm"
-  in_channels: 2
-  encoder_conv_channels: [32, 64]
   encoder_dim: 128
   latent_dim: 128
   predictor_hidden_dim: 256
@@ -49,11 +37,8 @@ memory:
   betas: [0.90, 0.985]
 
 training:
-  learning_algorithm: "online_eprop"
+  epochs: 20
   learning_rate: 0.0005
-  weight_decay: 0.00001
-  grad_clip_norm: 1.0
-  epochs: 25
   batch_size: 32
 
 loss:
@@ -62,8 +47,6 @@ loss:
   lambda_var: 0.1
   lambda_sparse: 0.001
   lambda_probe: 0.5
-  multi_step_horizon: 3
-  target_variance: 1.0
 
 evaluation:
   rollout_horizons: [1, 5, 10, 25, 50]

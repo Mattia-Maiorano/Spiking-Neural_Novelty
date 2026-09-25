@@ -1,7 +1,7 @@
 """
-Modular Trainer for SPWM and Baseline World Models.
-Implements surrogate-gradient BPTT, gradient diagnostics, metric tracking,
-and artifact checkpointing. Pluggable for future local learning rules.
+Forward-Only Continuous Online Trainer for SPWM-v3.
+Maintains O(1) memory footprint scaling across long sequence horizons.
+Executes online e-prop plasticity with online mini-batch updates.
 """
 
 from __future__ import annotations
@@ -14,7 +14,10 @@ from typing import Any, Dict, List, Optional, Union
 import torch
 import torch.nn as nn
 from torch.utils.data import DataLoader
-from torch.utils.tensorboard import SummaryWriter
+try:
+    from torch.utils.tensorboard import SummaryWriter
+except ImportError:
+    SummaryWriter = None
 
 from spwm.learning.losses import SPWMLoss, LossOutput
 from spwm.learning.diagnostics import inspect_gradients, collect_spike_statistics
@@ -23,8 +26,9 @@ from spwm.learning.metrics import one_step_mse, position_error, velocity_error, 
 
 class Trainer:
     """
-    Research Trainer for Predictive World Models.
-    Decoupled learning algorithm design (currently BPTT, ready for V3 local learning).
+    Continuous Online Trainer (SPWM-v3).
+    Streams sequence batches frame-by-frame with O(1) memory footprint and
+    executes online forward-only e-prop plasticity.
     """
 
     def __init__(
@@ -36,22 +40,24 @@ class Trainer:
         learning_rate: float = 1e-3,
         weight_decay: float = 1e-5,
         grad_clip_norm: float = 1.0,
-        learning_algorithm: str = "bptt",
+        learning_algorithm: str = "online_eprop",
         device: Optional[Union[str, torch.device]] = None,
         save_dir: str = "results/default_run",
-        tensorboard_logging: bool = True,
+        tensorboard_logging: bool = False,
+        # Resume support (optional)
+        start_epoch: int = 1,
+        best_val_loss: float = float("inf"),
+        history: Optional[List[Dict[str, float]]] = None,
+        optimizer_state: Optional[Dict] = None,
     ) -> None:
         self.learning_algorithm = learning_algorithm.lower()
-        if self.learning_algorithm != "bptt":
-            raise NotImplementedError(
-                f"Learning algorithm '{learning_algorithm}' is reserved for future versions. V1 uses 'bptt'."
-            )
+        self.learning_rate = learning_rate
 
         if device is None:
-            if torch.backends.mps.is_available():
-                self.device = torch.device("mps")
-            elif torch.cuda.is_available():
+            if torch.cuda.is_available():
                 self.device = torch.device("cuda")
+            elif hasattr(torch.backends, "mps") and torch.backends.mps.is_available():
+                self.device = torch.device("mps")
             else:
                 self.device = torch.device("cpu")
         else:
@@ -65,63 +71,111 @@ class Trainer:
         self.save_dir = Path(save_dir)
         self.save_dir.mkdir(parents=True, exist_ok=True)
 
-        self.optimizer = torch.optim.AdamW(
-            self.model.parameters(),
+        # Optimizer for linear probes / decoders and predictor head
+        probe_params = [p for n, p in self.model.named_parameters() if "decoder" in n or "probe" in n]
+        predictor_params = [p for n, p in self.model.named_parameters() if "predictor" in n and "sensory_predictor" not in n]
+
+        self.probe_optimizer = torch.optim.AdamW(
+            probe_params,
             lr=learning_rate,
             weight_decay=weight_decay,
-        )
+        ) if probe_params else None
+
+        self.predictor_optimizer = torch.optim.AdamW(
+            predictor_params,
+            lr=learning_rate,
+            weight_decay=weight_decay,
+        ) if predictor_params else None
 
         self.writer = SummaryWriter(log_dir=str(self.save_dir / "tb")) if tensorboard_logging else None
-        self.history: List[Dict[str, float]] = []
+        # Resume state
+        self.start_epoch = start_epoch
+        self.best_val_loss = best_val_loss
+        self.history = history if history is not None else []
+        if optimizer_state:
+            if self.probe_optimizer and "probe_optimizer" in optimizer_state:
+                self.probe_optimizer.load_state_dict(optimizer_state["probe_optimizer"])
+            if self.predictor_optimizer and "predictor_optimizer" in optimizer_state:
+                self.predictor_optimizer.load_state_dict(optimizer_state["predictor_optimizer"])
+
 
     def train_epoch(self, epoch: int) -> Dict[str, float]:
-        """Runs one full training epoch over train_loader."""
+        """
+        Runs one forward-only training epoch with O(1) graph memory.
+        No loss.backward() over time dimension is performed.
+        """
         self.model.train()
         epoch_losses: Dict[str, float] = {
             "total_loss": 0.0,
             "l_pred": 0.0,
-            "l_multi": 0.0,
-            "l_var": 0.0,
-            "l_sparse": 0.0,
             "l_probe": 0.0,
+            "spike_rate": 0.0,
             "grad_norm": 0.0,
         }
         num_batches = 0
+        batch_idx = 0
 
         for batch in self.train_loader:
+            batch_idx += 1
             events = batch["events"].to(self.device)  # [B, T, 2, H, W]
-            true_kin = batch["flat_kinematics"].to(self.device)  # [B, T, 4 * N]
+            true_kin = batch.get("flat_kinematics")
+            if true_kin is not None:
+                true_kin = true_kin.to(self.device)
 
-            self.optimizer.zero_grad()
+            # Streaming forward pass with forward-only e-prop update accumulation
+            # Entire sequence unrolls forward without autograd computation graph over time
+            with torch.no_grad():
+                out = self.model(
+                    events,
+                    accumulate_local_updates=True,
+                    learning_rate=self.learning_rate,
+                )
 
-            # Forward pass through model
-            out = self.model(events)
+            # Apply accumulated online plasticity updates at end of mini-batch
+            if hasattr(self.model, "apply_accumulated_updates"):
+                self.model.apply_accumulated_updates(learning_rate=self.learning_rate)
 
-            # Compute composite loss
-            predictor_head = getattr(self.model, "predictor", None)
-            loss_out = self.loss_fn(
-                latent_states=out.latent_states,
-                predicted_latents=out.predicted_latents,
-                mean_spike_rate=getattr(out, "mean_spike_rate", torch.tensor(0.0, device=self.device)),
-                model_predictor=predictor_head,
-                decoded_kinematics=getattr(out, "decoded_kinematics", None),
-                true_kinematics=true_kin,
-            )
+            # Online local predictor update (predicts next latent state z_(t+1) from z_t)
+            if self.predictor_optimizer is not None:
+                self.predictor_optimizer.zero_grad()
+                with torch.enable_grad():
+                    z_in = out.latent_states[:, :-1].detach()
+                    z_target = out.latent_states[:, 1:].detach()
+                    if z_in.shape[1] > 0:
+                        pred_res = self.model.predictor(z_in)
+                        pred_loss = nn.functional.mse_loss(pred_res.predicted_latent, z_target)
+                        pred_loss.backward()
+                        self.predictor_optimizer.step()
 
-            # Backpropagation
-            loss_out.total_loss.backward()
+            # Online local probe update (instantaneous frame-level MSE for decoder)
+            if self.probe_optimizer is not None and true_kin is not None:
+                self.probe_optimizer.zero_grad()
+                with torch.enable_grad():
+                    z_detached = out.latent_states.detach()
+                    decoded = self.model.physical_decoder(z_detached)
+                    probe_loss = nn.functional.mse_loss(decoded, true_kin)
+                    probe_loss.backward()
+                    self.probe_optimizer.step()
+                epoch_losses["l_probe"] += probe_loss.item()
+                # Compute overall gradient norm for predictor and probe optimizers
+                grad_norm = 0.0
+                if self.predictor_optimizer is not None:
+                    for p in self.predictor_optimizer.param_groups[0]["params"]:
+                        if p.grad is not None:
+                            grad_norm += p.grad.norm().item()
+                if self.probe_optimizer is not None:
+                    for p in self.probe_optimizer.param_groups[0]["params"]:
+                        if p.grad is not None:
+                            grad_norm += p.grad.norm().item()
+                epoch_losses["grad_norm"] += grad_norm
 
-            # Gradient diagnostics & clipping
-            grad_diag = inspect_gradients(self.model)
-            if self.grad_clip_norm > 0:
-                torch.nn.utils.clip_grad_norm_(self.model.parameters(), self.grad_clip_norm)
+            # Record metrics
+            pred_err = out.prediction_errors.mean().item() if out.prediction_errors.numel() > 0 else 0.0
+            epoch_losses["l_pred"] += pred_err
+            epoch_losses["total_loss"] += pred_err
+            if hasattr(out, "mean_spike_rate"):
+                epoch_losses["spike_rate"] += out.mean_spike_rate.item()
 
-            self.optimizer.step()
-
-            # Accumulate
-            for k in ["total_loss", "l_pred", "l_multi", "l_var", "l_sparse", "l_probe"]:
-                epoch_losses[k] += getattr(loss_out, k).item()
-            epoch_losses["grad_norm"] += grad_diag["total_norm"]
             num_batches += 1
 
         for k in epoch_losses:
@@ -131,7 +185,7 @@ class Trainer:
 
     @torch.no_grad()
     def evaluate(self) -> Dict[str, float]:
-        """Evaluates model on validation dataset."""
+        """Evaluates model on validation dataset without plasticity accumulation."""
         self.model.eval()
         val_losses: Dict[str, float] = {
             "val_total_loss": 0.0,
@@ -144,23 +198,17 @@ class Trainer:
 
         for batch in self.val_loader:
             events = batch["events"].to(self.device)
-            true_kin = batch["flat_kinematics"].to(self.device)
+            true_kin = batch.get("flat_kinematics")
+            if true_kin is not None:
+                true_kin = true_kin.to(self.device)
 
-            out = self.model(events)
+            out = self.model(events, accumulate_local_updates=False)
 
-            loss_out = self.loss_fn(
-                latent_states=out.latent_states,
-                predicted_latents=out.predicted_latents,
-                mean_spike_rate=getattr(out, "mean_spike_rate", torch.tensor(0.0, device=self.device)),
-                model_predictor=getattr(self.model, "predictor", None),
-                decoded_kinematics=getattr(out, "decoded_kinematics", None),
-                true_kinematics=true_kin,
-            )
+            pred_err = out.prediction_errors.mean().item() if out.prediction_errors.numel() > 0 else 0.0
+            val_losses["val_total_loss"] += pred_err
+            val_losses["val_l_pred"] += pred_err
 
-            val_losses["val_total_loss"] += loss_out.total_loss.item()
-            val_losses["val_l_pred"] += loss_out.l_pred.item()
-
-            if getattr(out, "decoded_kinematics", None) is not None:
+            if out.decoded_kinematics is not None and true_kin is not None:
                 val_losses["val_pos_err"] += position_error(out.decoded_kinematics, true_kin)
                 val_losses["val_vel_err"] += velocity_error(out.decoded_kinematics, true_kin)
 
@@ -179,59 +227,92 @@ class Trainer:
         epochs: int = 50,
         print_every: int = 1,
     ) -> List[Dict[str, float]]:
-        """Executes full training loop, logs metrics, and saves best model."""
-        best_val_loss = float("inf")
+        """Executes online training stream, logs metrics, and saves model checkpoints."""
         start_time = time.time()
 
-        for epoch in range(1, epochs + 1):
-            train_metrics = self.train_epoch(epoch)
-            val_metrics = self.evaluate()
+        try:
+            for epoch in range(self.start_epoch, self.start_epoch + epochs):
+                train_metrics = self.train_epoch(epoch)
+                val_metrics = self.evaluate()
 
-            record = {
-                "epoch": epoch,
-                "elapsed_time": time.time() - start_time,
-                **train_metrics,
-                **val_metrics,
-            }
-            self.history.append(record)
+                record = {
+                    "epoch": epoch,
+                    "elapsed_time": time.time() - start_time,
+                    **train_metrics,
+                    **val_metrics,
+                }
+                self.history.append(record)
 
-            # TensorBoard logging
-            if self.writer is not None:
-                for k, v in record.items():
-                    if k != "epoch":
-                        self.writer.add_scalar(k, v, epoch)
+                if self.writer is not None:
+                    for k, v in record.items():
+                        if k != "epoch":
+                            self.writer.add_scalar(k, v, epoch)
 
-            # Checkpoint best model
-            if val_metrics["val_total_loss"] < best_val_loss:
-                best_val_loss = val_metrics["val_total_loss"]
-                torch.save(self.model.state_dict(), self.save_dir / "model.pt")
+                # Save best model based on validation loss
+                if val_metrics["val_total_loss"] < self.best_val_loss:
+                    self.best_val_loss = val_metrics["val_total_loss"]
+                    torch.save(self.model.state_dict(), self.save_dir / "model.pt")
 
-            if epoch % print_every == 0 or epoch == epochs:
-                print(
-                    f"Epoch {epoch:03d}/{epochs:03d} | "
-                    f"Train Loss: {train_metrics['total_loss']:.4f} | "
-                    f"Pred Loss: {train_metrics['l_pred']:.4f} | "
-                    f"Val Loss: {val_metrics['val_total_loss']:.4f} | "
-                    f"Val PosErr: {val_metrics['val_pos_err']:.4f} | "
-                    f"SpikeRate: {val_metrics['val_spike_rate']:.3f} | "
-                    f"Time: {record['elapsed_time']:.1f}s"
+                # Periodic checkpoint (each epoch) – includes optimizer state, epoch, best loss, and history
+                checkpoint_path = self.save_dir / "checkpoint.pt"
+                torch.save(
+                    {
+                        "epoch": epoch,
+                        "model_state": self.model.state_dict(),
+                        "best_val_loss": self.best_val_loss,
+                        "history": self.history,
+                        "optimizer_state": {
+                            "probe_optimizer": self.probe_optimizer.state_dict() if self.probe_optimizer else None,
+                            "predictor_optimizer": self.predictor_optimizer.state_dict() if self.predictor_optimizer else None,
+                        },
+                    },
+                    checkpoint_path,
                 )
 
-        # Save training log CSV
+                if epoch % print_every == 0 or epoch == self.start_epoch + epochs - 1:
+                    print(
+                        f"Epoch {epoch:03d}/{self.start_epoch + epochs - 1:03d} | "
+                        f"Train Loss: {train_metrics['total_loss']:.4f} | "
+                        f"Pred Loss: {train_metrics['l_pred']:.4f} | "
+                        f"Val Loss: {val_metrics['val_total_loss']:.4f} | "
+                        f"SpikeRate: {val_metrics['val_spike_rate']:.3f} | "
+                        f"Time: {record['elapsed_time']:.1f}s"
+                    )
+        except KeyboardInterrupt:
+            # Evaluate validation loss and save model only if it improves over the best checkpoint
+            try:
+                val_metrics = self.evaluate()
+                current_val_loss = val_metrics.get("val_total_loss", float('inf'))
+                if current_val_loss < self.best_val_loss:
+                    self.best_val_loss = current_val_loss
+                    model_path = self.save_dir / "model.pt"
+                    torch.save(self.model.state_dict(), model_path)
+                    print("\n⚠️ Training interrupted – improved model saved to", model_path)
+                else:
+                    print("\n⚠️ Training interrupted – no improvement (val loss: %.4f), keeping existing model.pt" % current_val_loss)
+            except Exception as e:
+                print("\n⚠️ Training interrupted – evaluation failed:", e)
+                # Fallback: still save current model state
+                model_path = self.save_dir / "model.pt"
+                torch.save(self.model.state_dict(), model_path)
+                print("Saved current model to", model_path)
+            raise
+
         self.save_training_log()
-
-        if self.writer is not None:
-            self.writer.close()
-
         return self.history
 
     def save_training_log(self) -> None:
-        """Saves CSV log of all recorded metrics."""
+        """Saves CSV and JSON history logs to save_dir."""
         if not self.history:
             return
+
+        json_path = self.save_dir / "training_log.json"
+        with open(json_path, "w", encoding="utf-8") as f:
+            json.dump(self.history, f, indent=2)
+
         csv_path = self.save_dir / "training_log.csv"
-        fieldnames = list(self.history[0].keys())
-        with open(csv_path, mode="w", newline="", encoding="utf-8") as f:
-            writer = csv.DictWriter(f, fieldnames=fieldnames)
+        keys = list(self.history[0].keys())
+        with open(csv_path, "w", newline="", encoding="utf-8") as f:
+            writer = csv.DictWriter(f, fieldnames=keys)
             writer.writeheader()
             writer.writerows(self.history)

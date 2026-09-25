@@ -1,5 +1,5 @@
 """
-Learning modules: losses, metrics, diagnostics, and trainer.
+Learning modules: losses, metrics, diagnostics, e-prop plasticity, and trainer.
 """
 
 from spwm.learning.losses import SPWMLoss, LossOutput
@@ -14,6 +14,12 @@ from spwm.learning.metrics import (
     energy_estimate,
 )
 from spwm.learning.diagnostics import inspect_gradients, collect_spike_statistics
+from spwm.learning.eprop import (
+    ALIFEpropTraces,
+    init_eprop_traces,
+    step_alif_eprop_traces,
+    compute_eprop_weight_update,
+)
 from spwm.learning.trainer import Trainer
 
 __all__ = [
@@ -29,5 +35,9 @@ __all__ = [
     "energy_estimate",
     "inspect_gradients",
     "collect_spike_statistics",
+    "ALIFEpropTraces",
+    "init_eprop_traces",
+    "step_alif_eprop_traces",
+    "compute_eprop_weight_update",
     "Trainer",
 ]

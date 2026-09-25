@@ -21,25 +21,25 @@ from spwm.evaluation.plots import (
 )
 
 
-def test_rollout_evaluator():
+def test_rollout_evaluator_long_horizon():
     world = MovingObjectsWorld()
     sim = EventCameraSimulator(height=32, width=32)
     ds = EventWorldDataset(
         trajectory_indices=[0, 1],
         world=world,
         event_simulator=sim,
-        sequence_length=15,
+        sequence_length=150,
         num_objects=1,
     )
     loader = DataLoader(ds, batch_size=2, collate_fn=collate_event_batches)
 
     model = SPWM(latent_dim=32, timescale_dims=(16, 16), encoder_dim=32)
-    evaluator = RolloutEvaluator(model=model, horizons=[1, 3, 5], num_objects=1)
+    evaluator = RolloutEvaluator(model=model, horizons=[1, 5, 10, 25, 50], num_objects=1)
     res = evaluator.evaluate_dataset(loader)
 
-    assert 1 in res.latent_mse_per_horizon
-    assert 3 in res.latent_mse_per_horizon
-    assert 5 in res.latent_mse_per_horizon
+    for h in [1, 5, 10, 25, 50]:
+        assert h in res.latent_mse_per_horizon
+        assert res.latent_mse_per_horizon[h] >= 0.0
     assert res.teacher_forcing_mse >= 0.0
 
 
@@ -61,8 +61,8 @@ def test_plotting_generation():
 
         # 3. Multi-step degradation
         mock_curves = {
-            "SPWM-v1": {1: 0.1, 5: 0.2, 10: 0.35},
-            "GRU": {1: 0.08, 5: 0.22, 10: 0.40},
+            "SPWM-v3": {1: 0.1, 5: 0.2, 10: 0.35, 25: 0.45, 50: 0.55},
+            "GRU": {1: 0.08, 5: 0.22, 10: 0.40, 25: 0.60, 50: 0.80},
         }
         plot_multi_step_degradation(mock_curves, tmp_path / "fig3.png")
         assert (tmp_path / "fig3.png").is_file()
@@ -81,13 +81,13 @@ def test_plotting_generation():
 
         # 6. Baseline comparison
         mock_metrics = {
-            "SPWM-v1": {"one_step_mse": 0.05, "rollout_mse_h10": 0.2, "spike_rate": 0.04},
+            "SPWM-v3": {"one_step_mse": 0.05, "rollout_mse_h10": 0.2, "spike_rate": 0.12},
             "GRU": {"one_step_mse": 0.04, "rollout_mse_h10": 0.25, "spike_rate": 0.0},
         }
         plot_baseline_comparison(mock_metrics, tmp_path / "fig6.png")
         assert (tmp_path / "fig6.png").is_file()
 
         # 7. Ablation comparison
-        mock_ablations = {"Full SPWM": 0.2, "No Slow Memory": 0.45, "Single Timescale": 0.38}
+        mock_ablations = {"Full SPWM-v3": 0.2, "No Slow Memory": 0.45, "Single Timescale": 0.38}
         plot_ablation_comparison(mock_ablations, tmp_path / "fig7.png")
         assert (tmp_path / "fig7.png").is_file()

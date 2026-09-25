@@ -101,6 +101,24 @@ class SurrogateSpike(nn.Module):
         return self.fn(x, self.alpha)
 
 
+def surrogate_derivative(x: torch.Tensor, surrogate_name: str = "atan", alpha: float = 2.0) -> torch.Tensor:
+    """
+    Computes analytical surrogate derivative psi(x) = dS/dV where x = V_mem - V_th.
+    Used for local synaptic eligibility traces (e-prop).
+    """
+    name = surrogate_name.lower()
+    if name == "atan":
+        denom = 1.0 + ((torch.pi / 2.0) * alpha * x) ** 2
+        return (alpha / 2.0) / denom
+    elif name in ["fast_sigmoid", "fastsigmoid"]:
+        return 1.0 / ((1.0 + alpha * torch.abs(x)) ** 2)
+    elif name == "sigmoid":
+        sg = torch.sigmoid(alpha * x)
+        return alpha * sg * (1.0 - sg)
+    else:
+        raise ValueError(f"Unknown surrogate function: {surrogate_name}. Supported: 'atan', 'fast_sigmoid', 'sigmoid'")
+
+
 def get_surrogate(surrogate_name: str = "atan", alpha: float = 2.0) -> SurrogateSpike:
     """Factory helper to obtain a surrogate activation."""
     return SurrogateSpike(surrogate_name=surrogate_name, alpha=alpha)

@@ -1,16 +1,16 @@
 """
-Recurrent Spiking Latent Dynamics with Multi-Timescale Memory.
-Updates latent state z_t -> z_(t+1) via recurrent synaptic connections,
-multi-timescale membrane dynamics, and spiking activity.
+Recurrent Spiking Latent Dynamics with ALIF Memory Hierarchy.
+Integrates error-routed sensory input with recurrent feedback and dual-timescale
+ALIF populations (Reactive 50%, Deep Context 50%).
 """
 
 from __future__ import annotations
 from dataclasses import dataclass
-from typing import Dict, List, Optional, Tuple, Sequence
+from typing import Dict, List, Optional, Tuple, Sequence, Union
 import torch
 import torch.nn as nn
 
-from spwm.models.memory import MultiTimescaleMemory, MultiTimescaleState
+from spwm.models.memory import MultiTimescaleMemory, MultiTimescaleState, compute_tier_dims
 
 
 @dataclass
@@ -33,46 +33,48 @@ class DynamicsOutput:
 
 class SpikingLatentDynamics(nn.Module):
     """
-    Recurrent Spiking Latent Dynamics Module.
-    Combines incoming sensory input with recurrent latent feedback to drive
-    fast and slow spiking neural populations.
+    Recurrent Spiking Latent Dynamics with ALIF Core (SPWM-v3).
     """
 
     def __init__(
         self,
         input_dim: int = 128,
         latent_dim: int = 128,
-        timescale_dims: Sequence[int] = (64, 64),
-        betas: Sequence[float] = (0.8, 0.98),
-        threshold: float = 1.0,
-        reset_mechanism: str = "hard",
+        timescale_dims: Optional[Sequence[int]] = None,
+        betas: Sequence[float] = (0.90, 0.985),
+        beta_mem: float = 0.80,
+        v_th0: float = 1.0,
+        gamma: float = 0.18,
         surrogate_name: str = "atan",
         surrogate_alpha: float = 2.0,
-        learnable_betas: bool = False,
     ) -> None:
         super().__init__()
         self.input_dim = input_dim
         self.latent_dim = latent_dim
-        self.timescale_dims = list(timescale_dims)
+
+        if timescale_dims is not None:
+            self.timescale_dims = list(timescale_dims)
+        else:
+            self.timescale_dims = list(compute_tier_dims(latent_dim, num_tiers=2))
+
         self.total_memory_dim = sum(self.timescale_dims)
 
-        # Multi-timescale spiking memory
+        # Multi-timescale ALIF memory
         self.memory = MultiTimescaleMemory(
             timescale_dims=self.timescale_dims,
-            betas=betas,
-            threshold=threshold,
-            reset_mechanism=reset_mechanism,
+            betas=betas if len(betas) == len(self.timescale_dims) else None,
+            beta_mem=beta_mem,
+            v_th0=v_th0,
+            gamma=gamma,
             surrogate_name=surrogate_name,
             surrogate_alpha=surrogate_alpha,
-            learnable_betas=learnable_betas,
         )
 
-        # Synaptic projections: sensory input + recurrent feedback -> memory currents
+        # Synaptic projections: sensory error + recurrent feedback -> somatic currents
         self.input_proj = nn.Linear(input_dim, self.total_memory_dim)
         self.recurrent_proj = nn.Linear(latent_dim, self.total_memory_dim, bias=False)
 
-        # Fusion layer: transforms multi-timescale spikes & membranes into latent state z_t
-        # Dimension is 2 * total_memory_dim (spikes + tanh(membranes))
+        # Latent fusion layer: transforms multi-timescale spikes & analog membranes into z_t
         self.fuse_spikes = nn.Linear(self.total_memory_dim, latent_dim)
         self.fuse_mems = nn.Linear(self.total_memory_dim, latent_dim, bias=False)
         self.norm = nn.LayerNorm(latent_dim)
@@ -90,10 +92,7 @@ class SpikingLatentDynamics(nn.Module):
     ) -> Tuple[torch.Tensor, DynamicsState]:
         """
         Executes a single recurrent dynamical step:
-            e_t, z_(t-1) -> I_t -> MultiTimescaleMemory -> z_t
-        sensory_input: [B, input_dim]
-        state: previous DynamicsState
-        Returns: (z_t, new_state)
+            ϵ_t, z_(t-1) -> I_soma -> MultiTimescaleMemory (ALIF) -> z_t
         """
         B = sensory_input.shape[0]
         device = sensory_input.device
@@ -101,13 +100,16 @@ class SpikingLatentDynamics(nn.Module):
         if state is None:
             state = self.init_state(B, device=device)
 
-        # Compute synaptic current
-        current_input = self.input_proj(sensory_input) + self.recurrent_proj(state.z_prev)
+        # 1. Somatic synaptic current
+        soma_current = self.input_proj(sensory_input) + self.recurrent_proj(state.z_prev)
 
-        # Update spiking memory
-        spikes, new_mem_state = self.memory(current_input, state.memory_state)
+        # 2. Multi-timescale ALIF memory update
+        spikes, new_mem_state = self.memory(
+            synaptic_inputs=soma_current,
+            state=state.memory_state,
+        )
 
-        # Combine spikes and analog membrane charge into unified latent state z_t
+        # 3. Combine spikes and analog membrane potential into unified latent z_t
         mem_analog = torch.tanh(new_mem_state.concatenated_mems)
         z_t = self.norm(self.fuse_spikes(spikes) + self.fuse_mems(mem_analog))
 
@@ -119,10 +121,7 @@ class SpikingLatentDynamics(nn.Module):
         sensory_sequence: torch.Tensor,
         initial_state: Optional[DynamicsState] = None,
     ) -> Tuple[DynamicsOutput, DynamicsState]:
-        """
-        Unrolls recurrent dynamics over an input sequence [B, T, input_dim].
-        Returns DynamicsOutput and final state.
-        """
+        """Unrolls recurrent dynamics over an input sequence [B, T, input_dim]."""
         B, T, _ = sensory_sequence.shape
         device = sensory_sequence.device
 
@@ -142,24 +141,28 @@ class SpikingLatentDynamics(nn.Module):
 
         for t in range(T):
             e_t = sensory_sequence[:, t]
-            z_t, state = self.step(e_t, state)
+            z_t, state = self.step(e_t, state=state)
             latent_steps.append(z_t)
 
-            # Record internal population activities
-            fast_spk = state.memory_state.spikes[0]
-            slow_spk = state.memory_state.spikes[1]
-            fast_mem = state.memory_state.v_mems[0]
-            slow_mem = state.memory_state.v_mems[1]
+            pop_spks = state.memory_state.spikes
+            pop_mems = state.memory_state.v_mems
+
+            fast_spk = pop_spks[0]
+            slow_spk = pop_spks[-1]
+
+            fast_mem = pop_mems[0]
+            slow_mem = pop_mems[-1]
 
             fast_spk_steps.append(fast_spk)
             slow_spk_steps.append(slow_spk)
             fast_mem_steps.append(fast_mem)
             slow_mem_steps.append(slow_mem)
 
-            total_spikes += (fast_spk.sum() + slow_spk.sum())
-            total_neurons += (fast_spk.numel() + slow_spk.numel())
+            for spk in pop_spks:
+                total_spikes += spk.sum()
+                total_neurons += spk.numel()
 
-        latent_seq = torch.stack(latent_steps, dim=1)  # [B, T, latent_dim]
+        latent_seq = torch.stack(latent_steps, dim=1)
         fast_spikes_seq = torch.stack(fast_spk_steps, dim=1)
         slow_spikes_seq = torch.stack(slow_spk_steps, dim=1)
         fast_mems_seq = torch.stack(fast_mem_steps, dim=1)

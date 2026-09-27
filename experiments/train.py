@@ -12,6 +12,8 @@ import subprocess
 import time
 from pathlib import Path
 from typing import Any, Dict
+
+import chronicle
 import torch
 
 from spwm.utils.reproducibility import set_seed
@@ -65,6 +67,9 @@ def build_model(config: Dict[str, Any], device: torch.device) -> torch.nn.Module
             encoder_conv_channels=tuple(model_cfg.get("encoder_conv_channels", (32, 64))),
             encoder_dim=encoder_dim,
             latent_dim=latent_dim,
+            q_dim=model_cfg.get("q_dim", None),
+            p_dim=model_cfg.get("p_dim", None),
+            ema_decay=model_cfg.get("ema_decay", 0.9),
             timescale_dims=tuple(mem_cfg.get("timescale_dims", (latent_dim // 2, latent_dim // 2))),
             betas=tuple(mem_cfg.get("betas", (0.90, 0.985))),
             beta_mem=neuron_cfg.get("beta_mem", 0.80),
@@ -72,9 +77,16 @@ def build_model(config: Dict[str, Any], device: torch.device) -> torch.nn.Module
             gamma=neuron_cfg.get("gamma", 0.18),
             surrogate_name=neuron_cfg.get("surrogate", "atan"),
             surrogate_alpha=neuron_cfg.get("surrogate_alpha", 2.0),
+            num_keypoints=model_cfg.get("num_keypoints", 16),
             predictor_hidden_dim=model_cfg.get("predictor_hidden_dim", 256),
             num_objects=num_objects,
             local_lr=model_cfg.get("local_lr", 1e-3),
+            # v3.4: kinematic feedback into e-prop learning signal (0.0 disables for backward-compat)
+            lambda_kin_feedback=model_cfg.get("lambda_kin_feedback", 0.0),
+            # v3.5: online RLS decoder
+            rls_enabled=model_cfg.get("rls_enabled", False),
+            rls_forgetting=model_cfg.get("rls_forgetting", 0.99),
+            rls_delta=model_cfg.get("rls_delta", 1.0),
         )
     elif model_type == "gru":
         model = GRUWorldModel(
@@ -139,27 +151,21 @@ def main() -> None:
     else:
         device = torch.device("cpu")
 
-    # Output directory (reuse existing if present)
+    # Output directory (always overwrite without seed subfolders)
     raw_exp_name = config.get("project", {}).get("name", "experiment")
     exp_name = raw_exp_name.replace("v2", "v3")
     if args.output_dir is not None:
         save_dir = Path(args.output_dir)
     else:
-        base = Path("results")
-        pattern = f"{exp_name}_seed{seed}_"
-        candidate_dirs = [d for d in base.iterdir() if d.is_dir() and d.name.startswith(pattern)]
-        if candidate_dirs:
-            save_dir = max(candidate_dirs, key=lambda p: p.stat().st_mtime)
-            print(f"Reusing existing folder {save_dir} for resume")
-        else:
-            run_id = f"{exp_name}_seed{seed}_{int(time.time())}"
-            save_dir = base / run_id
+        save_dir = Path("results") / exp_name
     save_dir.mkdir(parents=True, exist_ok=True)
     figures_dir = save_dir / "figures"
     figures_dir.mkdir(parents=True, exist_ok=True)
 
-    print(f"=== Starting Experiment: {exp_name} ===")
-    print(f"Device: {device} | Seed: {seed} | Save Dir: {save_dir}")
+    chronicle.log_application_title(f"Starting Experiment: {exp_name}")
+    chronicle.log_detail("Device", device)
+    chronicle.log_detail("Seed", seed)
+    chronicle.log_detail("Save Dir", save_dir)
 
     # 2. Build DataLoaders
     data_cfg = config.get("data", {})
@@ -194,6 +200,7 @@ def main() -> None:
         lambda_var=loss_cfg.get("lambda_var", 0.1),
         lambda_sparse=loss_cfg.get("lambda_sparse", 0.001),
         lambda_probe=loss_cfg.get("lambda_probe", 0.5),
+        lambda_coord=loss_cfg.get("lambda_coord", 0.0),
         multi_step_horizon=loss_cfg.get("multi_step_horizon", 3),
         target_variance=loss_cfg.get("target_variance", 1.0),
     )
@@ -207,25 +214,30 @@ def main() -> None:
     if model_path.is_file():
         ckpt = torch.load(model_path, map_location=device)
         if isinstance(ckpt, dict) and "model_state" in ckpt:
-            model.load_state_dict(ckpt["model_state"])
-            print(f"Loaded checkpoint (state dict) from {model_path}")
+            model.load_state_dict(ckpt["model_state"], strict=False)
+            chronicle.log_info(f"Loaded checkpoint (state dict) from {model_path}")
         else:
-            model.load_state_dict(ckpt)
-            print(f"Loaded plain model.pt from {model_path}")
+            model.load_state_dict(ckpt, strict=False)
+            chronicle.log_info(f"Loaded plain model.pt from {model_path}")
     else:
-        print("No existing model.pt, starting fresh.")
+        chronicle.log_info("No existing model.pt — starting fresh.")
         
     start_epoch = 1
     best_val_loss = float("inf")
     history = None
     optimizer_state = None
     
+    probe_lr = train_cfg.get("probe_lr", 5e-4)
+    probe_weight_decay = train_cfg.get("probe_weight_decay", 1e-2)
+
     trainer = Trainer(
         model=model,
         train_loader=dataloaders["train"],
         val_loader=dataloaders["val"],
         loss_fn=loss_fn,
         learning_rate=lr,
+        probe_lr=probe_lr,
+        probe_weight_decay=probe_weight_decay,
         grad_clip_norm=train_cfg.get("grad_clip_norm", 1.0),
         learning_algorithm=train_cfg.get("learning_algorithm", "online_eprop"),
         device=device,
@@ -239,12 +251,14 @@ def main() -> None:
     if ckpt is not None and not (isinstance(ckpt, dict) and "model_state" in ckpt):
         baseline = trainer.evaluate()
         trainer.best_val_loss = baseline["val_total_loss"]
-        print(f"Baseline validation loss from existing model: {trainer.best_val_loss:.4e}")
+        trainer.best_val_pos_err = baseline.get("val_pos_err", float("inf"))
+        chronicle.log_detail("Baseline Val Loss", f"{trainer.best_val_loss:.4e}")
+        chronicle.log_detail("Baseline Val Pos Err", f"{trainer.best_val_pos_err:.4e}")
 
     history = trainer.fit(epochs=epochs)
 
     # 5. Evaluate on Test and Extrapolation sets
-    print("\n--- Running Rollout & Generalization Evaluation ---")
+    chronicle.log_section_header("Rollout & Generalization Evaluation")
     evaluator = RolloutEvaluator(
         model=model,
         device=device,
@@ -255,10 +269,11 @@ def main() -> None:
     test_results = evaluator.evaluate_dataset(dataloaders["test"])
     extrap_results = evaluator.evaluate_dataset(dataloaders["extrapolation"])
 
-    print(f"Test TF MSE: {test_results.teacher_forcing_mse:.4e} | Mean Spike Rate: {test_results.mean_spike_rate:.3f}")
-    print(f"Extrapolation TF MSE: {extrap_results.teacher_forcing_mse:.4e}")
+    chronicle.log_detail("Test TF MSE", f"{test_results.teacher_forcing_mse:.4e}")
+    chronicle.log_detail("Test Mean Spike Rate", f"{test_results.mean_spike_rate:.3f}")
+    chronicle.log_detail("Extrapolation TF MSE", f"{extrap_results.teacher_forcing_mse:.4e}")
     if test_results.position_error_per_horizon:
-        print(f"Test Pos Error by Horizon: {test_results.position_error_per_horizon}")
+        chronicle.log_detail("Test Pos Error by Horizon", test_results.position_error_per_horizon)
 
     # 6. Save Artifacts & Metadata
     save_config(config, save_dir / "config.yaml")
@@ -314,8 +329,8 @@ def main() -> None:
                 slow_spk = sample_out.slow_spikes[0].cpu().numpy()
                 plot_spike_raster(fast_spk, slow_spk, figures_dir / "fig4_spike_raster.png")
 
-    print(f"=== Experiment {exp_name} Completed Successfully ===")
-    print(f"Saved artifacts to {save_dir}")
+    chronicle.log_success(f"Experiment '{exp_name}' completed successfully.")
+    chronicle.log_detail("Artifacts saved to", save_dir)
 
 
 if __name__ == "__main__":

@@ -1,0 +1,63 @@
+# SPWM v3.4 – Kinematic-Guided e-prop (Closing the Representational Gap)
+# Key change: injects the kinematic decoding error ε_kin back through W_probe
+# into the e-prop three-factor plasticity rule, forcing ALIF dynamics to encode
+# geometric coordinates in the latent space without BPTT or extra memory.
+#
+# Acceptance criteria (5-epoch gate):
+#   val_l_probe  < 0.25  (ideally < 0.15)
+#   val_pos_err  < 0.50  at H=1  (breaking the 0.692 anchor)
+#   Linear probe R² > 0.40  (from current 0.012)
+
+project:
+  name: "spwm_v3_4_kin_eprop"
+  seed: 42
+
+environment:
+  num_objects: 1
+  height: 32
+  width: 32
+  event_threshold: 0.08
+
+data:
+  total_trajectories: 600
+  train_split: 0.8
+  val_split: 0.1
+  sequence_length: 150
+  batch_size: 32
+
+model:
+  type: "spwm"
+  encoder_dim: 128
+  latent_dim: 128
+  predictor_hidden_dim: 256
+  local_lr: 0.0002           # ALIF dynamics local e-prop lr
+  lambda_kin_feedback: 0.5   # v3.4: weight λ for kinematic error injection into e-prop
+
+neuron:
+  model: "alif"
+  threshold: 1.0
+  beta_mem: 0.80
+  gamma: 0.18
+  surrogate: "atan"
+  surrogate_alpha: 2.0
+
+memory:
+  num_timescales: 2
+  timescale_dims: [64, 64]
+  betas: [0.90, 0.985]
+
+training:
+  epochs: 5
+  learning_rate: 0.001       # probe / predictor optimizer lr
+  batch_size: 32
+  grad_clip_norm: 1.0
+
+loss:
+  lambda_pred: 1.0
+  lambda_multi: 0.5
+  lambda_var: 0.1
+  lambda_sparse: 0.001
+  lambda_probe: 1.0
+
+evaluation:
+  rollout_horizons: [1, 5, 10, 25, 50]

@@ -97,22 +97,25 @@ def step_alif_eprop_traces(
 def compute_eprop_weight_update(
     learning_signal: torch.Tensor,
     eligibility_trace: torch.Tensor,
+    seq_len: Optional[int] = None,
 ) -> torch.Tensor:
     """
     Computes synaptic parameter update:
-        Delta W_ij = (1 / B) * sum_{b=1}^B L_i,b(t) * e_ij,b(t)
+        Delta W_ij = (1 / (B * T)) * sum_{b=1}^B L_i,b(t) * e_ij,b(t)
 
     Args:
         learning_signal: Post-synaptic error/learning signal L_i(t) [B, out_dim]
         eligibility_trace: Instantaneous eligibility trace e_ij(t) [B, out_dim, in_dim]
+        seq_len: Optional sequence length T for normalization
 
     Returns:
         delta_w: Synaptic weight update [out_dim, in_dim]
     """
     B = learning_signal.shape[0]
+    T_scale = seq_len if (seq_len is not None and seq_len > 0) else 1
     # learning_signal: [B, out_dim, 1]
     L_3d = learning_signal.unsqueeze(-1)
     # Product: [B, out_dim, in_dim]
     delta_w_batch = L_3d * eligibility_trace
-    delta_w = delta_w_batch.sum(dim=0) / max(1, B)
+    delta_w = delta_w_batch.sum(dim=0) / (max(1, B) * T_scale)
     return delta_w

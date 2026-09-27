@@ -1,10 +1,12 @@
 """
-SPWM-v3: Continuous Non-BPTT Spiking Predictive World Model.
+SPWM-v3.4: Kinematic-Guided e-prop — Closing the Representational Gap.
 Features:
 - Predictive coding core with error routing (ϵ_t = x_t - W_pred z_(t-1))
 - Adaptive Leaky Integrate-and-Fire (ALIF) latent core with dynamic threshold homeostasis
 - Dual-timescale hierarchy (50% Reactive β_adapt=0.90, 50% Deep Context β_adapt=0.985)
 - Deterministic forward-only e-prop plasticity with O(1) memory complexity over long horizons
+- v3.4: Kinematic feedback injection — ε_kin projected via W_probe into L^total augments
+  the three-factor plasticity rule so ALIF dynamics align with geometric coordinates
 """
 
 from __future__ import annotations
@@ -35,6 +37,7 @@ class SPWMStepOutput:
     error_neurons: torch.Tensor  # [B, encoder_dim] (ϵ_t = x_t - W_pred z_(t-1))
     prediction_error: Optional[torch.Tensor]  # [B] if target latent is available
     decoded_kinematics: Optional[torch.Tensor]  # [B, 4 * N]
+    ema_spikes: Optional[torch.Tensor] = None  # [B, total_memory_dim]
 
 
 @dataclass
@@ -72,9 +75,17 @@ class SPWM(nn.Module):
         gamma: float = 0.18,
         surrogate_name: str = "atan",
         surrogate_alpha: float = 2.0,
+        num_keypoints: int = 16,
         predictor_hidden_dim: int = 256,
         num_objects: int = 1,
         local_lr: float = 1e-3,
+        lambda_kin_feedback: float = 0.0,
+        rls_enabled: bool = False,
+        rls_forgetting: float = 0.99,
+        rls_delta: float = 1.0,
+        q_dim: Optional[int] = None,
+        p_dim: Optional[int] = None,
+        ema_decay: float = 0.9,
     ) -> None:
         super().__init__()
         self.in_channels = in_channels
@@ -83,19 +94,34 @@ class SPWM(nn.Module):
         self.encoder_dim = encoder_dim
         self.latent_dim = latent_dim
         self.local_lr = local_lr
+        # v3.4+: weight for kinematic feedback injection into e-prop learning signal
+        self.lambda_kin_feedback = lambda_kin_feedback
+        # v3.5: whether to use online RLS decoder for kinematic feedback
+        self.rls_enabled = rls_enabled
 
-        # 1. Spiking Sensory Event Encoder
+        # Determine phase space dimensions consistently
+        if q_dim is not None:
+            num_keypoints = max(1, q_dim // 2)
+            p_dim = p_dim if p_dim is not None else (latent_dim - q_dim)
+        else:
+            if latent_dim >= 2 * num_keypoints + 16:
+                q_dim = 2 * num_keypoints
+                p_dim = latent_dim - q_dim
+            else:
+                num_keypoints = max(1, (latent_dim // 4) // 2)
+                q_dim = 2 * num_keypoints
+                p_dim = latent_dim - q_dim
+
+        # 1. Spatial Softmax Keypoint Event Encoder (SPWM-v4.0)
         self.encoder = EventEncoder(
             in_channels=in_channels,
             height=height,
             width=width,
             conv_channels=encoder_conv_channels,
+            num_keypoints=num_keypoints,
             out_dim=encoder_dim,
-            beta=0.80,
-            threshold=threshold,
-            surrogate_name=surrogate_name,
-            surrogate_alpha=surrogate_alpha,
         )
+
 
         # 2. Predictive Sensory Decoder (Predictive Coding Core: x_hat_t = W_pred * z_(t-1))
         self.sensory_predictor = nn.Linear(latent_dim, encoder_dim, bias=False)
@@ -104,6 +130,9 @@ class SPWM(nn.Module):
         self.dynamics = SpikingLatentDynamics(
             input_dim=encoder_dim,
             latent_dim=latent_dim,
+            q_dim=q_dim,
+            p_dim=p_dim,
+            ema_decay=ema_decay,
             timescale_dims=timescale_dims,
             betas=betas,
             beta_mem=beta_mem,
@@ -123,9 +152,18 @@ class SPWM(nn.Module):
         # 5. Physical Decoder Probe (ground truth kinematics evaluation)
         self.physical_decoder = PhysicalDecoder(
             latent_dim=latent_dim,
+            q_dim=self.dynamics.q_dim,
+            p_dim=self.dynamics.p_dim,
             num_objects=num_objects,
             hidden_dim=latent_dim,
+            rls_enabled=rls_enabled,
+            rls_forgetting=rls_forgetting,
+            rls_delta=rls_delta,
         )
+
+        # Feedback Alignment: Fixed non-trainable feedback matrix for kinematic error retroprojection
+        B_feedback = torch.randn(4 * num_objects, latent_dim) / (4.0 ** 0.5)
+        self.register_buffer("B_kin_feedback", B_feedback)
 
         # Register plasticity buffers for online forward-only weight updates
         self.init_buffer()
@@ -160,18 +198,19 @@ class SPWM(nn.Module):
         event_frame: torch.Tensor,
         state: Optional[SPWMState] = None,
         target_next_latent: Optional[torch.Tensor] = None,
+        target_kinematics: Optional[torch.Tensor] = None,
         accumulate_local_updates: bool = True,
         learning_rate: Optional[float] = None,
         seq_len: Optional[int] = None,
     ) -> Tuple[SPWMStepOutput, SPWMState]:
         """
         Executes a single forward-only O(1) step:
-            1. Encode raw sensory event: x_t = encoder(event_frame)
+            1. Encode raw sensory event: x_t = encoder(event_frame), extract keypoints
             2. Compute sensory prediction: x_hat_t = sensory_predictor(z_(t-1))
             3. Error neuron routing: ϵ_t = x_t - x_hat_t
-            4. Latent dynamics update with ϵ_t -> z_t
+            4. Latent dynamics update with ϵ_t and keypoints -> z_t = [q_t, p_t]
             5. Latent state prediction: z_hat_(t+1) = predictor(z_t)
-            6. Accumulate forward-only e-prop updates normalized by 1/T
+            6. Accumulate forward-only e-prop updates (coherent q and p routing)
         """
         B = event_frame.shape[0]
         device = event_frame.device
@@ -183,20 +222,22 @@ class SPWM(nn.Module):
         seq_len_val = 1.0 if seq_len is None else float(seq_len)
 
         with torch.no_grad():
-            # 1. Encode sensory input frame
+            # 1. Encode sensory input frame and extract raw keypoints in [-1, 1]
             sensory_x, new_enc_states = self.encoder.step(event_frame, state.encoder_states)
+            sensory_keypoints = getattr(self.encoder, "last_keypoints", None)  # [B, q_dim=32]
 
             # 2. Predictive coding: predict sensory observation from previous latent state
-            z_prev = state.dynamics_state.z_prev  # [B, latent_dim]
-            predicted_x = self.sensory_predictor(z_prev)  # [B, encoder_dim]
+            z_prev = state.dynamics_state.z_prev  # [B, latent_dim=128]
+            predicted_x = self.sensory_predictor(z_prev)  # [B, encoder_dim=128]
 
             # 3. Error Neurons ϵ_t
-            epsilon_t = sensory_x - predicted_x  # [B, encoder_dim]
+            epsilon_t = sensory_x - predicted_x  # [B, encoder_dim=128]
 
-            # 4. Latent dynamics receives sensory prediction error ϵ_t
+            # 4. Latent dynamics receives sensory prediction error ϵ_t and sensory keypoints
             z_t, new_dyn_state = self.dynamics.step(
                 sensory_input=epsilon_t,
                 state=state.dynamics_state,
+                sensory_keypoints=sensory_keypoints,
             )
 
             # 5. Latent prediction of next state
@@ -215,25 +256,64 @@ class SPWM(nn.Module):
             if accumulate_local_updates:
                 scale = B * seq_len_val
                 # Top-down sensory predictor update: ΔW_pred = (ϵ_t ⊗ z_prev) / (B * T)
+                # Shape: [encoder_dim, latent_dim] = [128, 128]
                 delta_w_pred = (epsilon_t.T @ z_prev) / scale
                 if "sensory_predictor.weight" in self.delta_w_buffer:
                     self.delta_w_buffer["sensory_predictor.weight"].add_(delta_w_pred)
 
-                # Deterministic feedback to latent memory
-                # L_lat = ϵ_t @ W_pred  [B, latent_dim]
+                # Deterministic feedback in full latent space: L_lat = ϵ_t @ W_pred  [B, latent_dim=128]
                 l_lat = epsilon_t @ self.sensory_predictor.weight
-                # Project feedback through fuse_spikes to total memory dimension: [B, total_mem_dim]
-                l_mem = l_lat @ self.dynamics.fuse_spikes.weight
 
-                # Input projection update: ΔW_in = (L_mem^T @ ϵ_t) / (B * T)
+                # Kinematic Feedback Alignment: L^kin_t = ε_kin @ B_kin_feedback   [B, latent_dim=128]
+                if (
+                    self.lambda_kin_feedback > 0.0
+                    and target_kinematics is not None
+                ):
+                    if self.rls_enabled and self.physical_decoder.rls is not None:
+                        s_hat_rls, _ = self.physical_decoder.rls_update_step(z_t, target_kinematics)
+                        epsilon_kin = s_hat_rls - target_kinematics  # [B, out_dim]
+                    elif decoded_kinematics is not None:
+                        epsilon_kin = decoded_kinematics - target_kinematics
+                    else:
+                        epsilon_kin = None
+
+                    if epsilon_kin is not None:
+                        l_kin = epsilon_kin @ self.B_kin_feedback    # [B, latent_dim=128]
+                    else:
+                        l_kin = 0.0
+
+                    l_lat = l_lat + self.lambda_kin_feedback * l_kin
+
+                # Decompose latent feedback into q [B, q_dim=32] and p [B, p_dim=96] components
+                l_q = l_lat[:, :self.dynamics.q_dim]
+                l_p = l_lat[:, self.dynamics.q_dim:]
+
+                # Retroproject momentum feedback l_p [B, 96] through fuse_spikes [96, 128] to somatic currents:
+                # l_mem: [B, total_memory_dim=128]
+                l_mem = l_p @ self.dynamics.fuse_spikes.weight
+
+                # Input projection update: ΔW_in = (l_mem^T @ ϵ_t) / (B * T) -> [128, 128]
                 delta_w_in = (l_mem.T @ epsilon_t) / scale
                 if "dynamics.input_proj.weight" in self.delta_w_buffer:
                     self.delta_w_buffer["dynamics.input_proj.weight"].add_(delta_w_in)
 
-                # Recurrent projection update: ΔW_rec = (L_mem^T @ z_prev) / (B * T)
-                delta_w_rec = (l_mem.T @ z_prev) / scale
+                # Recurrent projection update: ΔW_rec = (l_mem^T @ p_prev) / (B * T) -> [128, 96]
+                p_prev = z_prev[:, self.dynamics.q_dim:]
+                delta_w_rec = (l_mem.T @ p_prev) / scale
                 if "dynamics.recurrent_proj.weight" in self.delta_w_buffer:
                     self.delta_w_buffer["dynamics.recurrent_proj.weight"].add_(delta_w_rec)
+
+                # q projection update: ΔW_q = (l_mem^T @ q_prev) / (B * T) -> [128, 32]
+                q_prev = z_prev[:, :self.dynamics.q_dim]
+                delta_w_q = (l_mem.T @ q_prev) / scale
+                if "dynamics.q_proj.weight" in self.delta_w_buffer:
+                    self.delta_w_buffer["dynamics.q_proj.weight"].add_(delta_w_q)
+
+                # Velocity map update: ΔW_vel = (l_q^T @ ema_spikes) / (B * T) -> [32, 128]
+                ema_spikes = state.dynamics_state.ema_spikes
+                delta_w_vel = (l_q.T @ ema_spikes) / scale
+                if "dynamics.W_vel.weight" in self.delta_w_buffer:
+                    self.delta_w_buffer["dynamics.W_vel.weight"].add_(delta_w_vel)
 
             new_state = SPWMState(
                 encoder_states=new_enc_states,
@@ -246,6 +326,7 @@ class SPWM(nn.Module):
                 error_neurons=epsilon_t,
                 prediction_error=pred_error,
                 decoded_kinematics=decoded_kinematics,
+                ema_spikes=state.dynamics_state.ema_spikes,
             )
 
             return output, new_state
@@ -267,6 +348,7 @@ class SPWM(nn.Module):
         initial_state: Optional[SPWMState] = None,
         accumulate_local_updates: bool = True,
         learning_rate: Optional[float] = None,
+        target_kinematics: Optional[torch.Tensor] = None,
     ) -> SPWMSequenceOutput:
         """
         Processes full event sequence [B, T, C, H, W] in a forward-only stream.
@@ -286,9 +368,12 @@ class SPWM(nn.Module):
 
         for t in range(T):
             event_frame = event_sequence[:, t]
+            # v3.4: pass per-timestep kinematic target if available
+            kin_t = target_kinematics[:, t] if target_kinematics is not None else None
             step_out, state = self.step(
                 event_frame=event_frame,
                 state=state,
+                target_kinematics=kin_t,
                 accumulate_local_updates=accumulate_local_updates,
                 learning_rate=learning_rate,
                 seq_len=T,
@@ -319,8 +404,8 @@ class SPWM(nn.Module):
         # Spike rates
         all_spikes = torch.cat([fast_spikes, slow_spikes], dim=-1)
         dyn_spike_rate = (all_spikes > 0).float().mean()
-        enc_spike_rate = torch.tensor(0.12, device=device)
-        mean_spike_rate = 0.5 * (enc_spike_rate + dyn_spike_rate)
+        enc_spike_rate = torch.tensor(0.0, device=device)
+        mean_spike_rate = dyn_spike_rate
 
         return SPWMSequenceOutput(
             latent_states=latents,

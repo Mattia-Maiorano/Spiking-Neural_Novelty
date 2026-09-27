@@ -59,6 +59,7 @@ def run_single_ablation(
         lambda_var=loss_cfg.get("lambda_var", 0.1),
         lambda_sparse=loss_cfg.get("lambda_sparse", 0.001),
         lambda_probe=loss_cfg.get("lambda_probe", 0.5),
+        lambda_coord=loss_cfg.get("lambda_coord", 0.0),
         multi_step_horizon=loss_cfg.get("multi_step_horizon", 3),
     )
 

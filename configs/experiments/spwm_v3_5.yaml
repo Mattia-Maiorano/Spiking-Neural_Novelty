@@ -1,0 +1,66 @@
+# SPWM v3.5 – Online RLS Probe + Kinematic-Guided e-prop
+# Key change: PhysicalDecoder gains an online linear RLS layer (forgetting factor λ=0.99)
+# updated at each timestep without autograd. W_rls is always current, so the kinematic
+# feedback l_kin = ε_kin @ W_rls^T injected into the e-prop learning signal is never stale.
+#
+# Target acceptance criteria (5-epoch gate):
+#   val_l_probe  < 0.25  (ideally < 0.15)
+#   val_pos_err  < 0.65  at H=1  (steady improvement)
+#   Linear probe R² > 0.40  (from current 0.012)
+
+project:
+  name: "spwm_v3_5_rls_probe"
+  seed: 42
+
+environment:
+  num_objects: 1
+  height: 32
+  width: 32
+  event_threshold: 0.08
+
+data:
+  total_trajectories: 600
+  train_split: 0.8
+  val_split: 0.1
+  sequence_length: 150
+  batch_size: 32
+
+model:
+  type: "spwm"
+  encoder_dim: 128
+  latent_dim: 128
+  predictor_hidden_dim: 256
+  local_lr: 0.0002           # ALIF dynamics local e-prop lr
+  lambda_kin_feedback: 1.0   # v3.5: stronger kin feedback (W_rls is always fresh)
+  rls_enabled: true          # v3.5: enable online RLS decoder
+  rls_forgetting: 0.99       # RLS forgetting factor λ
+  rls_delta: 1.0             # RLS initial covariance diagonal P = δ·I
+
+neuron:
+  model: "alif"
+  threshold: 1.0
+  beta_mem: 0.80
+  gamma: 0.18
+  surrogate: "atan"
+  surrogate_alpha: 2.0
+
+memory:
+  num_timescales: 2
+  timescale_dims: [64, 64]
+  betas: [0.90, 0.985]
+
+training:
+  epochs: 5
+  learning_rate: 0.001       # predictor optimizer lr (probe now uses RLS, not AdamW)
+  batch_size: 32
+  grad_clip_norm: 1.0
+
+loss:
+  lambda_pred: 1.0
+  lambda_multi: 0.5
+  lambda_var: 0.1
+  lambda_sparse: 0.001
+  lambda_probe: 1.0
+
+evaluation:
+  rollout_horizons: [1, 5, 10, 25, 50]

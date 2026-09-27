@@ -43,7 +43,7 @@ loss:
   lambda_multi: 0.5
   lambda_var: 0.1
   lambda_sparse: 0.001
-  lambda_probe: 0.5
+  lambda_probe: 1.0
 evaluation:
   rollout_horizons:
   - 1

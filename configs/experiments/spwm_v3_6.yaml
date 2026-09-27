@@ -1,0 +1,61 @@
+# SPWM v3.6 – Fixed Feedback Alignment (FA) + Online RLS Probe
+# Key change: Resolves the W_rls ≈ 0 deadlock by using a fixed random Feedback Alignment
+# matrix B_kin_feedback ~ N(0, 1/sqrt(4*num_objects)) for kinematic error retroprojection into e-prop.
+# Online RLS continues updating live for probe evaluation and kinematics tracking.
+
+project:
+  name: "spwm_v3_6_feedback_alignment"
+  seed: 42
+
+environment:
+  num_objects: 1
+  height: 32
+  width: 32
+  event_threshold: 0.08
+
+data:
+  total_trajectories: 600
+  train_split: 0.8
+  val_split: 0.1
+  sequence_length: 150
+  batch_size: 32
+
+model:
+  type: "spwm"
+  encoder_dim: 128
+  latent_dim: 128
+  predictor_hidden_dim: 256
+  local_lr: 0.0002           # ALIF dynamics local e-prop lr
+  lambda_kin_feedback: 1.0   # Feedback Alignment kinematic feedback weight
+  rls_enabled: true          # Online RLS probe enabled for tracking/evaluation
+  rls_forgetting: 0.99       # RLS forgetting factor λ
+  rls_delta: 1.0             # RLS initial covariance diagonal P = δ·I
+
+neuron:
+  model: "alif"
+  threshold: 1.0
+  beta_mem: 0.80
+  gamma: 0.18
+  surrogate: "atan"
+  surrogate_alpha: 2.0
+
+memory:
+  num_timescales: 2
+  timescale_dims: [64, 64]
+  betas: [0.90, 0.985]
+
+training:
+  epochs: 400
+  learning_rate: 0.001       # predictor optimizer lr
+  batch_size: 32
+  grad_clip_norm: 1.0
+
+loss:
+  lambda_pred: 1.0
+  lambda_multi: 0.5
+  lambda_var: 0.1
+  lambda_sparse: 0.001
+  lambda_probe: 1.0
+
+evaluation:
+  rollout_horizons: [1, 5, 10, 25, 50]

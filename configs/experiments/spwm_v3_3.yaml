@@ -1,0 +1,57 @@
+# SPWM v3.3 – Post-Synaptic Filter Fix + Diagnostics
+# Key change: PhysicalDecoder now integrates an EMA firing-rate trace (alpha=0.85)
+# before the MLP, converting sparse binary spikes into smooth continuous signals.
+# Run on a clean output directory: results/spwm_v3_3_diagnostics
+
+project:
+  name: "spwm_v3_3_filter_fix"
+  seed: 42
+
+environment:
+  num_objects: 1
+  height: 32
+  width: 32
+  event_threshold: 0.08
+
+data:
+  total_trajectories: 600
+  train_split: 0.8
+  val_split: 0.1
+  sequence_length: 150
+  batch_size: 32
+
+model:
+  type: "spwm"
+  encoder_dim: 128
+  latent_dim: 128
+  predictor_hidden_dim: 256
+  local_lr: 0.001
+
+neuron:
+  model: "alif"
+  threshold: 1.0
+  beta_mem: 0.80
+  gamma: 0.18
+  surrogate: "atan"
+  surrogate_alpha: 2.0
+
+memory:
+  num_timescales: 2
+  timescale_dims: [64, 64]
+  betas: [0.90, 0.985]
+
+training:
+  epochs: 5
+  learning_rate: 0.001
+  batch_size: 32
+  grad_clip_norm: 1.0
+
+loss:
+  lambda_pred: 1.0
+  lambda_multi: 0.5
+  lambda_var: 0.1
+  lambda_sparse: 0.001
+  lambda_probe: 1.0
+
+evaluation:
+  rollout_horizons: [1, 5, 10, 25, 50]

@@ -1,0 +1,79 @@
+# SPWM v4.2 – Geometric Latent Space Rectification via Auxiliary Coordinate Loss (Strada B)
+#
+# Architectural change: Auxiliary Coordinate Probe Loss (L_coord) with λ_coord = 0.15.
+# Gradient flows through Conv2D → SpatialSoftmax → ALIF input_proj without detach,
+# steering the 16 (u_k, v_k) keypoints toward real object coordinates (Euclidean geometry)
+# before any symplectic / higher-order structure is imposed.
+#
+# Total loss:
+#   L_total(t) = L_pred(t) + λ_coord · L_coord(t) + λ_sparse · L_sparse(t)
+#
+# Success criteria:
+#   - Val Linear Pos Err  < 0.35  (down from plateau 0.577)
+#   - Spike Rate          ∈ [0.11, 0.12]  (biological window, not flattened by coord forcing)
+#   - Test TF MSE         ≤ 0.120         (pred loss must not regress)
+
+project:
+  name: "spwm_v4_2"
+  seed: 42
+
+environment:
+  num_objects: 1
+  height: 32
+  width: 32
+  event_threshold: 0.08
+
+data:
+  total_trajectories: 600
+  train_split: 0.8
+  val_split: 0.1
+  sequence_length: 150
+  batch_size: 32
+
+model:
+  type: "spwm"
+  encoder_type: "spatial_softmax"
+  num_keypoints: 16
+  encoder_dim: 128
+  encoder_conv_channels: [16, 32]
+  latent_dim: 128
+  predictor_hidden_dim: 256
+  local_lr: 0.0002           # ALIF dynamics local e-prop lr
+  lambda_kin_feedback: 1.0   # Feedback Alignment kinematic feedback weight
+  rls_enabled: false         # Strictly linear EMA probe used
+  rls_forgetting: 0.99
+  rls_delta: 1.0
+
+neuron:
+  model: "alif"
+  threshold: 1.0
+  beta_mem: 0.80
+  gamma: 0.18
+  surrogate: "atan"
+  surrogate_alpha: 2.0
+
+memory:
+  num_timescales: 2
+  timescale_dims: [64, 64]
+  betas: [0.90, 0.985]
+
+training:
+  epochs: 40
+  learning_rate: 0.0002      # Predictor base lr
+  probe_lr: 0.0005           # Dedicated probe lr (5e-4)
+  probe_weight_decay: 0.01   # Ridge regularization on probe (1e-2)
+  weight_decay: 0.0001
+  batch_size: 32
+  grad_clip_norm: 1.0
+
+loss:
+  lambda_pred: 1.0
+  lambda_multi: 0.5
+  lambda_var: 0.1
+  lambda_sparse: 0.001
+  lambda_probe: 2.0
+  lambda_coord: 0.15         # v4.2: auxiliary coordinate coupling (Strada B, range 0.10-0.20)
+
+evaluation:
+  save_best_metric: "val_pos_err"
+  rollout_horizons: [1, 5, 10, 25, 50]

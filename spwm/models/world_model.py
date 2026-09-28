@@ -86,6 +86,9 @@ class SPWM(nn.Module):
         q_dim: Optional[int] = None,
         p_dim: Optional[int] = None,
         ema_decay: float = 0.9,
+        beta_dend: float = 0.85,
+        alpha_dend: float = 0.10,
+        target_rate_center: float = 0.11,
     ) -> None:
         super().__init__()
         self.in_channels = in_channels
@@ -94,6 +97,9 @@ class SPWM(nn.Module):
         self.encoder_dim = encoder_dim
         self.latent_dim = latent_dim
         self.local_lr = local_lr
+        self.beta_dend = beta_dend
+        self.alpha_dend = alpha_dend
+        self.target_rate_center = target_rate_center
         # v3.4+: weight for kinematic feedback injection into e-prop learning signal
         self.lambda_kin_feedback = lambda_kin_feedback
         # v3.5: whether to use online RLS decoder for kinematic feedback
@@ -136,6 +142,9 @@ class SPWM(nn.Module):
             timescale_dims=timescale_dims,
             betas=betas,
             beta_mem=beta_mem,
+            beta_dend=getattr(self, "beta_dend", 0.85),
+            alpha_dend=getattr(self, "alpha_dend", 0.10),
+            target_rate_center=getattr(self, "target_rate_center", 0.11),
             v_th0=threshold,
             gamma=gamma,
             surrogate_name=surrogate_name,
@@ -202,6 +211,7 @@ class SPWM(nn.Module):
         accumulate_local_updates: bool = True,
         learning_rate: Optional[float] = None,
         seq_len: Optional[int] = None,
+        p_auto: float = 0.0,
     ) -> Tuple[SPWMStepOutput, SPWMState]:
         """
         Executes a single forward-only O(1) step:
@@ -226,6 +236,12 @@ class SPWM(nn.Module):
             sensory_x, new_enc_states = self.encoder.step(event_frame, state.encoder_states)
             sensory_keypoints = getattr(self.encoder, "last_keypoints", None)  # [B, q_dim=32]
 
+            # Scheduled sampling for generalized coordinate q: with probability p_auto, decouple from observation
+            if p_auto > 0.0 and torch.rand(1).item() < p_auto:
+                effective_keypoints = None
+            else:
+                effective_keypoints = sensory_keypoints
+
             # 2. Predictive coding: predict sensory observation from previous latent state
             z_prev = state.dynamics_state.z_prev  # [B, latent_dim=128]
             predicted_x = self.sensory_predictor(z_prev)  # [B, encoder_dim=128]
@@ -237,7 +253,7 @@ class SPWM(nn.Module):
             z_t, new_dyn_state = self.dynamics.step(
                 sensory_input=epsilon_t,
                 state=state.dynamics_state,
-                sensory_keypoints=sensory_keypoints,
+                sensory_keypoints=effective_keypoints,
             )
 
             # 5. Latent prediction of next state
@@ -297,23 +313,60 @@ class SPWM(nn.Module):
                 if "dynamics.input_proj.weight" in self.delta_w_buffer:
                     self.delta_w_buffer["dynamics.input_proj.weight"].add_(delta_w_in)
 
-                # Recurrent projection update: ΔW_rec = (l_mem^T @ p_prev) / (B * T) -> [128, 96]
-                p_prev = z_prev[:, self.dynamics.q_dim:]
-                delta_w_rec = (l_mem.T @ p_prev) / scale
-                if "dynamics.recurrent_proj.weight" in self.delta_w_buffer:
-                    self.delta_w_buffer["dynamics.recurrent_proj.weight"].add_(delta_w_rec)
+                # Recurrent projection update using Port-Hamiltonian parameters (S, r)
+                if hasattr(self.dynamics, "S") and hasattr(self.dynamics, "r"):
+                    p_prev = z_prev[:, self.dynamics.q_dim:]
+                    # Backprop through rec_proj to obtain gradient w.r.t recurrent p output
+                    grad_y = l_mem @ self.dynamics.rec_proj.weight  # [B, p_dim]
+                    # Effective recurrent weight gradient (p_dim x p_dim)
+                    delta_w_rec = (grad_y.t() @ p_prev) / scale
+                    # Compute gradients for S (skew-symmetric) and r (damping)
+                    grad_S = 0.5 * (delta_w_rec - delta_w_rec.t())
+                    grad_r = -torch.diag(delta_w_rec) * torch.sigmoid(self.dynamics.r)
+                    if "dynamics.S" not in self.delta_w_buffer:
+                        self.delta_w_buffer["dynamics.S"] = torch.zeros_like(self.dynamics.S)
+                    if "dynamics.r" not in self.delta_w_buffer:
+                        self.delta_w_buffer["dynamics.r"] = torch.zeros_like(self.dynamics.r)
+                    self.delta_w_buffer["dynamics.S"] += grad_S
+                    self.delta_w_buffer["dynamics.r"] += grad_r
+                else:
+                    # Fallback to original update if Port-Hamiltonian not used
+                    p_prev = z_prev[:, self.dynamics.q_dim:]
+                    delta_w_rec = (l_mem.T @ p_prev) / scale
+                    if "dynamics.recurrent_proj.weight" in self.delta_w_buffer:
+                        self.delta_w_buffer["dynamics.recurrent_proj.weight"].add_(delta_w_rec)
 
-                # q projection update: ΔW_q = (l_mem^T @ q_prev) / (B * T) -> [128, 32]
-                q_prev = z_prev[:, :self.dynamics.q_dim]
-                delta_w_q = (l_mem.T @ q_prev) / scale
-                if "dynamics.q_proj.weight" in self.delta_w_buffer:
-                    self.delta_w_buffer["dynamics.q_proj.weight"].add_(delta_w_q)
+                # Symplectic Coupling update:
+                # l_q acts on C_qp via centered ema_spikes: grad_Cqp_vel = (l_q^T @ (ema_spikes - mu_target)) / (B * T)
+                # l_mem acts on C_pq via q_prev / q_half. Since C_pq = M_pq - mean(M_pq), d(C_pq)/d(M_pq) = delta_ij - 1/32.
+                # grad_M_pq = grad_C_pq - mean(grad_C_pq, dim=1, keepdim=True) where grad_C_pq = (l_mem^T @ q_prev) / (B * T)
+                if hasattr(self.dynamics, "C_qp") and self.dynamics.symplectic_coupling:
+                    ema_spikes = state.dynamics_state.ema_spikes
+                    centered_spikes = ema_spikes - getattr(self.dynamics, "target_rate_center", 0.11)
+                    q_prev = z_prev[:, :self.dynamics.q_dim]
+                    grad_c_vel = (l_q.T @ centered_spikes) / scale
+                    if "dynamics.C_qp" not in self.delta_w_buffer:
+                        self.delta_w_buffer["dynamics.C_qp"] = torch.zeros_like(self.dynamics.C_qp)
+                    self.delta_w_buffer["dynamics.C_qp"].add_(grad_c_vel)
 
-                # Velocity map update: ΔW_vel = (l_q^T @ ema_spikes) / (B * T) -> [32, 128]
-                ema_spikes = state.dynamics_state.ema_spikes
-                delta_w_vel = (l_q.T @ ema_spikes) / scale
-                if "dynamics.W_vel.weight" in self.delta_w_buffer:
-                    self.delta_w_buffer["dynamics.W_vel.weight"].add_(delta_w_vel)
+                    if hasattr(self.dynamics, "M_pq"):
+                        grad_c_pot = (l_mem.T @ q_prev) / scale
+                        grad_m_pq = grad_c_pot - grad_c_pot.mean(dim=1, keepdim=True)
+                        if "dynamics.M_pq" not in self.delta_w_buffer:
+                            self.delta_w_buffer["dynamics.M_pq"] = torch.zeros_like(self.dynamics.M_pq)
+                        self.delta_w_buffer["dynamics.M_pq"].add_(grad_m_pq)
+                else:
+                    # q projection update: ΔW_q = (l_mem^T @ q_prev) / (B * T) -> [128, 32]
+                    q_prev = z_prev[:, :self.dynamics.q_dim]
+                    delta_w_q = (l_mem.T @ q_prev) / scale
+                    if "dynamics.q_proj.weight" in self.delta_w_buffer:
+                        self.delta_w_buffer["dynamics.q_proj.weight"].add_(delta_w_q)
+
+                    # Velocity map update: ΔW_vel = (l_q^T @ ema_spikes) / (B * T) -> [32, 128]
+                    ema_spikes = state.dynamics_state.ema_spikes
+                    delta_w_vel = (l_q.T @ ema_spikes) / scale
+                    if "dynamics.W_vel.weight" in self.delta_w_buffer:
+                        self.delta_w_buffer["dynamics.W_vel.weight"].add_(delta_w_vel)
 
             new_state = SPWMState(
                 encoder_states=new_enc_states,
@@ -349,6 +402,7 @@ class SPWM(nn.Module):
         accumulate_local_updates: bool = True,
         learning_rate: Optional[float] = None,
         target_kinematics: Optional[torch.Tensor] = None,
+        p_auto: float = 0.0,
     ) -> SPWMSequenceOutput:
         """
         Processes full event sequence [B, T, C, H, W] in a forward-only stream.
@@ -377,6 +431,7 @@ class SPWM(nn.Module):
                 accumulate_local_updates=accumulate_local_updates,
                 learning_rate=learning_rate,
                 seq_len=T,
+                p_auto=p_auto,
             )
 
             latent_steps.append(step_out.latent)
@@ -422,20 +477,53 @@ class SPWM(nn.Module):
 
     def predict_future(
         self,
-        initial_latent: torch.Tensor,
+        initial_state: Union[torch.Tensor, DynamicsState, SPWMState],
         horizon: int = 50,
-    ) -> torch.Tensor:
-        """Autonomous Rollout without future sensory observations."""
+    ) -> Dict[str, Any]:
+        """Autonomous Rollout without future sensory observations following Störmer-Verlet flow."""
+        spikes_list = []
+        coords_list = []
+        membrane_list = []
+        adaptation_list = []
+        idend_list = []
         predictions = []
-        curr_z = initial_latent
+
+        if isinstance(initial_state, SPWMState):
+            dyn_state = initial_state.dynamics_state
+        elif isinstance(initial_state, DynamicsState):
+            dyn_state = initial_state
+        else:
+            # Assume initial_state is latent tensor [B, latent_dim]
+            B = initial_state.shape[0]
+            dyn_state = self.dynamics.init_state(B, device=initial_state.device)
+            dyn_state.z_prev = initial_state
+
+        curr_state = dyn_state
+        dummy_sensory = torch.zeros(curr_state.z_prev.shape[0], self.dynamics.input_dim, device=curr_state.z_prev.device)
 
         with torch.no_grad():
             for _ in range(horizon):
-                pred_out = self.predictor(curr_z)
-                curr_z = pred_out.predicted_latent
-                predictions.append(curr_z)
+                # In autonomous rollout, sensory_keypoints=None triggers Symplectic Leapfrog
+                z_t, curr_state = self.dynamics.step(
+                    sensory_input=dummy_sensory,
+                    state=curr_state,
+                    sensory_keypoints=None,
+                )
+                predictions.append(z_t)
+                coords_list.append(z_t[:, :self.dynamics.q_dim])
+                spikes_list.append(curr_state.memory_state.spikes[0])
+                membrane_list.append(curr_state.memory_state.v_mems[0])
+                adaptation_list.append(curr_state.memory_state.a_adapts[0])
+                idend_list.append(curr_state.i_dend)
 
-        return torch.stack(predictions, dim=1)
+        return {
+            "predictions": torch.stack(predictions, dim=1),
+            "coords": torch.stack(coords_list, dim=1),
+            "spikes": torch.stack(spikes_list, dim=1),
+            "membrane": torch.stack(membrane_list, dim=1),
+            "adaptation": torch.stack(adaptation_list, dim=1),
+            "i_dend": torch.stack(idend_list, dim=1),
+        }
 
     def online_step(
         self,

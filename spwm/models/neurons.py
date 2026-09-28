@@ -186,15 +186,22 @@ class ALIFCell(nn.Module):
         if state is None:
             state = self.init_state(B, device=device)
 
-        # 1. Update membrane potential with reset from previous step
-        v_mem = self.beta_mem * state.v_mem + synaptic_input - state.spikes * self.v_th0
+        # 1. Dynamic Adaptive Threshold at time t: V_th,t = V_th0 + gamma * a_adapt_(t-1)
+        v_th_t = self.v_th0 + self.gamma * state.a_adapt
 
-        # 2. Update dynamic adaptive threshold variable
-        a_adapt = self.beta_adapt * state.a_adapt + state.spikes
-        v_th_t = self.v_th0 + self.gamma * a_adapt
+        # 2. Membrane potential update:
+        # V_t = beta_mem * V_(t-1) + (1 - beta_mem) * I_soma,t - V_th,t * s_(t-1)
+        v_mem = self.beta_mem * state.v_mem + (1.0 - self.beta_mem) * synaptic_input - state.spikes * v_th_t
 
-        # 3. Emit spikes via surrogate gradient
-        spikes = self.surrogate(v_mem - v_th_t)
+        # 3. Dynamic adaptive threshold variable update:
+        # b_t = beta_adapt * b_(t-1) + (1 - beta_adapt) * s_(t-1)
+        a_adapt = self.beta_adapt * state.a_adapt + (1.0 - self.beta_adapt) * state.spikes
+
+        # Threshold for spike evaluation
+        v_th_eval = self.v_th0 + self.gamma * a_adapt
+
+        # 4. Emit spikes via surrogate gradient
+        spikes = self.surrogate(v_mem - v_th_eval)
 
         new_state = ALIFState(
             v_mem=v_mem,

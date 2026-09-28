@@ -52,23 +52,12 @@ class LossOutput:
 
 class SPWMLoss(nn.Module):
     """
-    Composite Loss for Spiking Predictive World Model (v4.2).
+    Composite Loss for Spiking Predictive World Model (v5.2).
 
     Formula:
         L_total(t) = λ_pred·L_pred + λ_multi·L_multi + λ_var·L_var
                    + λ_sparse·L_sparse + λ_probe·L_probe
-                   + λ_coord·L_coord          # new in v4.2
-
-    L_coord: Auxiliary spatial keypoint loss.
-        Penalizes the MSE between raw Spatial-Softmax keypoints (u_k, v_k) ∈ [-1,1]^2
-        and the GT object xy-position projected into the normalized image frame.
-        Gradient flows unobstructed through Conv2D → SpatialSoftmax → ALIF input_proj,
-        anchoring the visual frontend to Euclidean object coordinates before any
-        symplectic / higher-order structure is imposed.
-
-    Args:
-        lambda_coord: coupling strength for L_coord (recommended 0.10–0.20).
-                      Set to 0.0 to reproduce v4.1 behaviour.
+                   + λ_coord·L_coord
     """
 
     def __init__(
@@ -81,7 +70,7 @@ class SPWMLoss(nn.Module):
         lambda_coord: float = 0.0,    # v4.2: auxiliary coordinate coupling
         multi_step_horizon: int = 3,
         target_variance: float = 1.0,
-        target_spike_rate: float = 0.05,
+        target_spike_rate: float = 0.11,
     ) -> None:
         super().__init__()
         self.lambda_pred = lambda_pred
@@ -193,9 +182,7 @@ class SPWMLoss(nn.Module):
         if self.lambda_coord > 0.0 and keypoints is not None and true_kinematics is not None:
             l_coord = self.coordinate_loss(keypoints, true_kinematics)
 
-        # Composite total loss — v4.2 formula:
-        # L_total = L_pred + λ_coord · L_coord + λ_sparse · L_reg
-        # (full version with all auxiliary terms)
+        # Composite total loss — v5.2 formula:
         total_loss = (
             self.lambda_pred * l_pred
             + self.lambda_multi * l_multi

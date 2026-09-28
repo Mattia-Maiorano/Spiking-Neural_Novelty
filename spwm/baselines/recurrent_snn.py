@@ -50,7 +50,8 @@ class VanillaRecurrentSNN(nn.Module):
         return self.snn(event_sequence)
 
     def predict_future(self, initial_latent: torch.Tensor, horizon: int = 50) -> torch.Tensor:
-        return self.snn.predict_future(initial_latent, horizon=horizon)
+        res = self.snn.predict_future(initial_latent, horizon=horizon)
+        return res["predictions"] if isinstance(res, dict) else res
 
     @property
     def predictor(self):

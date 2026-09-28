@@ -63,6 +63,11 @@ class Trainer:
         probe_lr: float = 5e-4,
         probe_weight_decay: float = 1e-2,
         tensorboard_logging: bool = False,
+        lr_scheduler: Optional[str] = None,
+        scheduler_t_max: int = 100,
+        scheduler_eta_min: float = 1e-5,
+        scheduled_sampling: Optional[Dict[str, Any]] = None,
+        validation_curriculum: Optional[Dict[str, Any]] = None,
         # Resume support (optional)
         start_epoch: int = 1,
         best_val_loss: float = float("inf"),
@@ -73,6 +78,18 @@ class Trainer:
         self.best_val_pos_err: float = float("inf")
         self.learning_algorithm = learning_algorithm.lower()
         self.learning_rate = learning_rate
+        self.lr_scheduler_type = lr_scheduler.lower() if lr_scheduler else None
+
+        # Curriculum / Scheduled Sampling configuration
+        self.scheduled_sampling = scheduled_sampling or {}
+        self.ss_enabled = self.scheduled_sampling.get("enabled", False)
+        self.ss_warmup = int(self.scheduled_sampling.get("warmup_epochs", 10))
+        self.ss_ramp = int(self.scheduled_sampling.get("ramp_epochs", 30))
+        self.ss_p_max = float(self.scheduled_sampling.get("p_max", 0.50))
+
+        # Validation curriculum configuration (gates)
+        self.val_curriculum = validation_curriculum or {}
+        self.val_curriculum_enabled = self.val_curriculum.get("enabled", False)
 
         if device is None:
             if torch.cuda.is_available():
@@ -143,6 +160,28 @@ class Trainer:
             else None
         )
 
+        # Learning rate schedulers for predictor and encoder
+        if self.lr_scheduler_type == "cosine":
+            t_max = int(scheduler_t_max)
+            eta_min = float(scheduler_eta_min)
+            self.predictor_scheduler = (
+                torch.optim.lr_scheduler.CosineAnnealingLR(
+                    self.predictor_optimizer, T_max=t_max, eta_min=eta_min
+                )
+                if self.predictor_optimizer
+                else None
+            )
+            self.encoder_scheduler = (
+                torch.optim.lr_scheduler.CosineAnnealingLR(
+                    self.encoder_optimizer, T_max=t_max, eta_min=eta_min
+                )
+                if self.encoder_optimizer
+                else None
+            )
+        else:
+            self.predictor_scheduler = None
+            self.encoder_scheduler = None
+
         self.writer = (
             SummaryWriter(log_dir=str(self.save_dir / "tb"))
             if tensorboard_logging
@@ -167,7 +206,7 @@ class Trainer:
 
     def _print_training_header(self, total_epochs: int) -> None:
         """Visualizza i parametri principali prima dell'avvio."""
-        chronicle.log_application_title("SPWM-v4.3 CONTINUOUS ONLINE TRAINER")
+        chronicle.log_application_title("START OF TRAINING")
         chronicle.log_detail("Device", self.device)
         chronicle.log_detail(
             "Epochs",
@@ -179,10 +218,23 @@ class Trainer:
         chronicle.log_detail("Encoder Optimizer", "Enabled" if self.encoder_optimizer else "Disabled")
         chronicle.log_detail("Probe Optimizer", "Enabled" if self.probe_optimizer else "Disabled")
         chronicle.log_detail("Pred Optimizer", "Enabled" if self.predictor_optimizer else "Disabled")
+        chronicle.log_detail("Curriculum Scheduled Sampling", "Enabled" if self.ss_enabled else "Disabled")
+        chronicle.log_detail("Validation Curriculum Gates", "Enabled" if self.val_curriculum_enabled else "Disabled")
         chronicle.log_newline()
+
+    def get_scheduled_sampling_p(self, epoch: int) -> float:
+        """Compute p_auto probability for current epoch according to curriculum schedule."""
+        if not self.ss_enabled:
+            return 0.0
+        if epoch <= self.ss_warmup:
+            return 0.0
+        progress = min(1.0, (epoch - self.ss_warmup) / max(1, self.ss_ramp))
+        return float(progress * self.ss_p_max)
 
     def train_epoch(self, epoch: int) -> Dict[str, float]:
         self.model.train()
+        p_auto = self.get_scheduled_sampling_p(epoch)
+
         epoch_losses: Dict[str, float] = {
             "total_loss": 0.0,
             "l_pred": 0.0,
@@ -190,6 +242,7 @@ class Trainer:
             "l_coord": 0.0,   # v4.2: auxiliary keypoint coordinate loss
             "spike_rate": 0.0,
             "grad_norm": 0.0,
+            "p_auto": p_auto,
         }
         num_batches = 0
 
@@ -207,6 +260,7 @@ class Trainer:
                     accumulate_local_updates=True,
                     learning_rate=self.learning_rate,
                     target_kinematics=kin_for_eprop,
+                    p_auto=p_auto,
                 )
 
             if hasattr(self.model, "apply_accumulated_updates"):
@@ -426,9 +480,13 @@ class Trainer:
                         if k != "epoch":
                             self.writer.add_scalar(k, v, epoch)
 
-                # Step probe learning rate scheduler
+                # Step learning rate schedulers
                 if self.probe_scheduler is not None:
                     self.probe_scheduler.step()
+                if self.predictor_scheduler is not None:
+                    self.predictor_scheduler.step()
+                if self.encoder_scheduler is not None:
+                    self.encoder_scheduler.step()
 
                 # Controllo Best Validation Model vincolato alla minima Pos Err di validazione
                 current_metric = val_metrics["val_pos_err"]
@@ -522,6 +580,50 @@ class Trainer:
                         indent_level=1,
                     )
                     chronicle.log_newline()
+
+                # Progressive Validation Curriculum Gates Evaluation
+                if self.val_curriculum_enabled:
+                    gates = self.val_curriculum.get("gates", [])
+                    for gate in gates:
+                        gate_epoch = gate.get("epoch")
+                        if epoch == gate_epoch:
+                            gate_name = gate.get("name", f"Gate @ Epoch {epoch}")
+                            chronicle.log_info(f"Evaluating Validation Curriculum {gate_name} (H={gate.get('horizon', 10)})...")
+                            
+                            # Check firing rate bounds if specified
+                            min_sr = gate.get("min_spike_rate")
+                            max_sr = gate.get("max_spike_rate")
+                            curr_sr = val_metrics.get("val_spike_rate", 0.0)
+                            if min_sr is not None and curr_sr < min_sr:
+                                msg = f"[{gate_name} FAILED] Spike rate {curr_sr:.4f} < minimum {min_sr}"
+                                chronicle.log_warning(msg)
+                                if gate.get("abort_on_fail", False):
+                                    raise RuntimeError(msg)
+                            if max_sr is not None and curr_sr > max_sr:
+                                msg = f"[{gate_name} FAILED] Spike rate {curr_sr:.4f} > maximum {max_sr}"
+                                chronicle.log_warning(msg)
+                                if gate.get("abort_on_fail", False):
+                                    raise RuntimeError(msg)
+
+                            # Check max val_l_coord if specified
+                            max_coord = gate.get("max_l_coord")
+                            curr_coord = val_metrics.get("val_l_coord", 0.0)
+                            if max_coord is not None and curr_coord > max_coord:
+                                msg = f"[{gate_name} FAILED] L_coord {curr_coord:.4f} > threshold {max_coord}"
+                                chronicle.log_warning(msg)
+                                if gate.get("abort_on_fail", False):
+                                    raise RuntimeError(msg)
+
+                            # Check max position error if specified
+                            max_pos_err = gate.get("max_pos_err")
+                            curr_pos = val_metrics.get("val_pos_err", float("inf"))
+                            if max_pos_err is not None and curr_pos > max_pos_err:
+                                msg = f"[{gate_name} FAILED] Position error {curr_pos:.4f} > threshold {max_pos_err}"
+                                chronicle.log_warning(msg)
+                                if gate.get("abort_on_fail", False):
+                                    raise RuntimeError(msg)
+
+                            chronicle.log_success(f"Validation Curriculum {gate_name} passed successfully.")
 
         except KeyboardInterrupt:
             chronicle.log_warning(

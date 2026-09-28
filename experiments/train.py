@@ -11,7 +11,11 @@ import os
 import subprocess
 import time
 from pathlib import Path
-from typing import Any, Dict
+import sys
+if hasattr(sys.stdout, "reconfigure"):
+    sys.stdout.reconfigure(encoding="utf-8")
+if hasattr(sys.stderr, "reconfigure"):
+    sys.stderr.reconfigure(encoding="utf-8")
 
 import chronicle
 import torch
@@ -70,14 +74,12 @@ def build_model(config: Dict[str, Any], device: torch.device) -> torch.nn.Module
             q_dim=model_cfg.get("q_dim", None),
             p_dim=model_cfg.get("p_dim", None),
             ema_decay=model_cfg.get("ema_decay", 0.9),
-            beta_dend=model_cfg.get("beta_dend", 0.85),
-            alpha_dend=model_cfg.get("alpha_dend", 0.10),
-            target_rate_center=model_cfg.get("target_rate_center", 0.11),
+
             timescale_dims=tuple(mem_cfg.get("timescale_dims", (latent_dim // 2, latent_dim // 2))),
             betas=tuple(mem_cfg.get("betas", (0.90, 0.985))),
             beta_mem=neuron_cfg.get("beta_mem", 0.80),
             threshold=neuron_cfg.get("threshold", 1.0),
-            gamma=neuron_cfg.get("gamma", 1.5),
+            gamma=neuron_cfg.get("gamma_adapt", neuron_cfg.get("gamma", 0.35)),
             surrogate_name=neuron_cfg.get("surrogate", "atan"),
             surrogate_alpha=neuron_cfg.get("surrogate_alpha", 2.0),
             num_keypoints=model_cfg.get("num_keypoints", 16),
@@ -90,6 +92,7 @@ def build_model(config: Dict[str, Any], device: torch.device) -> torch.nn.Module
             rls_enabled=model_cfg.get("rls_enabled", False),
             rls_forgetting=model_cfg.get("rls_forgetting", 0.99),
             rls_delta=model_cfg.get("rls_delta", 1.0),
+            epsilon_diss=float(model_cfg.get("epsilon_diss", 1e-5)),
         )
     elif model_type == "gru":
         model = GRUWorldModel(
@@ -204,9 +207,11 @@ def main() -> None:
         lambda_sparse=loss_cfg.get("lambda_sparse", 0.001),
         lambda_probe=loss_cfg.get("lambda_probe", 0.5),
         lambda_coord=loss_cfg.get("lambda_coord", 0.0),
+        lambda_vel=loss_cfg.get("lambda_vel", 0.5),
         multi_step_horizon=loss_cfg.get("multi_step_horizon", 3),
         target_variance=loss_cfg.get("target_variance", 1.0),
         target_spike_rate=loss_cfg.get("target_spike_rate", 0.11),
+        delta_t=loss_cfg.get("delta_t", 1.0),
     )
 
     epochs = args.epochs if args.epochs is not None else train_cfg.get("epochs", 20)

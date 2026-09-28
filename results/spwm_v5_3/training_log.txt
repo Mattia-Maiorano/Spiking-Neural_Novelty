@@ -1,0 +1,8 @@
+Epoch 001 | TrainLoss 3.4689 | ValLoss 3.5068 | SpikeRate 0.144 | Time 23.6s
+  Losses: total_loss=3.4689, l_pred=3.1453, l_probe=0.1618, l_coord=0.0473, spike_rate=0.145, val_total_loss=3.5068, val_l_pred=3.1188, val_pos_err=0.1079, val_vel_err=0.7655, val_spike_rate=0.144
+  GradNormOverall=0.9125, GradNormRecent10=0.8361
+
+Epoch 002 | TrainLoss 3.4466 | ValLoss 3.5177 | SpikeRate 0.144 | Time 49.8s
+  Losses: total_loss=3.4466, l_pred=3.1202, l_probe=0.1632, l_coord=0.0465, spike_rate=0.144, val_total_loss=3.5177, val_l_pred=3.1225, val_pos_err=0.1078, val_vel_err=0.7714, val_spike_rate=0.144
+  GradNormOverall=0.6314, GradNormRecent10=0.5724
+

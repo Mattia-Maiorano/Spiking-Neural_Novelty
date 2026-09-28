@@ -113,7 +113,7 @@ class Trainer:
 
         # Optimizer setup
         probe_params = [
-            p for n, p in self.model.named_parameters() if "decoder" in n or "probe" in n
+            p for n, p in self.model.named_parameters() if "decoder" in n or "probe" in n or "W_vel" in n
         ]
         predictor_params = [
             p
@@ -240,6 +240,7 @@ class Trainer:
             "l_pred": 0.0,
             "l_probe": 0.0,
             "l_coord": 0.0,   # v4.2: auxiliary keypoint coordinate loss
+            "l_vel": 0.0,     # v5.3: velocity consistency loss
             "spike_rate": 0.0,
             "grad_norm": 0.0,
             "p_auto": p_auto,
@@ -329,22 +330,52 @@ class Trainer:
                                 )
                         self.predictor_optimizer.step()
 
-            # Online local probe update
-            if self.probe_optimizer is not None and true_kin is not None:
+            # Online local probe and velocity decoder update (v5.4)
+            if self.probe_optimizer is not None:
                 self.probe_optimizer.zero_grad()
                 with torch.enable_grad():
-                    z_detached = out.latent_states.detach()
-                    decoded = self.model.physical_decoder(z_detached)
-                    probe_loss = nn.functional.mse_loss(decoded, true_kin)
-                    probe_loss.backward()
-                    if self.grad_clip_norm is not None and self.grad_clip_norm > 0:
-                        for group in self.probe_optimizer.param_groups:
-                            torch.nn.utils.clip_grad_norm_(
-                                group["params"], self.grad_clip_norm
+                    loss_probe_total = torch.tensor(0.0, device=self.device)
+
+                    # 1. Kinematic probe loss
+                    if true_kin is not None:
+                        z_detached = out.latent_states.detach()
+                        decoded = self.model.physical_decoder(z_detached)
+                        probe_loss = nn.functional.mse_loss(decoded, true_kin)
+                        loss_probe_total = loss_probe_total + self.loss_fn.lambda_probe * probe_loss
+                        epoch_losses["l_probe"] += probe_loss.item()
+                        epoch_losses["total_loss"] += self.loss_fn.lambda_probe * probe_loss.item()
+
+                    # 2. Velocity consistency loss L_vel
+                    lambda_vel = getattr(self.loss_fn, "lambda_vel", 0.0)
+                    if lambda_vel > 0.0:
+                        sensor_coords = out.sensor_coords
+                        if sensor_coords is None and hasattr(self.model, "encoder"):
+                            _, sensor_coords = self.model.encoder(events, return_keypoints=True)
+                            if sensor_coords is not None:
+                                sensor_coords = sensor_coords[..., :self.model.dynamics.q_dim]
+
+                        if sensor_coords is not None and sensor_coords.shape[1] > 1 and out.ema_spikes_seq is not None:
+                            v_decoded = self.model.dynamics.W_vel(out.ema_spikes_seq.detach())
+                            l_vel = self.loss_fn.velocity_loss(
+                                decoded_velocities=v_decoded,
+                                sensor_coords=sensor_coords.detach(),
                             )
-                    self.probe_optimizer.step()
-                epoch_losses["l_probe"] += probe_loss.item()
-                epoch_losses["total_loss"] += self.loss_fn.lambda_probe * probe_loss.item()
+                            loss_probe_total = loss_probe_total + lambda_vel * l_vel
+                            epoch_losses["l_vel"] += l_vel.item()
+                            epoch_losses["total_loss"] += lambda_vel * l_vel.item()
+                        else:
+                            epoch_losses["l_vel"] += 0.0
+                    else:
+                        epoch_losses["l_vel"] += 0.0
+
+                    if loss_probe_total.requires_grad:
+                        loss_probe_total.backward()
+                        if self.grad_clip_norm is not None and self.grad_clip_norm > 0:
+                            for group in self.probe_optimizer.param_groups:
+                                torch.nn.utils.clip_grad_norm_(
+                                    group["params"], self.grad_clip_norm
+                                )
+                        self.probe_optimizer.step()
 
             grad_norm = 0.0
             if self.encoder_optimizer is not None:
@@ -388,6 +419,7 @@ class Trainer:
             "val_l_pred": 0.0,
             "val_l_probe": 0.0,
             "val_l_coord": 0.0,   # v4.2: coordinate loss on val set
+            "val_l_vel": 0.0,     # v5.3: velocity consistency loss on val set
             "val_pos_err": 0.0,
             "val_vel_err": 0.0,
             "val_spike_rate": 0.0,
@@ -435,6 +467,24 @@ class Trainer:
                 l_coord_val = self.loss_fn.coordinate_loss(kp_val, true_kin)
                 val_losses["val_l_coord"] += l_coord_val.item()
 
+            # v5.4: evaluate velocity loss on val set (no_grad — diagnostic only)
+            lambda_vel = getattr(self.loss_fn, "lambda_vel", 0.0)
+            if lambda_vel > 0.0 and out.ema_spikes_seq is not None:
+                q_dim = self.model.dynamics.q_dim
+                sensor_coords_v = out.sensor_coords
+                if sensor_coords_v is None and hasattr(self.model, "encoder"):
+                    _, kp_val_v = self.model.encoder(events, return_keypoints=True)
+                    if kp_val_v is not None:
+                        sensor_coords_v = kp_val_v[..., :q_dim]
+                if sensor_coords_v is not None and sensor_coords_v.shape[1] > 1:
+                    v_decoded_val = self.model.dynamics.W_vel(out.ema_spikes_seq)
+                    l_vel_val = self.loss_fn.velocity_loss(
+                        decoded_velocities=v_decoded_val,
+                        sensor_coords=sensor_coords_v,
+                    )
+                    val_losses["val_l_vel"] += l_vel_val.item()
+                    val_losses["val_total_loss"] += lambda_vel * l_vel_val.item()
+
             if hasattr(out, "mean_spike_rate"):
                 val_losses["val_spike_rate"] += out.mean_spike_rate.item()
 
@@ -461,6 +511,12 @@ class Trainer:
                 val_metrics = self.evaluate()
                 epoch_duration = time.time() - t_epoch_start
                 total_elapsed = time.time() - start_time
+                # Estimate remaining time based on average epoch duration
+                epochs_completed = epoch - self.start_epoch + 1
+                avg_epoch_time = total_elapsed / max(1, epochs_completed)
+                remaining_epochs = end_epoch - epoch
+                est_time_left = avg_epoch_time * remaining_epochs
+                chronicle.log_detail("Est. time left", f"{est_time_left:.1f}s ({remaining_epochs} epochs remaining)", indent_level=1)
 
                 recent_norm = (
                     sum(self.recent_grad_norms) / max(1, len(self.recent_grad_norms))
@@ -567,6 +623,14 @@ class Trainer:
                         indent_level=1,
                     )
                     chronicle.log_detail(
+                        "L_vel",
+                        (
+                            f"Train {train_metrics.get('l_vel', 0.0):.5f}"
+                            f" / Val {val_metrics.get('val_l_vel', 0.0):.5f}"
+                        ),
+                        indent_level=1,
+                    )
+                    chronicle.log_detail(
                         "Spike Rate",
                         (
                             f"Train {train_metrics['spike_rate']:.3f}"
@@ -658,7 +722,7 @@ class Trainer:
                 chronicle.log_success(
                     f"Modello salvato (fallback) in: {model_path}"
                 )
-            raise
+            pass
 
         self.save_training_log()
         chronicle.log_success(

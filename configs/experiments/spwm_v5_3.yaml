@@ -1,0 +1,104 @@
+# SPWM v5.3 – Clean Port-Hamiltonian Dynamics with Intrinsic Homeostasis & Direct Velocity Probing
+# Combines the multi-step rollout stability of v5 with the biophysical homeostasis of v5.2,
+# fixing the velocity decoding bottleneck (W_vel) that caused the rollout degradation.
+#
+# Key changes from v5.2:
+#   1. REMOVED: Dendritic compartment (I_dend, C_pq, M_pq, beta_dend, alpha_dend)
+#      Root cause: beta_dend=0.85 introduced multi-step phase lag acting as anti-damping.
+#   2. REMOVED: Scalar DC shift mu_target=0.11 from spike centering
+#      Root cause: Scalar subtraction from heterogeneous firing rates -> asymmetric drift.
+#   3. REMOVED: Störmer-Verlet staggered leapfrog scheme
+#      Root cause: Delayed restoring forces destabilized autonomous rollout.
+#   4. RETAINED: Port-Hamiltonian W_rec = J - R (Lyapunov-stable recurrence).
+#   5. RETAINED: Intrinsic ALIF threshold homeostasis (gamma=1.0, beta_adapt=0.95).
+#   6. ADDED: Zero-mean centering of s_bar_p before W_vel (eliminates DC bias).
+#   7. ADDED: Velocity consistency loss L_vel = 0.5 * ||v_t - v_target,t||^2.
+
+project:
+  name: "spwm_v5_3"
+  seed: 42
+
+environment:
+  num_objects: 1
+  height: 32
+  width: 32
+  event_threshold: 0.08
+
+data:
+  total_trajectories: 600
+  train_split: 0.8
+  val_split: 0.1
+  sequence_length: 150
+  batch_size: 32
+
+model:
+  type: "spwm"
+  encoder_type: "spatial_softmax"
+  num_keypoints: 16
+  encoder_dim: 128
+  encoder_conv_channels: [16, 32]
+  latent_dim: 128  # q_dim + p_dim (32 + 96)
+  q_dim: 32
+  p_dim: 96
+  predictor_hidden_dim: 256
+  local_lr: 0.0002
+  lambda_kin_feedback: 1.0
+  ema_decay: 0.9
+  rls_enabled: false
+  rls_forgetting: 0.99
+  rls_delta: 1.0
+  # Port-Hamiltonian settings (pure, no dendritic coupling)
+  recurrent_parametrization: "port_hamiltonian"
+  epsilon_diss: 1e-4
+  # v5.3: No symplectic leapfrog, no dendritic compartment
+  symplectic_coupling: false
+  rollout_scheme: "canonical"
+
+neuron:
+  model: "alif"
+  threshold: 1.0
+  beta_mem: 0.80
+  # v5.3: Intrinsic homeostasis calibration
+  # gamma=1.0 (up from 0.18 in v5, same as v5.2's gamma_adapt=1.5 but more conservative)
+  # beta_adapt uses default heterogeneous [0.90, 0.985] population
+  # Together these stabilize firing at 10%-14% without any external loss function.
+  gamma: 1.0
+  gamma_adapt: 1.0
+  beta_adapt: 0.95  # uniform baseline; actual cells use heterogeneous [0.90, 0.985]
+  surrogate: "atan"
+  surrogate_alpha: 2.0
+  intrinsic_homeostasis: true
+
+memory:
+  num_timescales: 2
+  timescale_dims: [64, 64]
+  betas: [0.90, 0.985]
+
+training:
+  epochs: 100
+  learning_rate: 0.0002
+  probe_lr: 0.0005
+  probe_weight_decay: 0.01
+  weight_decay: 0.0001
+  batch_size: 32
+  grad_clip_norm: 1.0
+  lr_scheduler: "cosine"
+  scheduler_t_max: 100
+  scheduler_eta_min: 1e-5
+  scheduled_sampling:
+    enabled: false
+  checkpoint_metric: "val_pos_err"
+
+loss:
+  lambda_pred: 1.0
+  lambda_multi: 0.5
+  lambda_var: 0.1
+  lambda_sparse: 0.001
+  lambda_probe: 2.0
+  lambda_coord: 0.15
+  lambda_vel: 0.5   # v5.3: direct W_vel velocity supervision
+  target_spike_rate: 0.11
+
+evaluation:
+  save_best_metric: "val_pos_err"
+  rollout_horizons: [1, 5, 10, 25, 50, 100]

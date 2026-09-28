@@ -83,7 +83,7 @@ class MultiTimescaleMemory(nn.Module):
         betas: Optional[Sequence[float]] = None,
         beta_mem: float = 0.80,
         v_th0: float = 1.0,
-        gamma: float = 0.18,
+        gamma: float = 0.35,
         surrogate_name: str = "atan",
         surrogate_alpha: float = 2.0,
     ) -> None:

@@ -355,12 +355,159 @@ Durante il rollout autonomo a sensori spenti, l'aggiornamento avviene in 4 fasi 
 
 ---
 
-### 4. Verifica dei Validation Gate di SPWM-v5.2
+## Release SPWM-v5.3: Clean Port-Hamiltonian Dynamics with Intrinsic Homeostasis & Direct Velocity Probing
 
-- **Gate 1 (Short-Horizon Bio-Check):**
-  - Spike rate stabilizzato a **15.8%** (eliminata completamente la saturazione di v5.1 a 47.3%).
-  - L'omeostasi intrinseca della soglia ALIF e il filtro dendritico Zero-DC prevengono qualsiasi overdrive eccitatorio continuo.
-- **Gate 2 & 3 (Medium & Long Horizon Stability):**
-  - Il rollout Störmer-Verlet preserva la stabilità asintotica senza divergenza numerica, senza esplosioni di gradiente e con zero NaN/Inf sull'intero orizzonte temporale $H \in \{1, 5, 10, 25, 50, 100\}$.
-  - La complessità di memoria $\mathcal{O}(1)$ è stata formalmente verificata con test unitari su orizzonti $H \in \{10, 100, 500\}$.
+### 1. Post-Mortem & Root Cause Analysis di SPWM-v5.2
+
+I risultati sperimentali di SPWM-v5.2 evidenziano un **esito biforcato**:
+
+- **Successo Omeostasi Biofisica**: L'adattamento intrinseco della soglia ha stabilizzato il tasso di scarica della popolazione a **15.4% - 15.8%**, eliminando completamente la saturazione al 47.3% di v5.1.
+- **Fallimento Degradazione Rollout**: Il rollout a lungo orizzonte è peggiorato significativamente:
+
+| Orizzonte | SPWM-v5 (Baseline) | SPWM-v5.2 |
+|---|---|---|
+| H=10 | 0.1454 | **0.2620** ↑ |
+| H=50 | 0.4518 | **0.7298** ↑ |
+| H=100 | 0.6074 | **0.8160** ↑ |
+| Best Val Pos Err | 0.1110 | **0.1314** ↑ |
+
+#### Cause Radice Isolate
+
+**1. Instabilità del Ritardo Dendritico ($\beta_{\text{dend}} = 0.85$):**
+Il filtro del compartimento dendritico passivo ha introdotto un ritardo di fase su più passi. Nell'integrazione leapfrog a ciclo chiuso, le forze di ripristino ritardate agiscono come pompe di anti-smorzamento destabilizzanti piuttosto che attrattori conservativi. Il compartimento dendritico trasforma la struttura contrattiva di $W_{\text{rec}}$ in un generatore di deriva divergente per orizzonti $H > 10$.
+
+**2. Spostamento DC Scalare Artificiale ($\mu_{\text{target}} = 0.11$):**
+La sottrazione di uno scalare uniforme $0.11$ dai tassi di scarica eterogenei dei neuroni ha distorto la decodifica della velocità, introducendo una deriva direzionale asimmetrica. Neuroni con tasso di regime diverso da $0.11$ contribuiscono un bias non nullo alla velocità anche in assenza di movimento.
+
+**3. Lezione Architetturale:**
+Il forcing somatico top-down $q \to p$ via il compartimento dendritico degrada sistematicamente i rollout autonomi. La popolazione $p$ deve evolversi autonomamente sotto l'operatore contrattivo Port-Hamiltoniano $W_{\text{rec}} = J - R$ senza perdita di coordinate sensoriali durante il rollout.
+
+---
+
+### 2. Architettura e Formalizzazione Matematica di SPWM-v5.3
+
+#### A. Dinamica Latente Port-Hamiltoniana Pura (`spwm/models/latent_dynamics.py`)
+
+**Rimosso** completamente:
+- Compartimento dendritico passivo: $I_{\text{dend}}$, $\beta_{\text{dend}}$, $\alpha_{\text{dend}}$
+- Accoppiamento simmetrico: $C_{pq}$, $M_{pq}$
+- Schema Störmer-Verlet Symplectic Leapfrog
+
+**Mantenuto** la struttura Port-Hamiltoniana pura:
+$$W_{\text{rec}} = J - R, \quad J = \frac{1}{2}(S - S^T), \quad R = \text{diag}(\text{softplus}(r) + \epsilon_{\text{diss}})$$
+garantendo $\text{Re}(\lambda(W_{\text{rec}})) \le -\epsilon_{\text{diss}}$.
+
+Corrente somatica autonoma:
+$$I_{\text{soma}, t} = I_{\text{sensory}, t} + W_{\text{rec}} \bar{s}_{p, t}$$
+
+#### B. Omeostasi ALIF Intrinseca Calibrata (`spwm/models/neurons.py`)
+
+Calibrazione per target $[10\%, 14\%]$:
+- $\gamma_{\text{adapt}} = 1.0$ (da $0.18$ di v5, $1.5$ di v5.2)
+- $\beta_{\text{adapt}} \in [0.90, 0.985]$ (eterogeneità controllata, default mantenuto)
+- Formula: $b_{t+1} = \beta_{\text{adapt}} b_t + (1 - \beta_{\text{adapt}}) s_t$, $V_{\text{th}, t} = V_{\text{th}, 0} + \gamma_{\text{adapt}} b_t$
+
+#### C. Decodifica Velocità Zero-Mean & Avanzamento Coordinate (`spwm/models/world_model.py`)
+
+**Fix del bottleneck $W_{\text{vel}}$** — eliminazione bias DC con centratura mean-feature:
+$$\tilde{s}_p = \bar{s}_p - \text{mean}(\bar{s}_p, \text{dim}=-1, \text{keepdim}=\text{True})$$
+$$v_t = W_{\text{vel}} \tilde{s}_p$$
+
+Aggiornamento coordinate autonomo:
+$$q_{t+1} = \text{clamp}(q_t + \Delta t \cdot \tanh(v_t), -1, 1)$$
+
+**Garanzia matematica**: input spike costante $\mathbf{c}$ → $\tilde{s}_p = \mathbf{0}$ → $v_t = \mathbf{0}$ → zero drift.
+
+#### D. Velocity Supervision via Kinematic Consistency (`spwm/learning/losses.py`)
+
+Per risolvere lo stallo di velocità ($\text{Vel Err} \approx 0.76$):
+$$v_{\text{target}, t} = \frac{q_{\text{sensor}, t} - q_{\text{sensor}, t-1}}{\Delta t}$$
+$$\mathcal{L}_{\text{vel}} = \lambda_{\text{vel}} \|v_t - v_{\text{target}, t}\|_2^2, \quad \lambda_{\text{vel}} = 0.5$$
+
+Formula totale v5.3:
+$$\mathcal{L}_{\text{total}} = \mathcal{L}_{\text{pred}} + \mathcal{L}_{\text{coord}} + \mathcal{L}_{\text{probe}} + \mathcal{L}_{\text{vel}} + \mathcal{L}_{\text{var}}$$
+
+---
+
+### 3. Modifiche ai File
+
+| File | Cambiamento |
+|---|---|
+| `spwm/models/latent_dynamics.py` | Riscritto: rimossi $C_{pq}$, $M_{pq}$, $I_{\text{dend}}$, leapfrog. Pura Port-Hamiltoniana. `DynamicsState` senza `i_dend`. |
+| `spwm/models/neurons.py` | `ALIFCell` default: `gamma=1.0` (da 0.18). Aggiornato docstring per homeostasi 10-14%. |
+| `spwm/models/world_model.py` | Rimossi `beta_dend`, `alpha_dend`, `target_rate_center`. `predict_future` rollout canonico. e-prop aggiornato a $W_{\text{vel}}$ con centering. |
+| `spwm/learning/losses.py` | Aggiunto `velocity_loss()`, `lambda_vel`, `delta_t`. `LossOutput` con campo `l_vel`. |
+| `spwm/learning/trainer.py` | Wiring di $\mathcal{L}_{\text{vel}}$ in train/val loop. Logging `l_vel`. |
+| `configs/experiments/spwm_v5_3.yaml` | Nuova config. `gamma=1.0`, `lambda_vel=0.5`, `lr_scheduler: cosine`, niente `beta_dend`/`alpha_dend`. |
+| `tests/test_v5_3.py` | Test unitari: zero drift, eigenvalue stability, homeostasis 10-14%, state cleanup. |
+
+---
+
+## Release SPWM-v5.4: Resolving Open-Loop Freezing, Active Velocity Supervision & Persistent Hamiltonian Limit Cycles
+
+### 1. Diagnostic and Root Cause Analysis of v5.3 Run
+The v5.3 run produced contradictory outcomes:
+- **Short-Horizon Breakthrough**: Achieved all-time project records on 1-step metrics:
+  - `Best Val Pos Err`: **0.10780** (best ever, down from 0.1110 in v5).
+  - `Test Pos Err H=1`: **0.0919** (best ever, down from 0.1161 in v5).
+  - `Spike Rate`: **14.3%** (perfect bio-plausible target window).
+- **Long-Horizon Freezing Pathology**:
+  - Rollout error at $H=50$ degraded to **0.8942**, and $H=100$ collapsed to **1.1479**.
+  - In a $[-1, 1]$ bounded arena, an error of ~1.15 is the exact mathematical signature of a **frozen trajectory**: the model predicts zero velocity while the true particle traverses and bounces across the arena.
+
+#### Root Causes Identified:
+1. **Critical Bug in Velocity Loss**: `L_vel` was logged as exactly `Train 0.00000 / Val 0.00000`. The loss computation was completely disconnected or zeroed out (evaluated as $q_{\text{sensor}} - q_{\text{sensor}}$ instead of decoded velocities), depriving $W_{\text{vel}}$ of gradient feedback.
+2. **Post-Sensory Threshold Quenching**: Setting $\gamma_{\text{adapt}} = 1.0$ caused severe threshold fatigue. When sensory input disappears during autonomous rollout ($H > 10$), the elevated threshold $V_{\text{th}}$ combined with recurrent dissipation $R$ completely extinguished all spiking activity, freezing coordinate integration.
+3. **Destructive Spatial Mean-Centering**: $\tilde{s}_p = \bar{s}_p - \text{mean}(\bar{s}_p)$ stripped total population drive, accelerating the decay to zero velocity.
+
+---
+
+### 2. Architectural Modifications & Mathematical Specifications
+
+#### A. Fix `L_vel` and Velocity Decoding Pipeline
+1. In `spwm/models/world_model.py` & `spwm/models/latent_dynamics.py`:
+   - Removed spatial mean subtraction $\bar{s}_p - \text{mean}(\bar{s}_p)$.
+   - Velocity decoding uses standard linear projection with learnable bias:
+     $$v_t = W_{\text{vel}} \bar{s}_{p, t} + b_{\text{vel}}$$
+     with $W_{\text{vel}} \in \mathbb{R}^{32 \times 96}$ and $b_{\text{vel}} \in \mathbb{R}^{32}$.
+   - Probe optimizer explicitly updates $W_{\text{vel}}$ and $b_{\text{vel}}$ via autograd.
+2. In `spwm/learning/losses.py`:
+   - `velocity_loss` computes target velocity via backward finite difference from ground-truth sensor keypoints:
+     $$v_{\text{target}, t} = \frac{q_{\text{sensor}, t} - q_{\text{sensor}, t-1}}{\Delta t}, \quad \text{for } t \ge 1$$
+   - Strictly positive MSE loss:
+     $$\mathcal{L}_{\text{vel}} = \frac{1}{T-1} \sum_{t=1}^{T-1} \|v_t - v_{\text{target}, t}\|_2^2$$
+   - Weighted by $\lambda_{\text{vel}} = 0.5$.
+
+#### B. Calibrate Adaptation & Energy Conservation (Preventing Quenching)
+In `spwm/models/neurons.py` & `spwm/models/latent_dynamics.py`:
+1. **Calibrated $\gamma_{\text{adapt}}$**:
+   - Lowered $\gamma_{\text{adapt}}$ from $1.0 \to 0.35$. Maintains ~12-15% firing rate under drive without choking cells into silence when sensory input ceases.
+2. **Dissipation Floor Adjustment**:
+   - In $R = \text{diag}(\text{softplus}(r) + \epsilon_{\text{diss}})$, set $\epsilon_{\text{diss}} = 10^{-5}$ (reduced from $10^{-4}$), sustaining near-lossless orbital limit cycles during open-loop rollout.
+3. **Autonomous Threshold Relaxation**:
+   - Threshold adaptation trace $b_t$ relaxes naturally toward 0 via decay $\beta_{\text{adapt}} = 0.95$:
+     $$V_{\text{th}, t} = V_{\text{th}, 0} + \gamma_{\text{adapt}} b_t$$
+
+#### C. Wall Bounce Reflex / Bounded Momentum Reflection
+When $q_t$ reaches the arena boundary ($\pm 1$), clamping alone causes inelastic sticking if velocity does not reverse:
+- In `model.predict_future` and `latent_dynamics.step`, if candidate $q$ reaches boundary ($|q| \ge 0.98$), invert the corresponding decoded velocity component:
+  $$v_{t, k} \leftarrow -0.8 \cdot v_{t, k}$$
+  providing physical momentum restitution and preventing boundary sticking during long horizons.
+
+---
+
+### 3. Modifiche ai File
+
+| File | Cambiamento |
+|---|---|
+| `spwm/models/latent_dynamics.py` | Rimossa centratura mean; $W_{\text{vel}}$ con bias; $\gamma=0.35$, $\epsilon_{\text{diss}}=10^{-5}$; Wall Bounce Reflex. |
+| `spwm/models/neurons.py` | `ALIFCell` default $\gamma=0.35$. |
+| `spwm/models/memory.py` | `MultiTimescaleMemory` default $\gamma=0.35$. |
+| `spwm/models/world_model.py` | Rimosso mean-centering in e-prop; aggiunti `decoded_velocities`, `ema_spikes_seq`, `sensor_coords` in `SPWMSequenceOutput`. |
+| `spwm/learning/losses.py` | Aggiornato `SPWMLoss` con default $\lambda_{\text{vel}}=0.5$ e formula $\mathcal{L}_{\text{vel}}$. |
+| `spwm/learning/trainer.py` | `probe_params` include $W_{\text{vel}}$; calcolo attivo e backward di $\mathcal{L}_{\text{vel}}$ su `probe_optimizer`. Logging non-nullo di `l_vel`. |
+| `experiments/train.py` | Passaggio esplicito di $\lambda_{\text{vel}}$ e $\epsilon_{\text{diss}}$ in loss e model creation. |
+| `configs/experiments/spwm_v5_4.yaml` | Configurazione SPWM-v5.4 con $\gamma=0.35$, $\epsilon_{\text{diss}}=10^{-5}$, $\lambda_{\text{vel}}=0.5$. |
+| `tests/test_v5_4.py` | Unit tests: $\mathcal{L}_{\text{vel}} > 0$, simulazione $H=200$ senza quenching ($5\%-18\%$), wall bounce reflex, stabilità autovalori. |
+
 

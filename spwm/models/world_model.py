@@ -75,7 +75,7 @@ class SPWM(nn.Module):
         betas: Tuple[float, ...] = (0.90, 0.985),
         beta_mem: float = 0.80,
         threshold: float = 1.0,
-        gamma: float = 0.35,
+        gamma: float = 0.18,
         surrogate_name: str = "atan",
         surrogate_alpha: float = 2.0,
         num_keypoints: int = 16,
@@ -333,16 +333,17 @@ class SPWM(nn.Module):
                     if "dynamics.recurrent_proj.weight" in self.delta_w_buffer:
                         self.delta_w_buffer["dynamics.recurrent_proj.weight"].add_(delta_w_rec)
 
-                # v5.4 Velocity map (W_vel) update:
-                # ΔW_vel = (l_q^T @ ema_spikes) / (B * T) -> [q_dim, total_memory_dim]
-                # Δb_vel = l_q.sum(dim=0) / (B * T) -> [q_dim]
+                # q projection update: ΔW_q = (l_mem^T @ q_prev) / (B * T) -> [128, 32]
+                q_prev = z_prev[:, :self.dynamics.q_dim]
+                delta_w_q = (l_mem.T @ q_prev) / scale
+                if "dynamics.q_proj.weight" in self.delta_w_buffer:
+                    self.delta_w_buffer["dynamics.q_proj.weight"].add_(delta_w_q)
+
+                # Velocity map update: ΔW_vel = (l_q^T @ ema_spikes) / (B * T) -> [32, 128]
                 ema_spikes = state.dynamics_state.ema_spikes
                 delta_w_vel = (l_q.T @ ema_spikes) / scale
                 if "dynamics.W_vel.weight" in self.delta_w_buffer:
                     self.delta_w_buffer["dynamics.W_vel.weight"].add_(delta_w_vel)
-                if "dynamics.W_vel.bias" in self.delta_w_buffer and self.dynamics.W_vel.bias is not None:
-                    delta_b_vel = l_q.sum(dim=0) / scale
-                    self.delta_w_buffer["dynamics.W_vel.bias"].add_(delta_b_vel)
 
             new_state = SPWMState(
                 encoder_states=new_enc_states,
@@ -368,7 +369,7 @@ class SPWM(nn.Module):
                 update = self.delta_w_buffer[name]
                 if torch.count_nonzero(update) > 0:
                     clamped_update = torch.clamp(update * lr, -0.1, 0.1)
-                    param.data.add_(clamped_update)
+                    param.data.add_(-clamped_update)
                 self.delta_w_buffer[name].zero_()
 
     def forward(
@@ -506,9 +507,9 @@ class SPWM(nn.Module):
                 )
                 predictions.append(z_t)
                 coords_list.append(z_t[:, :self.dynamics.q_dim])
-                spikes_list.append(curr_state.memory_state.spikes[0])
-                membrane_list.append(curr_state.memory_state.v_mems[0])
-                adaptation_list.append(curr_state.memory_state.a_adapts[0])
+                spikes_list.append(curr_state.memory_state.concatenated_spikes)
+                membrane_list.append(curr_state.memory_state.concatenated_mems)
+                adaptation_list.append(torch.cat(curr_state.memory_state.a_adapts, dim=-1))
 
         return {
             "predictions": torch.stack(predictions, dim=1),

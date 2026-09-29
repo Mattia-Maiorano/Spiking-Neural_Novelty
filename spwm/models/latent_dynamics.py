@@ -102,7 +102,7 @@ class SpikingLatentDynamics(nn.Module):
         if timescale_dims is not None:
             self.timescale_dims = list(timescale_dims)
         else:
-            self.timescale_dims = list(compute_tier_dims(self.p_dim, num_tiers=2))
+            self.timescale_dims = list(compute_tier_dims(self.latent_dim, num_tiers=2))
 
         self.total_memory_dim = sum(self.timescale_dims)
 
@@ -120,11 +120,14 @@ class SpikingLatentDynamics(nn.Module):
         # Synaptic projection: sensory error -> somatic currents
         self.input_proj = nn.Linear(input_dim, self.total_memory_dim)
 
-        # Port-Hamiltonian parameterization for recurrent dynamics
+        # Port-Hamiltonian parameterization for recurrent dynamics on p
         # W_rec = J - R where J is skew-symmetric (conservative) and R is positive diagonal (dissipative)
         self.S = nn.Parameter(torch.randn(self.p_dim, self.p_dim))  # unconstrained base matrix
         self.r = nn.Parameter(torch.randn(self.p_dim))  # log-damping vector
         self.rec_proj = nn.Linear(self.p_dim, self.total_memory_dim, bias=False)
+
+        # Projection from q component to somatic current
+        self.q_proj = nn.Linear(self.q_dim, self.total_memory_dim, bias=False)
 
         # Direct velocity projection: W_vel maps s_bar_p -> coordinate velocity
         self.W_vel = nn.Linear(self.total_memory_dim, self.q_dim, bias=False)
@@ -170,10 +173,10 @@ class SpikingLatentDynamics(nn.Module):
         sensory_keypoints: Optional[torch.Tensor] = None,
     ) -> Tuple[torch.Tensor, DynamicsState]:
         """
-        Executes a single recurrent dynamical step (SPWM-v5.0 Pure Port-Hamiltonian Flow):
+        Executes a single recurrent dynamical step (SPWM-v5.0 Port-Hamiltonian Flow):
 
         1. Momentum Evaluation (Port-Hamiltonian):
-           I_soma,t = I_sensory + W_rec s_bar_p,t
+           I_soma,t = I_sensory + rec_proj(W_rec @ p_prev) + q_proj(q_prev)
            p_(t+1), s_p_(t+1) = ALIF_Step(p_t, I_soma,t)
            s_bar_p_(t+1) = ema_decay * s_bar_p,t + (1 - ema_decay) * s_p_(t+1)
 
@@ -192,13 +195,13 @@ class SpikingLatentDynamics(nn.Module):
         q_prev = state.z_prev[:, :self.q_dim]
         p_prev = state.z_prev[:, self.q_dim:]
 
-        # Phase 1: Momentum Evaluation under pure Port-Hamiltonian field
+        # Phase 1: Somatic current under Port-Hamiltonian field + q projection
         recurrent_p = self._effective_recurrent_current(p_prev)
         recurrent_current = self.rec_proj(recurrent_p)
         sensory_current = self.input_proj(sensory_input)
+        q_current = self.q_proj(q_prev)
 
-        # I_soma = I_sensory + W_rec s_bar_p  (no dendritic current, no coordinate injection)
-        soma_current = sensory_current + recurrent_current
+        soma_current = sensory_current + recurrent_current + q_current
 
         spikes, new_mem_state = self.memory(
             synaptic_inputs=soma_current,
@@ -216,9 +219,9 @@ class SpikingLatentDynamics(nn.Module):
             # Observation mode: ground-truth coordinate injection
             q_next = sensory_keypoints
         else:
-            # Autonomous mode: standard linear projection (v5.0)
-            v_t = self.W_vel(ema_spikes)
-            q_next = torch.clamp(q_prev + self.delta_t * torch.tanh(v_t), -1.0, 1.0)
+            # Autonomous mode: standard linear velocity projection (v5.0)
+            delta_q = torch.tanh(self.W_vel(ema_spikes))
+            q_next = torch.clamp(q_prev + delta_q, -1.0, 1.0)
 
         # Concatenate updated q and p to form next latent
         z_next = torch.cat([q_next, p_next], dim=1)

@@ -120,23 +120,33 @@ class ALIFCell(nn.Module):
     def __init__(
         self,
         size: int,
-        beta_mem: float = 0.80,
+        beta_mem: Union[float, Sequence[float], torch.Tensor] = 0.80,
         beta_adapt: Optional[Union[float, Sequence[float], torch.Tensor]] = None,
-        v_th0: float = 1.0,
+        v_th_0: float = 1.0,
+        v_th0: Optional[float] = None,
         gamma: float = 0.18,
         surrogate_name: str = "atan",
         surrogate_alpha: float = 2.0,
     ) -> None:
         super().__init__()
         self.size = size
-        self.v_th0 = float(v_th0)
+        self.v_th_0 = float(v_th0 if v_th0 is not None else v_th_0)
+        self.v_th0 = self.v_th_0
         self.gamma = float(gamma)
         self.surrogate_name = surrogate_name.lower()
         self.surrogate_alpha = float(surrogate_alpha)
         self.surrogate = get_surrogate(self.surrogate_name, alpha=self.surrogate_alpha)
 
-        # Membrane decay constant (uniform across population)
-        self.register_buffer("beta_mem", torch.full((size,), float(beta_mem), dtype=torch.float32))
+        # Membrane decay constant (uniform across population or per-neuron)
+        if isinstance(beta_mem, (int, float)):
+            self.register_buffer("beta_mem", torch.full((size,), float(beta_mem), dtype=torch.float32))
+        else:
+            mem_tensor = torch.as_tensor(beta_mem, dtype=torch.float32)
+            if mem_tensor.numel() == 1:
+                mem_tensor = mem_tensor.repeat(size)
+            elif mem_tensor.numel() != size:
+                raise ValueError(f"beta_mem size {mem_tensor.numel()} does not match cell size {size}")
+            self.register_buffer("beta_mem", mem_tensor)
 
         # Adaptation decay constants
         if beta_adapt is None:
@@ -168,11 +178,11 @@ class ALIFCell(nn.Module):
         state: Optional[ALIFState] = None,
     ) -> Tuple[torch.Tensor, ALIFState]:
         """
-        Executes single ALIF forward time-step:
-            V_t = β_mem * V_(t-1) + I_t - z_(t-1) * V_th0
-            A_t = β_adapt * A_(t-1) + z_(t-1)
+        Executes single ALIF forward time-step (SPWM-v5.0 standard formulation):
+            V_t = β_mem * V_(t-1) + I_t - V_th0 * s_(t-1)
+            A_t = β_adapt * A_(t-1) + s_(t-1)
             V_th,t = V_th0 + γ * A_t
-            z_t = Θ(V_t - V_th,t)
+            s_t = Θ(V_t - V_th,t)
         Args:
             synaptic_input: [B, size] input current I_t
             state: previous ALIFState
@@ -185,22 +195,15 @@ class ALIFCell(nn.Module):
         if state is None:
             state = self.init_state(B, device=device)
 
-        # 1. Dynamic Adaptive Threshold at time t: V_th,t = V_th0 + gamma * a_adapt_(t-1)
-        v_th_t = self.v_th0 + self.gamma * state.a_adapt
+        # 1. Update membrane potential with reset from previous step
+        v_mem = self.beta_mem * state.v_mem + synaptic_input - state.spikes * self.v_th0
 
-        # 2. Membrane potential update:
-        # V_t = beta_mem * V_(t-1) + (1 - beta_mem) * I_soma,t - V_th,t * s_(t-1)
-        v_mem = self.beta_mem * state.v_mem + (1.0 - self.beta_mem) * synaptic_input - state.spikes * v_th_t
+        # 2. Update dynamic adaptive threshold variable
+        a_adapt = self.beta_adapt * state.a_adapt + state.spikes
+        v_th_t = self.v_th0 + self.gamma * a_adapt
 
-        # 3. Dynamic adaptive threshold variable update:
-        # b_t = beta_adapt * b_(t-1) + (1 - beta_adapt) * s_(t-1)
-        a_adapt = self.beta_adapt * state.a_adapt + (1.0 - self.beta_adapt) * state.spikes
-
-        # Threshold for spike evaluation
-        v_th_eval = self.v_th0 + self.gamma * a_adapt
-
-        # 4. Emit spikes via surrogate gradient
-        spikes = self.surrogate(v_mem - v_th_eval)
+        # 3. Emit spikes via surrogate gradient
+        spikes = self.surrogate(v_mem - v_th_t)
 
         new_state = ALIFState(
             v_mem=v_mem,

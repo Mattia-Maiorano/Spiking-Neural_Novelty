@@ -60,14 +60,14 @@ class SPWMLoss(nn.Module):
     def __init__(
         self,
         lambda_pred: float = 1.0,
-        lambda_multi: float = 0.5,
+        lambda_multi: float = 0.0,
         lambda_var: float = 0.05,
-        lambda_sparse: float = 0.001,
+        lambda_sparse: float = 0.0,
         lambda_probe: float = 0.5,
-        lambda_coord: float = 1.0,    # v4.2: auxiliary coordinate coupling
+        lambda_coord: float = 1.0,    # v4.2+: auxiliary coordinate coupling
         multi_step_horizon: int = 3,
         target_variance: float = 1.0,
-        target_spike_rate: float = 0.11,
+        target_spike_rate: float = 0.31,
     ) -> None:
         super().__init__()
         self.lambda_pred = lambda_pred

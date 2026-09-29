@@ -15,14 +15,14 @@ data:
 model:
   type: spwm
   encoder_type: spatial_softmax
-  num_keypoints: 16
-  encoder_dim: 128
+  num_keypoints: 32
+  encoder_dim: 256
   encoder_conv_channels:
   - 16
   - 32
-  latent_dim: 128
-  q_dim: 32
-  p_dim: 96
+  latent_dim: 256
+  q_dim: 64
+  p_dim: 192
   predictor_hidden_dim: 256
   local_lr: 0.0002
   lambda_kin_feedback: 1.0
@@ -42,8 +42,8 @@ neuron:
 memory:
   num_timescales: 2
   timescale_dims:
-  - 64
-  - 64
+  - 96
+  - 96
   betas:
   - 0.9
   - 0.985

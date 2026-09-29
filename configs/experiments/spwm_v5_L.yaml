@@ -21,12 +21,12 @@ data:
 model:
   type: "spwm"
   encoder_type: "spatial_softmax"
-  num_keypoints: 16
-  encoder_dim: 128
+  num_keypoints: 32           # 32 keypoints = 64 coordinate dimensions (q_dim)
+  encoder_dim: 256            # Match latent_dim (64 + 192)
   encoder_conv_channels: [16, 32]
-  latent_dim: 128  # q_dim + p_dim (32 + 96)
-  q_dim: 32
-  p_dim: 96
+  latent_dim: 256             # q_dim + p_dim
+  q_dim: 64                   # 64 positional neurons
+  p_dim: 192                  # 192 velocity neurons
   predictor_hidden_dim: 256
   local_lr: 0.0002
   lambda_kin_feedback: 1.0
@@ -48,7 +48,7 @@ neuron:
 
 memory:
   num_timescales: 2
-  timescale_dims: [64, 64]
+  timescale_dims: [96, 96]    # 96 fast + 96 slow = 192 velocity memory neurons
   betas: [0.90, 0.985]
 
 training:

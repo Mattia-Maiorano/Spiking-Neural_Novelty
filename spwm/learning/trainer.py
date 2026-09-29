@@ -222,6 +222,77 @@ class Trainer:
         chronicle.log_detail("Validation Curriculum Gates", "Enabled" if self.val_curriculum_enabled else "Disabled")
         chronicle.log_newline()
 
+    def _compute_trends(
+        self,
+        current_record: Dict[str, float],
+        metric_keys: Optional[List[str]] = None,
+        windows: Optional[Dict[str, int]] = None,
+    ) -> Dict[str, float]:
+        """
+        Compute rate of change (delta per epoch) and relative improvement (%) for primary metrics
+        over the whole run (all completed epochs) and specific windows (e.g., last 50 and 10 epochs).
+
+        Positive relative improvement indicates improvement (i.e. reduction for error/loss metrics).
+        """
+        if metric_keys is None:
+            metric_keys = [
+                "total_loss",
+                "val_total_loss",
+                "l_pred",
+                "val_l_pred",
+                "val_pos_err",
+                "val_vel_err",
+                "l_coord",
+                "val_l_coord",
+                "spike_rate",
+                "val_spike_rate",
+                "grad_norm",
+            ]
+        if windows is None:
+            windows = {"run": len(self.history) - 1, "50": 50, "10": 10}
+
+        trends: Dict[str, float] = {}
+        total_records = len(self.history)
+
+        for win_name, win_len in windows.items():
+            if win_name == "run":
+                actual_win = max(1, total_records - 1)
+            else:
+                actual_win = min(win_len, max(1, total_records - 1))
+
+            if total_records <= 1:
+                # First epoch: no prior baseline
+                for k in metric_keys:
+                    trends[f"{k}_rate_{win_name}"] = 0.0
+                    trends[f"{k}_rel_imp_{win_name}"] = 0.0
+                continue
+
+            ref_idx = max(0, total_records - 1 - actual_win)
+            ref_record = self.history[ref_idx]
+            dt = (total_records - 1) - ref_idx
+            if dt <= 0:
+                dt = 1
+
+            for k in metric_keys:
+                curr_val = current_record.get(k)
+                ref_val = ref_record.get(k)
+                if curr_val is None or ref_val is None:
+                    continue
+
+                # Rate of change (slope per epoch): curr - ref / dt
+                rate = (curr_val - ref_val) / dt
+                trends[f"{k}_rate_{win_name}"] = rate
+
+                # Relative improvement (%): positive means reduction/better for loss & error
+                # For spike_rate or metrics where baseline is reference, we still define improvement as (ref - curr) / abs(ref)
+                if abs(ref_val) > 1e-12:
+                    rel_imp = ((ref_val - curr_val) / abs(ref_val)) * 100.0
+                else:
+                    rel_imp = 0.0
+                trends[f"{k}_rel_imp_{win_name}"] = rel_imp
+
+        return trends
+
     def get_scheduled_sampling_p(self, epoch: int) -> float:
         """Compute p_auto probability for current epoch according to curriculum schedule."""
         if not self.ss_enabled:
@@ -478,13 +549,17 @@ class Trainer:
                     sum(self.recent_grad_norms) / max(1, len(self.recent_grad_norms))
                 )
 
-                record = {
+                base_record = {
                     "epoch": epoch,
                     "elapsed_time": total_elapsed,
                     **train_metrics,
                     **val_metrics,
                     "grad_norm_recent": recent_norm,
                 }
+                
+                # Compute rate of change and relative improvement metrics
+                trends = self._compute_trends(base_record)
+                record = {**base_record, **trends}
                 self.history.append(record)
 
                 if self.writer is not None:
@@ -591,6 +666,37 @@ class Trainer:
                         f"{recent_norm:.4f}",
                         indent_level=1,
                     )
+
+                    # Dynamic Trend & Improvement Logging
+                    if len(self.history) > 1:
+                        def _fmt_trend(metric_name: str) -> str:
+                            r_10 = trends.get(f"{metric_name}_rate_10", 0.0)
+                            imp_10 = trends.get(f"{metric_name}_rel_imp_10", 0.0)
+                            r_50 = trends.get(f"{metric_name}_rate_50", 0.0)
+                            imp_50 = trends.get(f"{metric_name}_rel_imp_50", 0.0)
+                            r_run = trends.get(f"{metric_name}_rate_run", 0.0)
+                            imp_run = trends.get(f"{metric_name}_rel_imp_run", 0.0)
+                            return (
+                                f"Δ10: {r_10:+.2e}/ep ({imp_10:+.1f}%) | "
+                                f"Δ50: {r_50:+.2e}/ep ({imp_50:+.1f}%) | "
+                                f"ΔRun: {r_run:+.2e}/ep ({imp_run:+.1f}%)"
+                            )
+
+                        chronicle.log_detail(
+                            "Trends (Val Loss)",
+                            _fmt_trend("val_total_loss"),
+                            indent_level=1,
+                        )
+                        chronicle.log_detail(
+                            "Trends (Pos Err)",
+                            _fmt_trend("val_pos_err"),
+                            indent_level=1,
+                        )
+                        chronicle.log_detail(
+                            "Trends (Train Loss)",
+                            _fmt_trend("total_loss"),
+                            indent_level=1,
+                        )
                     chronicle.log_newline()
 
                 # Progressive Validation Curriculum Gates Evaluation
@@ -716,6 +822,20 @@ class Trainer:
                 ]
                 f.write("  Losses: " + ", ".join(loss_items) + "\n")
                 f.write(
-                    f"  GradNormOverall={rec.get('grad_norm'):.4f}, "
-                    f"GradNormRecent10={rec.get('grad_norm_recent'):.4f}\n\n"
+                    f"  GradNormOverall={rec.get('grad_norm', 0.0):.4f}, "
+                    f"GradNormRecent10={rec.get('grad_norm_recent', 0.0):.4f}\n"
                 )
+
+                # Improvement Trends (Run, 50-ep, 10-ep)
+                if "val_pos_err_rate_10" in rec:
+                    f.write(
+                        f"  Trends ValPosErr: Δ10={rec.get('val_pos_err_rate_10', 0.0):+.2e}/ep ({rec.get('val_pos_err_rel_imp_10', 0.0):+.1f}%), "
+                        f"Δ50={rec.get('val_pos_err_rate_50', 0.0):+.2e}/ep ({rec.get('val_pos_err_rel_imp_50', 0.0):+.1f}%), "
+                        f"ΔRun={rec.get('val_pos_err_rate_run', 0.0):+.2e}/ep ({rec.get('val_pos_err_rel_imp_run', 0.0):+.1f}%)\n"
+                    )
+                    f.write(
+                        f"  Trends ValTotalLoss: Δ10={rec.get('val_total_loss_rate_10', 0.0):+.2e}/ep ({rec.get('val_total_loss_rel_imp_10', 0.0):+.1f}%), "
+                        f"Δ50={rec.get('val_total_loss_rate_50', 0.0):+.2e}/ep ({rec.get('val_total_loss_rel_imp_50', 0.0):+.1f}%), "
+                        f"ΔRun={rec.get('val_total_loss_rate_run', 0.0):+.2e}/ep ({rec.get('val_total_loss_rel_imp_run', 0.0):+.1f}%)\n"
+                    )
+                f.write("\n")

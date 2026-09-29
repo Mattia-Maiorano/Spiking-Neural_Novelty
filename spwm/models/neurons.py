@@ -113,11 +113,8 @@ class ALIFCell(nn.Module):
         V_th,t = V_th0 + γ * A_t
         z_t = Heaviside(V_t - V_th,t)  (with surrogate gradient)
 
-    SPWM-v5.3 Intrinsic Homeostasis:
-        With γ_adapt = 1.0 and β_adapt = 0.95, the ALIF threshold self-regulates
-        steady-state population firing rate to [10%, 14%] without any external loss.
-        Supports controlled heterogeneity across population (50% reactive β_adapt=0.90,
-        50% deep context memory β_adapt=0.985) when beta_adapt=None is passed.
+    SPWM-v5.0 baseline:
+        γ_adapt = 0.18, β_adapt heterogeneous (50% reactive @ 0.90, 50% deep context @ 0.985).
     """
 
     def __init__(
@@ -126,7 +123,7 @@ class ALIFCell(nn.Module):
         beta_mem: float = 0.80,
         beta_adapt: Optional[Union[float, Sequence[float], torch.Tensor]] = None,
         v_th0: float = 1.0,
-        gamma: float = 0.35,
+        gamma: float = 0.18,
         surrogate_name: str = "atan",
         surrogate_alpha: float = 2.0,
     ) -> None:
@@ -143,8 +140,7 @@ class ALIFCell(nn.Module):
 
         # Adaptation decay constants
         if beta_adapt is None:
-            # v5.3: Controlled heterogeneity: 50% reactive (0.90), 50% deep context (0.985)
-            # Together with gamma=1.0 this stabilizes firing at 10-14% intrinsically.
+            # v5.0: Controlled heterogeneity: 50% reactive (0.90), 50% deep context (0.985)
             n_reactive = size // 2
             n_deep = size - n_reactive
             adapt_vals = [0.90] * n_reactive + [0.985] * n_deep

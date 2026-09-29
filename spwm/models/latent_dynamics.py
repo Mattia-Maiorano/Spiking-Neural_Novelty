@@ -1,12 +1,18 @@
 """
 Recurrent Spiking Latent Dynamics with ALIF Memory Hierarchy.
-SPWM-v5.4: Persistent Hamiltonian Limit Cycles with Active Velocity Supervision.
+SPWM-v5.0: Pure Port-Hamiltonian Recurrent Dynamics.
 
-Key changes from v5.3:
-  - Calibrated ALIF threshold homeostasis: gamma_adapt = 0.35 (prevents post-sensory quenching).
-  - Dissipation floor lowered to epsilon_diss = 1e-5 (near-lossless Hamiltonian orbits).
-  - Standard linear velocity decoding with learnable bias: v_t = W_vel @ s_bar_p + b_vel (removed destructive mean-centering).
-  - Autonomous Wall Bounce Reflex: momentum reflection v_k <- -0.8 * v_k at boundaries |q| >= 0.98.
+Port-Hamiltonian recurrence:
+    W_rec = J - R
+    J = 0.5 * (S - S^T)   (skew-symmetric, conservative Hamiltonian flow)
+    R = diag(softplus(r) + epsilon_diss)   (positive definite, dissipative)
+
+Rollout velocity projection:
+    v_t = W_vel @ s_bar_p_t
+    q_{t+1} = clamp(q_t + tanh(v_t), -1, 1)
+
+Observation mode:
+    q_t = q_sensor,t
 """
 
 from __future__ import annotations
@@ -20,7 +26,7 @@ from spwm.models.memory import MultiTimescaleMemory, MultiTimescaleState, comput
 
 @dataclass
 class DynamicsState:
-    """Recurrent state container for SpikingLatentDynamics (SPWM-v5.3)."""
+    """Recurrent state container for SpikingLatentDynamics (SPWM-v5.0)."""
     memory_state: MultiTimescaleState
     z_prev: torch.Tensor  # [B, latent_dim] (concatenated q and p)
     ema_spikes: torch.Tensor  # [B, total_memory_dim] EMA of spikes
@@ -39,18 +45,17 @@ class DynamicsOutput:
 
 class SpikingLatentDynamics(nn.Module):
     """
-    Recurrent Spiking Latent Dynamics with ALIF Core (SPWM-v5.3).
+    Recurrent Spiking Latent Dynamics with ALIF Core (SPWM-v5.0).
 
-    Port-Hamiltonian recurrence (pure, no somatic coordinate injection):
+    Port-Hamiltonian recurrence (pure):
         W_rec = J - R,  J = 0.5*(S - S^T),  R = diag(softplus(r) + eps_diss)
         I_soma,t = W_rec @ s_bar_p,t
 
-    Zero-mean velocity decoding (eliminates DC bias):
-        s_tilde_p = s_bar_p - mean(s_bar_p, dim=-1, keepdim=True)
-        v_t = W_vel @ s_tilde_p
+    Velocity decoding:
+        v_t = W_vel @ s_bar_p_t
 
     Coordinate update (autonomous rollout):
-        q_{t+1} = clamp(q_t + delta_t * tanh(v_t), -1, 1)
+        q_{t+1} = clamp(q_t + tanh(v_t), -1, 1)
 
     Observation mode:
         q_t = q_sensor,t
@@ -67,11 +72,11 @@ class SpikingLatentDynamics(nn.Module):
         betas: Sequence[float] = (0.90, 0.985),
         beta_mem: float = 0.80,
         v_th0: float = 1.0,
-        gamma: float = 0.35,
+        gamma: float = 0.18,
         surrogate_name: str = "atan",
         surrogate_alpha: float = 2.0,
         delta_t: float = 1.0,
-        epsilon_diss: float = 1e-5,
+        epsilon_diss: float = 1e-4,
     ) -> None:
         super().__init__()
         self.input_dim = input_dim
@@ -101,7 +106,7 @@ class SpikingLatentDynamics(nn.Module):
 
         self.total_memory_dim = sum(self.timescale_dims)
 
-        # Multi-timescale ALIF memory (with calibrated homeostasis via gamma=0.35)
+        # Multi-timescale ALIF memory
         self.memory = MultiTimescaleMemory(
             timescale_dims=self.timescale_dims,
             betas=betas if len(betas) == len(self.timescale_dims) else None,
@@ -121,10 +126,9 @@ class SpikingLatentDynamics(nn.Module):
         self.r = nn.Parameter(torch.randn(self.p_dim))  # log-damping vector
         self.rec_proj = nn.Linear(self.p_dim, self.total_memory_dim, bias=False)
 
-        # Direct velocity projection: W_vel maps s_bar_p -> coordinate velocity (with learnable bias)
-        self.W_vel = nn.Linear(self.total_memory_dim, self.q_dim, bias=True)
+        # Direct velocity projection: W_vel maps s_bar_p -> coordinate velocity
+        self.W_vel = nn.Linear(self.total_memory_dim, self.q_dim, bias=False)
         nn.init.normal_(self.W_vel.weight, mean=0.0, std=0.01)
-        nn.init.zeros_(self.W_vel.bias)
 
         # Latent fusion layer produces p component
         self.fuse_spikes = nn.Linear(self.total_memory_dim, self.p_dim)
@@ -166,7 +170,7 @@ class SpikingLatentDynamics(nn.Module):
         sensory_keypoints: Optional[torch.Tensor] = None,
     ) -> Tuple[torch.Tensor, DynamicsState]:
         """
-        Executes a single recurrent dynamical step (SPWM-v5.4 Pure Port-Hamiltonian Flow):
+        Executes a single recurrent dynamical step (SPWM-v5.0 Pure Port-Hamiltonian Flow):
 
         1. Momentum Evaluation (Port-Hamiltonian):
            I_soma,t = I_sensory + W_rec s_bar_p,t
@@ -175,9 +179,8 @@ class SpikingLatentDynamics(nn.Module):
 
         2. Coordinate Update (Dual-mode):
            Observation: q_t = q_sensor,t
-           Autonomous:  v_t = W_vel @ s_bar_p + b_vel
-                        Bounded Momentum Reflection at walls (|q| >= 0.98 -> v_k = -0.8 * v_k)
-                        q_{t+1} = clamp(q_t + delta_t * tanh(v_t), -1, 1)
+           Autonomous:  v_t = W_vel @ s_bar_p
+                        q_{t+1} = clamp(q_t + tanh(v_t), -1, 1)
         """
         B = sensory_input.shape[0]
         device = sensory_input.device
@@ -213,17 +216,8 @@ class SpikingLatentDynamics(nn.Module):
             # Observation mode: ground-truth coordinate injection
             q_next = sensory_keypoints
         else:
-            # Autonomous mode: standard linear projection with learnable bias (v5.4)
+            # Autonomous mode: standard linear projection (v5.0)
             v_t = self.W_vel(ema_spikes)
-
-            # Wall Bounce Reflex / Bounded Momentum Reflection (Section 2.C)
-            q_cand = q_prev + self.delta_t * torch.tanh(v_t)
-            hit_pos = (q_cand >= 0.98) & (v_t > 0)
-            hit_neg = (q_cand <= -0.98) & (v_t < 0)
-            boundary_hit = hit_pos | hit_neg
-            if boundary_hit.any():
-                v_t = torch.where(boundary_hit, -0.8 * v_t, v_t)
-
             q_next = torch.clamp(q_prev + self.delta_t * torch.tanh(v_t), -1.0, 1.0)
 
         # Concatenate updated q and p to form next latent

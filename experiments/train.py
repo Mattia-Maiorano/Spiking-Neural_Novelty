@@ -207,11 +207,11 @@ def main() -> None:
         lambda_sparse=loss_cfg.get("lambda_sparse", 0.001),
         lambda_probe=loss_cfg.get("lambda_probe", 0.5),
         lambda_coord=loss_cfg.get("lambda_coord", 0.0),
-        lambda_vel=loss_cfg.get("lambda_vel", 0.5),
+        # lambda_vel removed (v5.0)
         multi_step_horizon=loss_cfg.get("multi_step_horizon", 3),
         target_variance=loss_cfg.get("target_variance", 1.0),
         target_spike_rate=loss_cfg.get("target_spike_rate", 0.11),
-        delta_t=loss_cfg.get("delta_t", 1.0),
+        # delta_t removed (not used in v5.0)
     )
 
     epochs = args.epochs if args.epochs is not None else train_cfg.get("epochs", 20)

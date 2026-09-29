@@ -1,0 +1,13 @@
+{
+  "run_id": "spwm_v5_4",
+  "experiment_name": "spwm_v5_4",
+  "seed": 42,
+  "epochs": 100,
+  "learning_rate": 0.0002,
+  "device": "cpu",
+  "pytorch_version": "2.14.0+cpu",
+  "cuda_available": false,
+  "mps_available": false,
+  "git_commit": "0c72dc78fda036ac271e1ef1f5282d36ab3cdb97",
+  "timestamp": "2026-09-28 19:02:20"
+}

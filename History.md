@@ -510,4 +510,62 @@ When $q_t$ reaches the arena boundary ($\pm 1$), clamping alone causes inelastic
 | `configs/experiments/spwm_v5_4.yaml` | Configurazione SPWM-v5.4 con $\gamma=0.35$, $\epsilon_{\text{diss}}=10^{-5}$, $\lambda_{\text{vel}}=0.5$. |
 | `tests/test_v5_4.py` | Unit tests: $\mathcal{L}_{\text{vel}} > 0$, simulazione $H=200$ senza quenching ($5\%-18\%$), wall bounce reflex, stabilità autovalori. |
 
+---
+
+## v5 L — Clean Rollback to SPWM-v5.0 & Official Baseline (2026-09-29)
+
+### Objective
+Strict rollback to the pure **SPWM-v5.0** specification. All architectural patches, heuristics,
+and auxiliary losses introduced in v5.1 through v5.4 are officially deprecated and purged.
+The rollback establishes the incontrovertible ground-truth benchmark across horizons
+$H \in \{1, 5, 10, 25, 50, 100\}$.
+
+### Deprecated & Purged (v5.1 – v5.4)
+- `C_pq`, `M_pq`, `C_qp` cross-population coupling matrices.
+- Dendritic buffers (`I_dend`, `beta_dend`, `alpha_dend`).
+- Wall-bounce reflection logic (`if |q| >= 0.98 → v_k ← -0.8·v_k`).
+- Spatial mean-centering on spikes (`s_bar_p − mean(s_bar_p)`).
+- $\mathcal{L}_{\text{vel}}$ (velocity consistency loss) and all its logging channels.
+- Störmer-Verlet / leapfrog staggered integration.
+- Learnable bias on `W_vel` (reverted to `bias=False`).
+- `gamma_adapt = 0.35` (reverted to baseline `0.18`).
+- `epsilon_diss = 1e-5` (reverted to baseline `1e-4`).
+
+### Restored SPWM-v5.0 Specification
+
+#### A. Latent Dynamics (`spwm/models/latent_dynamics.py`)
+- Pure Port-Hamiltonian recurrence:
+  $$W_{\text{rec}} = J - R, \quad J = \tfrac{1}{2}(S - S^T), \quad R = \text{diag}(\text{softplus}(r) + 10^{-4})$$
+- Velocity projection (no bias, no mean-centering):
+  $$v_t = W_{\text{vel}}\,\bar{s}_{p,t}, \qquad q_{t+1} = \text{clamp}(q_t + \tanh(v_t),\,-1,\,1)$$
+
+#### B. Neuron Dynamics (`spwm/models/neurons.py`)
+- `ALIFCell` default `gamma = 0.18` restored.
+
+#### C. World Model (`spwm/models/world_model.py`)
+- `SPWMSequenceOutput`: removed `decoded_velocities` field.
+- `forward()`: removed `vel_steps` accumulation.
+- `predict_future()`: pure continuous rollout, no wall-bounce.
+- `epsilon_diss` default restored to `1e-4`.
+
+#### D. Losses (`spwm/learning/losses.py`)
+- Removed `velocity_loss()` and `l_vel` from `LossOutput`.
+- Total loss strictly:
+  $$\mathcal{L} = \mathcal{L}_{\text{pred}} + 1.0\cdot\mathcal{L}_{\text{coord}} + 0.5\cdot\mathcal{L}_{\text{probe}} + 0.05\cdot\mathcal{L}_{\text{var}}$$
+
+#### E. Trainer (`spwm/learning/trainer.py`)
+- Removed all `l_vel` / `val_l_vel` tracking and backward passes.
+- Probe optimizer block: kinematic probe loss only.
+
+#### F. Config (`configs/experiments/spwm_v5.yaml`)
+- `gamma: 0.18`, `epsilon_diss: 1e-4`.
+- `lambda_var: 0.05`, `lambda_probe: 0.5`, `lambda_coord: 1.0`.
+- `lr_scheduler: "cosine"` (T_max=100, eta_min=1e-5), `seed: 42`.
+- `rollout_horizons: [1, 5, 10, 25, 50, 100]`.
+
+### Test Suite
+- Quarantined: `test_symplectic_leapfrog.py`, `test_v5_3.py`, `test_v5_4.py`.
+- `pytest tests/ -v` → **26/26 PASSED** (24.73s).
+
+
 

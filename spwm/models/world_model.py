@@ -1,12 +1,10 @@
 """
-SPWM-v5.4: Clean Port-Hamiltonian Dynamics with Persistent Hamiltonian Limit Cycles & Active Velocity Supervision.
+SPWM-v5.0: Clean Port-Hamiltonian Spiking Predictive World Model.
 Features:
 - Predictive coding core with error routing (ϵ_t = x_t - W_pred z_(t-1))
-- Pure Port-Hamiltonian ALIF latent core (W_rec = J - R, epsilon_diss=1e-5)
-- Calibrated ALIF threshold adaptation homeostasis (gamma=0.35, beta_adapt=0.95)
-- Standard linear velocity decoding: v_t = W_vel s_bar_p + b_vel with learnable bias
-- Autonomous Wall Bounce Reflex with bounded momentum reflection (v_k <- -0.8 * v_k)
-- Direct velocity supervision loss L_vel for kinematic consistency
+- Pure Port-Hamiltonian ALIF latent core (W_rec = J - R, epsilon_diss=1e-4)
+- ALIF threshold adaptation (gamma=0.18)
+- Standard linear velocity decoding: v_t = W_vel s_bar_p
 - Deterministic forward-only e-prop plasticity with O(1) memory complexity
 - Dedicated probe optimization ensuring active gradient flow into W_vel
 - Checkpoint metric bound to val_pos_err
@@ -45,7 +43,7 @@ class SPWMStepOutput:
 
 @dataclass
 class SPWMSequenceOutput:
-    """Output from a full sequence forward pass in SPWM-v5.4."""
+    """Output from a full sequence forward pass in SPWM-v5.0."""
     latent_states: torch.Tensor  # [B, T, latent_dim]
     predicted_latents: torch.Tensor  # [B, T, latent_dim]
     prediction_errors: torch.Tensor  # [B, T-1]
@@ -56,15 +54,13 @@ class SPWMSequenceOutput:
     dynamics_spike_rate: torch.Tensor
     mean_spike_rate: torch.Tensor
     decoded_kinematics: Optional[torch.Tensor] = None
-    decoded_velocities: Optional[torch.Tensor] = None
     ema_spikes_seq: Optional[torch.Tensor] = None
     sensor_coords: Optional[torch.Tensor] = None
 
 
 class SPWM(nn.Module):
     """
-    SPWM-v5.4: Spiking Predictive World Model with ALIF Core, Hamiltonian Limit Cycles,
-    and Active Velocity Supervision.
+    SPWM-v5.0: Spiking Predictive World Model with ALIF Core and Port-Hamiltonian Dynamics.
     """
 
     def __init__(
@@ -93,7 +89,7 @@ class SPWM(nn.Module):
         q_dim: Optional[int] = None,
         p_dim: Optional[int] = None,
         ema_decay: float = 0.9,
-        epsilon_diss: float = 1e-5,
+        epsilon_diss: float = 1e-4,
     ) -> None:
         super().__init__()
         self.in_channels = in_channels
@@ -401,7 +397,6 @@ class SPWM(nn.Module):
         decoded_steps = []
         ema_steps = []
         kp_steps = []
-        vel_steps = []
 
         for t in range(T):
             event_frame = event_sequence[:, t]
@@ -431,7 +426,6 @@ class SPWM(nn.Module):
             sensory_kp = getattr(self.encoder, "last_keypoints", None)
             if sensory_kp is not None:
                 kp_steps.append(sensory_kp)
-            vel_steps.append(self.dynamics.W_vel(state.dynamics_state.ema_spikes))
 
         latents = torch.stack(latent_steps, dim=1)  # [B, T, latent_dim]
         predicted_latents = torch.stack(pred_steps, dim=1)  # [B, T, latent_dim]
@@ -444,7 +438,6 @@ class SPWM(nn.Module):
         slow_spikes = torch.stack(slow_spk_steps, dim=1)
 
         decoded_kinematics = torch.stack(decoded_steps, dim=1) if decoded_steps else None
-        decoded_velocities = torch.stack(vel_steps, dim=1) if vel_steps else None
         ema_spikes_seq = torch.stack(ema_steps, dim=1) if ema_steps else None
         sensor_coords = torch.stack(kp_steps, dim=1) if kp_steps else None
 
@@ -465,7 +458,6 @@ class SPWM(nn.Module):
             dynamics_spike_rate=dyn_spike_rate,
             mean_spike_rate=mean_spike_rate,
             decoded_kinematics=decoded_kinematics,
-            decoded_velocities=decoded_velocities,
             ema_spikes_seq=ema_spikes_seq,
             sensor_coords=sensor_coords,
         )
@@ -475,11 +467,11 @@ class SPWM(nn.Module):
         initial_state: Union[torch.Tensor, DynamicsState, SPWMState],
         horizon: int = 50,
     ) -> Dict[str, Any]:
-        """Autonomous Rollout without future sensory observations (SPWM-v5.4 canonical rollout).
+        """Autonomous Rollout without future sensory observations (SPWM-v5.0 canonical rollout).
 
         The momentum population p evolves purely under its Port-Hamiltonian contractive
         operator W_rec without any sensory coordinate leakage. Coordinate q advances
-        via direct velocity decoding from W_vel(s_bar_p) + b_vel with elastic boundary reflection.
+        via direct velocity decoding from W_vel(s_bar_p).
         """
         spikes_list = []
         coords_list = []

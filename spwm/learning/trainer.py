@@ -1,5 +1,5 @@
 """
-Forward-Only Continuous Online Trainer for SPWM (v5.0).
+Forward-Only Continuous Online Trainer for SPWM (v3 / v4.2).
 Maintains O(1) memory footprint scaling across long sequence horizons.
 Executes online e-prop plasticity with online mini-batch updates.
 
@@ -63,11 +63,6 @@ class Trainer:
         probe_lr: float = 5e-4,
         probe_weight_decay: float = 1e-2,
         tensorboard_logging: bool = False,
-        lr_scheduler: Optional[str] = None,
-        scheduler_t_max: int = 100,
-        scheduler_eta_min: float = 1e-5,
-        scheduled_sampling: Optional[Dict[str, Any]] = None,
-        validation_curriculum: Optional[Dict[str, Any]] = None,
         # Resume support (optional)
         start_epoch: int = 1,
         best_val_loss: float = float("inf"),
@@ -78,18 +73,6 @@ class Trainer:
         self.best_val_pos_err: float = float("inf")
         self.learning_algorithm = learning_algorithm.lower()
         self.learning_rate = learning_rate
-        self.lr_scheduler_type = lr_scheduler.lower() if lr_scheduler else None
-
-        # Curriculum / Scheduled Sampling configuration
-        self.scheduled_sampling = scheduled_sampling or {}
-        self.ss_enabled = self.scheduled_sampling.get("enabled", False)
-        self.ss_warmup = int(self.scheduled_sampling.get("warmup_epochs", 10))
-        self.ss_ramp = int(self.scheduled_sampling.get("ramp_epochs", 30))
-        self.ss_p_max = float(self.scheduled_sampling.get("p_max", 0.50))
-
-        # Validation curriculum configuration (gates)
-        self.val_curriculum = validation_curriculum or {}
-        self.val_curriculum_enabled = self.val_curriculum.get("enabled", False)
 
         if device is None:
             if torch.cuda.is_available():
@@ -113,7 +96,7 @@ class Trainer:
 
         # Optimizer setup
         probe_params = [
-            p for n, p in self.model.named_parameters() if "decoder" in n or "probe" in n or "W_vel" in n
+            p for n, p in self.model.named_parameters() if "decoder" in n or "probe" in n
         ]
         predictor_params = [
             p
@@ -160,28 +143,6 @@ class Trainer:
             else None
         )
 
-        # Learning rate schedulers for predictor and encoder
-        if self.lr_scheduler_type == "cosine":
-            t_max = int(scheduler_t_max)
-            eta_min = float(scheduler_eta_min)
-            self.predictor_scheduler = (
-                torch.optim.lr_scheduler.CosineAnnealingLR(
-                    self.predictor_optimizer, T_max=t_max, eta_min=eta_min
-                )
-                if self.predictor_optimizer
-                else None
-            )
-            self.encoder_scheduler = (
-                torch.optim.lr_scheduler.CosineAnnealingLR(
-                    self.encoder_optimizer, T_max=t_max, eta_min=eta_min
-                )
-                if self.encoder_optimizer
-                else None
-            )
-        else:
-            self.predictor_scheduler = None
-            self.encoder_scheduler = None
-
         self.writer = (
             SummaryWriter(log_dir=str(self.save_dir / "tb"))
             if tensorboard_logging
@@ -206,7 +167,7 @@ class Trainer:
 
     def _print_training_header(self, total_epochs: int) -> None:
         """Visualizza i parametri principali prima dell'avvio."""
-        chronicle.log_application_title("START OF TRAINING")
+        chronicle.log_application_title("SPWM-v4.3 CONTINUOUS ONLINE TRAINER")
         chronicle.log_detail("Device", self.device)
         chronicle.log_detail(
             "Epochs",
@@ -218,94 +179,10 @@ class Trainer:
         chronicle.log_detail("Encoder Optimizer", "Enabled" if self.encoder_optimizer else "Disabled")
         chronicle.log_detail("Probe Optimizer", "Enabled" if self.probe_optimizer else "Disabled")
         chronicle.log_detail("Pred Optimizer", "Enabled" if self.predictor_optimizer else "Disabled")
-        chronicle.log_detail("Curriculum Scheduled Sampling", "Enabled" if self.ss_enabled else "Disabled")
-        chronicle.log_detail("Validation Curriculum Gates", "Enabled" if self.val_curriculum_enabled else "Disabled")
         chronicle.log_newline()
-
-    def _compute_trends(
-        self,
-        current_record: Dict[str, float],
-        metric_keys: Optional[List[str]] = None,
-        windows: Optional[Dict[str, int]] = None,
-    ) -> Dict[str, float]:
-        """
-        Compute rate of change (delta per epoch) and relative improvement (%) for primary metrics
-        over the whole run (all completed epochs) and specific windows (e.g., last 50 and 10 epochs).
-
-        Positive relative improvement indicates improvement (i.e. reduction for error/loss metrics).
-        """
-        if metric_keys is None:
-            metric_keys = [
-                "total_loss",
-                "val_total_loss",
-                "l_pred",
-                "val_l_pred",
-                "val_pos_err",
-                "val_vel_err",
-                "l_coord",
-                "val_l_coord",
-                "spike_rate",
-                "val_spike_rate",
-                "grad_norm",
-            ]
-        if windows is None:
-            windows = {"run": len(self.history) - 1, "50": 50, "10": 10}
-
-        trends: Dict[str, float] = {}
-        total_records = len(self.history)
-
-        for win_name, win_len in windows.items():
-            if win_name == "run":
-                actual_win = max(1, total_records - 1)
-            else:
-                actual_win = min(win_len, max(1, total_records - 1))
-
-            if total_records <= 1:
-                # First epoch: no prior baseline
-                for k in metric_keys:
-                    trends[f"{k}_rate_{win_name}"] = 0.0
-                    trends[f"{k}_rel_imp_{win_name}"] = 0.0
-                continue
-
-            ref_idx = max(0, total_records - 1 - actual_win)
-            ref_record = self.history[ref_idx]
-            dt = (total_records - 1) - ref_idx
-            if dt <= 0:
-                dt = 1
-
-            for k in metric_keys:
-                curr_val = current_record.get(k)
-                ref_val = ref_record.get(k)
-                if curr_val is None or ref_val is None:
-                    continue
-
-                # Rate of change (slope per epoch): curr - ref / dt
-                rate = (curr_val - ref_val) / dt
-                trends[f"{k}_rate_{win_name}"] = rate
-
-                # Relative improvement (%): positive means reduction/better for loss & error
-                # For spike_rate or metrics where baseline is reference, we still define improvement as (ref - curr) / abs(ref)
-                if abs(ref_val) > 1e-12:
-                    rel_imp = ((ref_val - curr_val) / abs(ref_val)) * 100.0
-                else:
-                    rel_imp = 0.0
-                trends[f"{k}_rel_imp_{win_name}"] = rel_imp
-
-        return trends
-
-    def get_scheduled_sampling_p(self, epoch: int) -> float:
-        """Compute p_auto probability for current epoch according to curriculum schedule."""
-        if not self.ss_enabled:
-            return 0.0
-        if epoch <= self.ss_warmup:
-            return 0.0
-        progress = min(1.0, (epoch - self.ss_warmup) / max(1, self.ss_ramp))
-        return float(progress * self.ss_p_max)
 
     def train_epoch(self, epoch: int) -> Dict[str, float]:
         self.model.train()
-        p_auto = self.get_scheduled_sampling_p(epoch)
-
         epoch_losses: Dict[str, float] = {
             "total_loss": 0.0,
             "l_pred": 0.0,
@@ -313,7 +190,6 @@ class Trainer:
             "l_coord": 0.0,   # v4.2: auxiliary keypoint coordinate loss
             "spike_rate": 0.0,
             "grad_norm": 0.0,
-            "p_auto": p_auto,
         }
         num_batches = 0
 
@@ -331,7 +207,6 @@ class Trainer:
                     accumulate_local_updates=True,
                     learning_rate=self.learning_rate,
                     target_kinematics=kin_for_eprop,
-                    p_auto=p_auto,
                 )
 
             if hasattr(self.model, "apply_accumulated_updates"):
@@ -400,28 +275,22 @@ class Trainer:
                                 )
                         self.predictor_optimizer.step()
 
-            # Online local probe update (v5.0 — kinematic probe only)
-            if self.probe_optimizer is not None:
+            # Online local probe update
+            if self.probe_optimizer is not None and true_kin is not None:
                 self.probe_optimizer.zero_grad()
                 with torch.enable_grad():
-                    loss_probe_total = torch.tensor(0.0, device=self.device)
-
-                    if true_kin is not None:
-                        z_detached = out.latent_states.detach()
-                        decoded = self.model.physical_decoder(z_detached)
-                        probe_loss = nn.functional.mse_loss(decoded, true_kin)
-                        loss_probe_total = loss_probe_total + self.loss_fn.lambda_probe * probe_loss
-                        epoch_losses["l_probe"] += probe_loss.item()
-                        epoch_losses["total_loss"] += self.loss_fn.lambda_probe * probe_loss.item()
-
-                    if loss_probe_total.requires_grad:
-                        loss_probe_total.backward()
-                        if self.grad_clip_norm is not None and self.grad_clip_norm > 0:
-                            for group in self.probe_optimizer.param_groups:
-                                torch.nn.utils.clip_grad_norm_(
-                                    group["params"], self.grad_clip_norm
-                                )
-                        self.probe_optimizer.step()
+                    z_detached = out.latent_states.detach()
+                    decoded = self.model.physical_decoder(z_detached)
+                    probe_loss = nn.functional.mse_loss(decoded, true_kin)
+                    probe_loss.backward()
+                    if self.grad_clip_norm is not None and self.grad_clip_norm > 0:
+                        for group in self.probe_optimizer.param_groups:
+                            torch.nn.utils.clip_grad_norm_(
+                                group["params"], self.grad_clip_norm
+                            )
+                    self.probe_optimizer.step()
+                epoch_losses["l_probe"] += probe_loss.item()
+                epoch_losses["total_loss"] += self.loss_fn.lambda_probe * probe_loss.item()
 
             grad_norm = 0.0
             if self.encoder_optimizer is not None:
@@ -452,8 +321,7 @@ class Trainer:
             num_batches += 1
 
         for k in epoch_losses:
-            if k != "p_auto":
-                epoch_losses[k] /= max(1, num_batches)
+            epoch_losses[k] /= max(1, num_batches)
 
         return epoch_losses
 
@@ -477,7 +345,7 @@ class Trainer:
             if true_kin is not None:
                 true_kin = true_kin.to(self.device)
 
-            out = self.model(events, accumulate_local_updates=False, p_auto=0.0)
+            out = self.model(events, accumulate_local_updates=False)
 
             pred_err = (
                 out.prediction_errors.mean().item()
@@ -538,28 +406,18 @@ class Trainer:
                 val_metrics = self.evaluate()
                 epoch_duration = time.time() - t_epoch_start
                 total_elapsed = time.time() - start_time
-                # Estimate remaining time based on average epoch duration
-                epochs_completed = epoch - self.start_epoch + 1
-                avg_epoch_time = total_elapsed / max(1, epochs_completed)
-                remaining_epochs = end_epoch - epoch
-                est_time_left = avg_epoch_time * remaining_epochs
-                chronicle.log_detail("Est. time left", f"{est_time_left:.1f}s ({remaining_epochs} epochs remaining)", indent_level=1)
 
                 recent_norm = (
                     sum(self.recent_grad_norms) / max(1, len(self.recent_grad_norms))
                 )
 
-                base_record = {
+                record = {
                     "epoch": epoch,
                     "elapsed_time": total_elapsed,
                     **train_metrics,
                     **val_metrics,
                     "grad_norm_recent": recent_norm,
                 }
-                
-                # Compute rate of change and relative improvement metrics
-                trends = self._compute_trends(base_record)
-                record = {**base_record, **trends}
                 self.history.append(record)
 
                 if self.writer is not None:
@@ -567,13 +425,9 @@ class Trainer:
                         if k != "epoch":
                             self.writer.add_scalar(k, v, epoch)
 
-                # Step learning rate schedulers
+                # Step probe learning rate scheduler
                 if self.probe_scheduler is not None:
                     self.probe_scheduler.step()
-                if self.predictor_scheduler is not None:
-                    self.predictor_scheduler.step()
-                if self.encoder_scheduler is not None:
-                    self.encoder_scheduler.step()
 
                 # Controllo Best Validation Model vincolato alla minima Pos Err di validazione
                 current_metric = val_metrics["val_pos_err"]
@@ -666,82 +520,7 @@ class Trainer:
                         f"{recent_norm:.4f}",
                         indent_level=1,
                     )
-
-                    # Dynamic Trend & Improvement Logging
-                    if len(self.history) > 1:
-                        def _fmt_trend(metric_name: str) -> str:
-                            r_10 = trends.get(f"{metric_name}_rate_10", 0.0)
-                            imp_10 = trends.get(f"{metric_name}_rel_imp_10", 0.0)
-                            r_50 = trends.get(f"{metric_name}_rate_50", 0.0)
-                            imp_50 = trends.get(f"{metric_name}_rel_imp_50", 0.0)
-                            r_run = trends.get(f"{metric_name}_rate_run", 0.0)
-                            imp_run = trends.get(f"{metric_name}_rel_imp_run", 0.0)
-                            return (
-                                f"Δ10: {r_10:+.2e}/ep ({imp_10:+.1f}%) | "
-                                f"Δ50: {r_50:+.2e}/ep ({imp_50:+.1f}%) | "
-                                f"ΔRun: {r_run:+.2e}/ep ({imp_run:+.1f}%)"
-                            )
-
-                        chronicle.log_detail(
-                            "Trends (Val Loss)",
-                            _fmt_trend("val_total_loss"),
-                            indent_level=1,
-                        )
-                        chronicle.log_detail(
-                            "Trends (Pos Err)",
-                            _fmt_trend("val_pos_err"),
-                            indent_level=1,
-                        )
-                        chronicle.log_detail(
-                            "Trends (Train Loss)",
-                            _fmt_trend("total_loss"),
-                            indent_level=1,
-                        )
                     chronicle.log_newline()
-
-                # Progressive Validation Curriculum Gates Evaluation
-                if self.val_curriculum_enabled:
-                    gates = self.val_curriculum.get("gates", [])
-                    for gate in gates:
-                        gate_epoch = gate.get("epoch")
-                        if epoch == gate_epoch:
-                            gate_name = gate.get("name", f"Gate @ Epoch {epoch}")
-                            chronicle.log_info(f"Evaluating Validation Curriculum {gate_name} (H={gate.get('horizon', 10)})...")
-                            
-                            # Check firing rate bounds if specified
-                            min_sr = gate.get("min_spike_rate")
-                            max_sr = gate.get("max_spike_rate")
-                            curr_sr = val_metrics.get("val_spike_rate", 0.0)
-                            if min_sr is not None and curr_sr < min_sr:
-                                msg = f"[{gate_name} FAILED] Spike rate {curr_sr:.4f} < minimum {min_sr}"
-                                chronicle.log_warning(msg)
-                                if gate.get("abort_on_fail", False):
-                                    raise RuntimeError(msg)
-                            if max_sr is not None and curr_sr > max_sr:
-                                msg = f"[{gate_name} FAILED] Spike rate {curr_sr:.4f} > maximum {max_sr}"
-                                chronicle.log_warning(msg)
-                                if gate.get("abort_on_fail", False):
-                                    raise RuntimeError(msg)
-
-                            # Check max val_l_coord if specified
-                            max_coord = gate.get("max_l_coord")
-                            curr_coord = val_metrics.get("val_l_coord", 0.0)
-                            if max_coord is not None and curr_coord > max_coord:
-                                msg = f"[{gate_name} FAILED] L_coord {curr_coord:.4f} > threshold {max_coord}"
-                                chronicle.log_warning(msg)
-                                if gate.get("abort_on_fail", False):
-                                    raise RuntimeError(msg)
-
-                            # Check max position error if specified
-                            max_pos_err = gate.get("max_pos_err")
-                            curr_pos = val_metrics.get("val_pos_err", float("inf"))
-                            if max_pos_err is not None and curr_pos > max_pos_err:
-                                msg = f"[{gate_name} FAILED] Position error {curr_pos:.4f} > threshold {max_pos_err}"
-                                chronicle.log_warning(msg)
-                                if gate.get("abort_on_fail", False):
-                                    raise RuntimeError(msg)
-
-                            chronicle.log_success(f"Validation Curriculum {gate_name} passed successfully.")
 
         except KeyboardInterrupt:
             chronicle.log_warning(
@@ -776,7 +555,7 @@ class Trainer:
                 chronicle.log_success(
                     f"Modello salvato (fallback) in: {model_path}"
                 )
-            pass
+            raise
 
         self.save_training_log()
         chronicle.log_success(
@@ -822,20 +601,6 @@ class Trainer:
                 ]
                 f.write("  Losses: " + ", ".join(loss_items) + "\n")
                 f.write(
-                    f"  GradNormOverall={rec.get('grad_norm', 0.0):.4f}, "
-                    f"GradNormRecent10={rec.get('grad_norm_recent', 0.0):.4f}\n"
+                    f"  GradNormOverall={rec.get('grad_norm'):.4f}, "
+                    f"GradNormRecent10={rec.get('grad_norm_recent'):.4f}\n\n"
                 )
-
-                # Improvement Trends (Run, 50-ep, 10-ep)
-                if "val_pos_err_rate_10" in rec:
-                    f.write(
-                        f"  Trends ValPosErr: Δ10={rec.get('val_pos_err_rate_10', 0.0):+.2e}/ep ({rec.get('val_pos_err_rel_imp_10', 0.0):+.1f}%), "
-                        f"Δ50={rec.get('val_pos_err_rate_50', 0.0):+.2e}/ep ({rec.get('val_pos_err_rel_imp_50', 0.0):+.1f}%), "
-                        f"ΔRun={rec.get('val_pos_err_rate_run', 0.0):+.2e}/ep ({rec.get('val_pos_err_rel_imp_run', 0.0):+.1f}%)\n"
-                    )
-                    f.write(
-                        f"  Trends ValTotalLoss: Δ10={rec.get('val_total_loss_rate_10', 0.0):+.2e}/ep ({rec.get('val_total_loss_rel_imp_10', 0.0):+.1f}%), "
-                        f"Δ50={rec.get('val_total_loss_rate_50', 0.0):+.2e}/ep ({rec.get('val_total_loss_rel_imp_50', 0.0):+.1f}%), "
-                        f"ΔRun={rec.get('val_total_loss_rate_run', 0.0):+.2e}/ep ({rec.get('val_total_loss_rel_imp_run', 0.0):+.1f}%)\n"
-                    )
-                f.write("\n")

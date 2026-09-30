@@ -14,26 +14,26 @@ def test_alif_cell_membrane_adaptation_and_reset():
     cell = ALIFCell(size=2, beta_mem=0.80, beta_adapt=0.90, v_th0=1.0, gamma=0.20)
     state = cell.init_state(batch_size=1)
 
-    # Step 1: Sub-threshold input (0.5) -> V_1 = 0.8 * 0 + 0.5 = 0.5 < 1.0 -> no spike, A_1 = 0, V_th = 1.0
+    # Step 1: Sub-threshold input (0.5) -> V_1 = 0.5 < 1.0 -> no spike, A_1 = 0, V_th = 1.0
     inp1 = torch.tensor([[0.5, 0.5]])
     spk1, state1 = cell(inp1, state=state)
     assert torch.equal(spk1, torch.zeros(1, 2))
     assert torch.allclose(state1.v_mem, torch.tensor([[0.5, 0.5]]))
     assert torch.allclose(state1.a_adapt, torch.tensor([[0.0, 0.0]]))
 
-    # Step 2: Strong input (1.0) -> V_2 = 0.8 * 0.5 + 1.0 = 1.4 >= 1.0 -> spike emitted
-    inp2 = torch.tensor([[1.0, 1.0]])
+    # Step 2: Strong input (0.8) -> V_2 = 0.8 * 0.5 + 0.8 = 1.2 >= 1.0 -> spike emitted
+    inp2 = torch.tensor([[0.8, 0.8]])
     spk2, state2 = cell(inp2, state=state1)
     assert torch.equal(spk2, torch.ones(1, 2))
-    assert torch.allclose(state2.v_mem, torch.tensor([[1.4, 1.4]]))
+    assert torch.allclose(state2.v_mem, torch.tensor([[1.2, 1.2]]))
     assert torch.allclose(state2.a_adapt, torch.tensor([[0.0, 0.0]]))  # A_t updates from previous spikes z_(t-1)
 
-    # Step 3: Zero input -> V_3 = 0.8 * 1.4 + 0.0 - 1.0 * 1.0 = 0.12
+    # Step 3: Zero input -> V_3 = 0.8 * 1.2 + 0.0 - 1.0 * 1.0 = -0.04
     # A_3 = 0.9 * 0.0 + 1.0 = 1.0 -> V_th,3 = 1.0 + 0.2 * 1.0 = 1.2
     inp3 = torch.zeros(1, 2)
     spk3, state3 = cell(inp3, state=state2)
     assert torch.equal(spk3, torch.zeros(1, 2))
-    assert pytest.approx(state3.v_mem[0, 0].item(), rel=1e-3) == 0.12
+    assert pytest.approx(state3.v_mem[0, 0].item(), rel=1e-3) == -0.04
     assert pytest.approx(state3.a_adapt[0, 0].item(), rel=1e-3) == 1.0
 
 
@@ -64,7 +64,6 @@ def test_alif_controlled_heterogeneity():
     assert a_reactive < a_deep
     assert pytest.approx(a_reactive, rel=1e-2) == (0.90 ** 9)
     assert pytest.approx(a_deep, rel=1e-2) == (0.985 ** 9)
-
 
 
 def test_alif_threshold_stability_under_sustained_input():

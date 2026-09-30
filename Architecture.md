@@ -1,10 +1,10 @@
-# Architecture Specification: Spiking Predictive World Model (SPWM)
+# Architecture Specification: Spiking Predictive World Model (SPWM v4.3)
 
-This document provides a comprehensive technical overview of the current architecture, mathematical modeling, neural components, parameters, data pipeline, and training workflows of the **SPWM (Spiking Predictive World Model)** codebase.
+This document provides a comprehensive technical overview of the current architecture, mathematical modeling, neural components, parameters, data pipeline, and training workflows of the **SPWM-v4.3** (Symplectic Phase Space $(q, p)$ with Spike EMA Velocity Integration) codebase.
 
 ---
 
-## 1. System Architecture & Conceptual Diagram
+## 1. System Architecture & Conceptual Flow
 
 SPWM is a biologically grounded, forward-only spiking recurrent world model designed to process continuous spatio-temporal event streams, maintain multi-timescale internal dynamics, and perform autonomous multi-step rollouts with $\mathcal{O}(1)$ computational memory complexity (zero Backpropagation Through Time across sequence unrolling).
 
@@ -23,7 +23,7 @@ SPWM is a biologically grounded, forward-only spiking recurrent world model desi
                                          ▼
                       ┌──────────────────────────────────────┐
                       │  Topological SpatialSoftmax Encoder   │
-                      │  Conv2D -> Spatial Softmax (16 kp)   │
+                      │  Conv2D [16, 32] -> Spatial Softmax  │
                       └───────┬──────────────────────┬───────┘
                               │                      │
                    x_t [128]  │                      │ Keypoints: q_sensor ∈ [-1, 1]^32
@@ -42,15 +42,15 @@ SPWM is a biologically grounded, forward-only spiking recurrent world model desi
         │     • Autonomous mode:  q_{t+1} = clamp(q_t + tanh(W_vel · s̄_p), -1, 1)│
         │                                                                        │
         │   Momentum State p ∈ R^96 (ALIF Population):                           │
-        │     • Port-Hamiltonian Recurrence: W_rec = J - R                       │
-        │       J = 0.5 * (S - S^T)  [Conservative skew-symmetric flow]         │
-        │       R = diag(softplus(r) + ϵ_diss)  [Dissipative damping]           │
-        │     • Dual Timescale Memory:                                           │
-        │       - Reactive pool (48 units): β_mem = 0.80, β_adapt = 0.90         │
-        │       - Deep context pool (48 units): β_mem = 0.80, β_adapt = 0.985   │
+        │     • Somatic current: I_soma = W_in ϵ_t + W_rec p_{t-1} + W_q q_{t-1} │
+        │     • Dual Timescale Memory Hierarchy:                                 │
+        │       - Reactive pool (64 units / 50%): β_adapt = 0.90                 │
+        │       - Deep context pool (64 units / 50%): β_adapt = 0.985            │
         │     • Intrinsic Homeostatic Adaptive Threshold:                        │
         │       V_th,t = V_th0 + γ · b_t  (γ = 0.18, V_th0 = 1.0)               │
         │       b_t = β_adapt · b_{t-1} + (1 - β_adapt) · s_{t-1}                │
+        │     • Spike EMA Buffer: s̄_{p,t} = β_ema · s̄_{p,t-1} + (1 - β_ema) s_t  │
+        │     • Latent p fusion: p_t = LayerNorm(W_spk s_t + W_mem tanh(V_t))    │
         └───────────────────────────────────┬────────────────────────────────────┘
                                             │
                                   z_t = [q_t, p_t] ∈ R^128
@@ -93,179 +93,144 @@ The core recurrent units are ALIF cells equipped with dynamic homeostatic thresh
 ### 2.2. Multi-Timescale Spiking Memory Hierarchy
 Implemented in [`spwm/models/memory.py`](file:///Users/Mattia/Desktop/Studies/Temp/spwm/models/memory.py).
 
-The 96-dimensional momentum ALIF population is partitioned into two distinct functional timescale pools:
-- **Reactive Pool (48 neurons)**: $\beta_{\text{adapt}} = 0.90$ (fast adaptation, reactive to rapid trajectory perturbations).
-- **Deep Context Pool (48 neurons)**: $\beta_{\text{adapt}} = 0.985$ (slow adaptation, long-horizon temporal memory).
+The momentum ALIF population is partitioned into two distinct functional timescale pools:
+- **Reactive Pool (Tier 1)**: $\beta_{\text{adapt}} = 0.90$ (fast adaptation, reactive to rapid trajectory perturbations and bounces).
+- **Deep Context Pool (Tier 2)**: $\beta_{\text{adapt}} = 0.985$ (slow adaptation, long-horizon temporal context and momentum memory).
 - Filtered spike trains are maintained via exponential moving average (EMA):
   $$\bar{s}_{p, t} = \beta_{\text{ema}} \bar{s}_{p, t-1} + (1 - \beta_{\text{ema}}) s_{p, t}, \quad \text{with } \beta_{\text{ema}} = 0.90$$
 
 ---
 
-### 2.3. Sensory Frontend: Spatial Softmax Keypoint Encoder
-Implemented in [`spwm/models/encoder.py`](file:///Users/Mattia/Desktop/Studies/Temp/spwm/models/encoder.py).
-
-Differential event frames $E_t \in \mathbb{R}^{B \times 2 \times 32 \times 32}$ are processed into a compact topological keypoint bottleneck:
-1. **Convolutional Feature Extraction**:
-   $$\text{Conv2D}(2 \to 16, k=3, s=2) \to \text{GroupNorm} \to \text{SiLU} \to \text{Conv2D}(16 \to 32, k=3, s=2) \to \text{GroupNorm} \to \text{SiLU}$$
-2. **Differentiable Spatial Softmax**:
-   Converts feature channels into $K=16$ normalized continuous 2D centers of mass:
-   $$u_k = \sum_{x, y} \text{Softmax}_{x,y}(F_k / \tau) \cdot x_{\text{grid}}, \quad v_k = \sum_{x, y} \text{Softmax}_{x,y}(F_k / \tau) \cdot y_{\text{grid}}$$
-   producing $q_{\text{sensor}, t} \in [-1, 1]^{32}$.
-3. **Linear Projection**:
-   $$x_t = \text{Linear}(32 \to 128)(q_{\text{sensor}, t})$$
-
----
-
-### 2.4. Port-Hamiltonian Spiking Latent Dynamics
+### 2.3. Symplectic Phase Space Decomposition $z = [q, p]$
 Implemented in [`spwm/models/latent_dynamics.py`](file:///Users/Mattia/Desktop/Studies/Temp/spwm/models/latent_dynamics.py).
 
-The latent space is structured as a Canonical Phase Space $z_t = [q_t, p_t] \in \mathbb{R}^{128}$ ($q \in \mathbb{R}^{32}$, $p \in \mathbb{R}^{96}$).
-
-1. **Port-Hamiltonian Recurrence**:
-   Recurrent connections within the $p$ momentum population are parameterized as:
-   $$W_{\text{rec}} = J - R$$
-   - **Conservative Skew-Symmetric Matrix**: $J = \frac{1}{2}(S - S^T)$ with $J^T = -J$.
-   - **Dissipative Damping Matrix**: $R = \text{diag}(\text{softplus}(r) + \epsilon_{\text{diss}})$, $\epsilon_{\text{diss}} = 10^{-4}$.
-   - **Lyapunov Stability**: Guarantees all eigenvalues satisfy $\text{Re}(\lambda(W_{\text{rec}})) \le -\epsilon_{\text{diss}}$, preventing explosive chaotic bifurcations during infinite open-loop rollouts.
-
-2. **Somatic Input Assembly**:
-   $$I_{\text{soma}, t} = W_{\text{in}} \epsilon_t + W_{\text{rec\_proj}} (W_{\text{rec}} p_{t-1}) + W_q q_{t-1}$$
-
-3. **Momentum Fusion**:
-   $$p_t = \text{LayerNorm}\left(W_{\text{fuse\_spk}} s_{p, t} + W_{\text{fuse\_mem}} \tanh(V_t)\right)$$
-
-4. **Dual-Mode Coordinate Update ($q_t$)**:
-   - **Observation Mode (Sensory frame present)**:
-     $$q_t = q_{\text{sensor}, t}$$
-   - **Autonomous Mode (Sensors off / rollouts)**:
-     $$v_t = W_{\text{vel}} \bar{s}_{p, t}, \quad q_{t+1} = \text{clamp}(q_t + \tanh(v_t), -1.0, 1.0)$$
+The latent state $z \in \mathbb{R}^{128}$ is split into:
+1. **Generalized Position / Coordinate Representation ($q \in \mathbb{R}^{32}$)**:
+   - Extracted directly from 16 2D spatial keypoints $(x_k, y_k) \in [-1, 1]^{32}$ via the `SpatialSoftmax` sensory encoder.
+   - **Observation Mode**: $q_t = q_{\text{sensor}, t}$.
+   - **Autonomous Mode (Rollout)**: Evaluates velocity integration:
+     $$q_{t+1} = \text{clamp}(q_t + \tanh(W_{\text{vel}} \cdot \bar{s}_{p, t}), -1.0, 1.0)$$
+2. **Generalized Momentum / Internal Dynamical State ($p \in \mathbb{R}^{96}$)**:
+   - Driven by the ALIF multi-timescale spiking population:
+     $$p_t = \text{LayerNorm}(W_{\text{spk}} s_t + W_{\text{mem}} \tanh(V_t))$$
+   - Recurrent somatic current combines sensory predictive error, momentum recurrence, and coordinate state:
+     $$I_{\text{soma}, t} = W_{\text{in}} \epsilon_t + W_{\text{rec}} p_{t-1} + W_q q_{t-1}$$
 
 ---
 
-### 2.5. Latent Predictor & Physical Decoder Probe
-Implemented in [`spwm/models/predictor.py`](file:///Users/Mattia/Desktop/Studies/Temp/spwm/models/predictor.py).
+### 2.4. Topological SpatialSoftmax Event Encoder
+Implemented in [`spwm/models/encoder.py`](file:///Users/Mattia/Desktop/Studies/Temp/spwm/models/encoder.py).
 
-1. **Latent Predictor ($\hat{z}_{t+1}$)**:
-   A 2-layer residual MLP with LayerNorm and SiLU activations:
-   $$\hat{z}_{t+1} = z_t + \text{MLP}_{128 \to 256 \to 128}(z_t)$$
-2. **Physical Decoder Probe**:
-   Decoupled linear probes projecting directly from canonical phase components:
-   - Position: $\hat{pos}_t = W_{\text{pos}} q_t$
-   - Velocity: $\hat{vel}_t = W_{\text{vel\_probe}} \bar{p}_t$
+Processes incoming 2-channel event frames $E_t \in \mathbb{R}^{2 \times 32 \times 32}$:
+- **Convolutional Feature Extractor**: Conv2D layers with channel dims `[16, 32]` and stride 2.
+- **Spatial Softmax**: Computes normalized expected center-of-mass coordinates for 16 feature keypoints:
+  $$q_{\text{sensor}, k} = \sum_{u, v} \text{softmax}_{u, v}(F_k(u, v)) \cdot (u, v)^T \in [-1, 1]^2$$
+- **Linear Projection**: Maps flattened convolutional features to sensory embedding $x_t \in \mathbb{R}^{128}$.
 
 ---
 
-## 3. Workflow & Data Flow
-
-### 3.1. Online Single-Step Execution Loop (`step`)
-```mermaid
-sequenceDiagram
-    autonumber
-    participant S as Event Camera
-    participant E as EventEncoder
-    participant PC as Predictive Coding
-    participant D as LatentDynamics (ALIF)
-    participant P as LatentPredictor
-    participant EP as e-prop Plasticity Buffer
-
-    S->>E: Event Frame E_t [2, 32, 32]
-    E->>E: Conv2D + SpatialSoftmax -> x_t, q_sensor,t
-    PC->>PC: Compute Prediction Error ϵ_t = x_t - W_pred z_{t-1}
-    PC->>D: Inject ϵ_t & q_sensor,t
-    D->>D: Somatic current -> ALIF spike/mem -> Port-Hamiltonian p_t, q_t
-    D->>P: Latent state z_t = [q_t, p_t]
-    P->>P: Predict next latent ẑ_{t+1}
-    D->>EP: Accumulate Forward-Only e-prop ΔW (O(1) Memory)
-```
-
-### 3.2. Autonomous Rollout Loop (`predict_future`)
-When making multi-step predictions without sensory events:
-1. Sensory error is set to zero ($\epsilon_t = \mathbf{0}$).
-2. Momentum state $p_t$ evolves autonomously under internal Port-Hamiltonian dynamics $W_{\text{rec}} = J - R$.
-3. Coordinates integrate decoded velocity: $q_{t+1} = \text{clamp}(q_t + \tanh(W_{\text{vel}} \bar{s}_p), -1, 1)$.
-4. Position is read out directly from $q_{t+1}$.
+### 2.5. Latent Predictor & Physical Probes
+- **Latent Predictor** ([`spwm/models/predictor.py`](file:///Users/Mattia/Desktop/Studies/Temp/spwm/models/predictor.py)):
+  $$\hat{z}_{t+1} = z_t + \text{MLP}(z_t)$$
+  Two-layer MLP with LayerNorm, GELU activations, and hidden dimension 256.
+- **Physical Decoder Probes** ([`spwm/models/world_model.py`](file:///Users/Mattia/Desktop/Studies/Temp/spwm/models/world_model.py)):
+  - **Position Head**: Linear probe $q_t \in \mathbb{R}^{32} \to (x, y) \in \mathbb{R}^2$.
+  - **Velocity Head**: Linear probe $p_t \in \mathbb{R}^{96} \to (v_x, v_y) \in \mathbb{R}^2$.
 
 ---
 
-## 4. Learning Algorithms & Plasticity
+## 3. Learning Algorithm & Loss Formulation
 
-### 4.1. Forward-Only e-prop Plasticity ($\mathcal{O}(1)$ Memory)
-Implemented in [`spwm/learning/eprop.py`](file:///Users/Mattia/Desktop/Studies/Temp/spwm/learning/eprop.py) and [`spwm/models/world_model.py`](file:///Users/Mattia/Desktop/Studies/Temp/spwm/models/world_model.py).
+### 3.1. Online Forward-Only $e$-prop Learning
+Implemented in [`spwm/learning/trainer.py`](file:///Users/Mattia/Desktop/Studies/Temp/spwm/learning/trainer.py).
 
-SPWM replaces global BPTT with local forward-only eligibility traces:
-1. **Sensory Predictor Update**:
-   $$\Delta W_{\text{pred}} = \frac{1}{B \cdot T} \sum_{t=1}^T \epsilon_t \otimes z_{t-1}$$
-2. **Latent Feedback & Feedback Alignment**:
-   $$L_{\text{lat}} = \epsilon_t W_{\text{pred}} + \lambda_{\text{kin}} (\epsilon_{\text{kin}} B_{\text{kin\_feedback}})$$
-   where $B_{\text{kin\_feedback}} \in \mathbb{R}^{4 \times 128}$ is a fixed random orthogonal feedback alignment matrix.
-3. **Synaptic Weight Updates**:
-   - Input synapses: $\Delta W_{\text{in}} = \frac{1}{B \cdot T} L_{\text{mem}}^T \epsilon_t$
-   - Recurrent Port-Hamiltonian parameters: $\Delta S = \frac{1}{2}(\Delta W_{\text{rec}} - \Delta W_{\text{rec}}^T)$, $\Delta r = -\text{diag}(\Delta W_{\text{rec}}) \odot \sigma(r)$
-   - Velocity projection: $\Delta W_{\text{vel}} = \frac{1}{B \cdot T} L_q^T \bar{s}_p$
+The recurrent spiking latent dynamics are updated via forward-only local synaptic plasticity without Backpropagation Through Time (BPTT):
+- **Eligibility Traces**: Maintain local presynaptic and postsynaptic activity traces.
+- **Learning Signal**:
+  $$L_t = \epsilon_t + \lambda_{\text{kin\_feedback}} \cdot \text{Grad}_{\text{probe}}$$
+- **Synaptic Weight Updates**:
+  $$\Delta W_{\text{in}} = \frac{1}{B \cdot T} L_t^T x_t, \quad \Delta W_{\text{rec}} = \frac{1}{B \cdot T} L_t^T p_{t-1}, \quad \Delta W_q = \frac{1}{B \cdot T} L_t^T q_{t-1}$$
+  Applied with local learning rate $\eta_{\text{local}} = 0.0002$ and gradient clipping $[-0.1, 0.1]$.
 
-### 4.2. Multi-Objective Composite Loss
-Implemented in [`spwm/learning/losses.py`](file:///Users/Mattia/Desktop/Studies/Temp/spwm/learning/losses.py):
+### 3.2. Total Loss Objective
+$$\mathcal{L}_{\text{total}} = \lambda_{\text{pred}} \mathcal{L}_{\text{pred}} + \lambda_{\text{multi}} \mathcal{L}_{\text{multi}} + \lambda_{\text{var}} \mathcal{L}_{\text{var}} + \lambda_{\text{sparse}} \mathcal{L}_{\text{sparse}} + \lambda_{\text{probe}} \mathcal{L}_{\text{probe}} + \lambda_{\text{coord}} \mathcal{L}_{\text{coord}}$$
 
-$$\mathcal{L}_{\text{total}} = \mathcal{L}_{\text{pred}} + \lambda_{\text{coord}} \mathcal{L}_{\text{coord}} + \lambda_{\text{probe}} \mathcal{L}_{\text{probe}} + \lambda_{\text{var}} \mathcal{L}_{\text{var}}$$
-
-- **$\mathcal{L}_{\text{pred}}$**: Mean squared error between predicted next latent and target latent $\|\hat{z}_{t+1} - z_{t+1}\|_2^2$.
-- **$\mathcal{L}_{\text{coord}}$ ($\lambda_{\text{coord}} = 0.15 \to 1.0$)**: Direct MSE loss coupling the SpatialSoftmax keypoint cloud to true 2D object position.
-- **$\mathcal{L}_{\text{probe}}$ ($\lambda_{\text{probe}} = 0.5$)**: Kinematic decoder supervised loss on true position and velocity.
-- **$\mathcal{L}_{\text{var}}$ ($\lambda_{\text{var}} = 0.05$)**: Anti-collapse VICReg variance hinge loss maintaining $\text{std}(z) \ge 1.0$.
+Where:
+- $\mathcal{L}_{\text{pred}} = \frac{1}{T} \sum_{t=1}^{T} \|\hat{z}_t - z_t\|^2$ (1-step next-latent prediction error)
+- $\mathcal{L}_{\text{multi}}$: Multi-step rollout consistency loss ($H=3$)
+- $\mathcal{L}_{\text{var}} = \max(0, \sigma_{\text{target}} - \text{std}(z))$ (Latent variance collapse prevention)
+- $\mathcal{L}_{\text{sparse}} = (\bar{s} - s_{\text{target}})^2$ (Spike rate regularization)
+- $\mathcal{L}_{\text{probe}} = \text{MSE}(\hat{y}_{\text{kin}}, y_{\text{kin}})$ (Physical kinematic probe loss)
+- $\mathcal{L}_{\text{coord}} = \text{MSE}(q_{\text{sensor}}, \text{coords}_{\text{true}})$ (Topological keypoint supervision)
 
 ---
 
-## 5. Parameter Reference
+## 4. Default Configuration Reference (`spwm_v4_3.yaml`)
 
-| Component | Parameter | Default Value | Description |
-|---|---|---|---|
-| **Environment** | `height`, `width` | `32, 32` | Resolution of the event sensor |
-| | `dt` | `0.05` | Simulation time increment |
-| | `event_threshold` | `0.08` | Log-intensity change threshold for spike emission |
-| | `num_objects` | `1` | Number of moving kinematic targets |
-| **Encoder** | `conv_channels` | `(16, 32)` | Channel depths of 2D convolutional layers |
-| | `num_keypoints` | `16` | Spatial Softmax keypoint pairs ($K \times 2 = 32$ coordinates) |
-| | `encoder_dim` | `128` | Output embedding dimension $x_t$ |
-| **Latent Space** | `latent_dim` | `128` | Total latent state dimension $z = [q, p]$ |
-| | `q_dim` | `32` | Generalized spatial coordinate dimension |
-| | `p_dim` | `96` | Spiking momentum population dimension |
-| | `ema_decay` | `0.90` | Decay rate for filtered spike buffer $\bar{s}_p$ |
-| | `epsilon_diss` | `1e-4` | Minimum dissipation floor for Port-Hamiltonian damping $R$ |
-| **ALIF Neurons** | `beta_mem` | `0.80` | Sub-threshold membrane voltage retention |
-| | `betas_adapt` | `(0.90, 0.985)` | Adaptation decays for fast (48) and slow (48) pools |
-| | `v_th0` | `1.0` | Baseline resting firing threshold |
-| | `gamma` | `0.18` | Dynamic threshold coupling coefficient |
-| | `surrogate` | `"atan"` ($\alpha=2.0$) | Surrogate gradient formulation |
-| **Predictor** | `hidden_dim` | `256` | Hidden dimension of residual transition MLP |
-| **Optimizer** | `learning_rate` | `2e-4` | Online forward-only learning rate |
-| | `local_lr` | `2e-4` | Local e-prop parameter update scale |
-| | `probe_lr` | `5e-4` | Dedicated AdamW learning rate for probe decoders |
-| | `weight_decay` | `1e-4` | L2 weight regularization |
+```yaml
+project:
+  name: "spwm_v4_3"
+  seed: 42
 
----
+environment:
+  num_objects: 1
+  height: 32
+  width: 32
+  event_threshold: 0.08
 
-## 6. Directory Structure & Key Files
+data:
+  total_trajectories: 600
+  train_split: 0.8
+  val_split: 0.1
+  sequence_length: 150
+  batch_size: 32
 
-```
-spwm/
-├── data/
-│   ├── synthetic_world.py      # 2D ball kinematics simulator with boundary bounce
-│   ├── event_camera.py         # Neuromorphic intensity differential sensor simulator
-│   └── datasets.py             # PyTorch Dataset and caching data loaders
-├── models/
-│   ├── neurons.py              # LIF and ALIF spiking neuron cells with dynamic thresholds
-│   ├── memory.py               # MultiTimescaleMemory multi-tier population container
-│   ├── surrogate.py            # Differentiable surrogate gradient functions (Atan, FastSigmoid)
-│   ├── encoder.py              # Conv2D + SpatialSoftmax topological keypoint frontend
-│   ├── latent_dynamics.py      # Port-Hamiltonian (W_rec = J - R) canonical phase dynamics
-│   ├── predictor.py            # Latent transition predictor & physical linear probes
-│   └── world_model.py          # Unified SPWM module: step(), forward(), predict_future()
-├── learning/
-│   ├── eprop.py                # ALIF dual eligibility trace forward-only plasticity engine
-│   ├── losses.py               # SPWMLoss (prediction, coordinate, probe, VICReg variance)
-│   ├── metrics.py              # Rollout MSE, position error, velocity error, spike rates
-│   └── trainer.py              # Online O(1) streaming trainer with curriculum gating
-└── configs/
-    ├── base.yaml               # Baseline system hyperparameter schema
-    └── experiments/            # Experiment-specific configuration presets
+model:
+  type: "spwm"
+  encoder_type: "spatial_softmax"
+  num_keypoints: 16
+  encoder_dim: 128
+  encoder_conv_channels: [16, 32]
+  latent_dim: 128        # total = q_dim + p_dim (32 + 96)
+  q_dim: 32
+  p_dim: 96
+  predictor_hidden_dim: 256
+  local_lr: 0.0002
+  lambda_kin_feedback: 1.0
+  ema_decay: 0.9        # EMA decay for spike buffer
+  rls_enabled: false
+
+neuron:
+  model: "alif"
+  threshold: 1.0
+  beta_mem: 0.80
+  gamma: 0.18
+  surrogate: "atan"
+  surrogate_alpha: 2.0
+
+memory:
+  num_timescales: 2
+  timescale_dims: [64, 64]
+  betas: [0.90, 0.985]
+
+training:
+  epochs: 40
+  learning_rate: 0.0002
+  probe_lr: 0.0005
+  probe_weight_decay: 0.01
+  weight_decay: 0.0001
+  batch_size: 32
+  grad_clip_norm: 1.0
+
+loss:
+  lambda_pred: 1.0
+  lambda_multi: 0.5
+  lambda_var: 0.1
+  lambda_sparse: 0.001
+  lambda_probe: 2.0
+  lambda_coord: 0.15
+
+evaluation:
+  save_best_metric: "val_pos_err"
+  rollout_horizons: [1, 5, 10, 25, 50]
 ```

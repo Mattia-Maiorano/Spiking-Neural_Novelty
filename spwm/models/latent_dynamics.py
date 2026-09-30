@@ -1,18 +1,7 @@
 """
 Recurrent Spiking Latent Dynamics with ALIF Memory Hierarchy.
-SPWM-v5.0: Pure Port-Hamiltonian Recurrent Dynamics.
-
-Port-Hamiltonian recurrence:
-    W_rec = J - R
-    J = 0.5 * (S - S^T)   (skew-symmetric, conservative Hamiltonian flow)
-    R = diag(softplus(r) + epsilon_diss)   (positive definite, dissipative)
-
-Rollout velocity projection:
-    v_t = W_vel @ s_bar_p_t
-    q_{t+1} = clamp(q_t + tanh(v_t), -1, 1)
-
-Observation mode:
-    q_t = q_sensor,t
+Integrates error-routed sensory input with recurrent feedback and dual-timescale
+ALIF populations (Reactive 50%, Deep Context 50%).
 """
 
 from __future__ import annotations
@@ -26,7 +15,7 @@ from spwm.models.memory import MultiTimescaleMemory, MultiTimescaleState, comput
 
 @dataclass
 class DynamicsState:
-    """Recurrent state container for SpikingLatentDynamics (SPWM-v5.0)."""
+    """Recurrent state container for SpikingLatentDynamics."""
     memory_state: MultiTimescaleState
     z_prev: torch.Tensor  # [B, latent_dim] (concatenated q and p)
     ema_spikes: torch.Tensor  # [B, total_memory_dim] EMA of spikes
@@ -45,20 +34,7 @@ class DynamicsOutput:
 
 class SpikingLatentDynamics(nn.Module):
     """
-    Recurrent Spiking Latent Dynamics with ALIF Core (SPWM-v5.0).
-
-    Port-Hamiltonian recurrence (pure):
-        W_rec = J - R,  J = 0.5*(S - S^T),  R = diag(softplus(r) + eps_diss)
-        I_soma,t = W_rec @ s_bar_p,t
-
-    Velocity decoding:
-        v_t = W_vel @ s_bar_p_t
-
-    Coordinate update (autonomous rollout):
-        q_{t+1} = clamp(q_t + tanh(v_t), -1, 1)
-
-    Observation mode:
-        q_t = q_sensor,t
+    Recurrent Spiking Latent Dynamics with ALIF Core (SPWM-v3).
     """
 
     def __init__(
@@ -75,14 +51,10 @@ class SpikingLatentDynamics(nn.Module):
         gamma: float = 0.18,
         surrogate_name: str = "atan",
         surrogate_alpha: float = 2.0,
-        delta_t: float = 1.0,
-        epsilon_diss: float = 1e-4,
     ) -> None:
         super().__init__()
         self.input_dim = input_dim
         self.latent_dim = latent_dim  # total latent dim (q + p)
-        self.delta_t = delta_t
-        self.epsilon_diss = epsilon_diss
 
         if q_dim is None and p_dim is None:
             q_dim = latent_dim // 4
@@ -95,14 +67,12 @@ class SpikingLatentDynamics(nn.Module):
         self.q_dim = q_dim
         self.p_dim = p_dim
         self.ema_decay = ema_decay
-        assert q_dim + p_dim == latent_dim, (
-            f"q_dim ({q_dim}) + p_dim ({p_dim}) must equal latent_dim ({latent_dim})"
-        )
+        assert q_dim + p_dim == latent_dim, f"q_dim ({q_dim}) + p_dim ({p_dim}) must equal latent_dim ({latent_dim})"
 
         if timescale_dims is not None:
             self.timescale_dims = list(timescale_dims)
         else:
-            self.timescale_dims = list(compute_tier_dims(self.latent_dim, num_tiers=2))
+            self.timescale_dims = list(compute_tier_dims(latent_dim, num_tiers=2))
 
         self.total_memory_dim = sum(self.timescale_dims)
 
@@ -117,23 +87,18 @@ class SpikingLatentDynamics(nn.Module):
             surrogate_alpha=surrogate_alpha,
         )
 
-        # Synaptic projection: sensory error -> somatic currents
+        # Synaptic projections: sensory error + recurrent feedback -> somatic currents
         self.input_proj = nn.Linear(input_dim, self.total_memory_dim)
-
-        # Port-Hamiltonian parameterization for recurrent dynamics on p
-        # W_rec = J - R where J is skew-symmetric (conservative) and R is positive diagonal (dissipative)
-        self.S = nn.Parameter(torch.randn(self.p_dim, self.p_dim))  # unconstrained base matrix
-        self.r = nn.Parameter(torch.randn(self.p_dim))  # log-damping vector
-        self.rec_proj = nn.Linear(self.p_dim, self.total_memory_dim, bias=False)
-
+        # Recurrent projection now receives only p component
+        self.recurrent_proj = nn.Linear(self.p_dim, self.total_memory_dim, bias=False)
         # Projection from q component to somatic current
         self.q_proj = nn.Linear(self.q_dim, self.total_memory_dim, bias=False)
 
-        # Direct velocity projection: W_vel maps s_bar_p -> coordinate velocity
+        # Linear map from EMA of spikes to q velocity update
         self.W_vel = nn.Linear(self.total_memory_dim, self.q_dim, bias=False)
         nn.init.normal_(self.W_vel.weight, mean=0.0, std=0.01)
 
-        # Latent fusion layer produces p component
+        # Latent fusion layer now produces only p component
         self.fuse_spikes = nn.Linear(self.total_memory_dim, self.p_dim)
         self.fuse_mems = nn.Linear(self.total_memory_dim, self.p_dim, bias=False)
         self.norm = nn.LayerNorm(self.p_dim)
@@ -141,30 +106,12 @@ class SpikingLatentDynamics(nn.Module):
     def init_state(self, batch_size: int, device: Optional[torch.device] = None) -> DynamicsState:
         """Initializes quiescent dynamics state."""
         mem_state = self.memory.init_state(batch_size, device=device)
+        # Initialize q and p to zeros
         q0 = torch.zeros(batch_size, self.q_dim, device=device)
         p0 = torch.zeros(batch_size, self.p_dim, device=device)
         z0 = torch.cat([q0, p0], dim=1)
         ema0 = torch.zeros(batch_size, self.total_memory_dim, device=device)
         return DynamicsState(memory_state=mem_state, z_prev=z0, ema_spikes=ema0)
-
-    def _effective_recurrent_weight(self) -> torch.Tensor:
-        """Compute skew-symmetric J and positive diagonal R, return W = J - R.
-        J = 0.5 * (S - S.T) ensures skew-symmetry (conservative Hamiltonian flow).
-        R = diag(softplus(r) + epsilon_diss) ensures positive definiteness (dissipation).
-        Re(lambda(W_rec)) <= -epsilon_diss for all eigenvalues -> Lyapunov stable.
-        """
-        J = 0.5 * (self.S - self.S.T)
-        R = torch.diag(torch.nn.functional.softplus(self.r) + self.epsilon_diss)
-        return J - R
-
-    def _effective_recurrent_current(self, p: torch.Tensor) -> torch.Tensor:
-        """Apply the effective recurrent weight to p: I_soma = W_rec @ p."""
-        weight = self._effective_recurrent_weight()
-        return torch.nn.functional.linear(p, weight)
-
-    def get_effective_w_rec(self) -> torch.Tensor:
-        """Public accessor for the current effective recurrent weight matrix (J - R)."""
-        return self._effective_recurrent_weight()
 
     def step(
         self,
@@ -173,17 +120,13 @@ class SpikingLatentDynamics(nn.Module):
         sensory_keypoints: Optional[torch.Tensor] = None,
     ) -> Tuple[torch.Tensor, DynamicsState]:
         """
-        Executes a single recurrent dynamical step (SPWM-v5.0 Port-Hamiltonian Flow):
+        Executes a single recurrent dynamical step:
+            ϵ_t, z_(t-1) -> I_soma -> MultiTimescaleMemory (ALIF) -> z_t
 
-        1. Momentum Evaluation (Port-Hamiltonian):
-           I_soma,t = I_sensory + rec_proj(W_rec @ p_prev) + q_proj(q_prev)
-           p_(t+1), s_p_(t+1) = ALIF_Step(p_t, I_soma,t)
-           s_bar_p_(t+1) = ema_decay * s_bar_p,t + (1 - ema_decay) * s_p_(t+1)
-
-        2. Coordinate Update (Dual-mode):
-           Observation: q_t = q_sensor,t
-           Autonomous:  v_t = W_vel @ s_bar_p
-                        q_{t+1} = clamp(q_t + tanh(v_t), -1, 1)
+        In observation mode (sensory_keypoints is not None):
+            q_t is set directly from SpatialSoftmax keypoints (bounded in [-1, 1]).
+        In autonomous mode (sensory_keypoints is None):
+            q_t evolves via bounded velocity update: q_t = clamp(q_(t-1) + tanh(W_vel(ema_spikes)), -1, 1).
         """
         B = sensory_input.shape[0]
         device = sensory_input.device
@@ -195,42 +138,35 @@ class SpikingLatentDynamics(nn.Module):
         q_prev = state.z_prev[:, :self.q_dim]
         p_prev = state.z_prev[:, self.q_dim:]
 
-        # Phase 1: Somatic current under Port-Hamiltonian field + q projection
-        recurrent_p = self._effective_recurrent_current(p_prev)
-        recurrent_current = self.rec_proj(recurrent_p)
-        sensory_current = self.input_proj(sensory_input)
-        q_current = self.q_proj(q_prev)
+        # 1. Somatic synaptic current receives sensory input, recurrent from p, and q projection
+        soma_current = self.input_proj(sensory_input) + self.recurrent_proj(p_prev) + self.q_proj(q_prev)
 
-        soma_current = sensory_current + recurrent_current + q_current
-
+        # 2. Multi-timescale ALIF memory update (operates on p component)
         spikes, new_mem_state = self.memory(
             synaptic_inputs=soma_current,
             state=state.memory_state,
         )
 
+        # 3. Compute new p latent via fusion of spikes and analog membranes
         mem_analog = torch.tanh(new_mem_state.concatenated_mems)
         p_next = self.norm(self.fuse_spikes(spikes) + self.fuse_mems(mem_analog))
 
-        # Update filtered spike train (s_bar_p)
+        # 4. Update EMA of spikes (per batch element)
         ema_spikes = self.ema_decay * state.ema_spikes + (1.0 - self.ema_decay) * spikes
 
-        # Phase 2: Coordinate update (Dual-mode: sensory observation vs autonomous rollout)
+        # 5. Dual-mode update for q:
+        # - Observation mode: directly clamp/assign from raw SpatialSoftmax keypoints in [-1, 1]
+        # - Autonomous mode: integrate bounded delta from spike EMA
         if sensory_keypoints is not None:
-            # Observation mode: ground-truth coordinate injection
             q_next = sensory_keypoints
         else:
-            # Autonomous mode: standard linear velocity projection (v5.0)
             delta_q = torch.tanh(self.W_vel(ema_spikes))
             q_next = torch.clamp(q_prev + delta_q, -1.0, 1.0)
 
-        # Concatenate updated q and p to form next latent
+        # 6. Concatenate updated q and p to form next latent
         z_next = torch.cat([q_next, p_next], dim=1)
 
-        new_state = DynamicsState(
-            memory_state=new_mem_state,
-            z_prev=z_next,
-            ema_spikes=ema_spikes,
-        )
+        new_state = DynamicsState(memory_state=new_mem_state, z_prev=z_next, ema_spikes=ema_spikes)
         return z_next, new_state
 
     def forward(

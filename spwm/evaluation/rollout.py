@@ -91,11 +91,7 @@ class RolloutEvaluator:
                 max_eval_h = min(max(self.horizons), T - t_warmup - 1)
 
                 if max_eval_h > 0:
-                    rollout_res = self.model.predict_future(z_warmup, horizon=max_eval_h)
-                    if isinstance(rollout_res, dict):
-                        rollout_predictions = rollout_res["predictions"]
-                    else:
-                        rollout_predictions = rollout_res  # [B, max_h, D]
+                    rollout_predictions = self.model.predict_future(z_warmup, horizon=max_eval_h)  # [B, max_h, D]
 
                     for h in self.horizons:
                         if h <= max_eval_h and (t_warmup + 1 + h) <= T:

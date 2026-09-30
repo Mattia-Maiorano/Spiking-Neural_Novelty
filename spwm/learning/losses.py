@@ -12,8 +12,9 @@ Implements:
   providing gradient that steers the Conv2D + SpatialSoftmax frontend toward real
   object geometry instead of high-contrast spurious features.
 
-Total loss (v5.0):
-    L_total = L_pred + 1.0 * L_coord + 0.5 * L_probe + 0.05 * L_var
+  Total loss (v4.2):
+    L_total(t) = L_pred(t) + λ_coord · L_coord(t) + λ_sparse · L_reg(t)
+  where λ_coord ∈ [0.1, 0.2] is the coordinate coupling strength.
 """
 
 from __future__ import annotations
@@ -51,23 +52,36 @@ class LossOutput:
 
 class SPWMLoss(nn.Module):
     """
-    Composite Loss for Spiking Predictive World Model (v5.0).
+    Composite Loss for Spiking Predictive World Model (v4.2).
 
     Formula:
-        L_total = L_pred + 1.0 * L_coord + 0.5 * L_probe + 0.05 * L_var
+        L_total(t) = λ_pred·L_pred + λ_multi·L_multi + λ_var·L_var
+                   + λ_sparse·L_sparse + λ_probe·L_probe
+                   + λ_coord·L_coord          # new in v4.2
+
+    L_coord: Auxiliary spatial keypoint loss.
+        Penalizes the MSE between raw Spatial-Softmax keypoints (u_k, v_k) ∈ [-1,1]^2
+        and the GT object xy-position projected into the normalized image frame.
+        Gradient flows unobstructed through Conv2D → SpatialSoftmax → ALIF input_proj,
+        anchoring the visual frontend to Euclidean object coordinates before any
+        symplectic / higher-order structure is imposed.
+
+    Args:
+        lambda_coord: coupling strength for L_coord (recommended 0.10–0.20).
+                      Set to 0.0 to reproduce v4.1 behaviour.
     """
 
     def __init__(
         self,
         lambda_pred: float = 1.0,
-        lambda_multi: float = 0.0,
-        lambda_var: float = 0.05,
-        lambda_sparse: float = 0.0,
+        lambda_multi: float = 0.5,
+        lambda_var: float = 0.1,
+        lambda_sparse: float = 0.001,
         lambda_probe: float = 0.5,
-        lambda_coord: float = 1.0,    # v4.2+: auxiliary coordinate coupling
+        lambda_coord: float = 0.0,    # v4.2: auxiliary coordinate coupling
         multi_step_horizon: int = 3,
         target_variance: float = 1.0,
-        target_spike_rate: float = 0.31,
+        target_spike_rate: float = 0.05,
     ) -> None:
         super().__init__()
         self.lambda_pred = lambda_pred
@@ -179,8 +193,9 @@ class SPWMLoss(nn.Module):
         if self.lambda_coord > 0.0 and keypoints is not None and true_kinematics is not None:
             l_coord = self.coordinate_loss(keypoints, true_kinematics)
 
-        # Composite total loss — v5.0 formula:
-        #   L_total = L_pred + 1.0 * L_coord + 0.5 * L_probe + 0.05 * L_var
+        # Composite total loss — v4.2 formula:
+        # L_total = L_pred + λ_coord · L_coord + λ_sparse · L_reg
+        # (full version with all auxiliary terms)
         total_loss = (
             self.lambda_pred * l_pred
             + self.lambda_multi * l_multi

@@ -69,7 +69,6 @@ def test_autonomous_rollout_shapes():
 
     # Rollout over multiple horizons including long horizon H=50
     for H in [1, 5, 10, 25, 50]:
-        res = model.predict_future(z0, horizon=H)
-        pred_rollout = res["predictions"] if isinstance(res, dict) else res
+        pred_rollout = model.predict_future(z0, horizon=H)
         assert pred_rollout.shape == (2, H, 32)
         assert not torch.isnan(pred_rollout).any()

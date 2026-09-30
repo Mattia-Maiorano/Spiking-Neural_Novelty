@@ -8,7 +8,7 @@ def test_reactive_adapts_and_decays_faster_than_deep_context():
     mem = MultiTimescaleMemory(
         timescale_dims=(1, 1),
         betas=(0.90, 0.985),
-        betas_mem=(0.80, 0.80),
+        beta_mem=0.80,
         v_th0=10.0,
     )
     state = mem.init_state(1)
@@ -26,10 +26,9 @@ def test_reactive_adapts_and_decays_faster_than_deep_context():
     fast_v = s.v_mems[0].item()
     slow_v = s.v_mems[1].item()
 
-    # Membrane decays with beta_mem=0.80: 5.0 * 0.8^3 = 5.0 * 0.512 = 2.56
-    expected_v = 5.0 * (0.80 ** 3)
-    assert pytest.approx(fast_v, rel=1e-3) == expected_v
-    assert pytest.approx(slow_v, rel=1e-3) == expected_v
+    # Membrane decays with beta_mem=0.80: 5.0 * 0.8^3 = 2.56
+    assert pytest.approx(fast_v, rel=1e-3) == 5.0 * (0.80 ** 3)
+    assert pytest.approx(slow_v, rel=1e-3) == 5.0 * (0.80 ** 3)
 
 
 def test_batch_independence():

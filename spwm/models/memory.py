@@ -70,24 +70,19 @@ def compute_tier_dims(total_dim: int, num_tiers: int = 2) -> Tuple[int, ...]:
 
 class MultiTimescaleMemory(nn.Module):
     """
-    Multi-Timescale Spiking Memory Module (SPWM-v5.0).
-    Partitions latent population into:
-    - Fast pool (48 units): beta_mem = 0.80, beta_adapt = 0.90
-    - Slow pool (48 units): beta_mem = 0.98, beta_adapt = 0.985
+    Multi-Timescale Spiking Memory Module (SPWM-v3).
+    Partitions latent population into Reactive (β_adapt=0.90) and Deep Context (β_adapt=0.985) pools.
     """
 
     DEFAULT_BETAS_ADAPT: Tuple[float, float] = (0.90, 0.985)
-    DEFAULT_BETAS_MEM: Tuple[float, float] = (0.80, 0.98)
 
     def __init__(
         self,
         timescale_dims: Optional[Sequence[int]] = None,
         total_dim: Optional[int] = None,
         betas: Optional[Sequence[float]] = None,
-        betas_mem: Optional[Sequence[float]] = None,
-        beta_mem: Union[float, Sequence[float]] = 0.80,
-        v_th_0: float = 1.0,
-        v_th0: Optional[float] = None,
+        beta_mem: float = 0.80,
+        v_th0: float = 1.0,
         gamma: float = 0.18,
         surrogate_name: str = "atan",
         surrogate_alpha: float = 2.0,
@@ -97,18 +92,11 @@ class MultiTimescaleMemory(nn.Module):
         if timescale_dims is not None:
             self.timescale_dims = list(timescale_dims)
         else:
-            dim = total_dim or 96
+            dim = total_dim or 128
             self.timescale_dims = list(compute_tier_dims(dim, num_tiers=2))
 
         self.num_timescales = len(self.timescale_dims)
         self.total_dim = sum(self.timescale_dims)
-
-        if betas_mem is not None:
-            self.pool_betas_mem = list(betas_mem)
-        elif isinstance(beta_mem, (list, tuple)):
-            self.pool_betas_mem = list(beta_mem)
-        else:
-            self.pool_betas_mem = [float(beta_mem)] * len(self.timescale_dims)
 
         if betas is not None:
             self.pool_betas_adapt = list(betas)
@@ -120,19 +108,17 @@ class MultiTimescaleMemory(nn.Module):
             else:
                 self.pool_betas_adapt = [0.95] * len(self.timescale_dims)
 
-        actual_v_th0 = v_th0 if v_th0 is not None else v_th_0
-
         self.cells = nn.ModuleList([
             ALIFCell(
                 size=dim,
-                beta_mem=b_mem,
+                beta_mem=beta_mem,
                 beta_adapt=b_adapt,
-                v_th_0=actual_v_th0,
+                v_th0=v_th0,
                 gamma=gamma,
                 surrogate_name=surrogate_name,
                 surrogate_alpha=surrogate_alpha,
             )
-            for dim, b_mem, b_adapt in zip(self.timescale_dims, self.pool_betas_mem, self.pool_betas_adapt)
+            for dim, b_adapt in zip(self.timescale_dims, self.pool_betas_adapt)
         ])
 
     def init_state(

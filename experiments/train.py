@@ -11,11 +11,7 @@ import os
 import subprocess
 import time
 from pathlib import Path
-import sys
-if hasattr(sys.stdout, "reconfigure"):
-    sys.stdout.reconfigure(encoding="utf-8")
-if hasattr(sys.stderr, "reconfigure"):
-    sys.stderr.reconfigure(encoding="utf-8")
+from typing import Any, Dict
 
 import chronicle
 import torch
@@ -74,23 +70,23 @@ def build_model(config: Dict[str, Any], device: torch.device) -> torch.nn.Module
             q_dim=model_cfg.get("q_dim", None),
             p_dim=model_cfg.get("p_dim", None),
             ema_decay=model_cfg.get("ema_decay", 0.9),
-
-            timescale_dims=tuple(mem_cfg.get("timescale_dims", (48, 48))),
+            timescale_dims=tuple(mem_cfg.get("timescale_dims", (latent_dim // 2, latent_dim // 2))),
             betas=tuple(mem_cfg.get("betas", (0.90, 0.985))),
-            beta_mem=mem_cfg.get("betas_mem", neuron_cfg.get("beta_mem", 0.80)),
+            beta_mem=neuron_cfg.get("beta_mem", 0.80),
             threshold=neuron_cfg.get("threshold", 1.0),
-            gamma=neuron_cfg.get("gamma_adapt", neuron_cfg.get("gamma", 0.18)),
+            gamma=neuron_cfg.get("gamma", 0.18),
             surrogate_name=neuron_cfg.get("surrogate", "atan"),
             surrogate_alpha=neuron_cfg.get("surrogate_alpha", 2.0),
             num_keypoints=model_cfg.get("num_keypoints", 16),
             predictor_hidden_dim=model_cfg.get("predictor_hidden_dim", 256),
             num_objects=num_objects,
             local_lr=model_cfg.get("local_lr", 1e-3),
+            # v3.4: kinematic feedback into e-prop learning signal (0.0 disables for backward-compat)
             lambda_kin_feedback=model_cfg.get("lambda_kin_feedback", 0.0),
+            # v3.5: online RLS decoder
             rls_enabled=model_cfg.get("rls_enabled", False),
             rls_forgetting=model_cfg.get("rls_forgetting", 0.99),
             rls_delta=model_cfg.get("rls_delta", 1.0),
-            epsilon_diss=float(model_cfg.get("epsilon_diss", 1e-4)),
         )
     elif model_type == "gru":
         model = GRUWorldModel(
@@ -157,7 +153,7 @@ def main() -> None:
 
     # Output directory (always overwrite without seed subfolders)
     raw_exp_name = config.get("project", {}).get("name", "experiment")
-    exp_name = raw_exp_name
+    exp_name = raw_exp_name.replace("v2", "v3")
     if args.output_dir is not None:
         save_dir = Path(args.output_dir)
     else:
@@ -200,14 +196,13 @@ def main() -> None:
     loss_cfg = config.get("loss", {})
     loss_fn = SPWMLoss(
         lambda_pred=loss_cfg.get("lambda_pred", 1.0),
-        lambda_multi=loss_cfg.get("lambda_multi", 0.0),
-        lambda_var=loss_cfg.get("lambda_var", 0.05),
-        lambda_sparse=loss_cfg.get("lambda_sparse", 0.0),
+        lambda_multi=loss_cfg.get("lambda_multi", 0.5),
+        lambda_var=loss_cfg.get("lambda_var", 0.1),
+        lambda_sparse=loss_cfg.get("lambda_sparse", 0.001),
         lambda_probe=loss_cfg.get("lambda_probe", 0.5),
-        lambda_coord=loss_cfg.get("lambda_coord", 1.0),
+        lambda_coord=loss_cfg.get("lambda_coord", 0.0),
         multi_step_horizon=loss_cfg.get("multi_step_horizon", 3),
         target_variance=loss_cfg.get("target_variance", 1.0),
-        target_spike_rate=loss_cfg.get("target_spike_rate", 0.31),
     )
 
     epochs = args.epochs if args.epochs is not None else train_cfg.get("epochs", 20)
@@ -245,11 +240,6 @@ def main() -> None:
         probe_weight_decay=probe_weight_decay,
         grad_clip_norm=train_cfg.get("grad_clip_norm", 1.0),
         learning_algorithm=train_cfg.get("learning_algorithm", "online_eprop"),
-        lr_scheduler=train_cfg.get("lr_scheduler", None),
-        scheduler_t_max=train_cfg.get("scheduler_t_max", epochs),
-        scheduler_eta_min=train_cfg.get("scheduler_eta_min", 1e-5),
-        scheduled_sampling=train_cfg.get("scheduled_sampling", config.get("scheduled_sampling", None)),
-        validation_curriculum=train_cfg.get("validation_curriculum", config.get("validation_curriculum", None)),
         device=device,
         save_dir=str(save_dir),
         start_epoch=start_epoch,

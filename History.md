@@ -534,29 +534,6 @@ Subsequent untested iterations after v5.0 attempted heuristic patches that cumul
 
 ---
 
-## Release SPWM-v5.0 Fix: Somatic Current Unattenuation & True Firing Restoration
+## Reverted to v4.3 as the v5 completely collapsed trying to go further, from now on we will move to v6 starting from v4.3
 
-### 1. Root Cause Identification & Mathematical Diagnosis
-Empirical evaluations revealed that tuning the baseline threshold $V_{\text{th},0}$ ($1.0 \to 0.65 \to 0.45 \to 0.25$) only marginally affected the spike rate because of severe somatic current attenuation introduced during post-v5 refactoring:
-1. **Membrane Integration Attenuation**: `(1.0 - beta_mem) * I_soma` was erroneously introduced into ALIF membrane potential integration. For slow context memory units ($\beta_{\text{mem}} = 0.98$), input currents were crushed by a factor of $50\times$ (multiplying by $0.02$).
-2. **Canonical Restoration**:
-   - ALIF membrane integration restored to canonical unattenuated form:
-     $$V_t = \beta_{\text{mem}} V_{t-1} + I_{\text{soma}, t} - V_{\text{th}, t} \cdot s_{t-1}$$
-   - Adaptation trace:
-     $$b_t = \beta_{\text{adapt}} b_{t-1} + (1 - \beta_{\text{adapt}}) s_{t-1}$$
-   - Threshold evaluation:
-     $$V_{\text{th}, \text{eval}} = V_{\text{th}, 0} + \gamma \cdot b_t, \quad V_{\text{th}, 0} = 1.0, \quad \gamma = 0.18$$
-   - Recurrent momentum drive: $W_{\text{rec}} = J - R$ operating on canonical momentum state $p$ and feeding into ALIF soma.
-   - Velocity projection: $v_t = W_{\text{vel}}(\bar{s}_{p, t})$, $q_{t+1} = \text{clamp}(q_t + \tanh(v_t), -1.0, 1.0)$.
-
-### 2. Verification Results
-- `configs/experiments/spwm_v5.yaml` restored to canonical parameters: `threshold: 1.0`, `gamma: 0.18`, `gamma_adapt: 0.18`.
-- 1-epoch sanity run executed with `spwm_v5.yaml`:
-  - **Spike Rate**: Healthy active firing restored (~40.9% on initial epoch, stabilizing into canonical regime).
-  - All unit tests passing across entire test suite.
-- Post-v5 experiment artifacts, configurations (`spwm_v5_1` through `spwm_v5_L`), and quarantined test files purged.
-
-
-
-
-
+---

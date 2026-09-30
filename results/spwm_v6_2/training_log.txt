@@ -1,0 +1,400 @@
+Epoch 001 | TrainLoss 6.7487 | ValLoss 6.5120 | SpikeRate 0.124 | Time 8.5s
+  Losses: total_loss=6.7487, l_pred=5.9337, l_probe=0.4075, l_coord=0.2324, spike_rate=0.128, val_total_loss=6.5120, val_l_pred=5.6921, val_pos_err=0.7169, val_vel_err=0.9267, val_spike_rate=0.124
+  GradNormOverall=3.9218, GradNormRecent10=3.7050
+
+Epoch 002 | TrainLoss 6.3398 | ValLoss 6.3410 | SpikeRate 0.120 | Time 15.8s
+  Losses: total_loss=6.3398, l_pred=5.6525, l_probe=0.3436, l_coord=0.2276, spike_rate=0.122, val_total_loss=6.3410, val_l_pred=5.5930, val_pos_err=0.7096, val_vel_err=0.8563, val_spike_rate=0.120
+  GradNormOverall=2.7481, GradNormRecent10=2.4774
+
+Epoch 003 | TrainLoss 6.1755 | ValLoss 6.2364 | SpikeRate 0.116 | Time 22.9s
+  Losses: total_loss=6.1755, l_pred=5.5513, l_probe=0.3121, l_coord=0.2247, spike_rate=0.118, val_total_loss=6.2364, val_l_pred=5.5256, val_pos_err=0.6973, val_vel_err=0.8357, val_spike_rate=0.116
+  GradNormOverall=1.8294, GradNormRecent10=1.7986
+
+Epoch 004 | TrainLoss 6.0895 | ValLoss 6.1852 | SpikeRate 0.112 | Time 30.0s
+  Losses: total_loss=6.0895, l_pred=5.4905, l_probe=0.2995, l_coord=0.2284, spike_rate=0.114, val_total_loss=6.1852, val_l_pred=5.4744, val_pos_err=0.6882, val_vel_err=0.8410, val_spike_rate=0.112
+  GradNormOverall=1.4856, GradNormRecent10=1.4469
+
+Epoch 005 | TrainLoss 6.0129 | ValLoss 6.1187 | SpikeRate 0.109 | Time 37.4s
+  Losses: total_loss=6.0129, l_pred=5.4220, l_probe=0.2954, l_coord=0.2316, spike_rate=0.110, val_total_loss=6.1187, val_l_pred=5.4143, val_pos_err=0.6807, val_vel_err=0.8398, val_spike_rate=0.109
+  GradNormOverall=1.2861, GradNormRecent10=1.2854
+
+Epoch 006 | TrainLoss 5.9518 | ValLoss 6.0228 | SpikeRate 0.106 | Time 44.6s
+  Losses: total_loss=5.9518, l_pred=5.3609, l_probe=0.2955, l_coord=0.2329, spike_rate=0.107, val_total_loss=6.0228, val_l_pred=5.3093, val_pos_err=0.6772, val_vel_err=0.8534, val_spike_rate=0.106
+  GradNormOverall=1.1955, GradNormRecent10=1.1879
+
+Epoch 007 | TrainLoss 5.8645 | ValLoss 5.9216 | SpikeRate 0.105 | Time 51.7s
+  Losses: total_loss=5.8645, l_pred=5.2688, l_probe=0.2979, l_coord=0.2340, spike_rate=0.106, val_total_loss=5.9216, val_l_pred=5.2305, val_pos_err=0.6729, val_vel_err=0.8329, val_spike_rate=0.105
+  GradNormOverall=1.1550, GradNormRecent10=1.1448
+
+Epoch 008 | TrainLoss 5.7524 | ValLoss 5.8189 | SpikeRate 0.105 | Time 58.9s
+  Losses: total_loss=5.7524, l_pred=5.1580, l_probe=0.2972, l_coord=0.2347, spike_rate=0.105, val_total_loss=5.8189, val_l_pred=5.1189, val_pos_err=0.6692, val_vel_err=0.8449, val_spike_rate=0.105
+  GradNormOverall=1.1101, GradNormRecent10=1.1347
+
+Epoch 009 | TrainLoss 5.6229 | ValLoss 5.6504 | SpikeRate 0.105 | Time 66.1s
+  Losses: total_loss=5.6229, l_pred=5.0424, l_probe=0.2902, l_coord=0.2348, spike_rate=0.105, val_total_loss=5.6504, val_l_pred=4.9883, val_pos_err=0.6639, val_vel_err=0.8107, val_spike_rate=0.105
+  GradNormOverall=1.1196, GradNormRecent10=1.1088
+
+Epoch 010 | TrainLoss 5.4814 | ValLoss 5.4937 | SpikeRate 0.105 | Time 73.3s
+  Losses: total_loss=5.4814, l_pred=4.9216, l_probe=0.2799, l_coord=0.2344, spike_rate=0.105, val_total_loss=5.4937, val_l_pred=4.8601, val_pos_err=0.6580, val_vel_err=0.7893, val_spike_rate=0.105
+  GradNormOverall=1.0252, GradNormRecent10=1.0226
+
+Epoch 011 | TrainLoss 5.3567 | ValLoss 5.3581 | SpikeRate 0.106 | Time 80.4s
+  Losses: total_loss=5.3567, l_pred=4.8033, l_probe=0.2767, l_coord=0.2343, spike_rate=0.105, val_total_loss=5.3581, val_l_pred=4.7300, val_pos_err=0.6544, val_vel_err=0.7912, val_spike_rate=0.106
+  GradNormOverall=1.0031, GradNormRecent10=0.9839
+
+Epoch 012 | TrainLoss 5.2208 | ValLoss 5.2267 | SpikeRate 0.106 | Time 87.5s
+  Losses: total_loss=5.2208, l_pred=4.6760, l_probe=0.2724, l_coord=0.2333, spike_rate=0.105, val_total_loss=5.2267, val_l_pred=4.6107, val_pos_err=0.6519, val_vel_err=0.7742, val_spike_rate=0.106
+  GradNormOverall=0.9470, GradNormRecent10=0.9485
+
+Epoch 013 | TrainLoss 5.1475 | ValLoss 5.1085 | SpikeRate 0.105 | Time 95.0s
+  Losses: total_loss=5.1475, l_pred=4.6108, l_probe=0.2683, l_coord=0.2325, spike_rate=0.105, val_total_loss=5.1085, val_l_pred=4.5171, val_pos_err=0.6455, val_vel_err=0.7532, val_spike_rate=0.105
+  GradNormOverall=0.9936, GradNormRecent10=1.0061
+
+Epoch 014 | TrainLoss 5.0616 | ValLoss 5.0492 | SpikeRate 0.104 | Time 102.2s
+  Losses: total_loss=5.0616, l_pred=4.5337, l_probe=0.2639, l_coord=0.2319, spike_rate=0.103, val_total_loss=5.0492, val_l_pred=4.4619, val_pos_err=0.6417, val_vel_err=0.7516, val_spike_rate=0.104
+  GradNormOverall=0.9465, GradNormRecent10=0.9328
+
+Epoch 015 | TrainLoss 5.0109 | ValLoss 4.9396 | SpikeRate 0.103 | Time 109.4s
+  Losses: total_loss=5.0109, l_pred=4.4884, l_probe=0.2612, l_coord=0.2302, spike_rate=0.103, val_total_loss=4.9396, val_l_pred=4.3606, val_pos_err=0.6385, val_vel_err=0.7428, val_spike_rate=0.103
+  GradNormOverall=0.9648, GradNormRecent10=0.9684
+
+Epoch 016 | TrainLoss 4.9341 | ValLoss 4.9651 | SpikeRate 0.102 | Time 116.5s
+  Losses: total_loss=4.9341, l_pred=4.4169, l_probe=0.2586, l_coord=0.2292, spike_rate=0.102, val_total_loss=4.9651, val_l_pred=4.3943, val_pos_err=0.6342, val_vel_err=0.7424, val_spike_rate=0.102
+  GradNormOverall=0.9527, GradNormRecent10=0.9498
+
+Epoch 017 | TrainLoss 4.8631 | ValLoss 4.8258 | SpikeRate 0.102 | Time 123.5s
+  Losses: total_loss=4.8631, l_pred=4.3503, l_probe=0.2564, l_coord=0.2273, spike_rate=0.102, val_total_loss=4.8258, val_l_pred=4.2677, val_pos_err=0.6320, val_vel_err=0.7288, val_spike_rate=0.102
+  GradNormOverall=0.9870, GradNormRecent10=0.9723
+
+Epoch 018 | TrainLoss 4.7948 | ValLoss 4.7722 | SpikeRate 0.102 | Time 130.6s
+  Losses: total_loss=4.7948, l_pred=4.2889, l_probe=0.2529, l_coord=0.2257, spike_rate=0.102, val_total_loss=4.7722, val_l_pred=4.2160, val_pos_err=0.6280, val_vel_err=0.7301, val_spike_rate=0.102
+  GradNormOverall=0.9980, GradNormRecent10=0.9761
+
+Epoch 019 | TrainLoss 4.7587 | ValLoss 4.7224 | SpikeRate 0.101 | Time 137.6s
+  Losses: total_loss=4.7587, l_pred=4.2576, l_probe=0.2505, l_coord=0.2232, spike_rate=0.101, val_total_loss=4.7224, val_l_pred=4.1740, val_pos_err=0.6246, val_vel_err=0.7240, val_spike_rate=0.101
+  GradNormOverall=0.9868, GradNormRecent10=0.9718
+
+Epoch 020 | TrainLoss 4.7211 | ValLoss 4.6701 | SpikeRate 0.101 | Time 144.5s
+  Losses: total_loss=4.7211, l_pred=4.2233, l_probe=0.2489, l_coord=0.2209, spike_rate=0.101, val_total_loss=4.6701, val_l_pred=4.1305, val_pos_err=0.6217, val_vel_err=0.7167, val_spike_rate=0.101
+  GradNormOverall=1.0111, GradNormRecent10=0.9972
+
+Epoch 021 | TrainLoss 4.6498 | ValLoss 4.6404 | SpikeRate 0.101 | Time 151.5s
+  Losses: total_loss=4.6498, l_pred=4.1585, l_probe=0.2457, l_coord=0.2190, spike_rate=0.101, val_total_loss=4.6404, val_l_pred=4.1007, val_pos_err=0.6168, val_vel_err=0.7215, val_spike_rate=0.101
+  GradNormOverall=1.0211, GradNormRecent10=0.9945
+
+Epoch 022 | TrainLoss 4.6414 | ValLoss 4.6121 | SpikeRate 0.100 | Time 158.5s
+  Losses: total_loss=4.6414, l_pred=4.1525, l_probe=0.2445, l_coord=0.2166, spike_rate=0.101, val_total_loss=4.6121, val_l_pred=4.0774, val_pos_err=0.6142, val_vel_err=0.7132, val_spike_rate=0.100
+  GradNormOverall=1.1114, GradNormRecent10=1.1419
+
+Epoch 023 | TrainLoss 4.6112 | ValLoss 4.5806 | SpikeRate 0.100 | Time 165.8s
+  Losses: total_loss=4.6112, l_pred=4.1239, l_probe=0.2437, l_coord=0.2143, spike_rate=0.100, val_total_loss=4.5806, val_l_pred=4.0519, val_pos_err=0.6097, val_vel_err=0.7136, val_spike_rate=0.100
+  GradNormOverall=1.1991, GradNormRecent10=1.2093
+
+Epoch 024 | TrainLoss 4.5727 | ValLoss 4.5565 | SpikeRate 0.100 | Time 172.8s
+  Losses: total_loss=4.5727, l_pred=4.0889, l_probe=0.2419, l_coord=0.2121, spike_rate=0.100, val_total_loss=4.5565, val_l_pred=4.0327, val_pos_err=0.6073, val_vel_err=0.7092, val_spike_rate=0.100
+  GradNormOverall=1.0961, GradNormRecent10=1.1215
+
+Epoch 025 | TrainLoss 4.5624 | ValLoss 4.5553 | SpikeRate 0.099 | Time 179.7s
+  Losses: total_loss=4.5624, l_pred=4.0851, l_probe=0.2386, l_coord=0.2103, spike_rate=0.100, val_total_loss=4.5553, val_l_pred=4.0346, val_pos_err=0.6034, val_vel_err=0.7077, val_spike_rate=0.099
+  GradNormOverall=1.1582, GradNormRecent10=1.2245
+
+Epoch 026 | TrainLoss 4.5443 | ValLoss 4.5228 | SpikeRate 0.099 | Time 186.5s
+  Losses: total_loss=4.5443, l_pred=4.0694, l_probe=0.2375, l_coord=0.2082, spike_rate=0.099, val_total_loss=4.5228, val_l_pred=4.0103, val_pos_err=0.5996, val_vel_err=0.6997, val_spike_rate=0.099
+  GradNormOverall=1.1421, GradNormRecent10=1.1448
+
+Epoch 027 | TrainLoss 4.5381 | ValLoss 4.5264 | SpikeRate 0.099 | Time 193.4s
+  Losses: total_loss=4.5381, l_pred=4.0665, l_probe=0.2358, l_coord=0.2057, spike_rate=0.099, val_total_loss=4.5264, val_l_pred=4.0113, val_pos_err=0.5977, val_vel_err=0.7089, val_spike_rate=0.099
+  GradNormOverall=1.0831, GradNormRecent10=1.1079
+
+Epoch 028 | TrainLoss 4.5212 | ValLoss 4.5201 | SpikeRate 0.099 | Time 200.3s
+  Losses: total_loss=4.5212, l_pred=4.0523, l_probe=0.2344, l_coord=0.2040, spike_rate=0.099, val_total_loss=4.5201, val_l_pred=4.0160, val_pos_err=0.5922, val_vel_err=0.6964, val_spike_rate=0.099
+  GradNormOverall=1.2943, GradNormRecent10=1.2137
+
+Epoch 029 | TrainLoss 4.5153 | ValLoss 4.4941 | SpikeRate 0.099 | Time 207.2s
+  Losses: total_loss=4.5153, l_pred=4.0486, l_probe=0.2333, l_coord=0.2022, spike_rate=0.099, val_total_loss=4.4941, val_l_pred=3.9966, val_pos_err=0.5897, val_vel_err=0.6914, val_spike_rate=0.099
+  GradNormOverall=1.3150, GradNormRecent10=1.3089
+
+Epoch 030 | TrainLoss 4.5191 | ValLoss 4.5466 | SpikeRate 0.099 | Time 214.2s
+  Losses: total_loss=4.5191, l_pred=4.0582, l_probe=0.2304, l_coord=0.1999, spike_rate=0.099, val_total_loss=4.5466, val_l_pred=4.0456, val_pos_err=0.5864, val_vel_err=0.6951, val_spike_rate=0.099
+  GradNormOverall=1.3556, GradNormRecent10=1.3357
+
+Epoch 031 | TrainLoss 4.5099 | ValLoss 4.5326 | SpikeRate 0.099 | Time 221.4s
+  Losses: total_loss=4.5099, l_pred=4.0509, l_probe=0.2295, l_coord=0.1981, spike_rate=0.099, val_total_loss=4.5326, val_l_pred=4.0318, val_pos_err=0.5840, val_vel_err=0.6983, val_spike_rate=0.099
+  GradNormOverall=1.2812, GradNormRecent10=1.3441
+
+Epoch 032 | TrainLoss 4.5305 | ValLoss 4.4851 | SpikeRate 0.099 | Time 228.4s
+  Losses: total_loss=4.5305, l_pred=4.0749, l_probe=0.2278, l_coord=0.1958, spike_rate=0.099, val_total_loss=4.4851, val_l_pred=3.9945, val_pos_err=0.5797, val_vel_err=0.6903, val_spike_rate=0.099
+  GradNormOverall=1.2667, GradNormRecent10=1.2120
+
+Epoch 033 | TrainLoss 4.5175 | ValLoss 4.5241 | SpikeRate 0.099 | Time 235.3s
+  Losses: total_loss=4.5175, l_pred=4.0616, l_probe=0.2279, l_coord=0.1940, spike_rate=0.099, val_total_loss=4.5241, val_l_pred=4.0297, val_pos_err=0.5758, val_vel_err=0.6946, val_spike_rate=0.099
+  GradNormOverall=1.2882, GradNormRecent10=1.3006
+
+Epoch 034 | TrainLoss 4.5266 | ValLoss 4.5409 | SpikeRate 0.099 | Time 242.2s
+  Losses: total_loss=4.5266, l_pred=4.0725, l_probe=0.2271, l_coord=0.1917, spike_rate=0.099, val_total_loss=4.5409, val_l_pred=4.0471, val_pos_err=0.5727, val_vel_err=0.6964, val_spike_rate=0.099
+  GradNormOverall=1.2730, GradNormRecent10=1.2789
+
+Epoch 035 | TrainLoss 4.5169 | ValLoss 4.5265 | SpikeRate 0.099 | Time 249.1s
+  Losses: total_loss=4.5169, l_pred=4.0698, l_probe=0.2235, l_coord=0.1898, spike_rate=0.099, val_total_loss=4.5265, val_l_pred=4.0371, val_pos_err=0.5683, val_vel_err=0.6953, val_spike_rate=0.099
+  GradNormOverall=1.2526, GradNormRecent10=1.3305
+
+Epoch 036 | TrainLoss 4.5322 | ValLoss 4.5243 | SpikeRate 0.099 | Time 256.0s
+  Losses: total_loss=4.5322, l_pred=4.0845, l_probe=0.2238, l_coord=0.1874, spike_rate=0.099, val_total_loss=4.5243, val_l_pred=4.0342, val_pos_err=0.5650, val_vel_err=0.6979, val_spike_rate=0.099
+  GradNormOverall=1.4416, GradNormRecent10=1.4144
+
+Epoch 037 | TrainLoss 4.5094 | ValLoss 4.5109 | SpikeRate 0.099 | Time 262.9s
+  Losses: total_loss=4.5094, l_pred=4.0659, l_probe=0.2218, l_coord=0.1857, spike_rate=0.099, val_total_loss=4.5109, val_l_pred=4.0233, val_pos_err=0.5620, val_vel_err=0.6999, val_spike_rate=0.099
+  GradNormOverall=1.2905, GradNormRecent10=1.2889
+
+Epoch 038 | TrainLoss 4.5055 | ValLoss 4.4955 | SpikeRate 0.099 | Time 269.8s
+  Losses: total_loss=4.5055, l_pred=4.0654, l_probe=0.2200, l_coord=0.1836, spike_rate=0.100, val_total_loss=4.4955, val_l_pred=4.0112, val_pos_err=0.5576, val_vel_err=0.6973, val_spike_rate=0.099
+  GradNormOverall=1.3377, GradNormRecent10=1.3568
+
+Epoch 039 | TrainLoss 4.5114 | ValLoss 4.5498 | SpikeRate 0.099 | Time 276.7s
+  Losses: total_loss=4.5114, l_pred=4.0740, l_probe=0.2187, l_coord=0.1813, spike_rate=0.100, val_total_loss=4.5498, val_l_pred=4.0680, val_pos_err=0.5539, val_vel_err=0.6938, val_spike_rate=0.099
+  GradNormOverall=1.4415, GradNormRecent10=1.4622
+
+Epoch 040 | TrainLoss 4.5122 | ValLoss 4.5418 | SpikeRate 0.099 | Time 283.8s
+  Losses: total_loss=4.5122, l_pred=4.0762, l_probe=0.2180, l_coord=0.1796, spike_rate=0.100, val_total_loss=4.5418, val_l_pred=4.0574, val_pos_err=0.5512, val_vel_err=0.7039, val_spike_rate=0.099
+  GradNormOverall=1.4764, GradNormRecent10=1.4914
+
+Epoch 041 | TrainLoss 4.4969 | ValLoss 4.4868 | SpikeRate 0.099 | Time 290.9s
+  Losses: total_loss=4.4969, l_pred=4.0650, l_probe=0.2160, l_coord=0.1772, spike_rate=0.100, val_total_loss=4.4868, val_l_pred=4.0011, val_pos_err=0.5476, val_vel_err=0.7015, val_spike_rate=0.099
+  GradNormOverall=1.3221, GradNormRecent10=1.3426
+
+Epoch 042 | TrainLoss 4.5003 | ValLoss 4.5254 | SpikeRate 0.099 | Time 297.7s
+  Losses: total_loss=4.5003, l_pred=4.0707, l_probe=0.2148, l_coord=0.1753, spike_rate=0.100, val_total_loss=4.5254, val_l_pred=4.0450, val_pos_err=0.5452, val_vel_err=0.6991, val_spike_rate=0.099
+  GradNormOverall=1.5185, GradNormRecent10=1.4764
+
+Epoch 043 | TrainLoss 4.4995 | ValLoss 4.5291 | SpikeRate 0.099 | Time 304.7s
+  Losses: total_loss=4.4995, l_pred=4.0723, l_probe=0.2136, l_coord=0.1732, spike_rate=0.100, val_total_loss=4.5291, val_l_pred=4.0540, val_pos_err=0.5404, val_vel_err=0.6938, val_spike_rate=0.099
+  GradNormOverall=1.3780, GradNormRecent10=1.3783
+
+Epoch 044 | TrainLoss 4.5110 | ValLoss 4.5290 | SpikeRate 0.099 | Time 311.6s
+  Losses: total_loss=4.5110, l_pred=4.0879, l_probe=0.2115, l_coord=0.1711, spike_rate=0.100, val_total_loss=4.5290, val_l_pred=4.0555, val_pos_err=0.5367, val_vel_err=0.6986, val_spike_rate=0.099
+  GradNormOverall=1.3935, GradNormRecent10=1.3902
+
+Epoch 045 | TrainLoss 4.5013 | ValLoss 4.5560 | SpikeRate 0.099 | Time 318.7s
+  Losses: total_loss=4.5013, l_pred=4.0821, l_probe=0.2096, l_coord=0.1688, spike_rate=0.100, val_total_loss=4.5560, val_l_pred=4.0796, val_pos_err=0.5333, val_vel_err=0.6996, val_spike_rate=0.099
+  GradNormOverall=1.2534, GradNormRecent10=1.2142
+
+Epoch 046 | TrainLoss 4.4996 | ValLoss 4.5688 | SpikeRate 0.099 | Time 325.8s
+  Losses: total_loss=4.4996, l_pred=4.0815, l_probe=0.2090, l_coord=0.1666, spike_rate=0.100, val_total_loss=4.5688, val_l_pred=4.0986, val_pos_err=0.5290, val_vel_err=0.6955, val_spike_rate=0.099
+  GradNormOverall=1.3186, GradNormRecent10=1.3692
+
+Epoch 047 | TrainLoss 4.5284 | ValLoss 4.5520 | SpikeRate 0.099 | Time 332.8s
+  Losses: total_loss=4.5284, l_pred=4.1105, l_probe=0.2090, l_coord=0.1645, spike_rate=0.100, val_total_loss=4.5520, val_l_pred=4.0787, val_pos_err=0.5270, val_vel_err=0.6998, val_spike_rate=0.099
+  GradNormOverall=1.5691, GradNormRecent10=1.5797
+
+Epoch 048 | TrainLoss 4.5077 | ValLoss 4.5799 | SpikeRate 0.100 | Time 339.9s
+  Losses: total_loss=4.5077, l_pred=4.0944, l_probe=0.2066, l_coord=0.1623, spike_rate=0.100, val_total_loss=4.5799, val_l_pred=4.1089, val_pos_err=0.5224, val_vel_err=0.7002, val_spike_rate=0.100
+  GradNormOverall=1.2908, GradNormRecent10=1.2505
+
+Epoch 049 | TrainLoss 4.4963 | ValLoss 4.5498 | SpikeRate 0.099 | Time 347.0s
+  Losses: total_loss=4.4963, l_pred=4.0857, l_probe=0.2053, l_coord=0.1603, spike_rate=0.100, val_total_loss=4.5498, val_l_pred=4.0849, val_pos_err=0.5200, val_vel_err=0.6937, val_spike_rate=0.099
+  GradNormOverall=1.4205, GradNormRecent10=1.4552
+
+Epoch 050 | TrainLoss 4.5248 | ValLoss 4.5616 | SpikeRate 0.099 | Time 353.9s
+  Losses: total_loss=4.5248, l_pred=4.1142, l_probe=0.2053, l_coord=0.1580, spike_rate=0.100, val_total_loss=4.5616, val_l_pred=4.0969, val_pos_err=0.5156, val_vel_err=0.6998, val_spike_rate=0.099
+  GradNormOverall=1.3437, GradNormRecent10=1.2904
+
+Epoch 051 | TrainLoss 4.5164 | ValLoss 4.5634 | SpikeRate 0.100 | Time 360.8s
+  Losses: total_loss=4.5164, l_pred=4.1075, l_probe=0.2044, l_coord=0.1557, spike_rate=0.100, val_total_loss=4.5634, val_l_pred=4.0982, val_pos_err=0.5127, val_vel_err=0.6985, val_spike_rate=0.100
+  GradNormOverall=1.4039, GradNormRecent10=1.4758
+
+Epoch 052 | TrainLoss 4.5188 | ValLoss 4.5190 | SpikeRate 0.099 | Time 367.8s
+  Losses: total_loss=4.5188, l_pred=4.1154, l_probe=0.2017, l_coord=0.1535, spike_rate=0.100, val_total_loss=4.5190, val_l_pred=4.0600, val_pos_err=0.5093, val_vel_err=0.6952, val_spike_rate=0.099
+  GradNormOverall=1.2946, GradNormRecent10=1.3294
+
+Epoch 053 | TrainLoss 4.5301 | ValLoss 4.5547 | SpikeRate 0.100 | Time 374.8s
+  Losses: total_loss=4.5301, l_pred=4.1254, l_probe=0.2024, l_coord=0.1512, spike_rate=0.100, val_total_loss=4.5547, val_l_pred=4.0968, val_pos_err=0.5064, val_vel_err=0.6937, val_spike_rate=0.100
+  GradNormOverall=1.4180, GradNormRecent10=1.5231
+
+Epoch 054 | TrainLoss 4.5240 | ValLoss 4.5562 | SpikeRate 0.100 | Time 381.7s
+  Losses: total_loss=4.5240, l_pred=4.1194, l_probe=0.2023, l_coord=0.1490, spike_rate=0.100, val_total_loss=4.5562, val_l_pred=4.0930, val_pos_err=0.5033, val_vel_err=0.7014, val_spike_rate=0.100
+  GradNormOverall=1.4172, GradNormRecent10=1.4160
+
+Epoch 055 | TrainLoss 4.5274 | ValLoss 4.5698 | SpikeRate 0.100 | Time 388.6s
+  Losses: total_loss=4.5274, l_pred=4.1236, l_probe=0.2019, l_coord=0.1468, spike_rate=0.101, val_total_loss=4.5698, val_l_pred=4.1137, val_pos_err=0.4996, val_vel_err=0.7004, val_spike_rate=0.100
+  GradNormOverall=1.2414, GradNormRecent10=1.2315
+
+Epoch 056 | TrainLoss 4.5298 | ValLoss 4.5800 | SpikeRate 0.100 | Time 395.6s
+  Losses: total_loss=4.5298, l_pred=4.1302, l_probe=0.1998, l_coord=0.1444, spike_rate=0.101, val_total_loss=4.5800, val_l_pred=4.1240, val_pos_err=0.4982, val_vel_err=0.6959, val_spike_rate=0.100
+  GradNormOverall=1.2754, GradNormRecent10=1.3161
+
+Epoch 057 | TrainLoss 4.5362 | ValLoss 4.5549 | SpikeRate 0.100 | Time 402.9s
+  Losses: total_loss=4.5362, l_pred=4.1364, l_probe=0.1999, l_coord=0.1423, spike_rate=0.101, val_total_loss=4.5549, val_l_pred=4.0987, val_pos_err=0.4949, val_vel_err=0.7012, val_spike_rate=0.100
+  GradNormOverall=1.5555, GradNormRecent10=1.5502
+
+Epoch 058 | TrainLoss 4.5363 | ValLoss 4.5558 | SpikeRate 0.100 | Time 410.0s
+  Losses: total_loss=4.5363, l_pred=4.1391, l_probe=0.1986, l_coord=0.1399, spike_rate=0.101, val_total_loss=4.5558, val_l_pred=4.1004, val_pos_err=0.4916, val_vel_err=0.7012, val_spike_rate=0.100
+  GradNormOverall=1.5071, GradNormRecent10=1.5406
+
+Epoch 059 | TrainLoss 4.5436 | ValLoss 4.5531 | SpikeRate 0.101 | Time 417.0s
+  Losses: total_loss=4.5436, l_pred=4.1439, l_probe=0.1998, l_coord=0.1378, spike_rate=0.101, val_total_loss=4.5531, val_l_pred=4.0971, val_pos_err=0.4887, val_vel_err=0.6998, val_spike_rate=0.101
+  GradNormOverall=1.4868, GradNormRecent10=1.5135
+
+Epoch 060 | TrainLoss 4.5508 | ValLoss 4.5449 | SpikeRate 0.101 | Time 423.9s
+  Losses: total_loss=4.5508, l_pred=4.1556, l_probe=0.1976, l_coord=0.1355, spike_rate=0.101, val_total_loss=4.5449, val_l_pred=4.0946, val_pos_err=0.4858, val_vel_err=0.7008, val_spike_rate=0.101
+  GradNormOverall=1.5528, GradNormRecent10=1.5978
+
+Epoch 061 | TrainLoss 4.5515 | ValLoss 4.5969 | SpikeRate 0.101 | Time 430.8s
+  Losses: total_loss=4.5515, l_pred=4.1570, l_probe=0.1972, l_coord=0.1333, spike_rate=0.101, val_total_loss=4.5969, val_l_pred=4.1437, val_pos_err=0.4841, val_vel_err=0.7031, val_spike_rate=0.101
+  GradNormOverall=1.4316, GradNormRecent10=1.4388
+
+Epoch 062 | TrainLoss 4.5516 | ValLoss 4.5885 | SpikeRate 0.102 | Time 437.7s
+  Losses: total_loss=4.5516, l_pred=4.1559, l_probe=0.1978, l_coord=0.1309, spike_rate=0.102, val_total_loss=4.5885, val_l_pred=4.1352, val_pos_err=0.4827, val_vel_err=0.7028, val_spike_rate=0.102
+  GradNormOverall=1.3607, GradNormRecent10=1.3795
+
+Epoch 063 | TrainLoss 4.5549 | ValLoss 4.5683 | SpikeRate 0.101 | Time 444.7s
+  Losses: total_loss=4.5549, l_pred=4.1607, l_probe=0.1971, l_coord=0.1287, spike_rate=0.102, val_total_loss=4.5683, val_l_pred=4.1224, val_pos_err=0.4790, val_vel_err=0.6973, val_spike_rate=0.101
+  GradNormOverall=1.3721, GradNormRecent10=1.3725
+
+Epoch 064 | TrainLoss 4.5606 | ValLoss 4.5931 | SpikeRate 0.101 | Time 451.7s
+  Losses: total_loss=4.5606, l_pred=4.1696, l_probe=0.1955, l_coord=0.1266, spike_rate=0.102, val_total_loss=4.5931, val_l_pred=4.1389, val_pos_err=0.4778, val_vel_err=0.7070, val_spike_rate=0.101
+  GradNormOverall=1.4231, GradNormRecent10=1.4321
+
+Epoch 065 | TrainLoss 4.5585 | ValLoss 4.6224 | SpikeRate 0.102 | Time 458.8s
+  Losses: total_loss=4.5585, l_pred=4.1675, l_probe=0.1955, l_coord=0.1243, spike_rate=0.102, val_total_loss=4.6224, val_l_pred=4.1631, val_pos_err=0.4758, val_vel_err=0.7123, val_spike_rate=0.102
+  GradNormOverall=1.4151, GradNormRecent10=1.4548
+
+Epoch 066 | TrainLoss 4.5658 | ValLoss 4.6041 | SpikeRate 0.101 | Time 466.0s
+  Losses: total_loss=4.5658, l_pred=4.1739, l_probe=0.1959, l_coord=0.1220, spike_rate=0.102, val_total_loss=4.6041, val_l_pred=4.1525, val_pos_err=0.4736, val_vel_err=0.7064, val_spike_rate=0.101
+  GradNormOverall=1.4558, GradNormRecent10=1.4360
+
+Epoch 067 | TrainLoss 4.5611 | ValLoss 4.6261 | SpikeRate 0.102 | Time 472.9s
+  Losses: total_loss=4.5611, l_pred=4.1711, l_probe=0.1950, l_coord=0.1199, spike_rate=0.102, val_total_loss=4.6261, val_l_pred=4.1691, val_pos_err=0.4715, val_vel_err=0.7156, val_spike_rate=0.102
+  GradNormOverall=1.3177, GradNormRecent10=1.2954
+
+Epoch 068 | TrainLoss 4.5726 | ValLoss 4.6103 | SpikeRate 0.102 | Time 479.8s
+  Losses: total_loss=4.5726, l_pred=4.1835, l_probe=0.1945, l_coord=0.1176, spike_rate=0.103, val_total_loss=4.6103, val_l_pred=4.1539, val_pos_err=0.4686, val_vel_err=0.7195, val_spike_rate=0.102
+  GradNormOverall=1.4847, GradNormRecent10=1.4981
+
+Epoch 069 | TrainLoss 4.5736 | ValLoss 4.5951 | SpikeRate 0.103 | Time 486.8s
+  Losses: total_loss=4.5736, l_pred=4.1844, l_probe=0.1946, l_coord=0.1156, spike_rate=0.103, val_total_loss=4.5951, val_l_pred=4.1442, val_pos_err=0.4688, val_vel_err=0.7072, val_spike_rate=0.103
+  GradNormOverall=1.4206, GradNormRecent10=1.3970
+
+Epoch 070 | TrainLoss 4.5785 | ValLoss 4.6261 | SpikeRate 0.103 | Time 493.7s
+  Losses: total_loss=4.5785, l_pred=4.1894, l_probe=0.1945, l_coord=0.1132, spike_rate=0.103, val_total_loss=4.6261, val_l_pred=4.1715, val_pos_err=0.4665, val_vel_err=0.7152, val_spike_rate=0.103
+  GradNormOverall=1.4674, GradNormRecent10=1.5073
+
+Epoch 071 | TrainLoss 4.5834 | ValLoss 4.6031 | SpikeRate 0.103 | Time 500.7s
+  Losses: total_loss=4.5834, l_pred=4.1955, l_probe=0.1940, l_coord=0.1111, spike_rate=0.103, val_total_loss=4.6031, val_l_pred=4.1570, val_pos_err=0.4642, val_vel_err=0.7062, val_spike_rate=0.103
+  GradNormOverall=1.4849, GradNormRecent10=1.4383
+
+Epoch 072 | TrainLoss 4.5911 | ValLoss 4.6052 | SpikeRate 0.103 | Time 507.5s
+  Losses: total_loss=4.5911, l_pred=4.2033, l_probe=0.1939, l_coord=0.1091, spike_rate=0.103, val_total_loss=4.6052, val_l_pred=4.1543, val_pos_err=0.4638, val_vel_err=0.7140, val_spike_rate=0.103
+  GradNormOverall=1.3752, GradNormRecent10=1.3860
+
+Epoch 073 | TrainLoss 4.5967 | ValLoss 4.6113 | SpikeRate 0.103 | Time 514.5s
+  Losses: total_loss=4.5967, l_pred=4.2101, l_probe=0.1933, l_coord=0.1067, spike_rate=0.104, val_total_loss=4.6113, val_l_pred=4.1625, val_pos_err=0.4622, val_vel_err=0.7082, val_spike_rate=0.103
+  GradNormOverall=1.4083, GradNormRecent10=1.4215
+
+Epoch 074 | TrainLoss 4.5965 | ValLoss 4.6144 | SpikeRate 0.104 | Time 521.4s
+  Losses: total_loss=4.5965, l_pred=4.2112, l_probe=0.1926, l_coord=0.1049, spike_rate=0.104, val_total_loss=4.6144, val_l_pred=4.1697, val_pos_err=0.4610, val_vel_err=0.7067, val_spike_rate=0.104
+  GradNormOverall=1.3405, GradNormRecent10=1.3454
+
+Epoch 075 | TrainLoss 4.5931 | ValLoss 4.6193 | SpikeRate 0.104 | Time 528.6s
+  Losses: total_loss=4.5931, l_pred=4.2061, l_probe=0.1935, l_coord=0.1026, spike_rate=0.104, val_total_loss=4.6193, val_l_pred=4.1727, val_pos_err=0.4597, val_vel_err=0.7092, val_spike_rate=0.104
+  GradNormOverall=1.4161, GradNormRecent10=1.3932
+
+Epoch 076 | TrainLoss 4.6016 | ValLoss 4.6179 | SpikeRate 0.104 | Time 535.7s
+  Losses: total_loss=4.6016, l_pred=4.2170, l_probe=0.1923, l_coord=0.1005, spike_rate=0.104, val_total_loss=4.6179, val_l_pred=4.1755, val_pos_err=0.4583, val_vel_err=0.7048, val_spike_rate=0.104
+  GradNormOverall=1.4236, GradNormRecent10=1.4374
+
+Epoch 077 | TrainLoss 4.6055 | ValLoss 4.6297 | SpikeRate 0.104 | Time 542.6s
+  Losses: total_loss=4.6055, l_pred=4.2209, l_probe=0.1923, l_coord=0.0983, spike_rate=0.105, val_total_loss=4.6297, val_l_pred=4.1805, val_pos_err=0.4577, val_vel_err=0.7132, val_spike_rate=0.104
+  GradNormOverall=1.4922, GradNormRecent10=1.4799
+
+Epoch 078 | TrainLoss 4.6057 | ValLoss 4.6287 | SpikeRate 0.105 | Time 549.5s
+  Losses: total_loss=4.6057, l_pred=4.2206, l_probe=0.1926, l_coord=0.0962, spike_rate=0.105, val_total_loss=4.6287, val_l_pred=4.1775, val_pos_err=0.4571, val_vel_err=0.7124, val_spike_rate=0.105
+  GradNormOverall=1.4867, GradNormRecent10=1.4622
+
+Epoch 079 | TrainLoss 4.6017 | ValLoss 4.6353 | SpikeRate 0.105 | Time 556.5s
+  Losses: total_loss=4.6017, l_pred=4.2204, l_probe=0.1907, l_coord=0.0942, spike_rate=0.105, val_total_loss=4.6353, val_l_pred=4.1868, val_pos_err=0.4561, val_vel_err=0.7133, val_spike_rate=0.105
+  GradNormOverall=1.2844, GradNormRecent10=1.2973
+
+Epoch 080 | TrainLoss 4.6103 | ValLoss 4.6583 | SpikeRate 0.105 | Time 563.5s
+  Losses: total_loss=4.6103, l_pred=4.2246, l_probe=0.1929, l_coord=0.0922, spike_rate=0.105, val_total_loss=4.6583, val_l_pred=4.2030, val_pos_err=0.4557, val_vel_err=0.7208, val_spike_rate=0.105
+  GradNormOverall=1.3282, GradNormRecent10=1.3444
+
+Epoch 081 | TrainLoss 4.6070 | ValLoss 4.6232 | SpikeRate 0.105 | Time 570.4s
+  Losses: total_loss=4.6070, l_pred=4.2220, l_probe=0.1925, l_coord=0.0902, spike_rate=0.105, val_total_loss=4.6232, val_l_pred=4.1812, val_pos_err=0.4546, val_vel_err=0.7047, val_spike_rate=0.105
+  GradNormOverall=1.3692, GradNormRecent10=1.3692
+
+Epoch 082 | TrainLoss 4.6226 | ValLoss 4.6507 | SpikeRate 0.106 | Time 577.7s
+  Losses: total_loss=4.6226, l_pred=4.2372, l_probe=0.1927, l_coord=0.0881, spike_rate=0.106, val_total_loss=4.6507, val_l_pred=4.2022, val_pos_err=0.4543, val_vel_err=0.7131, val_spike_rate=0.106
+  GradNormOverall=1.3058, GradNormRecent10=1.2971
+
+Epoch 083 | TrainLoss 4.6178 | ValLoss 4.6434 | SpikeRate 0.106 | Time 584.8s
+  Losses: total_loss=4.6178, l_pred=4.2333, l_probe=0.1922, l_coord=0.0859, spike_rate=0.106, val_total_loss=4.6434, val_l_pred=4.1974, val_pos_err=0.4537, val_vel_err=0.7130, val_spike_rate=0.106
+  GradNormOverall=1.3242, GradNormRecent10=1.3534
+
+Epoch 084 | TrainLoss 4.6139 | ValLoss 4.6464 | SpikeRate 0.106 | Time 591.8s
+  Losses: total_loss=4.6139, l_pred=4.2299, l_probe=0.1920, l_coord=0.0842, spike_rate=0.106, val_total_loss=4.6464, val_l_pred=4.2017, val_pos_err=0.4537, val_vel_err=0.7101, val_spike_rate=0.106
+  GradNormOverall=1.3676, GradNormRecent10=1.3435
+
+Epoch 085 | TrainLoss 4.6192 | ValLoss 4.6314 | SpikeRate 0.106 | Time 599.9s
+  Losses: total_loss=4.6192, l_pred=4.2362, l_probe=0.1915, l_coord=0.0821, spike_rate=0.106, val_total_loss=4.6314, val_l_pred=4.1826, val_pos_err=0.4531, val_vel_err=0.7128, val_spike_rate=0.106
+  GradNormOverall=1.3367, GradNormRecent10=1.3702
+
+Epoch 086 | TrainLoss 4.6268 | ValLoss 4.6584 | SpikeRate 0.107 | Time 607.1s
+  Losses: total_loss=4.6268, l_pred=4.2401, l_probe=0.1933, l_coord=0.0803, spike_rate=0.107, val_total_loss=4.6584, val_l_pred=4.2021, val_pos_err=0.4536, val_vel_err=0.7242, val_spike_rate=0.107
+  GradNormOverall=1.4193, GradNormRecent10=1.4357
+
+Epoch 087 | TrainLoss 4.6238 | ValLoss 4.6640 | SpikeRate 0.107 | Time 614.2s
+  Losses: total_loss=4.6238, l_pred=4.2378, l_probe=0.1930, l_coord=0.0782, spike_rate=0.107, val_total_loss=4.6640, val_l_pred=4.2128, val_pos_err=0.4527, val_vel_err=0.7161, val_spike_rate=0.107
+  GradNormOverall=1.4007, GradNormRecent10=1.4235
+
+Epoch 088 | TrainLoss 4.6304 | ValLoss 4.6446 | SpikeRate 0.107 | Time 621.3s
+  Losses: total_loss=4.6304, l_pred=4.2457, l_probe=0.1924, l_coord=0.0764, spike_rate=0.107, val_total_loss=4.6446, val_l_pred=4.1899, val_pos_err=0.4539, val_vel_err=0.7186, val_spike_rate=0.107
+  GradNormOverall=1.4377, GradNormRecent10=1.4302
+
+Epoch 089 | TrainLoss 4.6188 | ValLoss 4.6636 | SpikeRate 0.107 | Time 628.4s
+  Losses: total_loss=4.6188, l_pred=4.2352, l_probe=0.1918, l_coord=0.0745, spike_rate=0.107, val_total_loss=4.6636, val_l_pred=4.2140, val_pos_err=0.4535, val_vel_err=0.7125, val_spike_rate=0.107
+  GradNormOverall=1.4791, GradNormRecent10=1.5277
+
+Epoch 090 | TrainLoss 4.6272 | ValLoss 4.6510 | SpikeRate 0.108 | Time 635.4s
+  Losses: total_loss=4.6272, l_pred=4.2404, l_probe=0.1934, l_coord=0.0728, spike_rate=0.108, val_total_loss=4.6510, val_l_pred=4.1996, val_pos_err=0.4538, val_vel_err=0.7132, val_spike_rate=0.108
+  GradNormOverall=1.3622, GradNormRecent10=1.3873
+
+Epoch 091 | TrainLoss 4.6299 | ValLoss 4.6600 | SpikeRate 0.108 | Time 642.3s
+  Losses: total_loss=4.6299, l_pred=4.2418, l_probe=0.1941, l_coord=0.0709, spike_rate=0.108, val_total_loss=4.6600, val_l_pred=4.2064, val_pos_err=0.4537, val_vel_err=0.7183, val_spike_rate=0.108
+  GradNormOverall=1.3780, GradNormRecent10=1.4091
+
+Epoch 092 | TrainLoss 4.6329 | ValLoss 4.6746 | SpikeRate 0.108 | Time 649.3s
+  Losses: total_loss=4.6329, l_pred=4.2437, l_probe=0.1946, l_coord=0.0692, spike_rate=0.108, val_total_loss=4.6746, val_l_pred=4.2226, val_pos_err=0.4537, val_vel_err=0.7180, val_spike_rate=0.108
+  GradNormOverall=1.4925, GradNormRecent10=1.4548
+
+Epoch 093 | TrainLoss 4.6259 | ValLoss 4.6530 | SpikeRate 0.109 | Time 656.4s
+  Losses: total_loss=4.6259, l_pred=4.2394, l_probe=0.1933, l_coord=0.0672, spike_rate=0.109, val_total_loss=4.6530, val_l_pred=4.1945, val_pos_err=0.4548, val_vel_err=0.7218, val_spike_rate=0.109
+  GradNormOverall=1.4325, GradNormRecent10=1.3703
+
+Epoch 094 | TrainLoss 4.6299 | ValLoss 4.6379 | SpikeRate 0.109 | Time 663.3s
+  Losses: total_loss=4.6299, l_pred=4.2418, l_probe=0.1940, l_coord=0.0658, spike_rate=0.109, val_total_loss=4.6379, val_l_pred=4.1856, val_pos_err=0.4551, val_vel_err=0.7146, val_spike_rate=0.109
+  GradNormOverall=1.3900, GradNormRecent10=1.3967
+
+Epoch 095 | TrainLoss 4.6298 | ValLoss 4.6750 | SpikeRate 0.109 | Time 670.4s
+  Losses: total_loss=4.6298, l_pred=4.2405, l_probe=0.1947, l_coord=0.0640, spike_rate=0.109, val_total_loss=4.6750, val_l_pred=4.2195, val_pos_err=0.4560, val_vel_err=0.7193, val_spike_rate=0.109
+  GradNormOverall=1.5607, GradNormRecent10=1.6528
+
+Epoch 096 | TrainLoss 4.6355 | ValLoss 4.6734 | SpikeRate 0.110 | Time 677.3s
+  Losses: total_loss=4.6355, l_pred=4.2445, l_probe=0.1955, l_coord=0.0624, spike_rate=0.110, val_total_loss=4.6734, val_l_pred=4.2150, val_pos_err=0.4566, val_vel_err=0.7206, val_spike_rate=0.110
+  GradNormOverall=1.3518, GradNormRecent10=1.3422
+
+Epoch 097 | TrainLoss 4.6331 | ValLoss 4.6763 | SpikeRate 0.110 | Time 684.3s
+  Losses: total_loss=4.6331, l_pred=4.2411, l_probe=0.1960, l_coord=0.0607, spike_rate=0.110, val_total_loss=4.6763, val_l_pred=4.2225, val_pos_err=0.4570, val_vel_err=0.7130, val_spike_rate=0.110
+  GradNormOverall=1.4696, GradNormRecent10=1.4637
+
+Epoch 098 | TrainLoss 4.6397 | ValLoss 4.6856 | SpikeRate 0.111 | Time 691.2s
+  Losses: total_loss=4.6397, l_pred=4.2478, l_probe=0.1959, l_coord=0.0592, spike_rate=0.110, val_total_loss=4.6856, val_l_pred=4.2222, val_pos_err=0.4582, val_vel_err=0.7240, val_spike_rate=0.111
+  GradNormOverall=1.4862, GradNormRecent10=1.4926
+
+Epoch 099 | TrainLoss 4.6415 | ValLoss 4.6763 | SpikeRate 0.111 | Time 698.3s
+  Losses: total_loss=4.6415, l_pred=4.2476, l_probe=0.1969, l_coord=0.0575, spike_rate=0.111, val_total_loss=4.6763, val_l_pred=4.2167, val_pos_err=0.4589, val_vel_err=0.7195, val_spike_rate=0.111
+  GradNormOverall=1.4758, GradNormRecent10=1.4418
+
+Epoch 100 | TrainLoss 4.6359 | ValLoss 4.6669 | SpikeRate 0.111 | Time 705.4s
+  Losses: total_loss=4.6359, l_pred=4.2386, l_probe=0.1986, l_coord=0.0559, spike_rate=0.111, val_total_loss=4.6669, val_l_pred=4.2102, val_pos_err=0.4606, val_vel_err=0.7155, val_spike_rate=0.111
+  GradNormOverall=1.3959, GradNormRecent10=1.3935
+

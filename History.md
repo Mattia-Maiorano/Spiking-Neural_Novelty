@@ -616,7 +616,68 @@ $$W_{\text{rec}} = J - R$$
 - **Moduli aggiornati:**
   - [predictor.py](file:///Users/Mattia/Desktop/Studies/Temp/spwm/models/predictor.py): implementato blocco Port-Hamiltoniano $W_{\text{rec}} = J - R$ con parametri $W_{\text{skew}}$ e $\gamma_{\text{diss}}$.
   - [world_model.py](file:///Users/Mattia/Desktop/Studies/Temp/spwm/models/world_model.py): propagazione di $q_{\text{dim}}$, $p_{\text{dim}}$ e flag Port-Hamiltoniani al predittore latente.
-  - [train.py](file:///Users/Mattia/Desktop/Studies/Temp/experiments/train.py): binding dei parametri `use_port_hamiltonian` ed `eps_diss` da file YAML.
   - [test_models.py](file:///Users/Mattia/Desktop/Studies/Temp/tests/test_models.py): aggiunti unit test dedicati alle proprietà algebriche di $J$ e $R$ e rollout fino a $H=100$.
+
+---
+
+## Post-Mortem SPWM-v6.1: Negative Result & Rollback to v6 Baseline
+
+### 1. Diagnosi del Fallimento Empirico di v6.1
+L'introduzione della parametrizzazione discreta $W_{\text{rec}} = J - R$ applicata esclusivamente al sottospazio di momento $p \in \mathbb{R}^{96}$ ha evidenziato una grave regressione geometrica:
+1. **Rottura dell'Accoppiamento Canonico $(q, p)$:**
+   - La restrizione forzata antisimmetrica/dissipativa isolata sul solo momento $p$ ha alterato la coordinazione differenziale tra $q$ e $p$.
+   - Sebbene abbia arrestato la divergenza asintotica della velocità, ha distrutto la fedeltà di tracciamento e ancoraggio spaziale delle coordinate $q$.
+2. **Degrado delle Metriche Chiave:**
+   - **Position Error ($H=1$):** degradato da $0.145$ (baseline v6) a $0.552$ ($+280\%$ di errore istantaneo).
+   - **Latent MSE ($H=100$):** raddoppiato da $0.653$ (v6) a $1.136$.
+3. **Rollback Formale:**
+   - Eliminazione completa dei parametri $W_{\text{skew}}$, $\gamma_{\text{diss}}$, della matrice $W_{\text{rec}} = J - R$ e dei flag `use_port_hamiltonian` / `eps_diss`.
+   - Ripristino integrale della solida baseline di **SPWM-v6**: popolazione ALIF scalata a 256 neuroni (`timescale_dims: [128, 128]`, $\beta=0.90 / 0.985$), $q_{\text{dim}}=32$, $p_{\text{dim}}=96$, $z_{\text{dim}}=128$ con proiezione lineare $256 \to 96$ via `fuse_spikes` e `fuse_mems`.
+
+---
+
+## Release SPWM-v6.2: Continuous Attractor Neural Network (CANN) Integration
+
+### 1. Motivazione Teorica: Superamento del Dead Reckoning
+- **Problema di Baseline v6:** In SPWM-v6, l'integrazione libera sequenziale delle coordinate nello spazio aperto ($q_{t+1} = \text{clamp}(q_t + \tanh(W_{\text{vel}}(\bar{s}_t)), -1, 1)$ o $q_{t+1} = q_t + \Delta q$) agisce come pura integrazione a stima cieca (*dead reckoning*). Piccoli errori locali nei vettori di spostamento si accumulano monotonicamente, producendo derive spaziali e perdita di coerenza geometrica su orizzonti estesi ($H=100$).
+- **Paradigma CANN:** Ispirato ai circuiti biologici di navigazione e orientamento spaziale (cellule head-direction e place/grid cells nell'ippocampo e corteccia entorinale), il modulo Continuous Attractor Neural Network modella il manifold delle coordinate come una superficie continua di equilibrio stabile. L'attività neurale forma un profilo ("bump") localizzato che si sposta coerentemente sotto l'azione della velocità/momento, ma viene costantemente ri-ancorato al manifold topologico compatto.
+
+### 2. Formulazione Matematica del Modulo CANN ([ContinuousAttractor](file:///Users/Mattia/Desktop/Studies/Temp/spwm/models/latent_dynamics.py))
+Dato lo spazio di coordinate $q \in [-1, 1]^{q_{\text{dim}}}$ (con $q_{\text{dim}} = 32$ per 16 keypoint bidimensionali):
+1. **Centri Attrattori su Manifold Compatto:**
+   Si definisce un banco di $M$ centri attrattori $\mathcal{C} = \{c_m\}_{m=1}^M \in (-1, 1)^{q_{\text{dim}}}$ tramite parametrizzazione bounded:
+   $$c_m = \tanh(W_{\text{basis}, m})$$
+2. **Eccitazione Locale (Campo Recettivo Radiale):**
+   Per una coordinata candidata $q_{\text{cand}} = q_t + \Delta q$:
+   $$d_m(q_{\text{cand}}) = -\frac{\|q_{\text{cand}} - c_m\|^2}{2\sigma^2}$$
+3. **Modulazione Sinaptica da Attività Spiking / Latente:**
+   Il segnale di guida neurale $h_t$ (EMA degli spike $\bar{s}_t$ nella dinamica somatica, o momento $p_t$ nel predittore) inietta una corrente direzionale:
+   $$s_m = d_m(q_{\text{cand}}) + W_{\text{drive}, m}^T h_t$$
+4. **Inibizione Globale Competitiva (Softmax Normalization):**
+   Il profilo di attivazione dell'attrattore è normalizzato con temperatura $\tau$:
+   $$\alpha_m = \frac{\exp(s_m / \tau)}{\sum_{j=1}^M \exp(s_j / \tau)}$$
+5. **Decodifica e Forza di Ripristino:**
+   La coordinata aggiornata $q_{t+1}$ è la combinazione convessa sul manifold:
+   $$q_{t+1} = \sum_{m=1}^M \alpha_m c_m = \alpha \mathcal{C} \in (-1, 1)^{q_{\text{dim}}}$$
+   - **Forza di Ripristino Naturale:** Qualsiasi distorsione, rumore o deriva accumulata fuori dal manifold subisce una forza di attrazione verso il centroide locale più coerente.
+   - **Differenziabilità $\mathcal{C}^\infty$:** Elimina ogni discontinuità, clamp rigidi o branch piecewise $if/else$.
+
+### 3. Architettura Integrata e Compatibilità Forward-Only $\mathcal{O}(1)$
+- **Spiking Latent Dynamics ([latent_dynamics.py](file:///Users/Mattia/Desktop/Studies/Temp/spwm/models/latent_dynamics.py)):**
+  - In modalità autonoma, la velocità somatica derivata dall'EMA degli spike $\Delta q = \tanh(W_{\text{vel}}(\bar{s}_t))$ pilota la transizione sul modulo CANN: $q_{t+1} = \text{CANN}(q_t + \Delta q, \bar{s}_t)$.
+- **Latent Predictor ([predictor.py](file:///Users/Mattia/Desktop/Studies/Temp/spwm/models/predictor.py)):**
+  - Il sottospazio momento $p$ evolve via transizione residuale standard, mentre le coordinate $q$ vengono costantemente ri-ancorate tramite CANN: $q_{t+1} = \text{CANN}(q_t + \Delta q_{\text{MLP}}, p_t)$.
+- **Preservazione e-prop & Zero-Overhead:**
+  - Nessuna backward pass attraverso il tempo, memoria $\mathcal{O}(1)$ completamente preservata.
+  - Gli aggiornamenti locali su $W_{\text{vel}}$, $W_{\text{in}}$, $W_{\text{rec}}$, $W_q$ rimangono perfettamente causali e vettorizzati.
+
+### 4. File e Configurazioni
+- **Configurazioni create:** [spwm_v6_2.yaml](file:///Users/Mattia/Desktop/Studies/Temp/configs/experiments/spwm_v6_2.yaml) e [config_v6_2.yaml](file:///Users/Mattia/Desktop/Studies/Temp/config_v6_2.yaml).
+- **Moduli aggiornati:**
+  - [latent_dynamics.py](file:///Users/Mattia/Desktop/Studies/Temp/spwm/models/latent_dynamics.py): introdotta classe [ContinuousAttractor](file:///Users/Mattia/Desktop/Studies/Temp/spwm/models/latent_dynamics.py#L36) e binding in [SpikingLatentDynamics](file:///Users/Mattia/Desktop/Studies/Temp/spwm/models/latent_dynamics.py#L110).
+  - [predictor.py](file:///Users/Mattia/Desktop/Studies/Temp/spwm/models/predictor.py): rimosso blocco Port-Hamiltoniano e integrato [ContinuousAttractor](file:///Users/Mattia/Desktop/Studies/Temp/spwm/models/latent_dynamics.py#L36) in [LatentPredictor](file:///Users/Mattia/Desktop/Studies/Temp/spwm/models/predictor.py#L27).
+  - [world_model.py](file:///Users/Mattia/Desktop/Studies/Temp/spwm/models/world_model.py): propagazione parametri CANN (`use_cann`, `cann_num_basis`, `cann_sigma`, `cann_temperature`).
+  - [test_models.py](file:///Users/Mattia/Desktop/Studies/Temp/tests/test_models.py): unit test specifici per il vincolo di compattezza e ripristino dell'attrattore CANN su orizzonti fino a $H=100$.
+
 
 

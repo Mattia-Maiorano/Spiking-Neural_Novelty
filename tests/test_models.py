@@ -74,32 +74,42 @@ def test_autonomous_rollout_shapes():
         assert not torch.isnan(pred_rollout).any()
 
 
-def test_port_hamiltonian_predictor_properties():
+def test_cann_attractor_properties():
+    from spwm.models.latent_dynamics import ContinuousAttractor
     from spwm.models.predictor import LatentPredictor
 
+    cann = ContinuousAttractor(
+        q_dim=32,
+        num_basis=64,
+        drive_dim=96,
+        sigma=0.5,
+        temperature=0.1,
+    )
+
+    # Test coordinate anchoring within compact bounds [-1, 1]
+    # Even when presented with large perturbations outside [-1, 1]
+    q_drift = torch.randn(4, 32) * 5.0  # severely drifted coordinates
+    drive = torch.randn(4, 96)
+    q_anchored = cann(q_drift, drive_input=drive)
+
+    assert q_anchored.shape == (4, 32)
+    assert not torch.isnan(q_anchored).any()
+    # Continuous attractor manifold bounds: decoded coordinates are strictly within (-1, 1)
+    assert (q_anchored >= -1.0).all() and (q_anchored <= 1.0).all()
+
+    # Verify LatentPredictor with CANN
     predictor = LatentPredictor(
         latent_dim=128,
         q_dim=32,
         p_dim=96,
         hidden_dim=256,
-        use_port_hamiltonian=True,
-        eps_diss=1e-4,
+        use_cann=True,
+        cann_num_basis=64,
     )
 
-    # Verify skew-symmetry of J
-    J = 0.5 * (predictor.W_skew - predictor.W_skew.T)
-    assert torch.allclose(J, -J.T, atol=1e-6), "J must be skew-symmetric"
-
-    # Verify damping matrix R >= eps_diss
-    R_diag = torch.nn.functional.softplus(predictor.gamma_diss) + predictor.eps_diss
-    assert (R_diag >= 1e-4).all(), "R diagonal must be strictly positive"
-
-    # Verify W_rec = J - R
-    W_rec = predictor.get_port_hamiltonian_w_rec()
-    assert W_rec.shape == (96, 96)
-
-    # Test forward pass with batch of 4 sequences of length 10
     z = torch.randn(4, 10, 128)
     out = predictor(z)
     assert out.predicted_latent.shape == (4, 10, 128)
     assert not torch.isnan(out.predicted_latent).any()
+    q_pred = out.predicted_latent[..., :32]
+    assert (q_pred >= -1.0).all() and (q_pred <= 1.0).all()

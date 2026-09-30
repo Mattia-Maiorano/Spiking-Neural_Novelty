@@ -86,8 +86,11 @@ class SPWM(nn.Module):
         q_dim: Optional[int] = None,
         p_dim: Optional[int] = None,
         ema_decay: float = 0.9,
-        use_port_hamiltonian: bool = True,
-        eps_diss: float = 1e-4,
+        use_cann: bool = True,
+        cann_num_basis: int = 64,
+        cann_sigma: float = 0.5,
+        cann_temperature: float = 0.1,
+        **kwargs,
     ) -> None:
         super().__init__()
         self.in_channels = in_channels
@@ -142,6 +145,10 @@ class SPWM(nn.Module):
             gamma=gamma,
             surrogate_name=surrogate_name,
             surrogate_alpha=surrogate_alpha,
+            use_cann=use_cann,
+            cann_num_basis=cann_num_basis,
+            cann_sigma=cann_sigma,
+            cann_temperature=cann_temperature,
         )
 
         # 4. Latent Predictor (z_hat_(t+1) = LatentPredictor(z_t))
@@ -151,8 +158,10 @@ class SPWM(nn.Module):
             residual=True,
             q_dim=self.dynamics.q_dim,
             p_dim=self.dynamics.p_dim,
-            use_port_hamiltonian=use_port_hamiltonian,
-            eps_diss=eps_diss,
+            use_cann=use_cann,
+            cann_num_basis=cann_num_basis,
+            cann_sigma=cann_sigma,
+            cann_temperature=cann_temperature,
         )
 
         # 5. Physical Decoder Probe (ground truth kinematics evaluation)

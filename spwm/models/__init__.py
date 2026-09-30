@@ -13,7 +13,7 @@ from spwm.models.surrogate import (
 from spwm.models.neurons import LIFCell, NeuronState, ALIFCell, ALIFState
 from spwm.models.memory import MultiTimescaleMemory, MultiTimescaleState, compute_tier_dims
 from spwm.models.encoder import EventEncoder
-from spwm.models.latent_dynamics import SpikingLatentDynamics, DynamicsState, DynamicsOutput
+from spwm.models.latent_dynamics import SpikingLatentDynamics, DynamicsState, DynamicsOutput, ContinuousAttractor
 from spwm.models.predictor import LatentPredictor, PhysicalDecoder, PredictorOutput
 from spwm.models.world_model import SPWM, SPWMState, SPWMStepOutput, SPWMSequenceOutput
 
@@ -32,6 +32,7 @@ __all__ = [
     "MultiTimescaleState",
     "compute_tier_dims",
     "EventEncoder",
+    "ContinuousAttractor",
     "SpikingLatentDynamics",
     "DynamicsState",
     "DynamicsOutput",

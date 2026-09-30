@@ -15,6 +15,9 @@ import torch
 import torch.nn as nn
 
 
+from spwm.models.latent_dynamics import ContinuousAttractor
+
+
 @dataclass
 class PredictorOutput:
     """Container for latent prediction output."""
@@ -27,14 +30,8 @@ class LatentPredictor(nn.Module):
     """
     Predictive Transition Head: p(z_(t+1) | z_t).
     Uses a residual MLP block to predict the temporal differential or next latent state,
-    with an optional Port-Hamiltonian recurrent transition operator (W_rec = J - R)
-    on the momentum p subspace to prevent kinetic energy dissipation and velocity divergence.
-
-    Formulation:
-        z = [q, p]
-        W_rec = J - R
-        J = 0.5 * (W_skew - W_skew^T)  (pure skew-symmetric: J^T = -J)
-        R = diag(softplus(gamma_diss)) + eps_diss (positive semi-definite damping)
+    with an optional Continuous Attractor Neural Network (CANN) projection on the
+    coordinate q subspace to prevent long-horizon drift on compact topological manifolds.
     """
 
     def __init__(
@@ -44,14 +41,16 @@ class LatentPredictor(nn.Module):
         residual: bool = True,
         q_dim: Optional[int] = None,
         p_dim: Optional[int] = None,
-        use_port_hamiltonian: bool = True,
-        eps_diss: float = 1e-4,
+        use_cann: bool = True,
+        cann_num_basis: int = 64,
+        cann_sigma: float = 0.5,
+        cann_temperature: float = 0.1,
+        **kwargs,
     ) -> None:
         super().__init__()
         self.latent_dim = latent_dim
         self.residual = residual
-        self.use_port_hamiltonian = use_port_hamiltonian
-        self.eps_diss = eps_diss
+        self.use_cann = use_cann
 
         if q_dim is None and p_dim is None:
             self.q_dim = max(1, latent_dim // 4)
@@ -76,22 +75,16 @@ class LatentPredictor(nn.Module):
             nn.Linear(hidden_dim, latent_dim),
         )
 
-        if self.use_port_hamiltonian:
-            # Parametrization for momentum recurrence W_rec = J - R in R^{p_dim x p_dim}
-            self.W_skew = nn.Parameter(torch.empty(self.p_dim, self.p_dim))
-            nn.init.orthogonal_(self.W_skew, gain=0.5)
-            # Damping parameter gamma: R = diag(softplus(gamma_diss) + eps_diss)
-            self.gamma_diss = nn.Parameter(torch.zeros(self.p_dim))
-
-    def get_port_hamiltonian_w_rec(self) -> torch.Tensor:
-        """
-        Computes discrete Port-Hamiltonian recurrence matrix: W_rec = J - R.
-        J is skew-symmetric: J = 0.5 * (W_skew - W_skew^T)
-        R is positive diagonal: R = diag(softplus(gamma_diss) + eps_diss)
-        """
-        J = 0.5 * (self.W_skew - self.W_skew.T)
-        R = torch.diag(torch.nn.functional.softplus(self.gamma_diss) + self.eps_diss)
-        return J - R
+        if self.use_cann:
+            self.cann = ContinuousAttractor(
+                q_dim=self.q_dim,
+                num_basis=cann_num_basis,
+                drive_dim=self.p_dim,
+                sigma=cann_sigma,
+                temperature=cann_temperature,
+            )
+        else:
+            self.cann = None
 
     def forward(self, z: torch.Tensor) -> PredictorOutput:
         """
@@ -100,20 +93,24 @@ class LatentPredictor(nn.Module):
         """
         delta_z = self.net(z)
 
-        if self.use_port_hamiltonian:
-            # Extract momentum component p
+        if self.use_cann and self.cann is not None:
+            # Momentum p evolves via residual MLP differential
             p = z[..., self.q_dim:self.q_dim + self.p_dim]
-            W_rec = self.get_port_hamiltonian_w_rec()
-            p_ph = p @ W_rec.T
-            # Augment p prediction with Port-Hamiltonian conservative/dissipative dynamics
-            delta_p = delta_z[..., self.q_dim:self.q_dim + self.p_dim] + p_ph
-            delta_q = delta_z[..., :self.q_dim]
-            delta_z = torch.cat([delta_q, delta_p], dim=-1)
+            delta_p = delta_z[..., self.q_dim:self.q_dim + self.p_dim]
+            p_next = p + delta_p
 
-        if self.residual:
-            z_next = z + delta_z
+            # Coordinate q is anchored by the continuous attractor manifold
+            q = z[..., :self.q_dim]
+            delta_q = delta_z[..., :self.q_dim]
+            q_cand = q + delta_q
+            q_next = self.cann(q_cand, drive_input=p)
+
+            z_next = torch.cat([q_next, p_next], dim=-1)
         else:
-            z_next = delta_z
+            if self.residual:
+                z_next = z + delta_z
+            else:
+                z_next = delta_z
 
         return PredictorOutput(
             predicted_latent=z_next,

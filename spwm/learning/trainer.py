@@ -125,13 +125,8 @@ class Trainer:
             else None
         )
 
-        self.probe_scheduler = (
-            torch.optim.lr_scheduler.StepLR(
-                self.probe_optimizer, step_size=5, gamma=0.5
-            )
-            if self.probe_optimizer
-            else None
-        )
+        self.probe_scheduler = None
+
 
         self.predictor_optimizer = (
             torch.optim.AdamW(
@@ -229,13 +224,8 @@ class Trainer:
                     pred_x = self.model.sensory_predictor(z_prev)
                     loss_sensory = nn.functional.mse_loss(enc_seq, pred_x.detach())
 
-                    # 2. Kinematic / probe alignment
-                    if true_kin is not None:
-                        decoded_enc = self.model.physical_decoder(enc_seq)
-                        loss_kin_enc = nn.functional.mse_loss(decoded_enc, true_kin)
-                        loss_enc = loss_sensory + loss_kin_enc
-                    else:
-                        loss_enc = loss_sensory
+                    loss_enc = loss_sensory
+
 
                     # 3. v4.2 — Auxiliary Coordinate Loss (L_coord)
                     #    Gradient path: GT_xy -> MSE -> kp_seq (SpatialSoftmax output)

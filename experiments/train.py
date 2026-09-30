@@ -87,6 +87,9 @@ def build_model(config: Dict[str, Any], device: torch.device) -> torch.nn.Module
             rls_enabled=model_cfg.get("rls_enabled", False),
             rls_forgetting=model_cfg.get("rls_forgetting", 0.99),
             rls_delta=model_cfg.get("rls_delta", 1.0),
+            # v6.1: Port-Hamiltonian momentum dynamics W_rec = J - R
+            use_port_hamiltonian=model_cfg.get("use_port_hamiltonian", True),
+            eps_diss=model_cfg.get("eps_diss", 1e-4),
         )
     elif model_type == "gru":
         model = GRUWorldModel(
@@ -123,17 +126,61 @@ def build_model(config: Dict[str, Any], device: torch.device) -> torch.nn.Module
     return model.to(device)
 
 
+def get_latest_config_path(configs_dir: Path = Path("configs/experiments")) -> Path:
+    """Finds the latest experiment configuration file based on versioning."""
+    import re
+    if not configs_dir.is_dir():
+        raise FileNotFoundError(f"Configs directory not found at: {configs_dir}")
+
+    yaml_files = list(configs_dir.glob("*.yaml")) + list(configs_dir.glob("*.yml"))
+    if not yaml_files:
+        raise FileNotFoundError(f"No YAML configuration files found in: {configs_dir}")
+
+    def parse_version_key(path: Path):
+        stem = path.stem
+        m = re.match(r"^(.*?)(?:_v?(\d+.*))?$", stem)
+        if not m or not m.group(2):
+            return (0, stem, ())
+        prefix, v_str = m.group(1), m.group(2)
+        tokens = re.findall(r"[0-9]+|[a-zA-Z]+", v_str)
+        parsed = []
+        for t in tokens:
+            if t.isdigit():
+                parsed.append((1, int(t)))
+            else:
+                parsed.append((2, t.upper()))
+        return (1, prefix, parsed)
+
+    return max(yaml_files, key=parse_version_key)
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(description="Train SPWM or baseline model.")
-    parser.add_argument("--config", type=str, required=True, help="Path to experiment config YAML")
+    parser.add_argument(
+        "--config",
+        type=str,
+        default="latest",
+        help="Path to experiment config YAML, or 'latest' to automatically use the highest version (default: 'latest')",
+    )
     parser.add_argument("--seed", type=int, default=None, help="Random seed for reproducibility")
     parser.add_argument("--epochs", type=int, default=None, help="Override training epochs")
     parser.add_argument("--device", type=str, default=None, help="Device (cpu, mps, cuda)")
     parser.add_argument("--output-dir", type=str, default=None, help="Output results directory")
     args = parser.parse_args()
 
-    # 1. Load configuration
-    config = load_config(args.config)
+    # 1. Resolve and load configuration
+    if args.config.lower() == "latest":
+        config_path = get_latest_config_path()
+        chronicle.log_info(f"Using latest configuration: {config_path}")
+    else:
+        config_path = Path(args.config)
+        if not config_path.is_file() and not config_path.suffix:
+            # Check if it was provided without .yaml extension
+            potential = Path("configs/experiments") / f"{args.config}.yaml"
+            if potential.is_file():
+                config_path = potential
+
+    config = load_config(config_path)
     if args.seed is not None:
         config["project"]["seed"] = args.seed
     seed = config.get("project", {}).get("seed", 42)
@@ -151,18 +198,17 @@ def main() -> None:
     else:
         device = torch.device("cpu")
 
-    # Output directory (always overwrite without seed subfolders)
-    raw_exp_name = config.get("project", {}).get("name", "experiment")
-    exp_name = raw_exp_name.replace("v2", "v3")
+    # Output directory (matches config stem if not explicitly provided)
+    exp_name = config.get("project", {}).get("name", config_path.stem)
     if args.output_dir is not None:
         save_dir = Path(args.output_dir)
     else:
-        save_dir = Path("results") / exp_name
+        save_dir = Path("results") / config_path.stem
     save_dir.mkdir(parents=True, exist_ok=True)
     figures_dir = save_dir / "figures"
     figures_dir.mkdir(parents=True, exist_ok=True)
 
-    chronicle.log_application_title(f"Starting Experiment: {exp_name}")
+    chronicle.log_application_title(f"Starting Experiment: {config_path.stem}")
     chronicle.log_detail("Device", device)
     chronicle.log_detail("Seed", seed)
     chronicle.log_detail("Save Dir", save_dir)
@@ -208,25 +254,55 @@ def main() -> None:
     epochs = args.epochs if args.epochs is not None else train_cfg.get("epochs", 20)
     lr = train_cfg.get("learning_rate", 1e-3)
 
-    # 4. Train Model (Checkpoints logic strictly preserved)
+    # 4. Train Model (Resume checkpoint or load existing model & history)
     model_path = save_dir / "model.pt"
-    ckpt = None
-    if model_path.is_file():
+    checkpoint_path = save_dir / "checkpoint.pt"
+    log_json_path = save_dir / "training_log.json"
+
+    start_epoch = 1
+    best_val_loss = float("inf")
+    best_val_pos_err = float("inf")
+    history = []
+    optimizer_state = None
+    loaded_existing = False
+
+    # Check for full training checkpoint first
+    if checkpoint_path.is_file():
+        ckpt = torch.load(checkpoint_path, map_location=device)
+        if isinstance(ckpt, dict):
+            if "model_state" in ckpt:
+                model.load_state_dict(ckpt["model_state"], strict=False)
+            start_epoch = ckpt.get("epoch", 0) + 1
+            best_val_loss = ckpt.get("best_val_loss", float("inf"))
+            best_val_pos_err = ckpt.get("best_val_pos_err", float("inf"))
+            history = ckpt.get("history", []) or []
+            optimizer_state = ckpt.get("optimizer_state", None)
+            loaded_existing = True
+            chronicle.log_info(f"Loaded full checkpoint from {checkpoint_path} (resuming at epoch {start_epoch})")
+    elif model_path.is_file():
         ckpt = torch.load(model_path, map_location=device)
         if isinstance(ckpt, dict) and "model_state" in ckpt:
             model.load_state_dict(ckpt["model_state"], strict=False)
-            chronicle.log_info(f"Loaded checkpoint (state dict) from {model_path}")
+            chronicle.log_info(f"Loaded model state dict from {model_path}")
         else:
             model.load_state_dict(ckpt, strict=False)
             chronicle.log_info(f"Loaded plain model.pt from {model_path}")
+        loaded_existing = True
+
+        # Try to load existing history logs if checkpoint.pt was not available
+        if log_json_path.is_file():
+            try:
+                with open(log_json_path, "r", encoding="utf-8") as f:
+                    history = json.load(f) or []
+                if history:
+                    start_epoch = history[-1].get("epoch", len(history)) + 1
+                    chronicle.log_info(f"Loaded existing history ({len(history)} epochs) from {log_json_path}")
+            except Exception as e:
+                chronicle.log_warning(f"Could not load existing history: {e}")
+                history = []
     else:
-        chronicle.log_info("No existing model.pt — starting fresh.")
-        
-    start_epoch = 1
-    best_val_loss = float("inf")
-    history = None
-    optimizer_state = None
-    
+        chronicle.log_info("No existing model or checkpoint — starting fresh.")
+
     probe_lr = train_cfg.get("probe_lr", 5e-4)
     probe_weight_decay = train_cfg.get("probe_weight_decay", 1e-2)
 
@@ -244,11 +320,12 @@ def main() -> None:
         save_dir=str(save_dir),
         start_epoch=start_epoch,
         best_val_loss=best_val_loss,
+        best_val_pos_err=best_val_pos_err,
         history=history,
         optimizer_state=optimizer_state,
     )
 
-    if ckpt is not None and not (isinstance(ckpt, dict) and "model_state" in ckpt):
+    if loaded_existing and (best_val_pos_err == float("inf") or best_val_loss == float("inf")):
         baseline = trainer.evaluate()
         trainer.best_val_loss = baseline["val_total_loss"]
         trainer.best_val_pos_err = baseline.get("val_pos_err", float("inf"))
@@ -298,11 +375,13 @@ def main() -> None:
     with open(save_dir / "metrics.json", "w", encoding="utf-8") as f:
         json.dump(metrics_payload, f, indent=2)
 
+    total_epochs_completed = len(history) if history else epochs
     metadata = {
         "run_id": save_dir.name,
         "experiment_name": exp_name,
         "seed": seed,
-        "epochs": epochs,
+        "total_epochs": total_epochs_completed,
+        "last_session_epochs": epochs,
         "learning_rate": lr,
         "device": str(device),
         "pytorch_version": torch.__version__,

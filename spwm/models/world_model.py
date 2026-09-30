@@ -86,6 +86,8 @@ class SPWM(nn.Module):
         q_dim: Optional[int] = None,
         p_dim: Optional[int] = None,
         ema_decay: float = 0.9,
+        use_port_hamiltonian: bool = True,
+        eps_diss: float = 1e-4,
     ) -> None:
         super().__init__()
         self.in_channels = in_channels
@@ -147,6 +149,10 @@ class SPWM(nn.Module):
             latent_dim=latent_dim,
             hidden_dim=predictor_hidden_dim,
             residual=True,
+            q_dim=self.dynamics.q_dim,
+            p_dim=self.dynamics.p_dim,
+            use_port_hamiltonian=use_port_hamiltonian,
+            eps_diss=eps_diss,
         )
 
         # 5. Physical Decoder Probe (ground truth kinematics evaluation)

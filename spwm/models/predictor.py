@@ -26,8 +26,15 @@ class PredictorOutput:
 class LatentPredictor(nn.Module):
     """
     Predictive Transition Head: p(z_(t+1) | z_t).
-    Uses a residual MLP block to predict the temporal differential or next latent state.
-    Residual dynamics: z_hat_(t+1) = z_t + Δz(z_t).
+    Uses a residual MLP block to predict the temporal differential or next latent state,
+    with an optional Port-Hamiltonian recurrent transition operator (W_rec = J - R)
+    on the momentum p subspace to prevent kinetic energy dissipation and velocity divergence.
+
+    Formulation:
+        z = [q, p]
+        W_rec = J - R
+        J = 0.5 * (W_skew - W_skew^T)  (pure skew-symmetric: J^T = -J)
+        R = diag(softplus(gamma_diss)) + eps_diss (positive semi-definite damping)
     """
 
     def __init__(
@@ -35,10 +42,29 @@ class LatentPredictor(nn.Module):
         latent_dim: int = 128,
         hidden_dim: int = 256,
         residual: bool = True,
+        q_dim: Optional[int] = None,
+        p_dim: Optional[int] = None,
+        use_port_hamiltonian: bool = True,
+        eps_diss: float = 1e-4,
     ) -> None:
         super().__init__()
         self.latent_dim = latent_dim
         self.residual = residual
+        self.use_port_hamiltonian = use_port_hamiltonian
+        self.eps_diss = eps_diss
+
+        if q_dim is None and p_dim is None:
+            self.q_dim = max(1, latent_dim // 4)
+            self.p_dim = max(1, latent_dim - self.q_dim)
+        elif q_dim is None:
+            self.p_dim = min(p_dim, latent_dim - 1)
+            self.q_dim = max(1, latent_dim - self.p_dim)
+        elif p_dim is None:
+            self.q_dim = min(q_dim, latent_dim - 1)
+            self.p_dim = max(1, latent_dim - self.q_dim)
+        else:
+            self.q_dim = q_dim
+            self.p_dim = p_dim
 
         self.net = nn.Sequential(
             nn.Linear(latent_dim, hidden_dim),
@@ -50,12 +76,40 @@ class LatentPredictor(nn.Module):
             nn.Linear(hidden_dim, latent_dim),
         )
 
+        if self.use_port_hamiltonian:
+            # Parametrization for momentum recurrence W_rec = J - R in R^{p_dim x p_dim}
+            self.W_skew = nn.Parameter(torch.empty(self.p_dim, self.p_dim))
+            nn.init.orthogonal_(self.W_skew, gain=0.5)
+            # Damping parameter gamma: R = diag(softplus(gamma_diss) + eps_diss)
+            self.gamma_diss = nn.Parameter(torch.zeros(self.p_dim))
+
+    def get_port_hamiltonian_w_rec(self) -> torch.Tensor:
+        """
+        Computes discrete Port-Hamiltonian recurrence matrix: W_rec = J - R.
+        J is skew-symmetric: J = 0.5 * (W_skew - W_skew^T)
+        R is positive diagonal: R = diag(softplus(gamma_diss) + eps_diss)
+        """
+        J = 0.5 * (self.W_skew - self.W_skew.T)
+        R = torch.diag(torch.nn.functional.softplus(self.gamma_diss) + self.eps_diss)
+        return J - R
+
     def forward(self, z: torch.Tensor) -> PredictorOutput:
         """
         z: [B, latent_dim] or [B, T, latent_dim]
         Returns: PredictorOutput with predicted_latent [B, ..., latent_dim]
         """
         delta_z = self.net(z)
+
+        if self.use_port_hamiltonian:
+            # Extract momentum component p
+            p = z[..., self.q_dim:self.q_dim + self.p_dim]
+            W_rec = self.get_port_hamiltonian_w_rec()
+            p_ph = p @ W_rec.T
+            # Augment p prediction with Port-Hamiltonian conservative/dissipative dynamics
+            delta_p = delta_z[..., self.q_dim:self.q_dim + self.p_dim] + p_ph
+            delta_q = delta_z[..., :self.q_dim]
+            delta_z = torch.cat([delta_q, delta_p], dim=-1)
+
         if self.residual:
             z_next = z + delta_z
         else:

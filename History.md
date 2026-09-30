@@ -574,3 +574,49 @@ Subsequent untested iterations after v5.0 attempted heuristic patches that cumul
 - **Configurazione creata:** [spwm_v6.yaml](file:///Users/Mattia/Desktop/Studies/Temp/configs/experiments/spwm_v6.yaml)
 - **Verifica e Test:** Eseguiti test di forward pass, coerenza dimensionale dei tensori e accumulo dei gradienti e-prop con esito positivo.
 
+---
+
+## Release SPWM-v6.1: Port-Hamiltonian Momentum Recurrence ($W_{\text{rec}} = J - R$)
+
+### 1. Resoconto Risultati v6 (Baseline di Partenza) & Diagnosi del Problema Aperto
+- **Population Scaling Validato:** Il raddoppio della popolazione a 256 neuroni ALIF (`timescale_dims: [128, 128]`, 128 veloci $\beta_{\text{adapt}}=0.90$ e 128 lenti $\beta_{\text{adapt}}=0.985$) ha abbattuto il freezing nei rollout lunghi fino a $H=100$, mantenendo uno spike rate medio dell'$11.5\%$ (~29 spike/passo).
+- **Problema Aperto (Velocity Drift & Divergenza):**
+  - Mentre il position error converge ($< 0.2$), il velocity error diverge oltre l'epoca 20 (~$0.65$ in test e ~$1.40+$ in estrapolazione).
+  - La dinamica del momento $p \in \mathbb{R}^{96}$ manca di conservazione fisica ed è soggetta ad accumulo di autovalori spuri con $\text{Re}(\lambda) > 0$, provocando derive spurie e instabilità cinetica.
+
+### 2. Derivazione Formale della Parametrizzazione Port-Hamiltoniana
+Per vincolare l'operatore di transizione del momento $p_t \to p_{t+1}$ entro un regime di dissipazione e conservazione controllata dell'energia cinetica, la transizione latente del momento $p \in \mathbb{R}^{96}$ viene parametrizzata secondo la formulazione Port-Hamiltoniana discreta:
+$$W_{\text{rec}} = J - R$$
+
+1. **Scambio Conservativo Energetico ($J$):**
+   $$J = \frac{1}{2}(W_{\text{skew}} - W_{\text{skew}}^T)$$
+   - $J$ è una matrice antisimmetrica pura ($J^T = -J$).
+   - Per ogni vettore di momento $p$, il prodotto quadratico $p^T J p = 0$, garantendo che $J$ non introduca guadagno o perdita di energia spuria, ma solo rotazione/conservazione nel sottospazio canonico.
+2. **Smorzamento Semidefinito Positivo ($R$):**
+   $$R = \text{diag}(\text{softplus}(\gamma_{\text{diss}}) + \epsilon_{\text{diss}})$$
+   - $R \succ 0$ garantisce che $p^T R p > 0$ per $p \ne 0$.
+   - Introduce un tasso di dissipazione intrinseco e asintoticamente stabile di Lyapunov, con pavimento numerico $\epsilon_{\text{diss}} = 10^{-4}$.
+
+### 3. Integrazione con lo Spazio delle Fasi & Moduli di Transizione Latente
+- **Architettura Spazio delle Fasi Invariata:**
+  - $z = [q, p] \in \mathbb{R}^{128}$ con $q \in \mathbb{R}^{32}$ (coordinate cartesiane) e $p \in \mathbb{R}^{96}$ (momento canonico).
+  - Popolazione ALIF a 256 neuroni (`timescale_dims: [128, 128]`).
+- **Modulo Predittivo Latente ([LatentPredictor](file:///Users/Mattia/Desktop/Studies/Temp/spwm/models/predictor.py)):**
+  - Il blocco di predizione residuale integra esplicitamente l'operatore Port-Hamiltoniano sul sottospazio $p$:
+    $$\Delta p_t = \Delta p_{\text{MLP}}(z_t) + W_{\text{rec}} p_t = \Delta p_{\text{MLP}}(z_t) + (J - R) p_t$$
+    $$z_{t+1} = z_t + [\Delta q_t, \Delta p_t]$$
+  - In questo modo la derivata temporale del momento è vincolata a un flusso Hamiltoniano smorzato, evitando la crescita esponenziale degli autovalori e la divergenza della velocità nei rollout a lungo raggio.
+
+### 4. Rispetto dei Vincoli Neuromorfici ed E-prop
+- Nessuna euristica manuale né forzatura con blocchi piecewise/if-else.
+- Elaborazione forward-only $\mathcal{O}(1)$ completamente differenziabile e preservata per tutto il modello.
+
+### 5. File & Configurazioni
+- **Configurazione creata:** [spwm_v6_1.yaml](file:///Users/Mattia/Desktop/Studies/Temp/configs/experiments/spwm_v6_1.yaml)
+- **Moduli aggiornati:**
+  - [predictor.py](file:///Users/Mattia/Desktop/Studies/Temp/spwm/models/predictor.py): implementato blocco Port-Hamiltoniano $W_{\text{rec}} = J - R$ con parametri $W_{\text{skew}}$ e $\gamma_{\text{diss}}$.
+  - [world_model.py](file:///Users/Mattia/Desktop/Studies/Temp/spwm/models/world_model.py): propagazione di $q_{\text{dim}}$, $p_{\text{dim}}$ e flag Port-Hamiltoniani al predittore latente.
+  - [train.py](file:///Users/Mattia/Desktop/Studies/Temp/experiments/train.py): binding dei parametri `use_port_hamiltonian` ed `eps_diss` da file YAML.
+  - [test_models.py](file:///Users/Mattia/Desktop/Studies/Temp/tests/test_models.py): aggiunti unit test dedicati alle proprietà algebriche di $J$ e $R$ e rollout fino a $H=100$.
+
+

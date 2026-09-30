@@ -63,14 +63,14 @@ class Trainer:
         probe_lr: float = 5e-4,
         probe_weight_decay: float = 1e-2,
         tensorboard_logging: bool = False,
-        # Resume support (optional)
         start_epoch: int = 1,
         best_val_loss: float = float("inf"),
+        best_val_pos_err: float = float("inf"),
         history: Optional[List[Dict[str, float]]] = None,
         optimizer_state: Optional[Dict] = None,
     ) -> None:
         self.best_epoch: Optional[int] = None
-        self.best_val_pos_err: float = float("inf")
+        self.best_val_pos_err: float = best_val_pos_err
         self.learning_algorithm = learning_algorithm.lower()
         self.learning_rate = learning_rate
 
@@ -396,6 +396,7 @@ class Trainer:
         print_every: int = 1,
     ) -> List[Dict[str, float]]:
         start_time = time.time()
+        base_elapsed = self.history[-1].get("elapsed_time", 0.0) if self.history else 0.0
         end_epoch = self.start_epoch + epochs - 1
         self._print_training_header(epochs)
 
@@ -405,7 +406,7 @@ class Trainer:
                 train_metrics = self.train_epoch(epoch)
                 val_metrics = self.evaluate()
                 epoch_duration = time.time() - t_epoch_start
-                total_elapsed = time.time() - start_time
+                total_elapsed = base_elapsed + (time.time() - start_time)
 
                 recent_norm = (
                     sum(self.recent_grad_norms) / max(1, len(self.recent_grad_norms))

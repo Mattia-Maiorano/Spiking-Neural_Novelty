@@ -679,5 +679,58 @@ Dato lo spazio di coordinate $q \in [-1, 1]^{q_{\text{dim}}}$ (con $q_{\text{dim
   - [world_model.py](file:///Users/Mattia/Desktop/Studies/Temp/spwm/models/world_model.py): propagazione parametri CANN (`use_cann`, `cann_num_basis`, `cann_sigma`, `cann_temperature`).
   - [test_models.py](file:///Users/Mattia/Desktop/Studies/Temp/tests/test_models.py): unit test specifici per il vincolo di compattezza e ripristino dell'attrattore CANN su orizzonti fino a $H=100$.
 
+---
+
+## Post-Mortem SPWM-v6.2 (CANN): Failure Analysis & Rollback to Pure v6 Base
+
+### 1. Diagnosi del Fallimento Empirico di v6.2 (Continuous Attractor Neural Network)
+L'introduzione del modulo CANN per vincolare lo spazio delle coordinate $q \in \mathbb{R}^{32}$ su un manifold attrattore compatto ha prodotto un collasso rappresentazionale:
+1. **Effetto Filtro Passa-Basso Distruttivo:**
+   - La combinazione di una base radiale continua con $\sigma = 0.5$ e temperatura softmax fissa ($\tau = 0.1$) ha agito come un filtro passa-basso aggressivo, spianando la granularità fine e l'isometria cartesiana dei 16 keypoint $(u_k, v_k)$.
+   - Il modello è collassato verso un attrattore "pigro"/banale: il Position Error a $H=1$ è rimasto bloccato su valori inaccettabili (~$0.553$ contro $0.145$ della baseline v6), rendendo il tracking istantaneo completamente degradato.
+2. **Divergenza e Instabilità di Training:**
+   - Durante il training, la loss è entrata in risalita/divergenza progressiva dopo l'epoca 40 a causa dell'accumulo di errori di approssimazione e della perdita di sensibilità differenziale della combinazione convessa $\alpha \mathcal{C}$.
+3. **Archiviazione Ufficiale di v6.1 e v6.2:**
+   - Sia il vincolo Port-Hamiltoniano isolato su $p$ (v6.1, che ha disaccoppiato la coppia canonica $q, p$) sia il modulo CANN (v6.2, che ha spianato la topologia fine dei keypoint) vengono formalmente archiviati come **esperimenti falliti**.
+
+---
+
+## Release SPWM-v6.3: Clean v6 Base & Multi-Step Autoregressive Rollout Loss
+
+### 1. Razionale Architetturale & Rollback a Base v6
+- **Ripristino Integrale dell'Approccio A Puro (SPWM-v6):**
+  - Popolazione ALIF scalata a **256 neuroni** (`timescale_dims: [128, 128]`, 128 veloci $\beta_{\text{adapt}}=0.90$ e 128 lenti $\beta_{\text{adapt}}=0.985$).
+  - Spazio delle fasi puro $(q, p)$ con $q \in \mathbb{R}^{32}$, $p \in \mathbb{R}^{96}$, $z \in \mathbb{R}^{128}$.
+  - Proiezioni lineari standard per spike e potenziali di membrana ($256 \to 96$) verso il momento continuo $p$ (`fuse_spikes`, `fuse_mems`).
+  - Rimossa qualsiasi complicazione non lineare o geometrica spuria (niente CANN, niente Port-Hamiltonian $J-R$, niente vincoli artificiali piecewise).
+
+### 2. Multi-Step Autoregressive Rollout Loss (Mitigazione dell'Exposure Bias)
+- **Problema Fondamentale (Exposure Bias del Teacher Forcing a 1 Passo):**
+  - Addestrare il predittore latente $\hat{z}_{t+1} = \text{Predictor}(z_t)$ esclusivamente con Teacher Forcing ($t \to t+1$) espone il modello a un disallineamento distribuzionale durante il test: in fase di rollout autonomo, piccoli errori di predizione si accumulano passo dopo passo poiché il modello non ha mai visto i propri output imperfetti in ingresso.
+- **Formulazione della Multi-Step Rollout Loss:**
+  - Si implementa una loss di rollout autoregressivo a ciclo chiuso su un orizzonte corto controllato ($K = 3$ passi):
+    $$\hat{z}_{t+1} = \text{Predictor}(z_t)$$
+    $$\hat{z}_{t+2} = \text{Predictor}(\hat{z}_{t+1})$$
+    $$\dots$$
+    $$\hat{z}_{t+K} = \text{Predictor}(\hat{z}_{t+K-1})$$
+  - Durante il rollout di $K$ passi, ogni output predetto $\hat{z}_{t+k} = [\hat{q}_{t+k}; \hat{p}_{t+k}]$ viene re-iniettato autoregressivamente in ingresso per il passo successivo $\hat{z}_{t+k+1}$.
+  - L'errore quadratico medio viene calcolato rispetto agli stati latenti reali $z_{t+k}$ (staccati dal grafo di ALIF) lungo tutti i $K$ passi:
+    $$\mathcal{L}_{\text{multi}} = \frac{1}{K} \sum_{k=1}^K \text{MSE}(\hat{z}_{t+k}, z_{t+k})$$
+- **Loss Totale del Predittore & Bilanciamento del Gradiente:**
+  - $\mathcal{L}_{\text{pred\_total}} = \lambda_{\text{pred}} \mathcal{L}_{\text{1-step}} + \lambda_{\text{multi}} \mathcal{L}_{\text{multi}}$, con $\lambda_{\text{multi}} = 0.5$ e $\lambda_{\text{pred}} = 1.0$.
+  - Il peso moderato $\lambda_{\text{multi}} = 0.5$ e l'orizzonte corto $K=3$ garantiscono stabilità del gradiente fin dalle prime epoche.
+
+### 3. Rigore $\mathcal{O}(1)$ Forward-Only & Assenza di BPTT
+- Gli stati latenti $z_t$ prodotti dalla dinamica ALIF/e-prop vengono staccati (`detach()`) prima dell'unroll autoregressivo del predittore.
+- Il grafo computazionale del predittore si estende solo sulla finestra locale di $K=3$ passi e viene immediatamente rilasciato dopo ogni batch, mantenendo una complessità di memoria rigorosamente $\mathcal{O}(1)$ rispetto alla lunghezza temporale $T$ della traiettoria.
+
+### 4. File e Configurazioni
+- **Configurazioni:** [spwm_v6_3.yaml](file:///Users/Mattia/Desktop/Studies/Temp/configs/experiments/spwm_v6_3.yaml) e [config_v6_3.yaml](file:///Users/Mattia/Desktop/Studies/Temp/config_v6_3.yaml).
+- **Moduli aggiornati:**
+  - [losses.py](file:///Users/Mattia/Desktop/Studies/Temp/spwm/learning/losses.py): implementato `multi_step_rollout_loss` autoregressivo a ciclo chiuso su orizzonte $K$.
+  - [trainer.py](file:///Users/Mattia/Desktop/Studies/Temp/spwm/learning/trainer.py): integrazione di $\mathcal{L}_{\text{multi}}$ nell'ottimizzatore del predittore (`train_epoch`), valutazione in `evaluate()` e tracciamento nei log.
+  - [latent_dynamics.py](file:///Users/Mattia/Desktop/Studies/Temp/spwm/models/latent_dynamics.py) e [predictor.py](file:///Users/Mattia/Desktop/Studies/Temp/spwm/models/predictor.py): purificati da qualsiasi residuo CANN e Port-Hamiltoniano, ripristinando la base solida di v6.
+
+
 
 

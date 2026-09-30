@@ -186,6 +186,7 @@ class Trainer:
         epoch_losses: Dict[str, float] = {
             "total_loss": 0.0,
             "l_pred": 0.0,
+            "l_multi": 0.0,
             "l_probe": 0.0,
             "l_coord": 0.0,   # v4.2: auxiliary keypoint coordinate loss
             "spike_rate": 0.0,
@@ -256,24 +257,55 @@ class Trainer:
                         )
                     self.encoder_optimizer.step()
 
-            # Online local predictor update
+            # Online local predictor update (1-step Teacher Forcing + K-step Autoregressive Rollout Loss)
             if self.predictor_optimizer is not None:
                 self.predictor_optimizer.zero_grad()
                 with torch.enable_grad():
-                    z_in = out.latent_states[:, :-1].detach()
-                    z_target = out.latent_states[:, 1:].detach()
+                    latents = out.latent_states.detach()  # [B, T, D]
+                    z_in = latents[:, :-1]
+                    z_target = latents[:, 1:]
+                    l_1step = torch.tensor(0.0, device=self.device)
                     if z_in.shape[1] > 0:
                         pred_res = self.model.predictor(z_in)
-                        pred_loss = nn.functional.mse_loss(
+                        l_1step = nn.functional.mse_loss(
                             pred_res.predicted_latent, z_target
                         )
-                        pred_loss.backward()
-                        if self.grad_clip_norm is not None and self.grad_clip_norm > 0:
-                            for group in self.predictor_optimizer.param_groups:
-                                torch.nn.utils.clip_grad_norm_(
-                                    group["params"], self.grad_clip_norm
+
+                    # Multi-step autoregressive rollout loss over short horizon K
+                    K = getattr(self.loss_fn, "multi_step_horizon", 3)
+                    lambda_multi = getattr(self.loss_fn, "lambda_multi", 0.5)
+                    lambda_pred = getattr(self.loss_fn, "lambda_pred", 1.0)
+
+                    l_multi = torch.tensor(0.0, device=self.device)
+                    B_sz, T_sz, _ = latents.shape
+                    if lambda_multi > 0.0 and T_sz > K + 1:
+                        stride = max(1, K)
+                        t_starts = list(range(0, T_sz - K, stride))
+                        if t_starts:
+                            curr_z = latents[:, t_starts]  # [B, S, D]
+                            step_losses = []
+                            for step in range(1, K + 1):
+                                target_step_z = torch.stack(
+                                    [latents[:, t + step] for t in t_starts], dim=1
                                 )
-                        self.predictor_optimizer.step()
+                                pred_out = self.model.predictor(curr_z)
+                                curr_z = pred_out.predicted_latent
+                                step_losses.append(
+                                    nn.functional.mse_loss(curr_z, target_step_z)
+                                )
+                            l_multi = torch.stack(step_losses).mean()
+
+                    pred_loss = lambda_pred * l_1step + lambda_multi * l_multi
+                    pred_loss.backward()
+                    if self.grad_clip_norm is not None and self.grad_clip_norm > 0:
+                        for group in self.predictor_optimizer.param_groups:
+                            torch.nn.utils.clip_grad_norm_(
+                                group["params"], self.grad_clip_norm
+                            )
+                    self.predictor_optimizer.step()
+
+                epoch_losses["l_multi"] += l_multi.item()
+                epoch_losses["total_loss"] += lambda_multi * l_multi.item()
 
             # Online local probe update
             if self.probe_optimizer is not None and true_kin is not None:
@@ -331,6 +363,7 @@ class Trainer:
         val_losses: Dict[str, float] = {
             "val_total_loss": 0.0,
             "val_l_pred": 0.0,
+            "val_l_multi": 0.0,
             "val_l_probe": 0.0,
             "val_l_coord": 0.0,   # v4.2: coordinate loss on val set
             "val_pos_err": 0.0,
@@ -354,6 +387,29 @@ class Trainer:
             )
             val_losses["val_total_loss"] += pred_err
             val_losses["val_l_pred"] += pred_err
+
+            # Multi-step autoregressive rollout loss on val set
+            K = getattr(self.loss_fn, "multi_step_horizon", 3)
+            lambda_multi = getattr(self.loss_fn, "lambda_multi", 0.5)
+            B_sz, T_sz, _ = out.latent_states.shape
+            if lambda_multi > 0.0 and T_sz > K + 1:
+                stride = max(1, K)
+                t_starts = list(range(0, T_sz - K, stride))
+                if t_starts:
+                    curr_z = out.latent_states[:, t_starts]
+                    val_step_losses = []
+                    for step in range(1, K + 1):
+                        target_step_z = torch.stack(
+                            [out.latent_states[:, t + step] for t in t_starts], dim=1
+                        )
+                        pred_out = self.model.predictor(curr_z)
+                        curr_z = pred_out.predicted_latent
+                        val_step_losses.append(
+                            nn.functional.mse_loss(curr_z, target_step_z)
+                        )
+                    val_l_multi = torch.stack(val_step_losses).mean().item()
+                    val_losses["val_l_multi"] += val_l_multi
+                    val_losses["val_total_loss"] += lambda_multi * val_l_multi
 
             # Compute probe (kinematic) loss if decoder output is available
             if out.decoded_kinematics is not None and true_kin is not None:
@@ -477,6 +533,7 @@ class Trainer:
                         (
                             f"{train_metrics['total_loss']:.5f}"
                             f"  (Pred: {train_metrics['l_pred']:.5f},"
+                            f" Multi: {train_metrics.get('l_multi', 0.0):.5f},"
                             f" Probe: {train_metrics['l_probe']:.5f})"
                         ),
                         indent_level=1,
@@ -486,6 +543,7 @@ class Trainer:
                         (
                             f"{val_metrics['val_total_loss']:.5f}"
                             f"  (Pred: {val_metrics['val_l_pred']:.5f},"
+                            f" Multi: {val_metrics.get('val_l_multi', 0.0):.5f},"
                             f" Probe: {val_metrics.get('val_l_probe', 0.0):.5f})"
                         ),
                         indent_level=1,
@@ -591,11 +649,13 @@ class Trainer:
                 loss_items = [
                     f"total_loss={rec.get('total_loss'):.4f}",
                     f"l_pred={rec.get('l_pred'):.4f}",
+                    f"l_multi={rec.get('l_multi', 0.0):.4f}",
                     f"l_probe={rec.get('l_probe'):.4f}",
                     f"l_coord={rec.get('l_coord', 0.0):.4f}",
                     f"spike_rate={rec.get('spike_rate'):.3f}",
                     f"val_total_loss={rec.get('val_total_loss'):.4f}",
                     f"val_l_pred={rec.get('val_l_pred'):.4f}",
+                    f"val_l_multi={rec.get('val_l_multi', 0.0):.4f}",
                     f"val_pos_err={rec.get('val_pos_err'):.4f}",
                     f"val_vel_err={rec.get('val_vel_err'):.4f}",
                     f"val_spike_rate={rec.get('val_spike_rate'):.3f}",

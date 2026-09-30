@@ -91,3 +91,23 @@ def test_plotting_generation():
         mock_ablations = {"Full SPWM-v3": 0.2, "No Slow Memory": 0.45, "Single Timescale": 0.38}
         plot_ablation_comparison(mock_ablations, tmp_path / "fig7.png")
         assert (tmp_path / "fig7.png").is_file()
+
+
+def test_multi_step_rollout_loss():
+    from spwm.learning.losses import SPWMLoss
+    from spwm.models.predictor import LatentPredictor
+
+    B, T, D = 4, 30, 32
+    loss_fn = SPWMLoss(lambda_pred=1.0, lambda_multi=0.5, multi_step_horizon=3)
+    predictor = LatentPredictor(latent_dim=D, hidden_dim=64, residual=True)
+
+    latents = torch.randn(B, T, D)
+    l_multi = loss_fn.multi_step_rollout_loss(latents, predictor)
+
+    assert l_multi.item() >= 0.0
+    # Test gradient backprop through autoregressive unroll
+    l_multi.backward()
+    for p in predictor.parameters():
+        if p.requires_grad:
+            assert p.grad is not None
+

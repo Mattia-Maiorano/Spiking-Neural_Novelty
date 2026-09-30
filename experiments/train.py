@@ -87,9 +87,6 @@ def build_model(config: Dict[str, Any], device: torch.device) -> torch.nn.Module
             rls_enabled=model_cfg.get("rls_enabled", False),
             rls_forgetting=model_cfg.get("rls_forgetting", 0.99),
             rls_delta=model_cfg.get("rls_delta", 1.0),
-            # v6.1: Port-Hamiltonian momentum dynamics W_rec = J - R
-            use_port_hamiltonian=model_cfg.get("use_port_hamiltonian", True),
-            eps_diss=model_cfg.get("eps_diss", 1e-4),
         )
     elif model_type == "gru":
         model = GRUWorldModel(

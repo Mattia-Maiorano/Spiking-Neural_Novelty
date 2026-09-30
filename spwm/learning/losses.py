@@ -142,6 +142,39 @@ class SPWMLoss(nn.Module):
 
         return F.mse_loss(kp, gt_expanded)
 
+    def multi_step_rollout_loss(
+        self,
+        latent_states: torch.Tensor,
+        model_predictor: nn.Module,
+    ) -> torch.Tensor:
+        """
+        Closed-loop autoregressive multi-step rollout loss over short horizon K.
+        During rollout, predicted output z_hat_(t+1) = [q_hat_(t+1), p_hat_(t+1)] is
+        re-injected autoregressively as input for z_hat_(t+2), calculating MSE
+        against detached ground truth latents over all K steps.
+        """
+        B, T, D = latent_states.shape
+        K = self.multi_step_horizon
+        if T <= K + 1:
+            return torch.tensor(0.0, device=latent_states.device)
+
+        stride = max(1, K)
+        t_starts = list(range(0, T - K, stride))
+        if not t_starts:
+            return torch.tensor(0.0, device=latent_states.device)
+
+        curr_z = latent_states[:, t_starts].detach()  # [B, S, D]
+        step_losses = []
+        for step in range(1, K + 1):
+            target_step_z = torch.stack(
+                [latent_states[:, t + step].detach() for t in t_starts], dim=1
+            )
+            pred_out = model_predictor(curr_z)
+            curr_z = pred_out.predicted_latent
+            step_losses.append(F.mse_loss(curr_z, target_step_z))
+
+        return torch.stack(step_losses).mean()
+
     def forward(
         self,
         latent_states: torch.Tensor,     # [B, T, latent_dim]
@@ -160,21 +193,10 @@ class SPWMLoss(nn.Module):
         pred_z = predicted_latents[:, :-1]
         l_pred = F.mse_loss(pred_z, target_z)
 
-        # 2. Multi-step prediction loss
+        # 2. Multi-step autoregressive prediction loss
         l_multi = torch.tensor(0.0, device=device)
         if self.lambda_multi > 0.0 and model_predictor is not None and T > self.multi_step_horizon + 1:
-            multi_losses = []
-            rollout_start_max = T - self.multi_step_horizon - 1
-            start_indices = [0, rollout_start_max // 2, rollout_start_max]
-            for t_start in start_indices:
-                curr_z = latent_states[:, t_start].detach()
-                for step in range(1, self.multi_step_horizon + 1):
-                    target_step_z = latent_states[:, t_start + step].detach()
-                    pred_out = model_predictor(curr_z)
-                    curr_z = pred_out.predicted_latent
-                    multi_losses.append(F.mse_loss(curr_z, target_step_z))
-            if multi_losses:
-                l_multi = torch.stack(multi_losses).mean()
+            l_multi = self.multi_step_rollout_loss(latent_states, model_predictor)
 
         # 3. Anti-collapse variance loss
         l_var = self.variance_loss(latent_states)

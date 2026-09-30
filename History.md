@@ -727,9 +727,51 @@ L'introduzione del modulo CANN per vincolare lo spazio delle coordinate $q \in \
 ### 4. File e Configurazioni
 - **Configurazioni:** [spwm_v6_3.yaml](file:///Users/Mattia/Desktop/Studies/Temp/configs/experiments/spwm_v6_3.yaml) e [config_v6_3.yaml](file:///Users/Mattia/Desktop/Studies/Temp/config_v6_3.yaml).
 - **Moduli aggiornati:**
-  - [losses.py](file:///Users/Mattia/Desktop/Studies/Temp/spwm/learning/losses.py): implementato `multi_step_rollout_loss` autoregressivo a ciclo chiuso su orizzonte $K$.
-  - [trainer.py](file:///Users/Mattia/Desktop/Studies/Temp/spwm/learning/trainer.py): integrazione di $\mathcal{L}_{\text{multi}}$ nell'ottimizzatore del predittore (`train_epoch`), valutazione in `evaluate()` e tracciamento nei log.
-  - [latent_dynamics.py](file:///Users/Mattia/Desktop/Studies/Temp/spwm/models/latent_dynamics.py) e [predictor.py](file:///Users/Mattia/Desktop/Studies/Temp/spwm/models/predictor.py): purificati da qualsiasi residuo CANN e Port-Hamiltoniano, ripristinando la base solida di v6.
+---
+
+## Release SPWM-v6.4: Adaptive Curriculum Multi-Step Horizon & Sparsity Lock
+
+### 1. Analisi Quantitativa e Diagnosi Empirica v6.3
+L'esperimento esteso a 600 epoche di **SPWM-v6.3** ha raggiunto risultati storici e contestualmente rivelato un limite architetturale fondamentale:
+1. **Successo Locale Storico (Transizione di Fase epoche 85–95):**
+   - La transizione di fase ha sbloccato la convergenza fine dei keypoint, portando il `Position Error` a $H=1$ al record assoluto di **0.072** (dimezzato rispetto a $0.145$ di v6 baseline).
+   - Il `latent_mse` a $H=1$ è sceso a **0.059**.
+2. **Limite di Specializzazione a Breve Orizzonte ($K=3$ statico):**
+   - L'orizzonte fisso corto $K=3$ ha indotto specializzazione locale del predittore: a lungo raggio ($H=100$) il position error si è attestato a $0.849$ e il latent MSE a $1.55$.
+3. **Deriva Energetica dello Spike Rate (Saturazione al 18.3%):**
+   - Con $\lambda_{\text{sparse}} = 0.001$, lo spike rate medio è progressivamente salito fino al $18.3\%$. L'eccessiva densità di firing ha eroso la capacità di memoria delle costanti lente di adattamento biofisico ($\beta_{\text{adapt}} = 0.985$), degradando la stabilità inerziale della traiettoria nel tempo.
+
+---
+
+### 2. Direttive Architetturali di SPWM-v6.4
+
+#### A. Adaptive Multi-Step Curriculum a Soglie su `val_pos_err`
+Per preservare la precisione fine locale e contestualmente estendere la stabilità predittiva a lungo orizzonte senza causare instabilità di gradiente nelle prime epoche, si adotta un curriculum dinamico a 3 fasi guidato dall'errore di posizione in validazione:
+- **Fase 1 (Cold Start & Alignment — $K=3$):**
+  Attiva finché $\text{val\_pos\_err} \ge 0.20$. Garantisce la rapida convergenza geometrica dell'encoder convoluzionale a coordinate spaziali e l'allineamento dei keypoint.
+- **Fase 2 (Inertia Extension — $K=6$):**
+  Attivata quando $\text{val\_pos\_err} < 0.20$. Estende la finestra di re-iniezione autoregressiva del predittore, forzando la coerenza delle velocità e dei momenti inerziali.
+- **Fase 3 (Long-range Stabilization — $K=10$):**
+  Attivata quando $\text{val\_pos\_err} < 0.12$. Stabilizza il predittore latente su ampie traiettorie chiuse, eliminando l'exposure bias accumulato sul lungo periodo.
+
+**Invarianza di Scala del Gradiente:**
+La multi-step loss viene rigorosamente normalizzata rispetto al numero di passi $K$:
+$$\mathcal{L}_{\text{multi}} = \frac{1}{K} \sum_{k=1}^K \text{MSE}(\hat{z}_{t+k}, z_{t+k})$$
+garantendo che le transizioni di fase $K=3 \to 6 \to 10$ avvengano con magnitudo di gradiente costante e senza scossoni numerici sull'ottimizzatore AdamW.
+
+#### B. Sparsity Lock (Omeostasi ALIF 10%–12%)
+- Il coefficiente di regolarizzazione della sparsità viene innalzato da $\lambda_{\text{sparse}} = 0.001$ a $\lambda_{\text{sparse}} = 0.0025$.
+- Questo vincolo blocca il rate medio di scarica della popolazione nel corridoio ideale del **10% – 12%**, massimizzando la differenziazione temporale tra la popolazione reattiva ($\beta=0.90$) e la popolazione di contesto lento ($\beta=0.985$).
+
+---
+
+### 3. Configurazioni e Moduli Aggiornati
+- **Configurazioni:** [config_v6_4.yaml](file:///Users/Mattia/Desktop/Studies/Temp/config_v6_4.yaml) e [spwm_v6_4.yaml](file:///Users/Mattia/Desktop/Studies/Temp/configs/experiments/spwm_v6_4.yaml) con budget a 450 epoche, curriculum thresholds (`phase_1_horizon: 3`, `phase_2_horizon: 6`, `phase_2_threshold: 0.20`, `phase_3_horizon: 10`, `phase_3_threshold: 0.12`) e `lambda_sparse: 0.0025`.
+- **Moduli aggiornati:**
+  - [trainer.py](file:///Users/Mattia/Desktop/Studies/Temp/spwm/learning/trainer.py): implementato il monitoraggio dinamico di `val_pos_err` e la transizione automatica di `loss_fn.multi_step_horizon`, con visualizzazione di `(K=...)` nel banner per epoca.
+  - [train.py](file:///Users/Mattia/Desktop/Studies/Temp/experiments/train.py): inoltro delle impostazioni `curriculum_multi_step` e `curriculum_thresholds` dall'albero YAML al `Trainer`.
+  - [test_curriculum.py](file:///Users/Mattia/Desktop/Studies/Temp/tests/test_curriculum.py): unit test formale della progressione a soglie $K=3 \to 6 \to 10$.
+
 
 
 

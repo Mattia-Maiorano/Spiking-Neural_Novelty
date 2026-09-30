@@ -68,11 +68,21 @@ class Trainer:
         best_val_pos_err: float = float("inf"),
         history: Optional[List[Dict[str, float]]] = None,
         optimizer_state: Optional[Dict] = None,
+        curriculum_multi_step: bool = False,
+        curriculum_thresholds: Optional[Dict[str, Any]] = None,
     ) -> None:
         self.best_epoch: Optional[int] = None
         self.best_val_pos_err: float = best_val_pos_err
         self.learning_algorithm = learning_algorithm.lower()
         self.learning_rate = learning_rate
+        self.curriculum_multi_step = curriculum_multi_step
+        self.curriculum_thresholds = curriculum_thresholds or {
+            "phase_1_horizon": 3,
+            "phase_2_horizon": 6,
+            "phase_2_threshold": 0.20,
+            "phase_3_horizon": 10,
+            "phase_3_threshold": 0.12,
+        }
 
         if device is None:
             if torch.cuda.is_available():
@@ -476,6 +486,30 @@ class Trainer:
                 if self.probe_scheduler is not None:
                     self.probe_scheduler.step()
 
+                # Dynamic Adaptive Curriculum for Multi-Step Horizon (K)
+                if self.curriculum_multi_step and hasattr(self.loss_fn, "multi_step_horizon"):
+                    p1_k = self.curriculum_thresholds.get("phase_1_horizon", 3)
+                    p2_k = self.curriculum_thresholds.get("phase_2_horizon", 6)
+                    p2_th = self.curriculum_thresholds.get("phase_2_threshold", 0.20)
+                    p3_k = self.curriculum_thresholds.get("phase_3_horizon", 10)
+                    p3_th = self.curriculum_thresholds.get("phase_3_threshold", 0.12)
+
+                    curr_val_pos = val_metrics["val_pos_err"]
+                    if curr_val_pos < p3_th:
+                        target_k = p3_k
+                    elif curr_val_pos < p2_th:
+                        target_k = p2_k
+                    else:
+                        target_k = p1_k
+
+                    if target_k != self.loss_fn.multi_step_horizon:
+                        old_k = self.loss_fn.multi_step_horizon
+                        self.loss_fn.multi_step_horizon = target_k
+                        chronicle.log_info(
+                            f"[Curriculum Horizon Shift] val_pos_err={curr_val_pos:.4f}: "
+                            f"K transitioned from {old_k} to {target_k}"
+                        )
+
                 # Controllo Best Validation Model vincolato alla minima Pos Err di validazione
                 current_metric = val_metrics["val_pos_err"]
                 is_best = current_metric < self.best_val_pos_err
@@ -511,8 +545,10 @@ class Trainer:
                 # Stampa formattata a schermo
                 if epoch % print_every == 0 or epoch == end_epoch:
                     best_tag = " ★ [BEST]" if is_best else ""
+                    current_k = getattr(self.loss_fn, "multi_step_horizon", 1)
                     header = (
                         f"Epoch [{epoch:03d}/{end_epoch:03d}]"
+                        f" (K={current_k})"
                         f"  Time: {epoch_duration:5.1f}s"
                         f"  Total: {total_elapsed / 60:4.1f}m"
                         f"{best_tag}"

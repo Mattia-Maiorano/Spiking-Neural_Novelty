@@ -320,6 +320,8 @@ def main() -> None:
         best_val_pos_err=best_val_pos_err,
         history=history,
         optimizer_state=optimizer_state,
+        curriculum_multi_step=train_cfg.get("curriculum_multi_step", False),
+        curriculum_thresholds=loss_cfg.get("curriculum_thresholds", None),
     )
 
     if loaded_existing and (best_val_pos_err == float("inf") or best_val_loss == float("inf")):

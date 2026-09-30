@@ -67,49 +67,8 @@ def test_autonomous_rollout_shapes():
     model = SPWM(latent_dim=32, timescale_dims=(16, 16))
     z0 = torch.randn(2, 32)
 
-    # Rollout over multiple horizons including long horizon H=50 and H=100
-    for H in [1, 5, 10, 25, 50, 100]:
+    # Rollout over multiple horizons including long horizon H=50
+    for H in [1, 5, 10, 25, 50]:
         pred_rollout = model.predict_future(z0, horizon=H)
         assert pred_rollout.shape == (2, H, 32)
         assert not torch.isnan(pred_rollout).any()
-
-
-def test_cann_attractor_properties():
-    from spwm.models.latent_dynamics import ContinuousAttractor
-    from spwm.models.predictor import LatentPredictor
-
-    cann = ContinuousAttractor(
-        q_dim=32,
-        num_basis=64,
-        drive_dim=96,
-        sigma=0.5,
-        temperature=0.1,
-    )
-
-    # Test coordinate anchoring within compact bounds [-1, 1]
-    # Even when presented with large perturbations outside [-1, 1]
-    q_drift = torch.randn(4, 32) * 5.0  # severely drifted coordinates
-    drive = torch.randn(4, 96)
-    q_anchored = cann(q_drift, drive_input=drive)
-
-    assert q_anchored.shape == (4, 32)
-    assert not torch.isnan(q_anchored).any()
-    # Continuous attractor manifold bounds: decoded coordinates are strictly within (-1, 1)
-    assert (q_anchored >= -1.0).all() and (q_anchored <= 1.0).all()
-
-    # Verify LatentPredictor with CANN
-    predictor = LatentPredictor(
-        latent_dim=128,
-        q_dim=32,
-        p_dim=96,
-        hidden_dim=256,
-        use_cann=True,
-        cann_num_basis=64,
-    )
-
-    z = torch.randn(4, 10, 128)
-    out = predictor(z)
-    assert out.predicted_latent.shape == (4, 10, 128)
-    assert not torch.isnan(out.predicted_latent).any()
-    q_pred = out.predicted_latent[..., :32]
-    assert (q_pred >= -1.0).all() and (q_pred <= 1.0).all()

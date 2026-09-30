@@ -32,83 +32,9 @@ class DynamicsOutput:
     mean_spike_rate: torch.Tensor
 
 
-
-class ContinuousAttractor(nn.Module):
-    """
-    Continuous Attractor Neural Network (CANN) manifold for coordinate representation.
-    Anchors coordinate dynamics q in [-1, 1]^q_dim to a compact topological manifold,
-    preventing open-space dead reckoning drift via localized excitation and global inhibition.
-    """
-
-    def __init__(
-        self,
-        q_dim: int = 32,
-        num_basis: int = 64,
-        drive_dim: Optional[int] = None,
-        sigma: float = 0.5,
-        temperature: float = 0.1,
-    ) -> None:
-        super().__init__()
-        self.q_dim = q_dim
-        self.num_basis = num_basis
-        self.sigma = sigma
-        self.temperature = temperature
-
-        # Learnable attractor basis centers on the compact manifold [-1, 1]^q_dim
-        self.basis_raw = nn.Parameter(torch.empty(num_basis, q_dim))
-        nn.init.uniform_(self.basis_raw, -0.8, 0.8)
-
-        # Driving projection from latent/spike activity to attractor nodes
-        if drive_dim is not None and drive_dim > 0:
-            self.drive_proj = nn.Linear(drive_dim, num_basis, bias=False)
-            nn.init.normal_(self.drive_proj.weight, mean=0.0, std=0.01)
-        else:
-            self.drive_proj = None
-
-    @property
-    def basis(self) -> torch.Tensor:
-        """Attractor centers bounded in (-1, 1)."""
-        return torch.tanh(self.basis_raw)
-
-    def forward(
-        self,
-        q_cand: torch.Tensor,
-        drive_input: Optional[torch.Tensor] = None,
-    ) -> torch.Tensor:
-        """
-        Projects candidate coordinates q_cand onto the continuous attractor manifold.
-
-        Args:
-            q_cand: [..., q_dim] candidate coordinates (e.g. q_prev + delta_q)
-            drive_input: optional [..., drive_dim] driving activity (e.g. spike EMA or latent state)
-
-        Returns:
-            q_cann: [..., q_dim] restored/anchored coordinates on the compact manifold
-        """
-        centers = self.basis  # [M, q_dim]
-        # Squared Euclidean distance from candidate coordinate to each attractor center
-        diff = q_cand.unsqueeze(-2) - centers  # [..., M, q_dim]
-        dist_sq = torch.sum(diff ** 2, dim=-1)  # [..., M]
-
-        # Local receptive field excitation (Gaussian profile)
-        logits = -dist_sq / (2.0 * (self.sigma ** 2))
-
-        # Add latent drive if present
-        if self.drive_proj is not None and drive_input is not None:
-            drive = self.drive_proj(drive_input)
-            logits = logits + drive
-
-        # Global competitive inhibition via softmax
-        activity = torch.softmax(logits / self.temperature, dim=-1)  # [..., M]
-
-        # Coordinate reconstruction from attractor manifold
-        q_cann = torch.matmul(activity, centers)  # [..., q_dim]
-        return q_cann
-
-
 class SpikingLatentDynamics(nn.Module):
     """
-    Recurrent Spiking Latent Dynamics with ALIF Core and CANN Coordinate Manifold.
+    Recurrent Spiking Latent Dynamics with ALIF Core (SPWM-v3).
     """
 
     def __init__(
@@ -125,11 +51,6 @@ class SpikingLatentDynamics(nn.Module):
         gamma: float = 0.18,
         surrogate_name: str = "atan",
         surrogate_alpha: float = 2.0,
-        use_cann: bool = True,
-        cann_num_basis: int = 64,
-        cann_sigma: float = 0.5,
-        cann_temperature: float = 0.1,
-        **kwargs,
     ) -> None:
         super().__init__()
         self.input_dim = input_dim
@@ -146,7 +67,6 @@ class SpikingLatentDynamics(nn.Module):
         self.q_dim = q_dim
         self.p_dim = p_dim
         self.ema_decay = ema_decay
-        self.use_cann = use_cann
         assert q_dim + p_dim == latent_dim, f"q_dim ({q_dim}) + p_dim ({p_dim}) must equal latent_dim ({latent_dim})"
 
         if timescale_dims is not None:
@@ -178,19 +98,7 @@ class SpikingLatentDynamics(nn.Module):
         self.W_vel = nn.Linear(self.total_memory_dim, self.q_dim, bias=False)
         nn.init.normal_(self.W_vel.weight, mean=0.0, std=0.01)
 
-        # CANN Coordinate Attractor module
-        if self.use_cann:
-            self.cann = ContinuousAttractor(
-                q_dim=self.q_dim,
-                num_basis=cann_num_basis,
-                drive_dim=self.total_memory_dim,
-                sigma=cann_sigma,
-                temperature=cann_temperature,
-            )
-        else:
-            self.cann = None
-
-        # Latent fusion layer produces p component
+        # Latent fusion layer now produces only p component
         self.fuse_spikes = nn.Linear(self.total_memory_dim, self.p_dim)
         self.fuse_mems = nn.Linear(self.total_memory_dim, self.p_dim, bias=False)
         self.norm = nn.LayerNorm(self.p_dim)
@@ -218,7 +126,7 @@ class SpikingLatentDynamics(nn.Module):
         In observation mode (sensory_keypoints is not None):
             q_t is set directly from SpatialSoftmax keypoints (bounded in [-1, 1]).
         In autonomous mode (sensory_keypoints is None):
-            q_t evolves via CANN continuous attractor projection anchored to a compact manifold.
+            q_t evolves via bounded velocity update: q_t = clamp(q_(t-1) + tanh(W_vel(ema_spikes)), -1, 1).
         """
         B = sensory_input.shape[0]
         device = sensory_input.device
@@ -247,17 +155,13 @@ class SpikingLatentDynamics(nn.Module):
         ema_spikes = self.ema_decay * state.ema_spikes + (1.0 - self.ema_decay) * spikes
 
         # 5. Dual-mode update for q:
-        # - Observation mode: directly assign from raw SpatialSoftmax keypoints in [-1, 1]
-        # - Autonomous mode: project proposed velocity step onto CANN continuous attractor manifold
+        # - Observation mode: directly clamp/assign from raw SpatialSoftmax keypoints in [-1, 1]
+        # - Autonomous mode: integrate bounded delta from spike EMA
         if sensory_keypoints is not None:
             q_next = sensory_keypoints
         else:
             delta_q = torch.tanh(self.W_vel(ema_spikes))
-            q_cand = q_prev + delta_q
-            if self.use_cann and self.cann is not None:
-                q_next = self.cann(q_cand, drive_input=ema_spikes)
-            else:
-                q_next = torch.clamp(q_cand, -1.0, 1.0)
+            q_next = torch.clamp(q_prev + delta_q, -1.0, 1.0)
 
         # 6. Concatenate updated q and p to form next latent
         z_next = torch.cat([q_next, p_next], dim=1)

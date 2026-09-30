@@ -15,9 +15,6 @@ import torch
 import torch.nn as nn
 
 
-from spwm.models.latent_dynamics import ContinuousAttractor
-
-
 @dataclass
 class PredictorOutput:
     """Container for latent prediction output."""
@@ -29,9 +26,8 @@ class PredictorOutput:
 class LatentPredictor(nn.Module):
     """
     Predictive Transition Head: p(z_(t+1) | z_t).
-    Uses a residual MLP block to predict the temporal differential or next latent state,
-    with an optional Continuous Attractor Neural Network (CANN) projection on the
-    coordinate q subspace to prevent long-horizon drift on compact topological manifolds.
+    Uses a residual MLP block to predict the temporal differential or next latent state.
+    Residual dynamics: z_hat_(t+1) = z_t + Δz(z_t).
     """
 
     def __init__(
@@ -39,31 +35,10 @@ class LatentPredictor(nn.Module):
         latent_dim: int = 128,
         hidden_dim: int = 256,
         residual: bool = True,
-        q_dim: Optional[int] = None,
-        p_dim: Optional[int] = None,
-        use_cann: bool = True,
-        cann_num_basis: int = 64,
-        cann_sigma: float = 0.5,
-        cann_temperature: float = 0.1,
-        **kwargs,
     ) -> None:
         super().__init__()
         self.latent_dim = latent_dim
         self.residual = residual
-        self.use_cann = use_cann
-
-        if q_dim is None and p_dim is None:
-            self.q_dim = max(1, latent_dim // 4)
-            self.p_dim = max(1, latent_dim - self.q_dim)
-        elif q_dim is None:
-            self.p_dim = min(p_dim, latent_dim - 1)
-            self.q_dim = max(1, latent_dim - self.p_dim)
-        elif p_dim is None:
-            self.q_dim = min(q_dim, latent_dim - 1)
-            self.p_dim = max(1, latent_dim - self.q_dim)
-        else:
-            self.q_dim = q_dim
-            self.p_dim = p_dim
 
         self.net = nn.Sequential(
             nn.Linear(latent_dim, hidden_dim),
@@ -75,42 +50,16 @@ class LatentPredictor(nn.Module):
             nn.Linear(hidden_dim, latent_dim),
         )
 
-        if self.use_cann:
-            self.cann = ContinuousAttractor(
-                q_dim=self.q_dim,
-                num_basis=cann_num_basis,
-                drive_dim=self.p_dim,
-                sigma=cann_sigma,
-                temperature=cann_temperature,
-            )
-        else:
-            self.cann = None
-
     def forward(self, z: torch.Tensor) -> PredictorOutput:
         """
         z: [B, latent_dim] or [B, T, latent_dim]
         Returns: PredictorOutput with predicted_latent [B, ..., latent_dim]
         """
         delta_z = self.net(z)
-
-        if self.use_cann and self.cann is not None:
-            # Momentum p evolves via residual MLP differential
-            p = z[..., self.q_dim:self.q_dim + self.p_dim]
-            delta_p = delta_z[..., self.q_dim:self.q_dim + self.p_dim]
-            p_next = p + delta_p
-
-            # Coordinate q is anchored by the continuous attractor manifold
-            q = z[..., :self.q_dim]
-            delta_q = delta_z[..., :self.q_dim]
-            q_cand = q + delta_q
-            q_next = self.cann(q_cand, drive_input=p)
-
-            z_next = torch.cat([q_next, p_next], dim=-1)
+        if self.residual:
+            z_next = z + delta_z
         else:
-            if self.residual:
-                z_next = z + delta_z
-            else:
-                z_next = delta_z
+            z_next = delta_z
 
         return PredictorOutput(
             predicted_latent=z_next,

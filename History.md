@@ -537,3 +537,40 @@ Subsequent untested iterations after v5.0 attempted heuristic patches that cumul
 ## Reverted to v4.3 as the v5 completely collapsed trying to go further, from now on we will move to v6 starting from v4.3
 
 ---
+
+## Release SPWM-v6: Population Scaling & Information Bottleneck Resolution
+
+### 1. Motivazioni Teoriche & Risoluzione del Bottleneck Informativo
+- **Pathology del Freezing su Orizzonti Lunghi ($H=100$):** Nelle precedenti iterazioni su spazio delle fasi $(q, p)$, i rollout autonomi a lungo raggio soffrivano di un progressivo congelamento (*freezing*) della traiettoria, dovuto a un deficit di capacità rappresentazionale e a un budget di spike insufficiente per sostenere la persistenza dell'inerzia cinetica senza decadere su attrattori statici.
+- **Raddoppio del Budget di Spike via Population Scaling:**
+  - Con una popolazione ALIF di 128 neuroni e un regime bio-plausibile di sparsità al $10\%-12\%$, il budget istantaneo era limitato a soli $\sim 13-15$ spike per passo temporale.
+  - Scalando la popolazione a **256 neuroni ALIF**, il canale informativo spiking trasmette $\sim 25-30$ spike per passo, quadruplicando le possibili combinazioni discrete di pattern sinaptici e fornendo un supporto ad alta dimensionalità per conservare il momento cinetico $p$.
+- **Partizione Equa Multi-Timescale:**
+  - `timescale_dims: [128, 128]` distribuisce equamente la popolazione tra pool Reattivo ($\beta_{\text{adapt}} = 0.90$) per la risposta rapida alle variazioni visive e pool di Contesto Profondo ($\beta_{\text{adapt}} = 0.985$) per l'integrazione temporale a lungo termine.
+
+### 2. Invarianza dello Spazio delle Fasi & Proiezione a Collo di Bottiglia (Bottleneck Projection)
+- **Geometria dello Spazio Latente Invariata:**
+  - $z \in \mathbb{R}^{128}$, strutturato in coordinate continue $q \in \mathbb{R}^{32}$ e momento continuo $p \in \mathbb{R}^{96}$ ($32 + 96 = 128$).
+  - I decoder cinematici, la loss geometrica $\mathcal{L}_{\text{coord}}$ e il predittore latente continuano a operare sullo spazio a 128 dimensioni senza alterare la complessità computazionale a valle.
+- **Adattamento Dimensionale dei Layer Sinaptici ($256 \to 96$):**
+  - **Input Projection:** $W_{\text{in}} \in \mathbb{R}^{256 \times 128}$ mappa l'errore sensoriale $\epsilon_t \in \mathbb{R}^{128}$ sui 256 neuroni ALIF.
+  - **Recurrent Momentum Projection:** $W_{\text{rec}} \in \mathbb{R}^{256 \times 96}$ proietta il momento continuo $p \in \mathbb{R}^{96}$ sui 256 neuroni ALIF.
+  - **Coordinate Projection:** $W_q \in \mathbb{R}^{256 \times 32}$ inietta la posizione $q \in \mathbb{R}^{32}$ nella corrente somatica.
+  - **Velocity Map:** $W_{\text{vel}} \in \mathbb{R}^{32 \times 256}$ mappa l'EMA degli spike della popolazione a 256 neuroni nell'avanzamento $\Delta q$.
+  - **Spike/Membrane Fusion:** $W_{\text{fuse\_spikes}} \in \mathbb{R}^{96 \times 256}$ e $W_{\text{fuse\_mems}} \in \mathbb{R}^{96 \times 256}$ comprimono la popolazione a 256 neuroni nello spazio continuo di momento $p \in \mathbb{R}^{96}$.
+
+### 3. Estensione degli Orizzonti di Valutazione
+- I rollout di valutazione sono stati estesi a:
+  $$\text{rollout\_horizons} = [1, 5, 10, 25, 50, 100]$$
+  per quantificare rigorosamente la persistenza dell'inerzia ed escludere il freezing su orizzonti doppi rispetto a v4.3 ($H=100$).
+
+### 4. Rispetto del Paradigma Forward-Only (e-prop) & Integrità del Codice
+- Preservata la complessità di memoria $\mathcal{O}(1)$ streaming:
+  - Retroproiezione del feedback $l_p \in \mathbb{R}^{B \times 96}$ attraverso $W_{\text{fuse\_spikes}} \in \mathbb{R}^{96 \times 256} \to l_{\text{mem}} \in \mathbb{R}^{B \times 256}$.
+  - Accumulo e-prop locale completamente vettorizzato su $\Delta W_{\text{in}} \in \mathbb{R}^{256 \times 128}$, $\Delta W_{\text{rec}} \in \mathbb{R}^{256 \times 96}$, $\Delta W_q \in \mathbb{R}^{256 \times 32}$ e $\Delta W_{\text{vel}} \in \mathbb{R}^{32 \times 256}$.
+- Nessun uso di euristiche manuali di coordinate, rimbalzi artificiali if/else o rami non differenziabili.
+
+### 5. File e Configurazioni
+- **Configurazione creata:** [spwm_v6.yaml](file:///Users/Mattia/Desktop/Studies/Temp/configs/experiments/spwm_v6.yaml)
+- **Verifica e Test:** Eseguiti test di forward pass, coerenza dimensionale dei tensori e accumulo dei gradienti e-prop con esito positivo.
+

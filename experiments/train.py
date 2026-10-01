@@ -237,6 +237,7 @@ def main() -> None:
     model.init_buffer()
     
     loss_cfg = config.get("loss", {})
+    model_cfg = config.get("model", {})
     loss_fn = SPWMLoss(
         lambda_pred=loss_cfg.get("lambda_pred", 1.0),
         lambda_multi=loss_cfg.get("lambda_multi", 0.5),
@@ -244,9 +245,12 @@ def main() -> None:
         lambda_sparse=loss_cfg.get("lambda_sparse", 0.001),
         lambda_probe=loss_cfg.get("lambda_probe", 0.5),
         lambda_coord=loss_cfg.get("lambda_coord", 0.0),
+        lambda_vel_cons=loss_cfg.get("lambda_vel_cons", 0.0),
         multi_step_horizon=loss_cfg.get("multi_step_horizon", 3),
         target_variance=loss_cfg.get("target_variance", 1.0),
-    )
+        q_dim=model_cfg.get("q_dim", 32),
+        p_dim=model_cfg.get("p_dim", 96),
+    ).to(device)
 
     epochs = args.epochs if args.epochs is not None else train_cfg.get("epochs", 20)
     lr = train_cfg.get("learning_rate", 1e-3)

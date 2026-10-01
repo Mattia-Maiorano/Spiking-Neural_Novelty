@@ -772,6 +772,60 @@ garantendo che le transizioni di fase $K=3 \to 6 \to 10$ avvengano con magnitudo
   - [train.py](file:///Users/Mattia/Desktop/Studies/Temp/experiments/train.py): inoltro delle impostazioni `curriculum_multi_step` e `curriculum_thresholds` dall'albero YAML al `Trainer`.
   - [test_curriculum.py](file:///Users/Mattia/Desktop/Studies/Temp/tests/test_curriculum.py): unit test formale della progressione a soglie $K=3 \to 6 \to 10$.
 
+---
+
+## Release SPWM-v6.5: Kinematic Unlocking via Momentum-Velocity Consistency ($\mathcal{L}_{\text{vel\_cons}}$)
+
+### 1. Diagnosi del Collo di Bottiglia: "Cecità Cinematica" in v6.3 / v6.4
+Nelle iterazioni v6.3 e v6.4, l'introduzione della multi-step rollout loss e dell'adaptive curriculum ha garantito un eccezionale ancoraggio geometrico locale per la posizione ($q \in \mathbb{R}^{32}$, con `val_pos_err` crollato a $0.072$). Tuttavia, l'analisi del probe di decodifica cinematica e delle dinamiche di fase ha evidenziato una grave anomalia sistematica:
+1. **Stagnazione della Velocity Probe Loss (~0.65):**
+   - Mentre il probe di posizione decodifica accuratamente le coordinate $(x, y)$ dal sottospazio $q$, l'errore di velocità (`val_vel_err`) rimane bloccato attorno a **0.65** (equivalente alla varianza basale del dataset).
+2. **Scorciatoia Dissipativa e Mancanza di Accoppiamento Dinamico:**
+   - Senza un vincolo esplicito di consistenza tra momento $p$ e variazione temporale della posizione $\Delta q$, il modello cade in una **scorciatoia dissipativa**: ottimizza la predizione autoregressiva trovando configurazioni a bassa energia o pressoché statiche per $p$, lasciando la dinamica di velocità disallineata dalla realtà fisica del moto.
+   - Poiché il probe supervisionato aggiorna solo la testa di decodifica lineare staccando il gradiente dal grafo ricorrente ($\text{detach}(z)$), nessun segnale di retroazione forza $p$ a codificare la derivata temporale $\dot{q} \approx \Delta q$.
+
+---
+
+### 2. Formulazione Matematica della Consistenza Cinematica ($\mathcal{L}_{\text{vel\_cons}}$)
+In meccanica Hamiltoniana e nello spazio delle fasi continuo, la velocità generalizzata delle coordinate è legata al momento canonico dalla trasformazione canonica $\dot{q} = \frac{\partial H}{\partial p} = M^{-1} p$.
+
+Per imporre questo vincolo di coerenza fisica differenziabile frame-by-frame:
+1. **Variazione Temporale delle Coordinate ($\Delta q$):**
+   Dato lo spazio di coordinate cartesiane/keypoint $q_t \in \mathbb{R}^{q_{\text{dim}}}$ (con $q_{\text{dim}}=32$):
+   $$\Delta q_t = q_{t+1} - q_t \in \mathbb{R}^{q_{\text{dim}}}, \quad t \in [0, T-2]$$
+2. **Proiezione del Momento Canonico ($W_{\text{vel\_cons}}$):**
+   Il sottospazio di momento $p_t \in \mathbb{R}^{p_{\text{dim}}}$ (con $p_{\text{dim}}=96$, generato dalla popolazione ALIF a 256 neuroni) viene proiettato nello spazio delle velocità differenziali tramite operatore lineare:
+   $$\hat{\Delta q}_t = W_{\text{vel\_cons}} p_t \in \mathbb{R}^{q_{\text{dim}}}$$
+3. **Loss di Consistenza Cinematica ($\mathcal{L}_{\text{vel\_cons}}$):**
+   $$\mathcal{L}_{\text{vel\_cons}} = \frac{1}{T-1} \sum_{t=0}^{T-2} \left\| W_{\text{vel\_cons}} p_t - (q_{t+1} - q_t) \right\|_2^2$$
+   - Se applicata anche sulle transizioni predette dal modulo residuale $\hat{z}_{t+1} = [\hat{q}_{t+1}, \hat{p}_{t+1}]$, si regolarizza congiuntamente sia lo stato latente estratto sia la predizione neurale forward.
+
+---
+
+### 3. Bilanciamento della Funzione di Costo Complessiva
+$$\mathcal{L}_{\text{total}} = \lambda_{\text{pred}} \mathcal{L}_{\text{pred}} + \lambda_{\text{multi}} \mathcal{L}_{\text{multi}} + \lambda_{\text{var}} \mathcal{L}_{\text{var}} + \lambda_{\text{sparse}} \mathcal{L}_{\text{sparse}} + \lambda_{\text{probe}} \mathcal{L}_{\text{probe}} + \lambda_{\text{coord}} \mathcal{L}_{\text{coord}} + \lambda_{\text{vel\_cons}} \mathcal{L}_{\text{vel\_cons}}$$
+
+- **Peso Operativo Ottimale $\lambda_{\text{vel\_cons}} = 0.25$:**
+  Un coefficiente bilanciato di $0.25$ fornisce una guida di gradiente vigorosa al sottospazio $p$ senza competere distruttivamente con l'ancoraggio delle coordinate $\mathcal{L}_{\text{coord}}$ né destabilizzare la convergenza locale del predittore $\mathcal{L}_{\text{pred}}$.
+
+---
+
+### 4. Risultati Attesi
+1. **Sblocco del Probe di Velocità:** Crollo dell'errore di velocità (`val_vel_err`) da $\sim 0.65$ a valori inferiori a $0.20-0.30$.
+2. **Inerzia Spazio delle Fasi Coerente:** Il momento $p$ funge da autentica memoria di velocità inerziale, migliorando l'estrapolazione e la stabilità dei rollout a lungo raggio ($H=100$).
+3. **Preservazione Rigorosa $\mathcal{O}(1)$:** Il calcolo di $\Delta q_t$ e la proiezione $W_{\text{vel\_cons}} p_t$ mantengono la complessità spaziale $\mathcal{O}(1)$ frame-by-frame senza BPTT.
+
+---
+
+### 5. Configurazioni e Moduli Aggiornati (v6.5)
+- **Configurazioni:** [config_v6_5.yaml](file:///Users/Mattia/Desktop/Studies/Temp/config_v6_5.yaml) e [spwm_v6_5.yaml](file:///Users/Mattia/Desktop/Studies/Temp/configs/experiments/spwm_v6_5.yaml) con $\lambda_{\text{vel\_cons}} = 0.25$, $q_{\text{dim}}=32$, $p_{\text{dim}}=96$, budget 450 epoche.
+- **Moduli aggiornati:**
+  - [losses.py](file:///Users/Mattia/Desktop/Studies/Temp/spwm/learning/losses.py): implementata la classe `SPWMLoss` con `vel_proj = nn.Linear(p_dim, q_dim)`, metodo `velocity_consistency_loss()` e dataclass `LossOutput` estesa con `l_vel_cons`.
+  - [trainer.py](file:///Users/Mattia/Desktop/Studies/Temp/spwm/learning/trainer.py): inclusione di `vel_proj` nel `predictor_optimizer`, accumulo di `l_vel_cons` in `train_epoch`, calcolo di `val_l_vel_cons` in `evaluate`, banner a terminale con tracciamento `L_vel_cons` e salvataggio nei log csv/json/txt.
+  - [train.py](file:///Users/Mattia/Desktop/Studies/Temp/experiments/train.py): passaggio dei parametri `lambda_vel_cons`, `q_dim` e `p_dim` a `SPWMLoss` con corretta allocazione su device.
+  - [test_vel_cons.py](file:///Users/Mattia/Desktop/Studies/Temp/tests/test_vel_cons.py): suite completa di unit test per la computazione e retropropagazione del gradiente su $p$ e $W_{\text{vel\_cons}}$.
+
+
 
 
 

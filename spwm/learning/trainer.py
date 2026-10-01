@@ -99,7 +99,7 @@ class Trainer:
         self.model = model.to(self.device)
         self.train_loader = train_loader
         self.val_loader = val_loader
-        self.loss_fn = loss_fn or SPWMLoss()
+        self.loss_fn = (loss_fn or SPWMLoss()).to(self.device)
         self.grad_clip_norm = grad_clip_norm
         self.save_dir = Path(save_dir)
         self.save_dir.mkdir(parents=True, exist_ok=True)
@@ -113,6 +113,9 @@ class Trainer:
             for n, p in self.model.named_parameters()
             if "predictor" in n and "sensory_predictor" not in n
         ]
+        if hasattr(self.loss_fn, "vel_proj"):
+            predictor_params.extend(list(self.loss_fn.vel_proj.parameters()))
+
         encoder_params = list(self.model.encoder.parameters()) if hasattr(self.model, "encoder") else []
 
         self.encoder_optimizer = (
@@ -194,6 +197,7 @@ class Trainer:
             "l_multi": 0.0,
             "l_probe": 0.0,
             "l_coord": 0.0,   # v4.2: auxiliary keypoint coordinate loss
+            "l_vel_cons": 0.0, # v6.5: kinematic velocity consistency loss
             "spike_rate": 0.0,
             "grad_norm": 0.0,
         }
@@ -257,7 +261,7 @@ class Trainer:
                         )
                     self.encoder_optimizer.step()
 
-            # Online local predictor update (1-step Teacher Forcing + K-step Autoregressive Rollout Loss)
+            # Online local predictor update (1-step Teacher Forcing + K-step Autoregressive Rollout Loss + Velocity Consistency)
             if self.predictor_optimizer is not None:
                 self.predictor_optimizer.zero_grad()
                 with torch.enable_grad():
@@ -265,6 +269,7 @@ class Trainer:
                     z_in = latents[:, :-1]
                     z_target = latents[:, 1:]
                     l_1step = torch.tensor(0.0, device=self.device)
+                    pred_res = None
                     if z_in.shape[1] > 0:
                         pred_res = self.model.predictor(z_in)
                         l_1step = nn.functional.mse_loss(
@@ -275,6 +280,7 @@ class Trainer:
                     K = getattr(self.loss_fn, "multi_step_horizon", 3)
                     lambda_multi = getattr(self.loss_fn, "lambda_multi", 0.5)
                     lambda_pred = getattr(self.loss_fn, "lambda_pred", 1.0)
+                    lambda_vel_cons = getattr(self.loss_fn, "lambda_vel_cons", 0.0)
 
                     l_multi = torch.tensor(0.0, device=self.device)
                     B_sz, T_sz, _ = latents.shape
@@ -295,7 +301,19 @@ class Trainer:
                                 )
                             l_multi = torch.stack(step_losses).mean()
 
-                    pred_loss = lambda_pred * l_1step + lambda_multi * l_multi
+                    # v6.5: Kinematic Velocity Consistency Loss (L_vel_cons)
+                    l_vel_cons = torch.tensor(0.0, device=self.device)
+                    if lambda_vel_cons > 0.0 and T_sz > 1:
+                        pred_lat = pred_res.predicted_latent if pred_res is not None else None
+                        l_vel_cons = self.loss_fn.velocity_consistency_loss(
+                            latents, predicted_latents=pred_lat
+                        )
+
+                    pred_loss = (
+                        lambda_pred * l_1step
+                        + lambda_multi * l_multi
+                        + lambda_vel_cons * l_vel_cons
+                    )
                     pred_loss.backward()
                     if self.grad_clip_norm is not None and self.grad_clip_norm > 0:
                         for group in self.predictor_optimizer.param_groups:
@@ -305,7 +323,10 @@ class Trainer:
                     self.predictor_optimizer.step()
 
                 epoch_losses["l_multi"] += l_multi.item()
-                epoch_losses["total_loss"] += lambda_multi * l_multi.item()
+                epoch_losses["l_vel_cons"] += l_vel_cons.item()
+                epoch_losses["total_loss"] += (
+                    lambda_multi * l_multi.item() + lambda_vel_cons * l_vel_cons.item()
+                )
 
             # Online local probe update
             if self.probe_optimizer is not None and true_kin is not None:
@@ -366,6 +387,7 @@ class Trainer:
             "val_l_multi": 0.0,
             "val_l_probe": 0.0,
             "val_l_coord": 0.0,   # v4.2: coordinate loss on val set
+            "val_l_vel_cons": 0.0, # v6.5: velocity consistency on val set
             "val_pos_err": 0.0,
             "val_vel_err": 0.0,
             "val_spike_rate": 0.0,
@@ -435,6 +457,13 @@ class Trainer:
                 enc_out, kp_val = self.model.encoder(events, return_keypoints=True)
                 l_coord_val = self.loss_fn.coordinate_loss(kp_val, true_kin)
                 val_losses["val_l_coord"] += l_coord_val.item()
+
+            # v6.5: evaluate velocity consistency loss on val set
+            lambda_vel_cons = getattr(self.loss_fn, "lambda_vel_cons", 0.0)
+            if lambda_vel_cons > 0.0 and T_sz > 1:
+                val_l_vel_cons = self.loss_fn.velocity_consistency_loss(out.latent_states).item()
+                val_losses["val_l_vel_cons"] += val_l_vel_cons
+                val_losses["val_total_loss"] += lambda_vel_cons * val_l_vel_cons
 
             if hasattr(out, "mean_spike_rate"):
                 val_losses["val_spike_rate"] += out.mean_spike_rate.item()
@@ -513,6 +542,7 @@ class Trainer:
                 # Controllo Best Validation Model vincolato alla minima Pos Err di validazione
                 current_metric = val_metrics["val_pos_err"]
                 is_best = current_metric < self.best_val_pos_err
+                self.save_dir.mkdir(parents=True, exist_ok=True)
                 if is_best:
                     self.best_val_pos_err = current_metric
                     self.best_epoch = epoch
@@ -560,6 +590,7 @@ class Trainer:
                             f"{train_metrics['total_loss']:.5f}"
                             f"  (Pred: {train_metrics['l_pred']:.5f},"
                             f" Multi: {train_metrics.get('l_multi', 0.0):.5f},"
+                            f" VelCons: {train_metrics.get('l_vel_cons', 0.0):.5f},"
                             f" Probe: {train_metrics['l_probe']:.5f})"
                         ),
                         indent_level=1,
@@ -570,6 +601,7 @@ class Trainer:
                             f"{val_metrics['val_total_loss']:.5f}"
                             f"  (Pred: {val_metrics['val_l_pred']:.5f},"
                             f" Multi: {val_metrics.get('val_l_multi', 0.0):.5f},"
+                            f" VelCons: {val_metrics.get('val_l_vel_cons', 0.0):.5f},"
                             f" Probe: {val_metrics.get('val_l_probe', 0.0):.5f})"
                         ),
                         indent_level=1,
@@ -589,6 +621,14 @@ class Trainer:
                         (
                             f"Train {train_metrics['l_coord']:.5f}"
                             f" / Val {val_metrics.get('val_l_coord', 0.0):.5f}"
+                        ),
+                        indent_level=1,
+                    )
+                    chronicle.log_detail(
+                        "L_vel_cons",
+                        (
+                            f"Train {train_metrics.get('l_vel_cons', 0.0):.5f}"
+                            f" / Val {val_metrics.get('val_l_vel_cons', 0.0):.5f}"
                         ),
                         indent_level=1,
                     )
@@ -676,12 +716,14 @@ class Trainer:
                     f"total_loss={rec.get('total_loss'):.4f}",
                     f"l_pred={rec.get('l_pred'):.4f}",
                     f"l_multi={rec.get('l_multi', 0.0):.4f}",
+                    f"l_vel_cons={rec.get('l_vel_cons', 0.0):.4f}",
                     f"l_probe={rec.get('l_probe'):.4f}",
                     f"l_coord={rec.get('l_coord', 0.0):.4f}",
                     f"spike_rate={rec.get('spike_rate'):.3f}",
                     f"val_total_loss={rec.get('val_total_loss'):.4f}",
                     f"val_l_pred={rec.get('val_l_pred'):.4f}",
                     f"val_l_multi={rec.get('val_l_multi', 0.0):.4f}",
+                    f"val_l_vel_cons={rec.get('val_l_vel_cons', 0.0):.4f}",
                     f"val_pos_err={rec.get('val_pos_err'):.4f}",
                     f"val_vel_err={rec.get('val_vel_err'):.4f}",
                     f"val_spike_rate={rec.get('val_spike_rate'):.3f}",

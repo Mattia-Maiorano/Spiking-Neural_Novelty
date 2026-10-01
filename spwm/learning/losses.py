@@ -34,7 +34,8 @@ class LossOutput:
     l_var: torch.Tensor
     l_sparse: torch.Tensor
     l_probe: torch.Tensor
-    l_coord: torch.Tensor = None  # v4.2: auxiliary spatial coordinate loss
+    l_coord: Optional[torch.Tensor] = None      # v4.2: auxiliary spatial coordinate loss
+    l_vel_cons: Optional[torch.Tensor] = None   # v6.5: kinematic velocity consistency loss
 
     def to_dict(self) -> Dict[str, float]:
         d = {
@@ -47,28 +48,35 @@ class LossOutput:
         }
         if self.l_coord is not None:
             d["l_coord"] = self.l_coord.item()
+        if self.l_vel_cons is not None:
+            d["l_vel_cons"] = self.l_vel_cons.item()
         return d
 
 
 class SPWMLoss(nn.Module):
     """
-    Composite Loss for Spiking Predictive World Model (v4.2).
+    Composite Loss for Spiking Predictive World Model (v6.5).
 
     Formula:
         L_total(t) = λ_pred·L_pred + λ_multi·L_multi + λ_var·L_var
                    + λ_sparse·L_sparse + λ_probe·L_probe
-                   + λ_coord·L_coord          # new in v4.2
+                   + λ_coord·L_coord          # v4.2
+                   + λ_vel_cons·L_vel_cons    # v6.5
 
     L_coord: Auxiliary spatial keypoint loss.
         Penalizes the MSE between raw Spatial-Softmax keypoints (u_k, v_k) ∈ [-1,1]^2
         and the GT object xy-position projected into the normalized image frame.
-        Gradient flows unobstructed through Conv2D → SpatialSoftmax → ALIF input_proj,
-        anchoring the visual frontend to Euclidean object coordinates before any
-        symplectic / higher-order structure is imposed.
+
+    L_vel_cons: Kinematic velocity consistency loss (v6.5).
+        Enforces explicit consistency between the momentum state p and the empirical
+        temporal variation in coordinates Δq = q_(t+1) - q_t via a linear projection
+        W_vel_cons: p -> Δq.
 
     Args:
         lambda_coord: coupling strength for L_coord (recommended 0.10–0.20).
-                      Set to 0.0 to reproduce v4.1 behaviour.
+        lambda_vel_cons: coupling strength for L_vel_cons (recommended 0.25).
+        q_dim: dimensionality of generalized coordinates q (default: 32).
+        p_dim: dimensionality of generalized momentum p (default: 96).
     """
 
     def __init__(
@@ -79,9 +87,12 @@ class SPWMLoss(nn.Module):
         lambda_sparse: float = 0.001,
         lambda_probe: float = 0.5,
         lambda_coord: float = 0.0,    # v4.2: auxiliary coordinate coupling
+        lambda_vel_cons: float = 0.0, # v6.5: kinematic velocity consistency coupling
         multi_step_horizon: int = 3,
         target_variance: float = 1.0,
         target_spike_rate: float = 0.05,
+        q_dim: int = 32,
+        p_dim: int = 96,
     ) -> None:
         super().__init__()
         self.lambda_pred = lambda_pred
@@ -90,9 +101,16 @@ class SPWMLoss(nn.Module):
         self.lambda_sparse = lambda_sparse
         self.lambda_probe = lambda_probe
         self.lambda_coord = lambda_coord
+        self.lambda_vel_cons = lambda_vel_cons
         self.multi_step_horizon = multi_step_horizon
         self.target_variance = target_variance
         self.target_spike_rate = target_spike_rate
+        self.q_dim = q_dim
+        self.p_dim = p_dim
+
+        # Linear projection from momentum p to coordinate delta Δq
+        self.vel_proj = nn.Linear(self.p_dim, self.q_dim, bias=False)
+        nn.init.orthogonal_(self.vel_proj.weight)
 
     def variance_loss(self, z: torch.Tensor) -> torch.Tensor:
         """
@@ -119,18 +137,7 @@ class SPWMLoss(nn.Module):
         object position, averaged over all keypoints. The asymmetry (K >> num_objects)
         means multiple keypoints are free to specialize on different object parts;
         the loss drives the *centroid* of the keypoint cloud toward the GT.
-
-        Implementation:
-            - Extract xy columns from true_kinematics (indices 0,1 per object).
-            - Broadcast to all K keypoints: every keypoint is pulled toward GT.
-            - Average MSE over the K pairs.
-
-        This provides a smooth, geometry-aware gradient to Conv2D + SpatialSoftmax
-        without imposing an explicit assignment (soft coupling), consistent with the
-        biological analogy of a distributed dorsal-stream population code.
         """
-        # true_kinematics: [..., 4*N] -> take x,y of the first (or only) object
-        # positions are assumed to already be in [-1,1]^2 (normalized image coords)
         gt_xy = true_kinematics[..., :2]  # [..., 2]
 
         # Reshape keypoints: [..., K, 2]
@@ -141,6 +148,55 @@ class SPWMLoss(nn.Module):
         gt_expanded = gt_xy.unsqueeze(-2).expand_as(kp)
 
         return F.mse_loss(kp, gt_expanded)
+
+    def velocity_consistency_loss(
+        self,
+        latent_states: torch.Tensor,  # [B, T, D]
+        predicted_latents: Optional[torch.Tensor] = None,  # [B, T-1, D]
+    ) -> torch.Tensor:
+        """
+        Kinematic Velocity Consistency Loss (v6.5).
+        Enforces that the momentum subspace p directly encodes and predicts the
+        temporal coordinate displacement Δq = q_(t+1) - q_t.
+
+        Formula:
+            q_t = z_t[..., :q_dim]
+            p_t = z_t[..., q_dim:q_dim + p_dim]
+            Δq_t = q_(t+1) - q_t
+            p_proj_t = W_vel_cons(p_t)
+            L_vel_cons = MSE(p_proj_t, Δq_t)
+        """
+        if latent_states.dim() == 2:
+            return torch.tensor(0.0, device=latent_states.device)
+
+        B, T, D = latent_states.shape
+        if T < 2:
+            return torch.tensor(0.0, device=latent_states.device)
+
+        q_dim = min(self.q_dim, D)
+        p_dim = min(self.p_dim, D - q_dim)
+
+        q = latent_states[..., :q_dim]
+        p = latent_states[..., q_dim:q_dim + p_dim]
+
+        # Target coordinate displacement between consecutive steps
+        delta_q = q[:, 1:] - q[:, :-1]  # [B, T-1, q_dim]
+        p_prev = p[:, :-1]              # [B, T-1, p_dim]
+
+        # Project momentum to coordinate displacement space
+        p_proj = self.vel_proj(p_prev)  # [B, T-1, q_dim]
+
+        loss = F.mse_loss(p_proj, delta_q)
+
+        # If predicted_latents is provided, enforce consistency on predicted transitions as well
+        if predicted_latents is not None and predicted_latents.shape[1] == T - 1:
+            q_pred = predicted_latents[..., :q_dim]
+            delta_q_pred = q_pred - q[:, :-1]
+            p_pred = predicted_latents[..., q_dim:q_dim + p_dim]
+            p_proj_pred = self.vel_proj(p_pred)
+            loss = 0.5 * (loss + F.mse_loss(p_proj_pred, delta_q_pred))
+
+        return loss
 
     def multi_step_rollout_loss(
         self,
@@ -210,14 +266,19 @@ class SPWMLoss(nn.Module):
             l_probe = F.mse_loss(decoded_kinematics, true_kinematics)
 
         # 6. v4.2: Auxiliary spatial coordinate loss (L_coord)
-        #    Flows gradient through Conv2D → SpatialSoftmax → ALIF input_proj
         l_coord = torch.tensor(0.0, device=device)
         if self.lambda_coord > 0.0 and keypoints is not None and true_kinematics is not None:
             l_coord = self.coordinate_loss(keypoints, true_kinematics)
 
-        # Composite total loss — v4.2 formula:
-        # L_total = L_pred + λ_coord · L_coord + λ_sparse · L_reg
-        # (full version with all auxiliary terms)
+        # 7. v6.5: Kinematic velocity consistency loss (L_vel_cons)
+        l_vel_cons = torch.tensor(0.0, device=device)
+        if self.lambda_vel_cons > 0.0 and T > 1:
+            l_vel_cons = self.velocity_consistency_loss(
+                latent_states,
+                predicted_latents=pred_z if pred_z.shape[1] == T - 1 else None,
+            )
+
+        # Composite total loss — v6.5 formula:
         total_loss = (
             self.lambda_pred * l_pred
             + self.lambda_multi * l_multi
@@ -225,6 +286,7 @@ class SPWMLoss(nn.Module):
             + self.lambda_sparse * l_sparse
             + self.lambda_probe * l_probe
             + self.lambda_coord * l_coord
+            + self.lambda_vel_cons * l_vel_cons
         )
 
         return LossOutput(
@@ -235,4 +297,5 @@ class SPWMLoss(nn.Module):
             l_sparse=l_sparse,
             l_probe=l_probe,
             l_coord=l_coord,
+            l_vel_cons=l_vel_cons,
         )

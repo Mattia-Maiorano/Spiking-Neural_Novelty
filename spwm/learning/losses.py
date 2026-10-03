@@ -1,5 +1,5 @@
 """
-Loss functions and anti-collapse objectives for SPWM.
+Loss functions and anti-collapse objectives for SPWM (v6.6).
 Implements:
 - One-step latent prediction loss L_pred
 - Multi-step rollout prediction loss L_multi
@@ -11,10 +11,6 @@ Implements:
   against the GT object position projected into the same normalized image space,
   providing gradient that steers the Conv2D + SpatialSoftmax frontend toward real
   object geometry instead of high-contrast spurious features.
-
-  Total loss (v4.2):
-    L_total(t) = L_pred(t) + λ_coord · L_coord(t) + λ_sparse · L_reg(t)
-  where λ_coord ∈ [0.1, 0.2] is the coordinate coupling strength.
 """
 
 from __future__ import annotations
@@ -34,8 +30,8 @@ class LossOutput:
     l_var: torch.Tensor
     l_sparse: torch.Tensor
     l_probe: torch.Tensor
+    l_vel: Optional[torch.Tensor] = None        # v6.6: direct primary world model velocity coupling ||p_t - Delta q_t||_2
     l_coord: Optional[torch.Tensor] = None      # v4.2: auxiliary spatial coordinate loss
-    l_vel_cons: Optional[torch.Tensor] = None   # v6.5: kinematic velocity consistency loss
 
     def to_dict(self) -> Dict[str, float]:
         d = {
@@ -46,37 +42,31 @@ class LossOutput:
             "l_sparse": self.l_sparse.item(),
             "l_probe": self.l_probe.item(),
         }
+        if self.l_vel is not None:
+            d["l_vel"] = self.l_vel.item()
         if self.l_coord is not None:
             d["l_coord"] = self.l_coord.item()
-        if self.l_vel_cons is not None:
-            d["l_vel_cons"] = self.l_vel_cons.item()
         return d
 
 
 class SPWMLoss(nn.Module):
     """
-    Composite Loss for Spiking Predictive World Model (v6.5).
+    Composite Loss for Spiking Predictive World Model (v6.6).
 
     Formula:
         L_total(t) = λ_pred·L_pred + λ_multi·L_multi + λ_var·L_var
-                   + λ_sparse·L_sparse + λ_probe·L_probe
-                   + λ_coord·L_coord          # v4.2
-                   + λ_vel_cons·L_vel_cons    # v6.5
+                   + λ_sparse·L_sparse + λ_vel·L_vel + λ_probe·L_probe
+                   + λ_coord·L_coord
+
+    L_sparse: Proportional L1 sparsity penalty around target spike rate (0.10):
+        L_sparse = |mean(s) - 0.10| with λ_sparse >= 0.5.
+
+    L_vel: Direct primary kinematic velocity coupling in world model phase space:
+        L_vel = ||p_t - Δq_t||_2 where Δq_t = q_(t+1) - q_t.
 
     L_coord: Auxiliary spatial keypoint loss.
         Penalizes the MSE between raw Spatial-Softmax keypoints (u_k, v_k) ∈ [-1,1]^2
         and the GT object xy-position projected into the normalized image frame.
-
-    L_vel_cons: Kinematic velocity consistency loss (v6.5).
-        Enforces explicit consistency between the momentum state p and the empirical
-        temporal variation in coordinates Δq = q_(t+1) - q_t via a linear projection
-        W_vel_cons: p -> Δq.
-
-    Args:
-        lambda_coord: coupling strength for L_coord (recommended 0.10–0.20).
-        lambda_vel_cons: coupling strength for L_vel_cons (recommended 0.25).
-        q_dim: dimensionality of generalized coordinates q (default: 32).
-        p_dim: dimensionality of generalized momentum p (default: 96).
     """
 
     def __init__(
@@ -84,13 +74,13 @@ class SPWMLoss(nn.Module):
         lambda_pred: float = 1.0,
         lambda_multi: float = 0.5,
         lambda_var: float = 0.1,
-        lambda_sparse: float = 0.001,
+        lambda_sparse: float = 0.5,
+        lambda_vel: float = 0.5,
         lambda_probe: float = 0.5,
         lambda_coord: float = 0.0,    # v4.2: auxiliary coordinate coupling
-        lambda_vel_cons: float = 0.0, # v6.5: kinematic velocity consistency coupling
         multi_step_horizon: int = 3,
         target_variance: float = 1.0,
-        target_spike_rate: float = 0.05,
+        target_spike_rate: float = 0.10,
         q_dim: int = 32,
         p_dim: int = 96,
     ) -> None:
@@ -99,18 +89,14 @@ class SPWMLoss(nn.Module):
         self.lambda_multi = lambda_multi
         self.lambda_var = lambda_var
         self.lambda_sparse = lambda_sparse
+        self.lambda_vel = lambda_vel
         self.lambda_probe = lambda_probe
         self.lambda_coord = lambda_coord
-        self.lambda_vel_cons = lambda_vel_cons
         self.multi_step_horizon = multi_step_horizon
         self.target_variance = target_variance
         self.target_spike_rate = target_spike_rate
         self.q_dim = q_dim
         self.p_dim = p_dim
-
-        # Linear projection from momentum p to coordinate delta Δq
-        self.vel_proj = nn.Linear(self.p_dim, self.q_dim, bias=False)
-        nn.init.orthogonal_(self.vel_proj.weight)
 
     def variance_loss(self, z: torch.Tensor) -> torch.Tensor:
         """
@@ -148,55 +134,6 @@ class SPWMLoss(nn.Module):
         gt_expanded = gt_xy.unsqueeze(-2).expand_as(kp)
 
         return F.mse_loss(kp, gt_expanded)
-
-    def velocity_consistency_loss(
-        self,
-        latent_states: torch.Tensor,  # [B, T, D]
-        predicted_latents: Optional[torch.Tensor] = None,  # [B, T-1, D]
-    ) -> torch.Tensor:
-        """
-        Kinematic Velocity Consistency Loss (v6.5).
-        Enforces that the momentum subspace p directly encodes and predicts the
-        temporal coordinate displacement Δq = q_(t+1) - q_t.
-
-        Formula:
-            q_t = z_t[..., :q_dim]
-            p_t = z_t[..., q_dim:q_dim + p_dim]
-            Δq_t = q_(t+1) - q_t
-            p_proj_t = W_vel_cons(p_t)
-            L_vel_cons = MSE(p_proj_t, Δq_t)
-        """
-        if latent_states.dim() == 2:
-            return torch.tensor(0.0, device=latent_states.device)
-
-        B, T, D = latent_states.shape
-        if T < 2:
-            return torch.tensor(0.0, device=latent_states.device)
-
-        q_dim = min(self.q_dim, D)
-        p_dim = min(self.p_dim, D - q_dim)
-
-        q = latent_states[..., :q_dim]
-        p = latent_states[..., q_dim:q_dim + p_dim]
-
-        # Target coordinate displacement between consecutive steps
-        delta_q = q[:, 1:] - q[:, :-1]  # [B, T-1, q_dim]
-        p_prev = p[:, :-1]              # [B, T-1, p_dim]
-
-        # Project momentum to coordinate displacement space
-        p_proj = self.vel_proj(p_prev)  # [B, T-1, q_dim]
-
-        loss = F.mse_loss(p_proj, delta_q)
-
-        # If predicted_latents is provided, enforce consistency on predicted transitions as well
-        if predicted_latents is not None and predicted_latents.shape[1] == T - 1:
-            q_pred = predicted_latents[..., :q_dim]
-            delta_q_pred = q_pred - q[:, :-1]
-            p_pred = predicted_latents[..., q_dim:q_dim + p_dim]
-            p_proj_pred = self.vel_proj(p_pred)
-            loss = 0.5 * (loss + F.mse_loss(p_proj_pred, delta_q_pred))
-
-        return loss
 
     def multi_step_rollout_loss(
         self,
@@ -257,36 +194,38 @@ class SPWMLoss(nn.Module):
         # 3. Anti-collapse variance loss
         l_var = self.variance_loss(latent_states)
 
-        # 4. Spike sparsity loss
-        l_sparse = mean_spike_rate
+        # 4. Proportional L1 Spike sparsity loss: L_sparse = |mean(s) - 0.10|
+        l_sparse = torch.abs(mean_spike_rate - self.target_spike_rate)
 
-        # 5. Kinematic probe loss
+        # 5. Direct primary kinematic velocity penalty: ||p_t - Δq_t||_2
+        # Directly couples momentum p to the finite-difference coordinate velocity Δq_t = q_(t+1) - q_t
+        l_vel = torch.tensor(0.0, device=device)
+        if self.lambda_vel > 0.0 and T > 1:
+            q_states = latent_states[..., :self.q_dim]       # [B, T, q_dim]
+            p_states = latent_states[..., self.q_dim:]      # [B, T, p_dim]
+            delta_q = q_states[:, 1:] - q_states[:, :-1]    # [B, T-1, q_dim]
+            p_vel = p_states[:, :-1, :self.q_dim]           # [B, T-1, q_dim] matched coordinate velocity subspace
+            l_vel = F.mse_loss(p_vel, delta_q)
+
+        # 6. Kinematic probe loss (if probe supervision is active)
         l_probe = torch.tensor(0.0, device=device)
         if decoded_kinematics is not None and true_kinematics is not None:
             l_probe = F.mse_loss(decoded_kinematics, true_kinematics)
 
-        # 6. v4.2: Auxiliary spatial coordinate loss (L_coord)
+        # 7. v4.2: Auxiliary spatial coordinate loss (L_coord)
         l_coord = torch.tensor(0.0, device=device)
         if self.lambda_coord > 0.0 and keypoints is not None and true_kinematics is not None:
             l_coord = self.coordinate_loss(keypoints, true_kinematics)
 
-        # 7. v6.5: Kinematic velocity consistency loss (L_vel_cons)
-        l_vel_cons = torch.tensor(0.0, device=device)
-        if self.lambda_vel_cons > 0.0 and T > 1:
-            l_vel_cons = self.velocity_consistency_loss(
-                latent_states,
-                predicted_latents=pred_z if pred_z.shape[1] == T - 1 else None,
-            )
-
-        # Composite total loss — v6.5 formula:
+        # Composite total loss — v6.6 formula:
         total_loss = (
             self.lambda_pred * l_pred
             + self.lambda_multi * l_multi
             + self.lambda_var * l_var
             + self.lambda_sparse * l_sparse
+            + self.lambda_vel * l_vel
             + self.lambda_probe * l_probe
             + self.lambda_coord * l_coord
-            + self.lambda_vel_cons * l_vel_cons
         )
 
         return LossOutput(
@@ -296,6 +235,6 @@ class SPWMLoss(nn.Module):
             l_var=l_var,
             l_sparse=l_sparse,
             l_probe=l_probe,
+            l_vel=l_vel,
             l_coord=l_coord,
-            l_vel_cons=l_vel_cons,
         )

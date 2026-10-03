@@ -825,6 +825,59 @@ $$\mathcal{L}_{\text{total}} = \lambda_{\text{pred}} \mathcal{L}_{\text{pred}} +
   - [train.py](file:///Users/Mattia/Desktop/Studies/Temp/experiments/train.py): passaggio dei parametri `lambda_vel_cons`, `q_dim` e `p_dim` a `SPWMLoss` con corretta allocazione su device.
   - [test_vel_cons.py](file:///Users/Mattia/Desktop/Studies/Temp/tests/test_vel_cons.py): suite completa di unit test per la computazione e retropropagazione del gradiente su $p$ e $W_{\text{vel\_cons}}$.
 
+---
+
+## Release SPWM-v6.6: Visual Encoder Freezing, Direct Primary Velocity Coupling & Proportional L1 Sparsity
+
+### 1. Diagnosi Empirica dei Risultati di v6.5 (Post-Mortem)
+L'analisi empirica approfondita dei log di addestramento su 600 epoche di SPWM-v6.5 ha evidenziato tre criticità sistematiche:
+
+1. **Fallimento e Scorciatoia Degenere di $\mathcal{L}_{\text{vel\_cons}}$:**
+   - La loss indiretta di consistenza cinematica tramite optimizer secondario e matrice di proiezione $W_{\text{vel\_cons}}$ è collassata a zero trovando una scorciatoia degenere $W_{\text{vel\_cons}} \to 0$, lasciando l'errore di velocità reale del probe (`val_vel_err`) totalmente immutato su **~0.66** (livello casuale).
+   - Inoltre, la presenza della proiezione secondaria ha introdotto rumore nei gradienti senza accoppiare $p$ alla cinematica.
+
+2. **Shock Numerico & Instabilità di Transizione alle Epoche 88–100:**
+   - Tra l'epoca 88 e l'epoca 100, la `Val Pos Err` è schizzata improvvisamente da $0.26$ a $0.95$ e la gradient norm è raddoppiata ($1.18$).
+   - Causa: il riallineamento tardivo dei pesi convoluzionali e keypoints di SpatialSoftmax è avvenuto simultaneamente all'unrolling del modello, causando una grave discontinuità nello spazio di embedding.
+
+3. **Deriva del Firing Rate (>18%) per Formulazione Inadeguata della Sparsità:**
+   - Il costo di sparsità precedente era matematicamente trascurabile e non vincolato a un target, permettendo allo spike rate medio di salire oltre il $18.2\%$, saturando la popolazione ALIF.
+
+---
+
+### 2. Direttive e Implementazione dei Fix Definitivi SPWM-v6.6
+
+#### A. Congelamento Esplicito dell'Encoder (Prime 70 Epoche)
+- Impostato il congelamento esplicito dei pesi convoluzionali e di SpatialSoftmax (`param.requires_grad = False`) per le prime **70 epoche globali**, sbloccandoli (`param.requires_grad = True`) solo dopo la convergenza delle coordinate (epoca > 70).
+- Multi-step rollout loss inibita durante il warmup ($K=1$), consentendo alle coordinate di convergere e stabilizzarsi prima di addestrare congiuntamente l'encoder.
+
+#### B. Penalità di Sparsità $L_1$ Proporzionata con Target a 0.10
+- Sostituita la forma quadratica/lineare generica con una penalità $L_1$ proporzionata:
+  $$\mathcal{L}_{\text{sparse}} = \lambda_{\text{sparse}} \cdot |\text{mean}(s) - 0.10| \quad \text{con } \lambda_{\text{sparse}} = 0.5 \ge 0.5$$
+- Questa formulazione vincola rigidamente la popolazione ALIF al corridoio target di firing rate del **10%** (0.10), penalizzando simmetricamente sia la saturazione che la quiescenza.
+
+#### C. Accoppiamento Diretto di $p$ alla Derivata Temporale di $q$ nella Loss Primaria
+- Rimosso qualsiasi optimizer o matrice ausiliaria secondaria;
+- Accoppiato direttamente $p$ alla derivata temporale finita $\Delta q_t = q_{t+1} - q_t$ direttamente calcolata dentro la funzione di costo primaria del world model (`SPWMLoss`):
+  $$\mathcal{L}_{\text{vel}} = \left\| p_t - \Delta q_t \right\|_2^2 \quad \text{con } \lambda_{\text{vel}} = 0.5$$
+- La penalità forza $p$ a codificare direttamente la velocità cinematica autentica dei punti chiave.
+
+---
+
+### 3. Bilanciamento della Funzione di Costo Totale (v6.6)
+$$\mathcal{L}_{\text{total}} = \lambda_{\text{pred}} \mathcal{L}_{\text{pred}} + \lambda_{\text{multi}} \mathcal{L}_{\text{multi}} + \lambda_{\text{var}} \mathcal{L}_{\text{var}} + \lambda_{\text{sparse}} \left|\text{mean}(s) - 0.10\right| + \lambda_{\text{vel}} \left\| p_t - \Delta q_t \right\|_2^2 + \lambda_{\text{probe}} \mathcal{L}_{\text{probe}} + \lambda_{\text{coord}} \mathcal{L}_{\text{coord}}$$
+
+---
+
+### 4. Configurazioni e Moduli Aggiornati (v6.6)
+- **Configurazioni:** [config_v6_6.yaml](file:///Users/Mattia/Desktop/Studies/Temp/config_v6_6.yaml) e [spwm_v6_6.yaml](file:///Users/Mattia/Desktop/Studies/Temp/configs/experiments/spwm_v6_6.yaml) (`encoder_warmup_epochs: 70`, `lambda_sparse: 0.5`, `target_spike_rate: 0.10`, `lambda_vel: 0.5`).
+- **Moduli aggiornati:**
+  - [losses.py](file:///Users/Mattia/Desktop/Studies/Temp/spwm/learning/losses.py): `SPWMLoss` con penalità $L_1$ su $|\text{mean}(s) - 0.10|$ e penalità diretta di velocità $\|p_t - \Delta q_t\|_2^2$.
+  - [trainer.py](file:///Users/Mattia/Desktop/Studies/Temp/spwm/learning/trainer.py): freeze/unfreeze esplicito (`p.requires_grad = False` per `epoch <= 70`, `True` per `epoch > 70`) su `model.encoder.conv` e `model.encoder.spatial_softmax`.
+  - [train.py](file:///Users/Mattia/Desktop/Studies/Temp/experiments/train.py): passaggio dei parametri `lambda_vel`, `lambda_sparse` e `target_spike_rate` a `SPWMLoss`.
+  - [test_v6_6.py](file:///Users/Mattia/Desktop/Studies/Temp/tests/test_v6_6.py): suite completa di unit test per la validazione di tutti i fix richiesti.
+
+
 
 
 

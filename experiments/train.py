@@ -242,12 +242,13 @@ def main() -> None:
         lambda_pred=loss_cfg.get("lambda_pred", 1.0),
         lambda_multi=loss_cfg.get("lambda_multi", 0.5),
         lambda_var=loss_cfg.get("lambda_var", 0.1),
-        lambda_sparse=loss_cfg.get("lambda_sparse", 0.001),
+        lambda_sparse=loss_cfg.get("lambda_sparse", 0.5),
+        lambda_vel=loss_cfg.get("lambda_vel", 0.5),
         lambda_probe=loss_cfg.get("lambda_probe", 0.5),
         lambda_coord=loss_cfg.get("lambda_coord", 0.0),
-        lambda_vel_cons=loss_cfg.get("lambda_vel_cons", 0.0),
         multi_step_horizon=loss_cfg.get("multi_step_horizon", 3),
         target_variance=loss_cfg.get("target_variance", 1.0),
+        target_spike_rate=loss_cfg.get("target_spike_rate", 0.10),
         q_dim=model_cfg.get("q_dim", 32),
         p_dim=model_cfg.get("p_dim", 96),
     ).to(device)
@@ -326,6 +327,7 @@ def main() -> None:
         optimizer_state=optimizer_state,
         curriculum_multi_step=train_cfg.get("curriculum_multi_step", False),
         curriculum_thresholds=loss_cfg.get("curriculum_thresholds", None),
+        encoder_warmup_epochs=train_cfg.get("encoder_warmup_epochs", 60),
     )
 
     if loaded_existing and (best_val_pos_err == float("inf") or best_val_loss == float("inf")):
@@ -338,45 +340,48 @@ def main() -> None:
     history = trainer.fit(epochs=epochs)
 
     # 5. Evaluate on Test and Extrapolation sets
-    chronicle.log_section_header("Rollout & Generalization Evaluation")
-    evaluator = RolloutEvaluator(
-        model=model,
-        device=device,
-        horizons=config.get("evaluation", {}).get("rollout_horizons", [1, 5, 10, 25]),
-        num_objects=env_cfg.get("num_objects", 1),
-    )
+    try:
+        chronicle.log_section_header("Rollout & Generalization Evaluation")
+        evaluator = RolloutEvaluator(
+            model=model,
+            device=device,
+            horizons=config.get("evaluation", {}).get("rollout_horizons", [1, 5, 10, 25]),
+            num_objects=env_cfg.get("num_objects", 1),
+        )
 
-    test_results = evaluator.evaluate_dataset(dataloaders["test"])
-    extrap_results = evaluator.evaluate_dataset(dataloaders["extrapolation"])
+        test_results = evaluator.evaluate_dataset(dataloaders["test"])
+        extrap_results = evaluator.evaluate_dataset(dataloaders["extrapolation"])
 
-    chronicle.log_detail("Test TF MSE", f"{test_results.teacher_forcing_mse:.4e}")
-    chronicle.log_detail("Test Mean Spike Rate", f"{test_results.mean_spike_rate:.3f}")
-    chronicle.log_detail("Extrapolation TF MSE", f"{extrap_results.teacher_forcing_mse:.4e}")
-    if test_results.position_error_per_horizon:
-        chronicle.log_detail("Test Pos Error by Horizon", test_results.position_error_per_horizon)
+        chronicle.log_detail("Test TF MSE", f"{test_results.teacher_forcing_mse:.4e}")
+        chronicle.log_detail("Test Mean Spike Rate", f"{test_results.mean_spike_rate:.3f}")
+        chronicle.log_detail("Extrapolation TF MSE", f"{extrap_results.teacher_forcing_mse:.4e}")
+        if test_results.position_error_per_horizon:
+            chronicle.log_detail("Test Pos Error by Horizon", test_results.position_error_per_horizon)
+
+        metrics_payload = {
+            "parameters": parameter_count(model),
+            "test": {
+                "teacher_forcing_mse": test_results.teacher_forcing_mse,
+                "mean_spike_rate": test_results.mean_spike_rate,
+                "latent_mse_per_horizon": test_results.latent_mse_per_horizon,
+                "position_error_per_horizon": test_results.position_error_per_horizon,
+                "velocity_error_per_horizon": test_results.velocity_error_per_horizon,
+            },
+            "extrapolation": {
+                "teacher_forcing_mse": extrap_results.teacher_forcing_mse,
+                "latent_mse_per_horizon": extrap_results.latent_mse_per_horizon,
+                "position_error_per_horizon": extrap_results.position_error_per_horizon,
+                "velocity_error_per_horizon": extrap_results.velocity_error_per_horizon,
+            },
+        }
+
+        with open(save_dir / "metrics.json", "w", encoding="utf-8") as f:
+            json.dump(metrics_payload, f, indent=2)
+    except Exception as e:
+        chronicle.log_warning(f"Rollout evaluation skipped or incomplete: {e}")
 
     # 6. Save Artifacts & Metadata
     save_config(config, save_dir / "config.yaml")
-
-    metrics_payload = {
-        "parameters": parameter_count(model),
-        "test": {
-            "teacher_forcing_mse": test_results.teacher_forcing_mse,
-            "mean_spike_rate": test_results.mean_spike_rate,
-            "latent_mse_per_horizon": test_results.latent_mse_per_horizon,
-            "position_error_per_horizon": test_results.position_error_per_horizon,
-            "velocity_error_per_horizon": test_results.velocity_error_per_horizon,
-        },
-        "extrapolation": {
-            "teacher_forcing_mse": extrap_results.teacher_forcing_mse,
-            "latent_mse_per_horizon": extrap_results.latent_mse_per_horizon,
-            "position_error_per_horizon": extrap_results.position_error_per_horizon,
-            "velocity_error_per_horizon": extrap_results.velocity_error_per_horizon,
-        },
-    }
-
-    with open(save_dir / "metrics.json", "w", encoding="utf-8") as f:
-        json.dump(metrics_payload, f, indent=2)
 
     total_epochs_completed = len(history) if history else epochs
     metadata = {
@@ -397,21 +402,25 @@ def main() -> None:
         json.dump(metadata, f, indent=2)
 
     # 7. Generate Figures
-    plot_training_curves(history, figures_dir / "fig2_training_curves.png")
+    if history:
+        plot_training_curves(history, figures_dir / "fig2_training_curves.png")
     plot_architecture_diagram(figures_dir / "fig1_architecture.png")
 
     if hasattr(model, "dynamics") and hasattr(model.dynamics, "memory"):
         with torch.no_grad():
-            eval_loader = dataloaders.get("test") or dataloaders.get("val") or dataloaders.get("train")
-            if eval_loader is not None and len(eval_loader) > 0:
-                sample_batch = next(iter(eval_loader))
-                sample_events = sample_batch["events"][:1].to(device)
-                sample_out = model(sample_events)
-                fast_spk = sample_out.fast_spikes[0].cpu().numpy()
-                slow_spk = sample_out.slow_spikes[0].cpu().numpy()
-                plot_spike_raster(fast_spk, slow_spk, figures_dir / "fig4_spike_raster.png")
+            try:
+                eval_loader = dataloaders.get("test") or dataloaders.get("val") or dataloaders.get("train")
+                if eval_loader is not None and len(eval_loader) > 0:
+                    sample_batch = next(iter(eval_loader))
+                    sample_events = sample_batch["events"][:1].to(device)
+                    sample_out = model(sample_events)
+                    fast_spk = sample_out.fast_spikes[0].cpu().numpy()
+                    slow_spk = sample_out.slow_spikes[0].cpu().numpy()
+                    plot_spike_raster(fast_spk, slow_spk, figures_dir / "fig4_spike_raster.png")
+            except Exception as e:
+                chronicle.log_warning(f"Spike raster generation skipped: {e}")
 
-    chronicle.log_success(f"Experiment '{exp_name}' completed successfully.")
+    chronicle.log_success(f"Experiment '{exp_name}' completed.")
     chronicle.log_detail("Artifacts saved to", save_dir)
 
 

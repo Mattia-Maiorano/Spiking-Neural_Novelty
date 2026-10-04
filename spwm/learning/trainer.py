@@ -1,23 +1,24 @@
 """
-Forward-Only Continuous Online Trainer for SPWM (v6.6).
+Forward-Only Continuous Online Trainer for SPWM (v7.1).
 Maintains O(1) memory footprint scaling across long sequence horizons.
 Executes online e-prop plasticity with online mini-batch updates.
 
-v6.6 features:
-  - Encoder Warmup: Stabilizes SpatialSoftmax keypoint coordinates in the initial phase
-    (first encoder_warmup_epochs global epochs) by withholding multi-step rollout loss (K=1)
-    and focusing on clean sensory and coordinate representations.
-  - Direct Kinematic Velocity Supervision: Active gradient propagation into latent momentum p
-    via physical decoder vel_head probe.
-  - Removal of indirect L_vel_cons shortcut.
-  - Homeostatic sparsity lock (lambda_sparse scaled by an order of magnitude).
+Key features:
+  - Pure Geometric Encoder Update: Ground-truth supervision via L_coord only,
+    avoiding predictive confirmation bias.
+  - Frozen Probe Velocity Supervision: L_vel differentiates through physical_decoder
+    with its parameters frozen so gradients flow exclusively into predictor/dynamics p.
+  - Decoupled Optimizers: Dynamics fusion layers (fuse_*, recurrent_proj, norm) are
+    trained via predictor_optimizer. probe_optimizer only updates probe weights.
+  - Reliable Joint Model Selection: Uses normalized combined validation metric (position + velocity)
+    avoiding non-stationary historical Z-score traps.
 """
 
 from __future__ import annotations
 import collections
+import contextlib
 import csv
 import json
-import os
 from pathlib import Path
 import time
 from typing import Any, Dict, List, Optional, Union
@@ -32,19 +33,29 @@ try:
 except ImportError:
     SummaryWriter = None
 
-from spwm.learning.diagnostics import collect_spike_statistics, inspect_gradients
 from spwm.learning.losses import LossOutput, SPWMLoss
 from spwm.learning.metrics import (
-    one_step_mse,
     position_error,
-    spike_rate,
     velocity_error,
 )
 
 
+@contextlib.contextmanager
+def freeze_parameters(module: nn.Module):
+    """Context manager to temporarily freeze parameters of a module."""
+    prev_states = [p.requires_grad for p in module.parameters()]
+    try:
+        for p in module.parameters():
+            p.requires_grad = False
+        yield
+    finally:
+        for p, state in zip(module.parameters(), prev_states):
+            p.requires_grad = state
+
+
 class Trainer:
     """
-    Continuous Online Trainer (SPWM-v6.6).
+    Continuous Online Trainer (SPWM-v7.1).
     Streams sequence batches frame-by-frame with O(1) memory footprint and
     executes online forward-only e-prop plasticity.
     """
@@ -71,10 +82,12 @@ class Trainer:
         optimizer_state: Optional[Dict] = None,
         curriculum_multi_step: bool = False,
         curriculum_thresholds: Optional[Dict[str, Any]] = None,
-        encoder_warmup_epochs: int = 70,
+        encoder_warmup_epochs: int = 60,
     ) -> None:
         self.best_epoch: Optional[int] = None
         self.best_val_pos_err: float = best_val_pos_err
+        self.best_val_vel_err: float = float("inf")
+        self.best_combined_score: float = float("inf")
         self.learning_algorithm = learning_algorithm.lower()
         self.learning_rate = learning_rate
         self.curriculum_multi_step = curriculum_multi_step
@@ -107,57 +120,55 @@ class Trainer:
         self.save_dir = Path(save_dir)
         self.save_dir.mkdir(parents=True, exist_ok=True)
 
-        # Optimizer setup
-        probe_params = [
-            p for n, p in self.model.named_parameters() if "decoder" in n or "probe" in n
-        ]
-        # Include latent dynamics p projection/fusion weights if direct kinematics gradient is active
-        if hasattr(self.model, "dynamics"):
-            dynamics_p_params = [
-                p for n, p in self.model.dynamics.named_parameters()
-                if "fuse_" in n or "recurrent_proj" in n or "norm" in n
-            ]
-            probe_params.extend(dynamics_p_params)
+        # ------------------------------------------------------------------
+        # Configurazione Ottimizzatori
+        # ------------------------------------------------------------------
 
+        # Step-1: Ottimizzatore Encoder (SpatialSoftmax + front-end convoluzionale)
+        encoder_params = (
+            list(self.model.encoder.parameters())
+            if hasattr(self.model, "encoder")
+            else []
+        )
+        self.encoder_optimizer = (
+            torch.optim.AdamW(encoder_params, lr=2e-4, weight_decay=1e-4)
+            if encoder_params
+            else None
+        )
+
+        # Step-2: Ottimizzatore Predictor + Dinamica del Momento Latente p
         predictor_params = [
             p
             for n, p in self.model.named_parameters()
             if "predictor" in n and "sensory_predictor" not in n
         ]
+        if hasattr(self.model, "dynamics"):
+            dynamics_p_params = [
+                p
+                for n, p in self.model.dynamics.named_parameters()
+                if "fuse_" in n or "recurrent_proj" in n or "norm" in n
+            ]
+            predictor_params.extend(dynamics_p_params)
 
-        encoder_params = list(self.model.encoder.parameters()) if hasattr(self.model, "encoder") else []
-
-        self.encoder_optimizer = (
-            torch.optim.AdamW(
-                encoder_params,
-                lr=2e-4,
-                weight_decay=1e-4,
-            )
-            if encoder_params
+        self.predictor_optimizer = (
+            torch.optim.AdamW(predictor_params, lr=learning_rate, weight_decay=weight_decay)
+            if predictor_params
             else None
         )
 
+        # Step-3: Ottimizzatore Probe Cinematico (SOLO decoder / probe)
+        probe_params = [
+            p
+            for n, p in self.model.named_parameters()
+            if "decoder" in n or "probe" in n
+        ]
         self.probe_optimizer = (
-            torch.optim.AdamW(
-                probe_params,
-                lr=probe_lr,
-                weight_decay=probe_weight_decay,
-            )
+            torch.optim.AdamW(probe_params, lr=probe_lr, weight_decay=probe_weight_decay)
             if probe_params
             else None
         )
 
-        self.probe_scheduler = None
-
-        self.predictor_optimizer = (
-            torch.optim.AdamW(
-                predictor_params,
-                lr=learning_rate,
-                weight_decay=weight_decay,
-            )
-            if predictor_params
-            else None
-        )
+        self.decoder_scheduler = None
 
         self.writer = (
             SummaryWriter(log_dir=str(self.save_dir / "tb"))
@@ -165,7 +176,7 @@ class Trainer:
             else None
         )
 
-        # Resume state
+        # Ripristino stato Checkpoint
         self.start_epoch = start_epoch
         self.best_val_loss = best_val_loss
         self.history = history if history is not None else []
@@ -180,10 +191,14 @@ class Trainer:
                 self.predictor_optimizer.load_state_dict(
                     optimizer_state["predictor_optimizer"]
                 )
+            if "best_combined_score" in optimizer_state:
+                self.best_combined_score = optimizer_state["best_combined_score"]
+            if "best_val_vel_err" in optimizer_state:
+                self.best_val_vel_err = optimizer_state["best_val_vel_err"]
 
     def _print_training_header(self, total_epochs: int) -> None:
         """Visualizza i parametri principali prima dell'avvio."""
-        chronicle.log_application_title("SPWM-v6.6 CONTINUOUS ONLINE TRAINER")
+        chronicle.log_application_title("SPWM-v7.1 CONTINUOUS ONLINE TRAINER")
         chronicle.log_detail("Device", self.device)
         chronicle.log_detail(
             "Epochs",
@@ -195,37 +210,27 @@ class Trainer:
         chronicle.log_detail("Encoder Warmup Epochs", f"{self.encoder_warmup_epochs}")
         chronicle.log_detail("Encoder Optimizer", "Enabled" if self.encoder_optimizer else "Disabled")
         chronicle.log_detail("Probe Optimizer", "Enabled" if self.probe_optimizer else "Disabled")
-        chronicle.log_detail("Pred Optimizer", "Enabled" if self.predictor_optimizer else "Disabled")
+        chronicle.log_detail("Predictor Optimizer", "Enabled" if self.predictor_optimizer else "Disabled")
         chronicle.log_newline()
 
     def train_epoch(self, epoch: int) -> Dict[str, float]:
+        """Esegue una singola epoca di training su tutti i batch dello stream."""
         self.model.train()
         epoch_losses: Dict[str, float] = {
             "total_loss": 0.0,
             "l_pred": 0.0,
             "l_multi": 0.0,
+            "l_var": 0.0,
+            "l_vel": 0.0,
+            "l_sparse": 0.0,
             "l_probe": 0.0,
-            "l_coord": 0.0,   # v4.2: auxiliary keypoint coordinate loss
+            "l_coord": 0.0,
             "spike_rate": 0.0,
             "grad_norm": 0.0,
         }
         num_batches = 0
-
-        # Visual Encoder Warmup Phase:
-        # During the first encoder_warmup_epochs (e.g. 70 epochs), explicitly freeze
-        # the convolutional weights and SpatialSoftmax (param.requires_grad = False),
-        # unlocking them only after coordinate convergence (epoch > encoder_warmup_epochs).
-        # Multi-step rollout loss is also held to 1-step during warmup.
+        total_grad_norm_accum = 0.0
         is_warmup = epoch <= self.encoder_warmup_epochs
-
-        # Enforce explicit freeze/unfreeze on encoder conv and spatial_softmax
-        if hasattr(self.model, "encoder"):
-            if hasattr(self.model.encoder, "conv"):
-                for p in self.model.encoder.conv.parameters():
-                    p.requires_grad = not is_warmup
-            if hasattr(self.model.encoder, "spatial_softmax"):
-                for p in self.model.encoder.spatial_softmax.parameters():
-                    p.requires_grad = not is_warmup
 
         for batch in self.train_loader:
             events = batch["events"].to(self.device)
@@ -233,177 +238,173 @@ class Trainer:
             if true_kin is not None:
                 true_kin = true_kin.to(self.device)
 
+            # Passaggio neuromorfo forward-only con accumulo locale e-prop
             with torch.no_grad():
-                kin_for_eprop = true_kin
                 out = self.model(
                     events,
                     accumulate_local_updates=True,
                     learning_rate=self.learning_rate,
-                    target_kinematics=kin_for_eprop,
+                    target_kinematics=true_kin,
                 )
 
             if hasattr(self.model, "apply_accumulated_updates"):
                 self.model.apply_accumulated_updates(learning_rate=self.learning_rate)
 
-            # Online encoder update (Sensory prediction + Coordinate Supervision)
-            # When frozen (epoch <= encoder_warmup_epochs), only unfrozen parameters (like proj) receive gradients
-            # or update step is skipped if all encoder parameters are frozen.
+            # ----------------------------------------------------------
+            # Step 1: Encoder Update (Supervisione geometrica pura)
+            # ----------------------------------------------------------
+            enc_loss_val = 0.0
             if self.encoder_optimizer is not None:
-                active_params = [p for p in self.model.encoder.parameters() if p.requires_grad]
-                if active_params:
-                    self.encoder_optimizer.zero_grad()
-                    with torch.enable_grad():
-                        enc_seq, kp_seq = self.model.encoder(events, return_keypoints=True)  # [B,T,D], [B,T,K*2]
-                        B_sz, T_sz, _ = enc_seq.shape
+                self.encoder_optimizer.zero_grad()
+                with torch.enable_grad():
+                    enc_seq, kp_seq = self.model.encoder(events, return_keypoints=True)
+                    lambda_coord = getattr(self.loss_fn, "lambda_coord", 0.15)
+                    loss_enc = torch.tensor(0.0, device=self.device)
 
-                        # 1. Top-down sensory prediction error
-                        z_lat = out.latent_states.detach()
-                        z_prev = torch.cat(
-                            [torch.zeros(B_sz, 1, z_lat.shape[-1], device=self.device), z_lat[:, :-1]],
-                            dim=1,
-                        )
-                        pred_x = self.model.sensory_predictor(z_prev)
-                        loss_sensory = nn.functional.mse_loss(enc_seq, pred_x.detach())
+                    if lambda_coord > 0.0 and true_kin is not None:
+                        l_coord = self.loss_fn.coordinate_loss(kp_seq, true_kin)
+                        loss_enc = loss_enc + lambda_coord * l_coord
+                        epoch_losses["l_coord"] += l_coord.item()
 
-                        loss_enc = loss_sensory
-
-                        # 2. v4.2 — Auxiliary Coordinate Loss (L_coord)
-                        lambda_coord = getattr(self.loss_fn, "lambda_coord", 0.0)
-                        if lambda_coord > 0.0 and true_kin is not None:
-                            l_coord = self.loss_fn.coordinate_loss(kp_seq, true_kin)
-                            loss_enc = loss_enc + lambda_coord * l_coord
-                            epoch_losses["l_coord"] += l_coord.item()
-                        else:
-                            epoch_losses["l_coord"] += 0.0
-
+                    if loss_enc.requires_grad:
                         loss_enc.backward()
-                        if self.grad_clip_norm is not None and self.grad_clip_norm > 0:
+                        if self.grad_clip_norm > 0:
                             torch.nn.utils.clip_grad_norm_(
-                                active_params, self.grad_clip_norm
+                                self.model.encoder.parameters(), self.grad_clip_norm
                             )
                         self.encoder_optimizer.step()
+                        enc_loss_val = loss_enc.item()
 
-            # Online local predictor update (1-step Teacher Forcing + K-step Autoregressive Rollout Loss)
+            # ----------------------------------------------------------
+            # Step 2: Predictor & Dynamics p Update
+            # ----------------------------------------------------------
+            pred_loss_val = 0.0
             if self.predictor_optimizer is not None:
                 self.predictor_optimizer.zero_grad()
                 with torch.enable_grad():
-                    latents = out.latent_states.detach()  # [B, T, D]
+                    latents = out.latent_states.detach()
                     z_in = latents[:, :-1]
                     z_target = latents[:, 1:]
-                    l_1step = torch.tensor(0.0, device=self.device)
-                    pred_res = None
-                    if z_in.shape[1] > 0:
-                        pred_res = self.model.predictor(z_in)
-                        l_1step = nn.functional.mse_loss(
-                            pred_res.predicted_latent, z_target
+
+                    pred_res = self.model.predictor(z_in)
+                    pred_z = pred_res.predicted_latent
+                    l_1step = nn.functional.mse_loss(pred_z, z_target)
+
+                    # Multi-step autoregressive rollout
+                    l_multi = torch.tensor(0.0, device=self.device)
+                    lambda_multi = getattr(self.loss_fn, "lambda_multi", 0.5) if not is_warmup else 0.0
+                    if lambda_multi > 0.0:
+                        l_multi = self.loss_fn.multi_step_rollout_loss(
+                            latents, self.model.predictor
                         )
 
-                    # Multi-step autoregressive rollout loss over horizon K (active only after warmup)
-                    K = getattr(self.loss_fn, "multi_step_horizon", 3)
-                    lambda_multi = getattr(self.loss_fn, "lambda_multi", 0.5) if not is_warmup else 0.0
-                    lambda_pred = getattr(self.loss_fn, "lambda_pred", 1.0)
-
-                    l_multi = torch.tensor(0.0, device=self.device)
-                    B_sz, T_sz, _ = latents.shape
-                    if lambda_multi > 0.0 and T_sz > K + 1:
-                        stride = max(1, K)
-                        t_starts = list(range(0, T_sz - K, stride))
-                        if t_starts:
-                            curr_z = latents[:, t_starts]  # [B, S, D]
-                            step_losses = []
-                            for step in range(1, K + 1):
-                                target_step_z = torch.stack(
-                                    [latents[:, t + step] for t in t_starts], dim=1
-                                )
-                                pred_out = self.model.predictor(curr_z)
-                                curr_z = pred_out.predicted_latent
-                                step_losses.append(
-                                    nn.functional.mse_loss(curr_z, target_step_z)
-                                )
-                            l_multi = torch.stack(step_losses).mean()
-
-                    pred_loss = (
-                        lambda_pred * l_1step
-                        + lambda_multi * l_multi
-                    )
-                    pred_loss.backward()
-                    if self.grad_clip_norm is not None and self.grad_clip_norm > 0:
-                        for group in self.predictor_optimizer.param_groups:
-                            torch.nn.utils.clip_grad_norm_(
-                                group["params"], self.grad_clip_norm
+                    # Supervisione della velocità: probe congelato temporaneamente
+                    l_vel = torch.tensor(0.0, device=self.device)
+                    lambda_vel = getattr(self.loss_fn, "lambda_vel", 0.5)
+                    if (
+                        lambda_vel > 0.0
+                        and true_kin is not None
+                        and hasattr(self.model, "physical_decoder")
+                    ):
+                        with freeze_parameters(self.model.physical_decoder):
+                            pred_decoded = self.model.physical_decoder(pred_z)
+                            l_vel = nn.functional.mse_loss(
+                                pred_decoded[..., 2:4], true_kin[:, 1:, 2:4]
                             )
+
+                    # Sparsità differenziabile sugli spike del predittore
+                    l_sparse = torch.tensor(0.0, device=self.device)
+                    lambda_sparse = getattr(self.loss_fn, "lambda_sparse", 0.5)
+                    pred_spikes = getattr(pred_res, "spikes", None)
+                    if lambda_sparse > 0.0 and pred_spikes is not None:
+                        target_sr = getattr(self.loss_fn, "target_spike_rate", 0.10)
+                        l_sparse = torch.abs(pred_spikes.mean() - target_sr)
+
+                    # Regolarizzazione di varianza anti-collasso (VICReg style)
+                    l_var = torch.tensor(0.0, device=self.device)
+                    lambda_var = getattr(self.loss_fn, "lambda_var", 0.1)
+                    if lambda_var > 0.0:
+                        l_var = self.loss_fn.variance_loss(pred_z)
+
+                    total_pred_loss = (
+                        getattr(self.loss_fn, "lambda_pred", 1.0) * l_1step
+                        + lambda_multi * l_multi
+                        + lambda_vel * l_vel
+                        + lambda_sparse * l_sparse
+                        + lambda_var * l_var
+                    )
+                    total_pred_loss.backward()
+
+                    norm_val = 0.0
+                    if self.grad_clip_norm > 0:
+                        norm_tensor = torch.nn.utils.clip_grad_norm_(
+                            self.predictor_optimizer.param_groups[0]["params"],
+                            self.grad_clip_norm,
+                        )
+                        norm_val = (
+                            norm_tensor.item()
+                            if hasattr(norm_tensor, "item")
+                            else float(norm_tensor)
+                        )
                     self.predictor_optimizer.step()
 
-                epoch_losses["l_multi"] += l_multi.item()
-                epoch_losses["total_loss"] += lambda_multi * l_multi.item()
+                    self.recent_grad_norms.append(norm_val)
+                    total_grad_norm_accum += norm_val
+                    pred_loss_val = total_pred_loss.item()
 
-            # Online local probe update with direct kinematic supervision on momentum p
+                    epoch_losses["l_pred"] += l_1step.item()
+                    epoch_losses["l_multi"] += l_multi.item()
+                    epoch_losses["l_var"] += l_var.item()
+                    epoch_losses["l_vel"] += l_vel.item()
+                    epoch_losses["l_sparse"] += l_sparse.item()
+
+            # ----------------------------------------------------------
+            # Step 3: Probe Update (su stati latenti z staccati dal grafo)
+            # ----------------------------------------------------------
+            probe_loss_val = 0.0
             if self.probe_optimizer is not None and true_kin is not None:
                 self.probe_optimizer.zero_grad()
                 with torch.enable_grad():
-                    # Direct kinematic supervision:
-                    # q is detached (or supervised by L_coord), while momentum p receives active gradients
-                    # forcing p to directly encode real kinematic velocity.
-                    z_states = out.latent_states
-                    q_dim = getattr(self.loss_fn, "q_dim", 32)
-                    q_part = z_states[..., :q_dim].detach()
-                    p_part = z_states[..., q_dim:]
-                    z_input = torch.cat([q_part, p_part], dim=-1)
-
-                    decoded = self.model.physical_decoder(z_input)
+                    z_states = out.latent_states.detach()
+                    decoded = self.model.physical_decoder(z_states)
                     probe_loss = nn.functional.mse_loss(decoded, true_kin)
                     probe_loss.backward()
-                    if self.grad_clip_norm is not None and self.grad_clip_norm > 0:
-                        for group in self.probe_optimizer.param_groups:
-                            torch.nn.utils.clip_grad_norm_(
-                                group["params"], self.grad_clip_norm
-                            )
+                    if self.grad_clip_norm > 0:
+                        torch.nn.utils.clip_grad_norm_(
+                            self.probe_optimizer.param_groups[0]["params"],
+                            self.grad_clip_norm,
+                        )
                     self.probe_optimizer.step()
-                epoch_losses["l_probe"] += probe_loss.item()
-                epoch_losses["total_loss"] += self.loss_fn.lambda_probe * probe_loss.item()
+                    probe_loss_val = probe_loss.item()
 
-            grad_norm = 0.0
-            if self.encoder_optimizer is not None:
-                for p in self.encoder_optimizer.param_groups[0]["params"]:
-                    if p.grad is not None:
-                        grad_norm += p.grad.norm().item()
-            if self.predictor_optimizer is not None:
-                for p in self.predictor_optimizer.param_groups[0]["params"]:
-                    if p.grad is not None:
-                        grad_norm += p.grad.norm().item()
-            if self.probe_optimizer is not None:
-                for p in self.probe_optimizer.param_groups[0]["params"]:
-                    if p.grad is not None:
-                        grad_norm += p.grad.norm().item()
-            epoch_losses["grad_norm"] += grad_norm
-            self.recent_grad_norms.append(grad_norm)
+                epoch_losses["l_probe"] += probe_loss_val
 
-            pred_err = (
-                out.prediction_errors.mean().item()
-                if out.prediction_errors.numel() > 0
-                else 0.0
-            )
-            epoch_losses["l_pred"] += pred_err
-            epoch_losses["total_loss"] += pred_err
             if hasattr(out, "mean_spike_rate"):
                 epoch_losses["spike_rate"] += out.mean_spike_rate.item()
 
+            # Aggregazione Loss complessiva
+            lambda_probe = getattr(self.loss_fn, "lambda_probe", 2.0)
+            epoch_losses["total_loss"] += (
+                pred_loss_val + enc_loss_val + (lambda_probe * probe_loss_val)
+            )
             num_batches += 1
 
         for k in epoch_losses:
             epoch_losses[k] /= max(1, num_batches)
+        epoch_losses["grad_norm"] = total_grad_norm_accum / max(1, num_batches)
 
         return epoch_losses
 
     @torch.no_grad()
     def evaluate(self) -> Dict[str, float]:
+        """Valuta il modello sul dataset di validazione in sola lettura."""
         self.model.eval()
         val_losses: Dict[str, float] = {
             "val_total_loss": 0.0,
             "val_l_pred": 0.0,
             "val_l_multi": 0.0,
             "val_l_probe": 0.0,
-            "val_l_coord": 0.0,   # v4.2: coordinate loss on val set
+            "val_l_coord": 0.0,
             "val_pos_err": 0.0,
             "val_vel_err": 0.0,
             "val_spike_rate": 0.0,
@@ -420,45 +421,28 @@ class Trainer:
 
             pred_err = (
                 out.prediction_errors.mean().item()
-                if out.prediction_errors.numel() > 0
+                if hasattr(out, "prediction_errors") and out.prediction_errors.numel() > 0
                 else 0.0
             )
             val_losses["val_total_loss"] += pred_err
             val_losses["val_l_pred"] += pred_err
 
-            # Multi-step autoregressive rollout loss on val set
-            K = getattr(self.loss_fn, "multi_step_horizon", 3)
+            # Multi-step rollout su validation set
             lambda_multi = getattr(self.loss_fn, "lambda_multi", 0.5)
-            B_sz, T_sz, _ = out.latent_states.shape
-            if lambda_multi > 0.0 and T_sz > K + 1:
-                stride = max(1, K)
-                t_starts = list(range(0, T_sz - K, stride))
-                if t_starts:
-                    curr_z = out.latent_states[:, t_starts]
-                    val_step_losses = []
-                    for step in range(1, K + 1):
-                        target_step_z = torch.stack(
-                            [out.latent_states[:, t + step] for t in t_starts], dim=1
-                        )
-                        pred_out = self.model.predictor(curr_z)
-                        curr_z = pred_out.predicted_latent
-                        val_step_losses.append(
-                            nn.functional.mse_loss(curr_z, target_step_z)
-                        )
-                    val_l_multi = torch.stack(val_step_losses).mean().item()
-                    val_losses["val_l_multi"] += val_l_multi
-                    val_losses["val_total_loss"] += lambda_multi * val_l_multi
+            if lambda_multi > 0.0 and hasattr(self.model, "predictor"):
+                val_l_multi = self.loss_fn.multi_step_rollout_loss(
+                    out.latent_states, self.model.predictor
+                ).item()
+                val_losses["val_l_multi"] += val_l_multi
+                val_losses["val_total_loss"] += lambda_multi * val_l_multi
 
-            # Compute probe (kinematic) loss if decoder output is available
+            # Decodifica cinematica ed errori fisici
             if out.decoded_kinematics is not None and true_kin is not None:
                 probe_loss = nn.functional.mse_loss(out.decoded_kinematics, true_kin)
                 val_losses["val_l_probe"] += probe_loss.item()
-                if hasattr(self.loss_fn, "lambda_probe"):
-                    val_losses["val_total_loss"] += self.loss_fn.lambda_probe * probe_loss.item()
-                else:
-                    val_losses["val_total_loss"] += probe_loss.item()
+                lambda_probe = getattr(self.loss_fn, "lambda_probe", 2.0)
+                val_losses["val_total_loss"] += lambda_probe * probe_loss.item()
 
-            if out.decoded_kinematics is not None and true_kin is not None:
                 val_losses["val_pos_err"] += position_error(
                     out.decoded_kinematics, true_kin
                 )
@@ -466,10 +450,10 @@ class Trainer:
                     out.decoded_kinematics, true_kin
                 )
 
-            # v4.2: evaluate coordinate loss on val set (no_grad — diagnostic only)
+            # Controllo diagnostico coordinate geometriche
             lambda_coord = getattr(self.loss_fn, "lambda_coord", 0.0)
-            if lambda_coord > 0.0 and true_kin is not None:
-                enc_out, kp_val = self.model.encoder(events, return_keypoints=True)
+            if lambda_coord > 0.0 and true_kin is not None and hasattr(self.model, "encoder"):
+                _, kp_val = self.model.encoder(events, return_keypoints=True)
                 l_coord_val = self.loss_fn.coordinate_loss(kp_val, true_kin)
                 val_losses["val_l_coord"] += l_coord_val.item()
 
@@ -488,6 +472,7 @@ class Trainer:
         epochs: int = 50,
         print_every: int = 1,
     ) -> List[Dict[str, float]]:
+        """Esegue il ciclo completo di addestramento su più epoche."""
         start_time = time.time()
         base_elapsed = self.history[-1].get("elapsed_time", 0.0) if self.history else 0.0
         end_epoch = self.start_epoch + epochs - 1
@@ -505,26 +490,9 @@ class Trainer:
                     sum(self.recent_grad_norms) / max(1, len(self.recent_grad_norms))
                 )
 
-                record = {
-                    "epoch": epoch,
-                    "elapsed_time": total_elapsed,
-                    **train_metrics,
-                    **val_metrics,
-                    "grad_norm_recent": recent_norm,
-                }
-                self.history.append(record)
-
-                if self.writer is not None:
-                    for k, v in record.items():
-                        if k != "epoch":
-                            self.writer.add_scalar(k, v, epoch)
-
-                # Step probe learning rate scheduler
-                if self.probe_scheduler is not None:
-                    self.probe_scheduler.step()
-
-                # Dynamic Adaptive Curriculum for Multi-Step Horizon (K)
-                # (Active on global epoch count > encoder_warmup_epochs)
+                # ------------------------------------------------------
+                # Curriculum Adattivo su Orizzonte Multi-Step K
+                # ------------------------------------------------------
                 if self.curriculum_multi_step and hasattr(self.loss_fn, "multi_step_horizon"):
                     if epoch > self.encoder_warmup_epochs:
                         p1_k = self.curriculum_thresholds.get("phase_1_horizon", 3)
@@ -549,20 +517,46 @@ class Trainer:
                                 f"K transitioned from {old_k} to {target_k}"
                             )
                     else:
-                        # Warmup phase: hold K=1 for predictor stability
                         if self.loss_fn.multi_step_horizon != 1:
                             self.loss_fn.multi_step_horizon = 1
 
-                # Controllo Best Validation Model vincolato alla minima Pos Err di validazione
-                current_metric = val_metrics["val_pos_err"]
-                is_best = current_metric < self.best_val_pos_err
-                self.save_dir.mkdir(parents=True, exist_ok=True)
+                # ------------------------------------------------------
+                # Selezione del Miglior Modello (Posizione + Velocità)
+                # ------------------------------------------------------
+                current_pos = val_metrics["val_pos_err"]
+                current_vel = val_metrics["val_vel_err"]
+
+                # Punteggio normalizzato basato su ordini tipici di scala
+                # (pos ~ 0.10, vel ~ 0.60: peso 0.5 per bilanciare l'impatto)
+                combined_score = current_pos + (0.5 * current_vel)
+
+                is_best = combined_score < self.best_combined_score
                 if is_best:
-                    self.best_val_pos_err = current_metric
+                    self.best_combined_score = combined_score
                     self.best_epoch = epoch
+                    self.best_val_pos_err = current_pos
+                    self.best_val_vel_err = current_vel
                     torch.save(self.model.state_dict(), self.save_dir / "model.pt")
 
-                # Salva Checkpoint periodico
+                record = {
+                    "epoch": epoch,
+                    "elapsed_time": total_elapsed,
+                    **train_metrics,
+                    **val_metrics,
+                    "grad_norm_recent": recent_norm,
+                    "combined_score": combined_score,
+                }
+                self.history.append(record)
+
+                if self.writer is not None:
+                    for k, v in record.items():
+                        if k != "epoch":
+                            self.writer.add_scalar(k, v, epoch)
+
+                if self.decoder_scheduler is not None:
+                    self.decoder_scheduler.step()
+
+                # Snapshot checkpoint per ripresa
                 checkpoint_path = self.save_dir / "checkpoint.pt"
                 torch.save(
                     {
@@ -570,6 +564,8 @@ class Trainer:
                         "model_state": self.model.state_dict(),
                         "best_val_loss": self.best_val_loss,
                         "best_val_pos_err": self.best_val_pos_err,
+                        "best_val_vel_err": self.best_val_vel_err,
+                        "best_combined_score": self.best_combined_score,
                         "history": self.history,
                         "optimizer_state": {
                             "encoder_optimizer": self.encoder_optimizer.state_dict()
@@ -586,9 +582,8 @@ class Trainer:
                     checkpoint_path,
                 )
 
-                # Stampa formattata a schermo
                 if epoch % print_every == 0 or epoch == end_epoch:
-                    best_tag = " ★ [BEST]" if is_best else ""
+                    best_tag = " * [BEST]" if is_best else ""
                     current_k = getattr(self.loss_fn, "multi_step_horizon", 1)
                     warmup_tag = " [WARMUP]" if epoch <= self.encoder_warmup_epochs else ""
                     header = (
@@ -605,6 +600,7 @@ class Trainer:
                             f"{train_metrics['total_loss']:.5f}"
                             f"  (Pred: {train_metrics['l_pred']:.5f},"
                             f" Multi: {train_metrics.get('l_multi', 0.0):.5f},"
+                            f" Var: {train_metrics.get('l_var', 0.0):.5f},"
                             f" Probe: {train_metrics['l_probe']:.5f})"
                         ),
                         indent_level=1,
@@ -620,13 +616,8 @@ class Trainer:
                         indent_level=1,
                     )
                     chronicle.log_detail(
-                        "Pos Err",
-                        f"{val_metrics['val_pos_err']:.5f}",
-                        indent_level=1,
-                    )
-                    chronicle.log_detail(
-                        "Vel Err",
-                        f"{val_metrics['val_vel_err']:.5f}",
+                        "Pos Err / Vel Err",
+                        f"Pos: {current_pos:.5f} | Vel: {current_vel:.5f}",
                         indent_level=1,
                     )
                     chronicle.log_detail(
@@ -634,6 +625,14 @@ class Trainer:
                         (
                             f"Train {train_metrics['l_coord']:.5f}"
                             f" / Val {val_metrics.get('val_l_coord', 0.0):.5f}"
+                        ),
+                        indent_level=1,
+                    )
+                    chronicle.log_detail(
+                        "L_vel / L_sparse",
+                        (
+                            f"Vel {train_metrics.get('l_vel', 0.0):.5f}"
+                            f" / Sparse {train_metrics.get('l_sparse', 0.0):.5f}"
                         ),
                         indent_level=1,
                     )
@@ -646,8 +645,8 @@ class Trainer:
                         indent_level=1,
                     )
                     chronicle.log_detail(
-                        "Grad Norm",
-                        f"{recent_norm:.4f}",
+                        "Score (Comb)",
+                        f"{combined_score:.5f} (Best: {self.best_combined_score:.5f} @ Ep {self.best_epoch})",
                         indent_level=1,
                     )
                     chronicle.log_newline()
@@ -657,43 +656,37 @@ class Trainer:
                 "[INTERRUPT] Training interrotto manualmente dall'utente."
             )
             try:
-                chronicle.log_info(
-                    "Valutazione stato attuale del modello in corso..."
-                )
+                chronicle.log_info("Valutazione dello stato attuale in corso...")
                 val_metrics = self.evaluate()
-                current_pos_err = val_metrics.get("val_pos_err", float("inf"))
-                if current_pos_err < self.best_val_pos_err:
-                    self.best_val_pos_err = current_pos_err
+                c_pos = val_metrics.get("val_pos_err", float("inf"))
+                c_vel = val_metrics.get("val_vel_err", float("inf"))
+                c_score = c_pos + (0.5 * c_vel)
+
+                if c_score < self.best_combined_score:
+                    self.best_combined_score = c_score
+                    self.best_val_pos_err = c_pos
+                    self.best_val_vel_err = c_vel
                     model_path = self.save_dir / "model.pt"
                     torch.save(self.model.state_dict(), model_path)
                     chronicle.log_success(
-                        f"Nuovo record ottenuto (Pos Err: {current_pos_err:.5f})."
-                        f" Modello salvato in: {model_path}"
-                    )
-                else:
-                    chronicle.log_info(
-                        f"Nessun miglioramento"
-                        f" (Attuale: {current_pos_err:.5f}"
-                        f" vs Best: {self.best_val_pos_err:.5f})."
+                        f"Nuovo miglior modello salvato su interrupt in: {model_path}"
                     )
             except Exception as e:
-                chronicle.log_error(
-                    f"Errore durante la validazione post-interrupt: {e}"
-                )
+                chronicle.log_error(f"Errore post-interrupt: {e}")
                 model_path = self.save_dir / "model.pt"
                 torch.save(self.model.state_dict(), model_path)
-                chronicle.log_success(
-                    f"Modello salvato (fallback) in: {model_path}"
-                )
 
         self.save_training_log()
         chronicle.log_success(
-            f"Sessione completata. Log salvati in '{self.save_dir}'."
-            f" Best Val Pos Err: {self.best_val_pos_err:.5f}"
+            f"Session complete. Logs saved in '{self.save_dir}'. "
+            f"Best Val Pos Err: {self.best_val_pos_err:.5f} | "
+            f"Best Val Vel Err: {self.best_val_vel_err:.5f} | "
+            f"Best Score: {self.best_combined_score:.5f} (Epoch {self.best_epoch})"
         )
         return self.history
 
     def save_training_log(self) -> None:
+        """Salva i log di addestramento nei formati JSON, CSV e TXT."""
         if not self.history:
             return
 
@@ -720,15 +713,20 @@ class Trainer:
                     f"total_loss={rec.get('total_loss'):.4f}",
                     f"l_pred={rec.get('l_pred'):.4f}",
                     f"l_multi={rec.get('l_multi', 0.0):.4f}",
-                    f"l_probe={rec.get('l_probe'):.4f}",
+                    f"l_var={rec.get('l_var', 0.0):.4f}",
+                    f"l_vel={rec.get('l_vel', 0.0):.4f}",
+                    f"l_sparse={rec.get('l_sparse', 0.0):.4f}",
+                    f"l_probe={rec.get('l_probe', 0.0):.4f}",
                     f"l_coord={rec.get('l_coord', 0.0):.4f}",
                     f"spike_rate={rec.get('spike_rate'):.3f}",
                     f"val_total_loss={rec.get('val_total_loss'):.4f}",
                     f"val_l_pred={rec.get('val_l_pred'):.4f}",
                     f"val_l_multi={rec.get('val_l_multi', 0.0):.4f}",
+                    f"val_l_probe={rec.get('val_l_probe', 0.0):.4f}",
                     f"val_pos_err={rec.get('val_pos_err'):.4f}",
                     f"val_vel_err={rec.get('val_vel_err'):.4f}",
                     f"val_spike_rate={rec.get('val_spike_rate'):.3f}",
+                    f"combined_score={rec.get('combined_score'):.4f}",
                 ]
                 f.write("  Losses: " + ", ".join(loss_items) + "\n")
                 f.write(

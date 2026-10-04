@@ -883,3 +883,112 @@ $$\mathcal{L}_{\text{total}} = \lambda_{\text{pred}} \mathcal{L}_{\text{pred}} +
 
 
 
+
+## Release SPWM-v7: Decoupled Optimizer Architecture, Probe-Frozen Velocity Supervision & Adaptive Z-Score Model Selection
+
+### 1. Diagnosi Empirica dei Risultati di v6.6 (Post-Mortem)
+
+L'analisi dei log di addestramento su 450 epoche di SPWM-v6.6 ha identificato tre difetti architetturali sistematici che limitavano la convergenza:
+
+1. **Bias da Consistenza Sensoriale nell'Encoder:**
+   - La loss di aggiornamento dell'encoder includeva un termine di consistenza sensoriale: $\text{MSE}(\text{enc\_seq}, \hat{x}_t^{\text{detach}})$, introducendo un bias verso la struttura della predizione del `sensory_predictor` invece di convergere su coordinate geometriche pure.
+   - Conseguenza: le coordinate dei keypoint risultavano parzialmente distorte dalla distribuzione predittiva, destabilizzando la supervisione downstream del probe.
+
+2. **Doppio Backprop su `physical_decoder` (Dual Backprop Conflict):**
+   - In Step 2 (aggiornamento predittore), `physical_decoder(pred_z)` veniva chiamato direttamente senza congelare i parametri del decoder, provocando l'accumulo di gradienti da $\mathcal{L}_{\text{vel}}$ sui pesi del probe.
+   - La successiva `probe_optimizer.zero_grad()` cancellerebbe questi gradienti senza mai applicarli, mentre gli aggiornamenti residui del predittore sarebbero potenzialmente corrotti da gradienti ibridi.
+
+3. **Parametri di Dinamica nel `probe_optimizer` (Optimizer Contamination):**
+   - I parametri di fusione dinamica (`fuse_*`, `recurrent_proj`, `norm`) erano assegnati al `decoder_optimizer` invece che al `predictor_optimizer`, causando aggiornamenti incoerenti: le layer che generano $p$ venivano ottimizzate dalla loss del probe invece che dalla loss di predizione latente.
+
+---
+
+### 2. Modifiche Architetturali e Implementative di v7
+
+#### A. Encoder Update: Supervisione Geometrica Pura (Step 1)
+
+- **Rimossa completamente** la loss di consistenza sensoriale (`MSE(enc_seq, pred_x.detach())`).
+- L'encoder viene aggiornato **esclusivamente** tramite supervisione geometrica ground-truth:
+  $$\mathcal{L}_{\text{enc}} = \lambda_{\text{coord}} \cdot \mathcal{L}_{\text{coord}}(\text{keypoints}, \text{true\_kinematics})$$
+- La logica di warmup dell'encoder è invariata: la multi-step rollout loss rimane inibita ($K=1$) durante le prime `encoder_warmup_epochs` epoche.
+
+#### B. Velocity Loss con Decoder Congelato (`_frozen()`) (Step 2)
+
+- Introdotto il context manager `_frozen(module)` in `losses.py` che salva e ripristina `requires_grad` su tutti i parametri del modulo:
+  ```python
+  @contextmanager
+  def _frozen(module: nn.Module):
+      original = {n: p.requires_grad for n, p in module.named_parameters(recurse=True)}
+      try:
+          for p in module.parameters():
+              p.requires_grad_(False)
+          yield
+      finally:
+          for n, p in module.named_parameters(recurse=True):
+              p.requires_grad_(original[n])
+  ```
+- Nuovo metodo pubblico `SPWMLoss.velocity_loss_frozen_probe(pred_z, true_kinematics, physical_decoder)` che esegue il forward del decoder dentro `_frozen()`:
+  $$\mathcal{L}_{\text{vel}} = \text{MSE}(\text{physical\_decoder}_{\text{frozen}}(\hat{z})[..., 2:4],\ \text{true\_kin}[:, 1:, 2:4])$$
+- I gradienti di $\mathcal{L}_{\text{vel}}$ fluiscono **esclusivamente** nel predittore e nelle layer di dinamica che producono $\hat{z}$, senza mai toccare i pesi del probe.
+
+#### C. Re-architecting degli Ottimizzatori (Separazione $p$-Dynamics)
+
+- **`probe_optimizer`** (Step 3): contiene **solo** i parametri di `physical_decoder` / probe cinematico (match per `"decoder"` o `"probe"` nel nome). **Nessuna** layer di fusione dinamica.
+- **`predictor_optimizer`** (Step 2): contiene i parametri del `LatentPredictor` + i parametri di fusione/proiezione della dinamica latente (`fuse_*`, `recurrent_proj`, `norm`), poiché queste layer generano lo stato latente $p$.
+- Il parametro `decoder_lr` / `decoder_weight_decay` viene rinominato in `probe_lr` / `probe_weight_decay` per chiarezza semantica.
+
+#### D. Probe Update Pulito (Step 3)
+
+- `z_states = out.latent_states.detach()`: il probe viene addestrato su rappresentazioni completamente staccate dal grafo.
+- `probe_optimizer` aggiorna esclusivamente i pesi del decoder, senza interferenza con la dinamica latente o il predittore.
+
+#### E. Selezione del Miglior Modello via Z-Score Combinato Adattivo
+
+- **Epoche di warmup (< 5):** score semplice $\text{Score} = \text{val\_pos\_err} + \text{val\_vel\_err}$ (warmup statistico prima di avere varianza storica stabile).
+- **Da epoca 5 in poi:** calcolo Z-Score storico adattivo:
+  $$Z_{\text{pos}} = \frac{\text{val\_pos\_err}_t - \mu_{\text{pos}}}{\sigma_{\text{pos}} + \epsilon}, \quad Z_{\text{vel}} = \frac{\text{val\_vel\_err}_t - \mu_{\text{vel}}}{\sigma_{\text{vel}} + \epsilon}$$
+  $$\text{Score}_{\text{combined}} = Z_{\text{pos}} + Z_{\text{vel}}$$
+- `model.pt` salvato ogni volta che `Score_combined` raggiunge un nuovo minimo storico.
+- `checkpoint.pt` serializza `best_combined_score` per il corretto resume dell'addestramento.
+- I log individuali (`training_log.json`, `.csv`, `.txt`) mantengono `val_pos_err` e `val_vel_err` per backwards compatibility e confronto.
+- Il banner per-epoca mostra sia i singoli errori che il Z-Score combinato corrente e il best storico.
+
+---
+
+### 3. Bilanciamento della Funzione di Costo Totale (v7)
+
+$$\mathcal{L}_{\text{total}} = \lambda_{\text{pred}} \mathcal{L}_{\text{pred}} + \lambda_{\text{multi}} \mathcal{L}_{\text{multi}} + \lambda_{\text{var}} \mathcal{L}_{\text{var}} + \lambda_{\text{sparse}} |\text{mean}(s) - 0.10| + \lambda_{\text{vel}} \mathcal{L}_{\text{vel}}^{\text{frozen}} + \lambda_{\text{probe}} \mathcal{L}_{\text{probe}} + \lambda_{\text{coord}} \mathcal{L}_{\text{coord}}$$
+
+| Loss | $\lambda$ | Ottimizzatore |
+|------|-----------|---------------|
+| $\mathcal{L}_{\text{pred}}$ (1-step) | 1.0 | `predictor_optimizer` |
+| $\mathcal{L}_{\text{multi}}$ (rollout) | 0.5 | `predictor_optimizer` |
+| $\mathcal{L}_{\text{var}}$ (VICReg) | 0.1 | `predictor_optimizer` |
+| $\mathcal{L}_{\text{sparse}}$ (L1) | 0.5 | `predictor_optimizer` |
+| $\mathcal{L}_{\text{vel}}^{\text{frozen}}$ | 0.5 | `predictor_optimizer` (decoder frozen) |
+| $\mathcal{L}_{\text{probe}}$ | 2.0 | `probe_optimizer` |
+| $\mathcal{L}_{\text{coord}}$ | 0.15 | `encoder_optimizer` |
+
+---
+
+### 4. Checklist di Verifica (v7)
+
+- [x] `train_epoch` è un metodo corretto di `Trainer` (nessun problema di indentazione).
+- [x] `physical_decoder` riceve aggiornamenti di gradiente esclusivamente durante Step 3 (probe update).
+- [x] `loss_enc` non contiene alcuna dipendenza da `sensory_predictor`.
+- [x] `checkpoint.pt` serializza correttamente `best_combined_score` per il resume.
+- [x] `_frozen()` context manager verificato: ripristina `requires_grad` correttamente dopo il backward.
+- [x] `velocity_loss_frozen_probe()`: gradiente fluisce in `pred_z`, i parametri del decoder restano `grad=None`.
+- [x] `probe_optimizer` non contiene parametri `fuse_*`, `recurrent_proj`, `norm`.
+- [x] `predictor_optimizer` include i parametri di dinamica latente (`dynamics_p_params`).
+
+---
+
+### 5. Configurazioni e Moduli Aggiornati (v7)
+
+- **Configurazione:** [config_v7.yaml](file:///Users/Mattia/Desktop/Studies/Temp/config_v7.yaml) con `probe_lr: 0.0005`, `probe_weight_decay: 0.01`, `lambda_probe: 2.0`, `lambda_vel: 0.5`, `encoder_warmup_epochs: 60`, `zscore_warmup_epochs: 5`.
+- **Moduli aggiornati:**
+  - [losses.py](file:///Users/Mattia/Desktop/Studies/Temp/spwm/learning/losses.py): `_frozen()` context manager, `velocity_loss_frozen_probe()`, `LossOutput.l_probe` (rinominato da `l_decoder`), alias `lambda_decoder = lambda_probe` per backwards-compat.
+  - [trainer.py](file:///Users/Mattia/Desktop/Studies/Temp/spwm/learning/trainer.py): Step 1 solo `L_coord`, Step 2 con `velocity_loss_frozen_probe()`, Step 3 con `probe_optimizer` puro, Z-Score adattivo, checkpoint con `best_combined_score`, log esteso con `l_vel`, `l_sparse`, `l_probe`.
+
+

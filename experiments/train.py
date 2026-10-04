@@ -339,6 +339,12 @@ def main() -> None:
 
     history = trainer.fit(epochs=epochs)
 
+    # Ricarica il miglior modello prima della valutazione finale
+    best_weights_path = save_dir / "model.pt"
+    if best_weights_path.is_file():
+        model.load_state_dict(torch.load(best_weights_path, map_location=device))
+        chronicle.log_info(f"Loaded best checkpoint from {best_weights_path} for final evaluation.")
+
     # 5. Evaluate on Test and Extrapolation sets
     try:
         chronicle.log_section_header("Rollout & Generalization Evaluation")

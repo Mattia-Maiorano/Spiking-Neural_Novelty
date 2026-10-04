@@ -1,11 +1,15 @@
-# SPWM v6.6 – Visual Encoder Warmup, Direct Kinematic Supervision & Sparsity Rescaling
-# Pure phase space (q, p) baseline (256 ALIF neurons, [128, 128] dual-timescale, q_dim=32, p_dim=96).
-# Visual Encoder Warmup (encoder_warmup_epochs=70) explicitly freezing conv & SpatialSoftmax weights before unrolls.
-# Direct Primary Kinematic Velocity Penalty: ||p_t - Delta q_t||_2 in primary world model cost (lambda_vel=0.5).
-# Rescaled proportional L1 sparsity penalty: lambda_sparse * |mean(s) - 0.10| (lambda_sparse=0.5).
+# SPWM v7 – Decoupled Optimizer Architecture & Adaptive Z-Score Model Selection
+#
+# Key changes vs v6.6:
+#   - Encoder update: pure geometric L_coord supervision only (no sensory consistency term).
+#   - Predictor update: L_vel uses frozen decoder pass (_frozen() context manager);
+#     dynamics fusion params (fuse_*, recurrent_proj, norm) belong to predictor_optimizer.
+#   - Probe update: probe_optimizer contains ONLY physical_decoder / kinematic probe params.
+#   - Best model selection: adaptive historical Z-Score on (val_pos_err, val_vel_err).
+#     Simple sum used for first 5 epochs (warmup), full Z-Score from epoch 5 onwards.
 
 project:
-  name: "spwm_v6_6"
+  name: "spwm_v7"
   seed: 42
 
 environment:
@@ -33,7 +37,7 @@ model:
   predictor_hidden_dim: 256
   local_lr: 0.0002
   lambda_kin_feedback: 1.0
-  ema_decay: 0.9          # EMA decay for spike buffer
+  ema_decay: 0.9
   rls_enabled: false
   rls_forgetting: 0.99
   rls_delta: 1.0
@@ -48,11 +52,12 @@ neuron:
 
 memory:
   num_timescales: 2
-  timescale_dims: [128, 128]  # Population Scaling: 256 ALIF spiking neurons (128 reactive, 128 context)
+  timescale_dims: [128, 128]  # 256 ALIF spiking neurons (128 reactive, 128 context)
   betas: [0.90, 0.985]
 
 training:
   epochs: 450
+  encoder_warmup_epochs: 60
   learning_rate: 0.0002
   probe_lr: 0.0005
   probe_weight_decay: 0.01
@@ -60,18 +65,17 @@ training:
   batch_size: 32
   grad_clip_norm: 1.0
   curriculum_multi_step: true
-  encoder_warmup_epochs: 70
 
 loss:
   lambda_pred: 1.0
   lambda_multi: 0.5
   lambda_var: 0.1
   lambda_sparse: 0.5
-  lambda_vel: 0.5
   lambda_probe: 2.0
+  lambda_vel: 0.5
   lambda_coord: 0.15
-  target_spike_rate: 0.10
   multi_step_horizon: 3
+  target_spike_rate: 0.10
   curriculum_thresholds:
     phase_1_horizon: 3
     phase_2_horizon: 6
@@ -80,5 +84,6 @@ loss:
     phase_3_threshold: 0.12
 
 evaluation:
-  save_best_metric: "val_pos_err"
+  zscore_warmup_epochs: 5       # epochs before switching from simple sum to full Z-score
+  save_best_metric: "zscore_combined"
   rollout_horizons: [1, 5, 10, 25, 50, 100]

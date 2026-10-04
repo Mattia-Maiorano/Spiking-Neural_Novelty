@@ -264,6 +264,8 @@ def main() -> None:
     start_epoch = 1
     best_val_loss = float("inf")
     best_val_pos_err = float("inf")
+    best_val_vel_err = float("inf")
+    best_combined_score = float("inf")
     history = []
     optimizer_state = None
     loaded_existing = False
@@ -277,6 +279,8 @@ def main() -> None:
             start_epoch = ckpt.get("epoch", 0) + 1
             best_val_loss = ckpt.get("best_val_loss", float("inf"))
             best_val_pos_err = ckpt.get("best_val_pos_err", float("inf"))
+            best_val_vel_err = ckpt.get("best_val_vel_err", float("inf"))
+            best_combined_score = ckpt.get("best_combined_score", float("inf"))
             history = ckpt.get("history", []) or []
             optimizer_state = ckpt.get("optimizer_state", None)
             loaded_existing = True
@@ -323,6 +327,8 @@ def main() -> None:
         start_epoch=start_epoch,
         best_val_loss=best_val_loss,
         best_val_pos_err=best_val_pos_err,
+        best_val_vel_err=best_val_vel_err,
+        best_combined_score=best_combined_score,
         history=history,
         optimizer_state=optimizer_state,
         curriculum_multi_step=train_cfg.get("curriculum_multi_step", False),

@@ -78,6 +78,9 @@ class Trainer:
         start_epoch: int = 1,
         best_val_loss: float = float("inf"),
         best_val_pos_err: float = float("inf"),
+        best_val_vel_err: float = float("inf"),          
+        best_combined_score: float = float("inf"),
+        best_epoch: Optional[int] = None,   
         history: Optional[List[Dict[str, float]]] = None,
         optimizer_state: Optional[Dict] = None,
         curriculum_multi_step: bool = False,
@@ -180,21 +183,34 @@ class Trainer:
         self.start_epoch = start_epoch
         self.best_val_loss = best_val_loss
         self.history = history if history is not None else []
+        
+        # Fallback automatico: se c'è una cronologia precedente ma best_combined_score è infinito
+        if self.history and self.best_combined_score == float("inf"):
+            best_entry = min(
+                self.history, 
+                key=lambda x: x.get("combined_score", float("inf"))
+            )
+            self.best_combined_score = best_entry.get("combined_score", float("inf"))
+            self.best_val_pos_err = best_entry.get("val_pos_err", self.best_val_pos_err)
+            self.best_val_vel_err = best_entry.get("val_vel_err", self.best_val_vel_err)
+            self.best_epoch = best_entry.get("epoch", None)
+
         if optimizer_state:
             if self.encoder_optimizer and "encoder_optimizer" in optimizer_state:
-                self.encoder_optimizer.load_state_dict(
-                    optimizer_state["encoder_optimizer"]
-                )
+                self.encoder_optimizer.load_state_dict(optimizer_state["encoder_optimizer"])
             if self.probe_optimizer and "probe_optimizer" in optimizer_state:
                 self.probe_optimizer.load_state_dict(optimizer_state["probe_optimizer"])
             if self.predictor_optimizer and "predictor_optimizer" in optimizer_state:
-                self.predictor_optimizer.load_state_dict(
-                    optimizer_state["predictor_optimizer"]
-                )
+                self.predictor_optimizer.load_state_dict(optimizer_state["predictor_optimizer"])
             if "best_combined_score" in optimizer_state:
                 self.best_combined_score = optimizer_state["best_combined_score"]
             if "best_val_vel_err" in optimizer_state:
                 self.best_val_vel_err = optimizer_state["best_val_vel_err"]
+            if "best_val_pos_err" in optimizer_state:
+                self.best_val_pos_err = optimizer_state["best_val_pos_err"]
+            if "best_epoch" in optimizer_state:
+                self.best_epoch = optimizer_state["best_epoch"]
+
 
     def _print_training_header(self, total_epochs: int) -> None:
         """Visualizza i parametri principali prima dell'avvio."""
@@ -298,7 +314,7 @@ class Trainer:
                             latents, self.model.predictor
                         )
 
-                    # Supervisione della velocità: probe congelato temporaneamente
+                    # Supervisione della velocità multi-passo: probe congelato temporaneamente
                     l_vel = torch.tensor(0.0, device=self.device)
                     lambda_vel = getattr(self.loss_fn, "lambda_vel", 0.5)
                     if (
@@ -306,19 +322,31 @@ class Trainer:
                         and true_kin is not None
                         and hasattr(self.model, "physical_decoder")
                     ):
-                        with freeze_parameters(self.model.physical_decoder):
-                            pred_decoded = self.model.physical_decoder(pred_z)
-                            l_vel = nn.functional.mse_loss(
-                                pred_decoded[..., 2:4], true_kin[:, 1:, 2:4]
-                            )
+                        # Chiama la nuova versione strided (k=3, dt=0.01) definita in losses.py
+                        l_vel = self.loss_fn.velocity_loss_frozen_probe(
+                            pred_z=pred_z,
+                            true_kinematics=true_kin,
+                            physical_decoder=self.model.physical_decoder,
+                            stride_k=3,
+                            dt=0.01,
+                        )
+
 
                     # Sparsità differenziabile sugli spike del predittore
                     l_sparse = torch.tensor(0.0, device=self.device)
                     lambda_sparse = getattr(self.loss_fn, "lambda_sparse", 0.5)
-                    pred_spikes = getattr(pred_res, "spikes", None)
-                    if lambda_sparse > 0.0 and pred_spikes is not None:
+
+                    # 1. Recupera i due tensori differenziabili da SPWMSequenceOutput
+                    fast_spk = getattr(out, "fast_spikes", None)
+                    slow_spk = getattr(out, "slow_spikes", None)
+
+                    if lambda_sparse > 0.0 and fast_spk is not None and slow_spk is not None:
+                        # Concatena l'intera popolazione ALIF: [B, T, dim_fast + dim_slow]
+                        all_spikes = torch.cat([fast_spk, slow_spk], dim=-1)
+                        
                         target_sr = getattr(self.loss_fn, "target_spike_rate", 0.10)
-                        l_sparse = torch.abs(pred_spikes.mean() - target_sr)
+                        # Calcolo L1 loss differenziabile verso il target (es. 10%)
+                        l_sparse = torch.abs(all_spikes.mean() - target_sr)
 
                     # Regolarizzazione di varianza anti-collasso (VICReg style)
                     l_var = torch.tensor(0.0, device=self.device)
@@ -419,13 +447,15 @@ class Trainer:
 
             out = self.model(events, accumulate_local_updates=False)
 
-            pred_err = (
-                out.prediction_errors.mean().item()
-                if hasattr(out, "prediction_errors") and out.prediction_errors.numel() > 0
-                else 0.0
-            )
-            val_losses["val_total_loss"] += pred_err
-            val_losses["val_l_pred"] += pred_err
+            if hasattr(self.model, "predictor") and out.latent_states.shape[1] > 1:
+                z_in_val = out.latent_states[:, :-1]
+                z_tgt_val = out.latent_states[:, 1:]
+                pred_res_val = self.model.predictor(z_in_val)
+                val_l_pred = nn.functional.mse_loss(pred_res_val.predicted_latent, z_tgt_val).item()
+            else:
+                val_l_pred = 0.0
+            val_losses["val_total_loss"] += val_l_pred
+            val_losses["val_l_pred"] += val_l_pred
 
             # Multi-step rollout su validation set
             lambda_multi = getattr(self.loss_fn, "lambda_multi", 0.5)

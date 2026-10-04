@@ -164,20 +164,45 @@ class SPWMLoss(nn.Module):
 
     def velocity_loss_frozen_probe(
         self,
-        pred_z: torch.Tensor,           # [B, T-1, latent_dim]  -- predicted latents
-        true_kinematics: torch.Tensor,  # [B, T, 4*N]
+        pred_z: torch.Tensor,           # [B, T_pred, latent_dim]
+        true_kinematics: torch.Tensor,  # [B, T, 4*N] (x, y, vx, vy)
         physical_decoder: nn.Module,
+        stride_k: int = 5,
+        dt: float = 0.01,
     ) -> torch.Tensor:
-        """Velocity supervision on pred_z with physical_decoder parameters frozen.
-
-        Gradients flow into the predictor / dynamics parameters that produced
-        pred_z but are blocked from modifying the probe weights.
+        """Supervisione cinematica multi-passo: calcola la velocità media 
+        su finestra (q_{t+k} - q_t) / (k * dt) per alzare il rapporto segnale/rumore.
         """
+        B, T_tot, D_kin = true_kinematics.shape
         T_pred = pred_z.shape[1]
-        kin_target = true_kinematics[:, 1 : T_pred + 1, 2:4]   # (vx, vy) at t+1
+
+        # Posizioni ground truth q (x, y)
+        true_pos = true_kinematics[..., :2]
+
+        if T_tot <= stride_k:
+            # Fallback a passo singolo se la sequenza è troppo breve
+            kin_target = true_kinematics[:, 1 : T_pred + 1, 2:4]
+            with _frozen(physical_decoder):
+                pred_decoded = physical_decoder(pred_z)
+            pred_sub = pred_decoded[..., 2:4].contiguous()
+            return F.smooth_l1_loss(pred_sub, kin_target)
+
+        # Target de-noised multi-passo: Delta_k q / (k * dt)
+        target_disp = true_pos[:, stride_k:, :] - true_pos[:, :-stride_k, :]
+        target_vel = target_disp / (stride_k * dt)  # [B, T_tot - stride_k, 2]
+
+        # Allineamento temporale con pred_z
+        T_valid = min(T_pred, target_vel.shape[1])
+        pred_z_valid = pred_z[:, :T_valid].contiguous()
+        target_vel_valid = target_vel[:, :T_valid].contiguous()
+
         with _frozen(physical_decoder):
-            pred_decoded = physical_decoder(pred_z)
-        return F.mse_loss(pred_decoded[..., 2:4], kin_target)
+            pred_decoded = physical_decoder(pred_z_valid)
+
+        pred_sub = pred_decoded[..., 2:4].contiguous()
+
+        return F.smooth_l1_loss(pred_sub, target_vel_valid, beta=1.0)
+
 
     # ------------------------------------------------------------------
     # Combined forward (kept for compatibility; trainer uses sub-losses)

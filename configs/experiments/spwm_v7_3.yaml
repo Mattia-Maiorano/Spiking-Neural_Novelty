@@ -1,0 +1,92 @@
+# SPWM v7.3 – Two-Scale Velocity Supervision & Smooth Horizon Scheduled Sampling
+#
+# Key changes vs v7.2:
+#   - Two-Scale Velocity Loss: Convex combination (0.5 * k=1 + 0.5 * k=3) for instant
+#     derivative preservation and multi-step low-frequency trajectory regularization.
+#   - Smooth Horizon Scheduled Sampling: Batch-wise uniform sampling K_t ~ U(1, K_max)
+#     replaces discrete threshold shifts to eliminate asymptotic shock on long rollouts.
+#   - Model selection: Normalized combined metric (pos + 0.5 * vel) replacing unstable Z-scores.
+
+project:
+  name: "spwm_v7_3"
+  seed: 42
+
+environment:
+  num_objects: 1
+  height: 32
+  width: 32
+  event_threshold: 0.08
+
+data:
+  total_trajectories: 600
+  train_split: 0.8
+  val_split: 0.1
+  sequence_length: 150
+  batch_size: 32
+
+model:
+  type: "spwm"
+  encoder_type: "spatial_softmax"
+  num_keypoints: 16
+  encoder_dim: 128
+  encoder_conv_channels: [16, 32]
+  latent_dim: 128  # total = q_dim + p_dim (32 + 96)
+  q_dim: 32
+  p_dim: 96
+  predictor_hidden_dim: 256
+  local_lr: 0.0002
+  lambda_kin_feedback: 1.0
+  ema_decay: 0.9
+  rls_enabled: false
+  rls_forgetting: 0.99
+  rls_delta: 1.0
+
+neuron:
+  model: "alif"
+  threshold: 1.0
+  beta_mem: 0.80
+  gamma: 0.18
+  surrogate: "atan"
+  surrogate_alpha: 2.0
+
+memory:
+  num_timescales: 2
+  timescale_dims: [128, 128]  # 256 ALIF spiking neurons (128 reactive, 128 context)
+  betas: [0.90, 0.985]
+
+training:
+  epochs: 450
+  encoder_warmup_epochs: 60
+  learning_rate: 0.0002
+  probe_lr: 0.0005
+  probe_weight_decay: 0.01
+  weight_decay: 0.0001
+  batch_size: 32
+  grad_clip_norm: 1.0
+  # Scheduled sampling: uniform continuous sampling post-warmup
+  smooth_horizon_sampling: true
+  k_max: 50
+  # Fallback discrete curriculum flag (used only if smooth_horizon_sampling is false)
+  curriculum_multi_step: false
+
+loss:
+  lambda_pred: 1.0
+  lambda_multi: 0.5
+  lambda_var: 0.1
+  lambda_sparse: 0.5
+  lambda_probe: 2.0
+  lambda_vel: 0.5           # Combined weight for convex loss (0.5 * k=1 + 0.5 * k=3)
+  lambda_coord: 0.15
+  multi_step_horizon: 1     # Initial horizon before warmup completion
+  target_spike_rate: 0.10
+  # Preserved as fallback / ablation target for discrete curriculum mode
+  curriculum_thresholds:
+    phase_1_horizon: 5
+    phase_2_horizon: 15
+    phase_2_threshold: 0.18
+    phase_3_horizon: 50
+    phase_3_threshold: 0.10
+
+evaluation:
+  save_best_metric: "combined_score"  # val_pos_err + 0.5 * val_vel_err
+  rollout_horizons: [1, 5, 10, 25, 50, 100, 150]

@@ -328,6 +328,7 @@ def main() -> None:
         best_val_loss=best_val_loss,
         best_val_pos_err=best_val_pos_err,
         best_val_vel_err=best_val_vel_err,
+        k_max=config.get("k_max", 50),
         best_combined_score=best_combined_score,
         history=history,
         optimizer_state=optimizer_state,

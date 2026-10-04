@@ -8,6 +8,8 @@ Key features:
     avoiding predictive confirmation bias.
   - Frozen Probe Velocity Supervision: L_vel differentiates through physical_decoder
     with its parameters frozen so gradients flow exclusively into predictor/dynamics p.
+  - Two-Scale Velocity Target: Convex combination of k=1 and k=3 velocity targets.
+  - Smooth Horizon Sampling: Uniform continuous sampling K_t ~ U(1, K_max) to prevent asymptotic shock.
   - Decoupled Optimizers: Dynamics fusion layers (fuse_*, recurrent_proj, norm) are
     trained via predictor_optimizer. probe_optimizer only updates probe weights.
   - Reliable Joint Model Selection: Uses normalized combined validation metric (position + velocity)
@@ -20,6 +22,7 @@ import contextlib
 import csv
 import json
 from pathlib import Path
+import random
 import time
 from typing import Any, Dict, List, Optional, Union
 
@@ -84,6 +87,8 @@ class Trainer:
         history: Optional[List[Dict[str, float]]] = None,
         optimizer_state: Optional[Dict] = None,
         curriculum_multi_step: bool = False,
+        smooth_horizon_sampling: bool = True,
+        k_max: int = 50,
         curriculum_thresholds: Optional[Dict[str, Any]] = None,
         encoder_warmup_epochs: int = 60,
     ) -> None:
@@ -94,6 +99,8 @@ class Trainer:
         self.learning_algorithm = learning_algorithm.lower()
         self.learning_rate = learning_rate
         self.curriculum_multi_step = curriculum_multi_step
+        self.smooth_horizon_sampling = smooth_horizon_sampling
+        self.k_max = k_max
         self.encoder_warmup_epochs = encoder_warmup_epochs
         self.curriculum_thresholds = curriculum_thresholds or {
             "phase_1_horizon": 3,
@@ -211,7 +218,6 @@ class Trainer:
             if "best_epoch" in optimizer_state:
                 self.best_epoch = optimizer_state["best_epoch"]
 
-
     def _print_training_header(self, total_epochs: int) -> None:
         """Visualizza i parametri principali prima dell'avvio."""
         chronicle.log_application_title("SPWM CONTINUOUS ONLINE TRAINER")
@@ -227,6 +233,8 @@ class Trainer:
         chronicle.log_detail("Encoder Optimizer", "Enabled" if self.encoder_optimizer else "Disabled")
         chronicle.log_detail("Probe Optimizer", "Enabled" if self.probe_optimizer else "Disabled")
         chronicle.log_detail("Predictor Optimizer", "Enabled" if self.predictor_optimizer else "Disabled")
+        sampling_mode = f"Smooth U(1, {self.k_max})" if self.smooth_horizon_sampling else "Curriculum Thresholds"
+        chronicle.log_detail("Horizon Mode", sampling_mode)
         chronicle.log_newline()
 
     def train_epoch(self, epoch: int) -> Dict[str, float]:
@@ -249,6 +257,13 @@ class Trainer:
         is_warmup = epoch <= self.encoder_warmup_epochs
 
         for batch in self.train_loader:
+            # Scheduled sampling continuo: campionamento uniforme stocastico K_t ~ U(1, K_max)
+            if self.smooth_horizon_sampling and hasattr(self.loss_fn, "multi_step_horizon"):
+                if is_warmup:
+                    self.loss_fn.multi_step_horizon = 1
+                else:
+                    self.loss_fn.multi_step_horizon = random.randint(1, self.k_max)
+
             events = batch["events"].to(self.device)
             true_kin = batch.get("flat_kinematics")
             if true_kin is not None:
@@ -314,7 +329,7 @@ class Trainer:
                             latents, self.model.predictor
                         )
 
-                    # Supervisione della velocità multi-passo: probe congelato temporaneamente
+                    # Two-Scale Velocity Supervision: combinazione convessa (0.5 * k=1 + 0.5 * k=3)
                     l_vel = torch.tensor(0.0, device=self.device)
                     lambda_vel = getattr(self.loss_fn, "lambda_vel", 0.5)
                     if (
@@ -322,30 +337,32 @@ class Trainer:
                         and true_kin is not None
                         and hasattr(self.model, "physical_decoder")
                     ):
-                        # Chiama la nuova versione strided (k=3, dt=0.01) definita in losses.py
-                        l_vel = self.loss_fn.velocity_loss_frozen_probe(
+                        l_vel_k1 = self.loss_fn.velocity_loss_frozen_probe(
+                            pred_z=pred_z,
+                            true_kinematics=true_kin,
+                            physical_decoder=self.model.physical_decoder,
+                            stride_k=1,
+                            dt=0.01,
+                        )
+                        l_vel_k3 = self.loss_fn.velocity_loss_frozen_probe(
                             pred_z=pred_z,
                             true_kinematics=true_kin,
                             physical_decoder=self.model.physical_decoder,
                             stride_k=3,
                             dt=0.01,
                         )
-
+                        l_vel = 0.5 * l_vel_k1 + 0.5 * l_vel_k3
 
                     # Sparsità differenziabile sugli spike del predittore
                     l_sparse = torch.tensor(0.0, device=self.device)
                     lambda_sparse = getattr(self.loss_fn, "lambda_sparse", 0.5)
 
-                    # 1. Recupera i due tensori differenziabili da SPWMSequenceOutput
                     fast_spk = getattr(out, "fast_spikes", None)
                     slow_spk = getattr(out, "slow_spikes", None)
 
                     if lambda_sparse > 0.0 and fast_spk is not None and slow_spk is not None:
-                        # Concatena l'intera popolazione ALIF: [B, T, dim_fast + dim_slow]
                         all_spikes = torch.cat([fast_spk, slow_spk], dim=-1)
-                        
                         target_sr = getattr(self.loss_fn, "target_spike_rate", 0.10)
-                        # Calcolo L1 loss differenziabile verso il target (es. 10%)
                         l_sparse = torch.abs(all_spikes.mean() - target_sr)
 
                     # Regolarizzazione di varianza anti-collasso (VICReg style)
@@ -521,9 +538,13 @@ class Trainer:
                 )
 
                 # ------------------------------------------------------
-                # Curriculum Adattivo su Orizzonte Multi-Step K
+                # Curriculum Adattivo a Soglie (se disattivato lo smooth sampling)
                 # ------------------------------------------------------
-                if self.curriculum_multi_step and hasattr(self.loss_fn, "multi_step_horizon"):
+                if (
+                    self.curriculum_multi_step
+                    and not self.smooth_horizon_sampling
+                    and hasattr(self.loss_fn, "multi_step_horizon")
+                ):
                     if epoch > self.encoder_warmup_epochs:
                         p1_k = self.curriculum_thresholds.get("phase_1_horizon", 3)
                         p2_k = self.curriculum_thresholds.get("phase_2_horizon", 6)
@@ -556,8 +577,7 @@ class Trainer:
                 current_pos = val_metrics["val_pos_err"]
                 current_vel = val_metrics["val_vel_err"]
 
-                # Punteggio normalizzato basato su ordini tipici di scala
-                # (pos ~ 0.10, vel ~ 0.60: peso 0.5 per bilanciare l'impatto)
+                # Punteggio normalizzato: pos + 0.5 * vel
                 combined_score = current_pos + (0.5 * current_vel)
 
                 is_best = combined_score < self.best_combined_score
@@ -614,7 +634,11 @@ class Trainer:
 
                 if epoch % print_every == 0 or epoch == end_epoch:
                     best_tag = " * [BEST]" if is_best else ""
-                    current_k = getattr(self.loss_fn, "multi_step_horizon", 1)
+                    current_k = (
+                        f"~U(1,{self.k_max})"
+                        if (self.smooth_horizon_sampling and epoch > self.encoder_warmup_epochs)
+                        else getattr(self.loss_fn, "multi_step_horizon", 1)
+                    )
                     warmup_tag = " [WARMUP]" if epoch <= self.encoder_warmup_epochs else ""
                     header = (
                         f"Epoch [{epoch:03d}/{end_epoch:03d}]"

@@ -992,3 +992,52 @@ $$\mathcal{L}_{\text{total}} = \lambda_{\text{pred}} \mathcal{L}_{\text{pred}} +
   - [trainer.py](file:///Users/Mattia/Desktop/Studies/Temp/spwm/learning/trainer.py): Step 1 solo `L_coord`, Step 2 con `velocity_loss_frozen_probe()`, Step 3 con `probe_optimizer` puro, Z-Score adattivo, checkpoint con `best_combined_score`, log esteso con `l_vel`, `l_sparse`, `l_probe`.
 
 
+---
+
+## Release SPWM-v7.2: Two-Scale Velocity Supervision & Smooth Horizon Scheduled Sampling
+
+### 1. Inquadramento Teorico & Motivazione
+I risultati delle iterazioni v7.0/v7.1 hanno evidenziato due criticità concorrenti:
+1. **Dilemma della Derivata Istantanea vs Regolarizzazione su Traiettoria:** L'uso di un target di velocità su finestra fissa a multi-passo ($k=3$) regolarizzava le basse frequenze ma sacrificava la precisione della derivata locale istantanea ($H=1$), mentre $k=1$ risultava troppo miope contro il drift.
+2. **Asymptotic Shock da Curriculum a Fasi:** I salti discreti di orizzonte rollout nel curriculum ($K=3 \to 6 \to 10$) innescavano shock transitori nell'ottimizzatore, destabilizzando l'errore di posizione asintotico su orizzonti lunghi ($H=100$).
+3. **Instabilità Z-Score:** Il ranking adattivo basato su Z-Score storico soffriva di non-stazionarietà statistica durante il training, venendo rimpiazzato da uno score deterministico congiunto pesato.
+
+### 2. Modifiche Architetturali e Algoritmiche
+- **Riconciliazione Loss Cinematica (Two-Scale Velocity Target):**
+  Definita la supervisione di velocità come combinazione convessa tra target istantaneo ($k=1$) e finestra filtrata ($k=3$) con probe congelato:
+  $$\mathcal{L}_{\text{vel}} = 0.5 \cdot \mathcal{L}_{\text{vel}}^{(k=1)} + 0.5 \cdot \mathcal{L}_{\text{vel}}^{(k=3)}$$
+  Preserva la derivata istantanea senza perdere la regolarizzazione a bassa frequenza.
+- **Scheduled Sampling Continuo (Smooth Horizon):**
+  Sostituiti i cambi di orizzonte discreti a soglie con un campionamento stocastico uniforme batch-by-batch post-warmup:
+  $$K_t \sim \mathcal{U}(1, K_{\max}) \quad \text{con } K_{\max} = 10$$
+  Elimina le discontinuità nel flusso dei gradienti del predittore durante il training.
+- **Model Selection Deterministica:**
+  Sostituito lo Z-Score non-stazionario con una metrica normalizzata ancorata agli ordini di grandezza tipici:
+  $$\text{Score}_{\text{combined}} = \text{val\_pos\_err} + 0.5 \cdot \text{val\_vel\_err}$$
+
+---
+
+## Release SPWM-v7.3: Out-of-Distribution Rollout Divergence & Spike Rate Saturation (Post-Mortem)
+
+### 1. Risultati Empirici Verificati (Run Ufficiale v7.3)
+- **Breakthrough a Breve Orizzonte ($H \le 10$):**
+  - Record storico di accuratezza locale: $\text{Pos Err}_{H=1} = \mathbf{0.0807}$, $\text{Vel Err}_{H=1} = \mathbf{0.5964}$.
+  - Minimo globale dell'errore latente centrato sulla finestra di supervisione: $\text{Latent MSE}_{H=5} = \mathbf{0.0925}$, $\text{Latent MSE}_{H=10} = \mathbf{0.0984}$.
+- **Divergenza Oltre la Finestra di Addestramento ($H > 10$):**
+  - Entrando in regime strettamente out-of-distribution rispetto al supporto $\mathcal{U}(1, 10)$, l'errore autoregressivo subisce un'amplificazione esponenziale:
+    - $H=25$: $\text{Pos Err} = 0.3492$
+    - $H=50$: $\text{Pos Err} = 0.5399$
+    - $H=100$: $\text{Pos Err} = 0.6481$, $\text{Vel Err} = 0.8979$ (in estrapolazione: $1.5548$).
+- **Saturazione Energetica della Popolazione ALIF:**
+  - `mean_spike_rate` salito a **0.2748** (27.5%), quasi il triplo rispetto al corridoio biologico target di omeostasi ($0.10$).
+
+### 2. Root Cause Analysis
+1. **Mancanza di Orizzonte Dinamico ($K_{\max} = 50$ statico):** Il modello eccelle entro $H \in [1, 50]$ ma non riceve gradienti di stabilizzazione oltre il cinquantesimo passo, lasciando l'accumulo di errore libero di divergere sui lunghi rollout.
+2. **Erosione della Memoria Biofisica per Hyper-Spiking:** La mancata tenuta della penalità di sparsità ($0.275$ vs target $0.10$) satura le costanti lente della popolazione di contesto ($\beta_{\text{adapt}} = 0.985$), degradando la capacità di conservazione inerziale.
+
+---
+
+## Decisione Strategica: Revert Architetturale a v7.2 come Base per SPWM-v8
+
+- **Stato di SPWM-v7.3:** Archiviato come **ablazione diagnostica**. Conferma la validità teorica del campionamento continuo e della loss cinematica a doppia scala sul corto raggio, ma evidenzia la necessità di un'estensione progressiva controllata della finestra $K$.
+- **Revert Ufficiale:** Il progetto esegue il ripristino formale del codice e della configurazione alla baseline stabile di **SPWM-v7.2**.

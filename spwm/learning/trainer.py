@@ -55,7 +55,7 @@ def freeze_parameters(module: nn.Module):
 
 class Trainer:
     """
-    Continuous Online Trainer (SPWM-v7.1).
+    Continuous Online Trainer (SPWM).
     Streams sequence batches frame-by-frame with O(1) memory footprint and
     executes online forward-only e-prop plasticity.
     """
@@ -198,7 +198,7 @@ class Trainer:
 
     def _print_training_header(self, total_epochs: int) -> None:
         """Visualizza i parametri principali prima dell'avvio."""
-        chronicle.log_application_title("SPWM-v7.1 CONTINUOUS ONLINE TRAINER")
+        chronicle.log_application_title("SPWM CONTINUOUS ONLINE TRAINER")
         chronicle.log_detail("Device", self.device)
         chronicle.log_detail(
             "Epochs",

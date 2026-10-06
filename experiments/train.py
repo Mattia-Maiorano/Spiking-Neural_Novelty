@@ -240,6 +240,8 @@ def main() -> None:
         num_objects=env_cfg.get("num_objects", 1),
         standard_velocity_range=tuple(data_cfg.get("standard_velocity_range", (-1.0, 1.0))),
         extrapolation_velocity_range=tuple(data_cfg.get("extrapolation_velocity_range", (-2.0, 2.0))),
+        drift_injection_prob=data_cfg.get("drift_injection_prob", 0.0),
+        drift_magnitude=data_cfg.get("drift_magnitude", 0.05),
         num_workers=data_cfg.get("num_workers", 0),
         cache_data=data_cfg.get("cache_data", True),
     )
@@ -360,6 +362,8 @@ def main() -> None:
         corrector_horizon=train_cfg.get("corrector_horizon", 25),
         lambda_corrector_asymptotic=loss_cfg.get("lambda_corrector_asymptotic", 1.0),
         lambda_corrector_quiescence=loss_cfg.get("lambda_corrector_quiescence", 0.5),
+        corrector_quiescence_margin=loss_cfg.get("corrector_quiescence_margin", 0.15),
+        corrector_quiescence_cap=loss_cfg.get("corrector_quiescence_cap", 0.50),
         curriculum_thresholds=loss_cfg.get("curriculum_thresholds", None),
         encoder_warmup_epochs=train_cfg.get("encoder_warmup_epochs", 60),
         max_drift_ratio=eval_cfg.get("max_drift_ratio", 5.0),

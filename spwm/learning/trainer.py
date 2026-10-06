@@ -96,6 +96,8 @@ class Trainer:
         corrector_horizon: int = 25,
         lambda_corrector_asymptotic: float = 1.0,
         lambda_corrector_quiescence: float = 0.5,
+        corrector_quiescence_margin: float = 0.15,
+        corrector_quiescence_cap: float = 0.50,
         curriculum_thresholds: Optional[Dict[str, Any]] = None,
         encoder_warmup_epochs: int = 60,
         max_drift_ratio: float = 5.0,
@@ -123,6 +125,8 @@ class Trainer:
         self.corrector_horizon = corrector_horizon
         self.lambda_corrector_asymptotic = lambda_corrector_asymptotic
         self.lambda_corrector_quiescence = lambda_corrector_quiescence
+        self.corrector_quiescence_margin = corrector_quiescence_margin
+        self.corrector_quiescence_cap = corrector_quiescence_cap
         self.encoder_warmup_epochs = encoder_warmup_epochs
         self.curriculum_thresholds = curriculum_thresholds or {
             "phase_1_horizon": 3,
@@ -525,12 +529,16 @@ class Trainer:
                             # 1. Asymptotic Trajectory Stabilization Loss (H >= 25)
                             l_asymptotic = nn.functional.mse_loss(pred_rollout, target_rollout)
 
-                            # 2. Quiescent Sparsity Penalty on Corrector Spikes
-                            l_quiescence = (
-                                corr_spikes.mean()
-                                if corr_spikes is not None
-                                else torch.tensor(0.0, device=self.device)
-                            )
+                            # 2. Quiescent Sparsity Penalty on Corrector Spikes (Hinge / Dead-Zone Margin with Upper Capping)
+                            # Zero penalty for corrective activity below margin (e.g. 15%), and capped upper bound against chattering
+                            if corr_spikes is not None:
+                                spike_activity = corr_spikes.mean()
+                                l_quiescence = torch.clamp(
+                                    nn.functional.relu(spike_activity - self.corrector_quiescence_margin),
+                                    max=self.corrector_quiescence_cap,
+                                )
+                            else:
+                                l_quiescence = torch.tensor(0.0, device=self.device)
 
                             loss_corr = (
                                 self.lambda_corrector_asymptotic * l_asymptotic

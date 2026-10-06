@@ -95,8 +95,8 @@ class SPWM(nn.Module):
         corrector_beta_adapt: float = 0.995,
         corrector_v_th0: float = 1.5,
         corrector_gamma: float = 0.25,
-        corrector_max_gain_v: float = 0.08,
-        corrector_max_gain_p: float = 0.08,
+        corrector_max_gain_v: float = 0.25,
+        corrector_max_gain_p: float = 0.25,
         corrector_max_damp: float = 0.40,
         corrector_inter_step_decay: float = 0.85,
     ) -> None:

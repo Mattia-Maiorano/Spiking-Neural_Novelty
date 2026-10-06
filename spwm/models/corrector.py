@@ -68,8 +68,8 @@ class SlowCorrector(nn.Module):
         gamma: float = 0.25,
         surrogate_name: str = "atan",
         surrogate_alpha: float = 2.0,
-        max_gain_v: float = 0.08,
-        max_gain_p: float = 0.08,
+        max_gain_v: float = 0.25,
+        max_gain_p: float = 0.25,
         max_damp: float = 0.40,
         inter_step_decay: float = 0.85,
     ) -> None:

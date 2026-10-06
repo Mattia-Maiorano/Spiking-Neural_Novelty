@@ -1171,3 +1171,95 @@ Per superare il limite della selezione basata esclusivamente sulla decodifica is
    Il `mean_spike_rate` rimane stabilmente agganciato all'ottimo biologico-neuromorfico (**13.00%** vs 27.48% di v7.3), garantendo bassissimo consumo energetico ed evitando fenomeni di iper-eccitabilità.
 4. **Generalizzazione & Estrapolazione OOD:**
    $\text{Extrapolation TF MSE} = \mathbf{0.3357}$ (migliore sia di v7.2 a $0.3365$ sia coerente con la stabilità locale), confermando l'efficacia del disaccoppiamento multi-scala a due popolazioni.
+
+---
+
+## Release SPWM-v8.1: Full-Authority Two-Timescale Predictor-Corrector & Drift Injection
+
+### 1. Inquadramento Teorico & Motivazione
+Nonostante l'eccellente stabilità multi-scala introdotta da SPWM-v8, l'analisi delle traiettorie asintotiche su lunghi orizzonti ha evidenziato la necessità di potenziare l'autorità di correzione attiva e di forzare il recupero attivo del sistema da stati fuori distribuzione (OOD):
+1. **Condizioni di Input & Drift Sintetico:** Le traiettorie nominali v7.2, pur fisicamente consistenti, non presentavano deviazioni impulsive sufficienti a stimolare l'apprendimento di manovre di rientro da traiettorie fortemente degenerate.
+2. **Autorità di Controllo Statica:** I limiti di guadagno conservativi di SPWM-v8 ($g_v, g_p \le 0.08$) limitavano la rapidità di correzione in caso di scostamenti significativi. Aumentare l'autorità fissa a $g_v, g_p \in [0.20, 0.25]$ concede pieno spazio d'azione al correttore senza dover ricorrere a complesse e instabili logiche di modulazione energetica adattiva.
+3. **Penalità Spiking a Soglia (Hinge / Dead-Band Margin):** La precedente penalità lineare uniforme ($\lambda = 0.5 \cdot \bar{S}$) penalizzava indiscriminatamente qualsiasi emissione di spike, disincentivando anche le necessarie raffiche correttive rapide. SPWM-v8.1 introduce una dead-zone con margine tollerato e capping superiore: zero penalità sotto la soglia di attività desiderata e protezione contro il chattering ad alta frequenza.
+
+---
+
+### 2. Modifiche Architetturali e Algoritmiche
+
+#### A. Iniezione di Drift Sintetico & Perturbazioni Dinamiche
+Nel generatore [spwm/data/synthetic_world.py](file:///Users/Mattia/Desktop/Studies/Temp/spwm/data/synthetic_world.py) e nel dataset [spwm/data/datasets.py](file:///Users/Mattia/Desktop/Studies/Temp/spwm/data/datasets.py), le traiettorie di training incorporano perturbazioni stocastiche impulsive:
+- **Probabilità di Drift:** $p_{\text{drift}} = 0.20$ (20% degli step temporali).
+- **Entità della Perturbazione:** Impulsi gaussiani additivi $\Delta q \sim \mathcal{N}(0, \sigma_{\text{drift}})$ e $\Delta v \sim \mathcal{N}(0, 2\sigma_{\text{drift}})$ con $\sigma_{\text{drift}} = 0.05$.
+- Questo costringe il correttore lento ad apprendere dinamiche di cattura e stabilizzazione robuste per stati fuori distribuzione.
+
+#### B. Piena Autorità Statica di Controllo
+- Rimossa qualsiasi dipendenza da guadagni adattivi legati all'energia di stato.
+- I bound fissi di attuazione su velocità e momento in [spwm/models/corrector.py](file:///Users/Mattia/Desktop/Studies/Temp/spwm/models/corrector.py) e [spwm/models/world_model.py](file:///Users/Mattia/Desktop/Studies/Temp/spwm/models/world_model.py) sono stati aumentati:
+  $$g_v^{\max} = 0.25, \quad g_p^{\max} = 0.25 \quad (\text{precedentemente } 0.08)$$
+- L'autorità incrementata consente di riallineare la traiettoria in un singolo ciclo di cadenza ($\Delta = 5$).
+
+#### C. Funzione di Costo Quiescente a Zona Morta (Dead-Zone Hinge Margin)
+La funzione di costo del correttore adotta una formulazione nonlineare a soglia:
+$$\mathcal{L}_{\text{quiesc}} = \min \left( \text{ReLU}(\bar{S}_{\text{corr}} - M), \, C \right)$$
+con margine di dead-zone $M = 0.15$ e tetto massimo (capping) $C = 0.50$.
+- **Sotto la soglia ($\bar{S} \le 0.15$):** Penalità esattamente nulla ($\mathcal{L}_{\text{quiesc}} = 0$), consentendo rapide correzioni impulsive senza penalizzazioni di gradiente.
+- **Sopra la soglia:** Penalità lineare che frena l'iper-eccitabilità.
+- **Capping superiore ($C = 0.50$):** Previene gradienti esplosivi e chattering numerico in regimi transitori caotici.
+
+---
+
+### 3. File di Configurazione & Suite di Test (v8.1)
+- **File di Configurazione:** [configs/experiments/spwm_v8_1.yaml](file:///Users/Mattia/Desktop/Studies/Temp/configs/experiments/spwm_v8_1.yaml)
+- **Suite di Test Dedicata:** [tests/test_corrector.py](file:///Users/Mattia/Desktop/Studies/Temp/tests/test_corrector.py) (include `test_corrector_quiescence_hinge_loss`) e [tests/test_synthetic_world.py](file:///Users/Mattia/Desktop/Studies/Temp/tests/test_synthetic_world.py) (include `test_drift_injection_and_perturbations`).
+- **Esito Test Suite:** 38 test unitari passati con successo ($100\%$ pass rate).
+
+---
+
+### 4. Risultati Empirici Verificati (Run Ufficiale SPWM-v8.1)
+
+- **Cartella Run & Artefatti:** [spwm_v8_1/](file:///Users/Mattia/Desktop/Studies/Temp/spwm_v8_1)
+- **Metadata Run:** 337 epoche completate, seed 42, device `mps` (commit `cbe78724`).
+- **File Metriche:** [spwm_v8_1/metrics.json](file:///Users/Mattia/Desktop/Studies/Temp/spwm_v8_1/metrics.json)
+
+| Metrica | SPWM-v7.2 (Baseline) | SPWM-v8 (Two-Timescale) | **SPWM-v8.1 (Full Authority & Drift)** |
+| :--- | :---: | :---: | :---: |
+| **Parametri Totali** | 282,852 | 320,004 | **320,004** |
+| **Criterio Selezione Checkpoint** | $\text{Score}_{\text{combined}}$ | Dynamic Score | **Dynamic Score ($H_1$ & Drift)** |
+| **Test TF MSE** | $0.2723$ | $0.2776$ | **0.2315** (Miglioramento netto) |
+| **Test Mean Spike Rate** | $0.1298$ | $0.1300$ | **0.1461** (Perfettamente in Dead-Zone $\le 15\%$) |
+| **Test Drift Ratio ($H_{50}/H_1$)** | $3.79\times$ | $4.54\times$ | **4.38×** (Stabile & Controllato) |
+| **Test Latent MSE ($H=1$)** | $0.2848$ | $0.2666$ | **0.2034** |
+| **Test Latent MSE ($H=5$)** | $0.2279$ | $0.1868$ | **0.1589** |
+| **Test Latent MSE ($H=10$)** | $0.2304$ | $0.1898$ | **0.1680** |
+| **Test Latent MSE ($H=25$)** | $0.3088$ | $0.2471$ | **0.2425** |
+| **Test Latent MSE ($H=50$)** | $0.4529$ | $0.4136$ | **0.4004** |
+| **Test Latent MSE ($H=100$)** | $0.6002$ | $0.7013$ | **0.6190** |
+| **Test Pos Err ($H=1$)** | $0.1227$ | $0.1017$ | **0.0939** |
+| **Test Pos Err ($H=5$)** | $0.1680$ | $0.1299$ | **0.1218** |
+| **Test Pos Err ($H=10$)** | $0.2166$ | $0.1664$ | **0.1658** |
+| **Test Pos Err ($H=25$)** | $0.3361$ | $0.2872$ | **0.2853** |
+| **Test Pos Err ($H=50$)** | $0.4657$ | $0.4615$ | **0.4115** (Miglior record su lungo raggio) |
+| **Test Pos Err ($H=100$)** | $0.5811$ | $0.6643$ | **0.5625** (Miglior pos error asintotico) |
+| **Test Vel Err ($H=1$)** | $0.5164$ | $0.5341$ | **0.5615** |
+| **Test Vel Err ($H=5$)** | $0.5774$ | $0.5168$ | **0.5394** |
+| **Test Vel Err ($H=10$)** | $0.5837$ | $0.5128$ | **0.5297** |
+| **Test Vel Err ($H=25$)** | $0.5801$ | $0.5188$ | **0.5189** |
+| **Test Vel Err ($H=50$)** | $0.6348$ | $0.6152$ | **0.5802** |
+| **Test Vel Err ($H=100$)** | $0.7302$ | $0.7699$ | **0.7079** |
+| **Extrapolation TF MSE** | $0.3365$ | $0.3357$ | **0.3150** |
+| **Extrapolation Pos Err ($H=1$)** | $0.1365$ | $0.1250$ | **0.1283** |
+| **Extrapolation Pos Err ($H=25$)** | $0.5659$ | $0.5516$ | **0.5251** |
+| **Extrapolation Pos Err ($H=50$)** | $0.6959$ | $0.7526$ | **0.6428** |
+| **Extrapolation Pos Err ($H=100$)** | $0.7156$ | $0.8021$ | **0.6996** |
+
+#### Sintesi dei Risultati SPWM-v8.1:
+1. **Breakthrough su Orizzonti Lunghi ed Estesi ($H=50, 100$):**
+   Grazie alla piena autorità statica di controllo ($g_v, g_p = 0.25$) e all'addestramento con perturbazioni dinamiche OOD, SPWM-v8.1 raggiunge il minimo storico sull'errore asintotico di posizione:
+   - $H=50$: **0.4115** (vs 0.4615 di v8 e 0.4657 di v7.2).
+   - $H=100$: **0.5625** (vs 0.6643 di v8 e 0.5811 di v7.2).
+2. **Abbattimento dell'Errore Latente su Tutti gli Orizzonti:**
+   Il `Latent MSE` migliora uniformemente su ogni passo di rollout rispetto a v8 ($H=1$: **0.2034** vs 0.2666; $H=5$: **0.1589** vs 0.1868; $H=50$: **0.4004** vs 0.4136; $H=100$: **0.6190** vs 0.7013).
+3. **Efficacia della Dead-Zone Hinge Quiescence Loss:**
+   Il `mean_spike_rate` medio su test si attesta a **14.61%**, stabilmente all'interno della dead-band ($M = 15\%$). Questo dimostra che la formulazione hinge ha sbloccato la reattività impulsiva del correttore solo quando necessario, senza generare iper-eccitabilità o saturazione energetica.
+4. **Generalizzazione Superiore in Estrapolazione Cinematica:**
+   In regime OOD a velocità raddoppiata, l'errore asintotico si riduce drasticamente ($H=50$: **0.6428** vs 0.7526; $H=100$: **0.6996** vs 0.8021) e l'$\text{Extrapolation TF MSE}$ scende a **0.3150** (vs 0.3357 di v8), validando la resilienza del framework contro il drift sistematico.

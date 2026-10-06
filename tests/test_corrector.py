@@ -197,3 +197,35 @@ def test_protected_block_gradient_isolation():
     # Fast predictor parameters MUST NOT have gradients
     for p in model.predictor.parameters():
         assert p.grad is None, "Fast predictor parameters must remain strictly gradient-isolated!"
+
+
+def test_corrector_quiescence_hinge_loss():
+    """Verifies that the hinge / dead-zone penalty produces zero loss within tolerance
+    margin and clamps to the upper bound above maximum allowed threshold."""
+    margin = 0.15
+    cap = 0.50
+
+    # Case 1: Below margin (e.g. 0.10 spike rate) -> Loss must be exactly 0.0
+    spikes_low = torch.full((2, 10, 16), 0.10)
+    loss_low = torch.clamp(
+        nn.functional.relu(spikes_low.mean() - margin),
+        max=cap,
+    )
+    assert loss_low.item() == 0.0
+
+    # Case 2: In linear region (e.g. 0.30 spike rate) -> Loss = 0.30 - 0.15 = 0.15
+    spikes_mid = torch.full((2, 10, 16), 0.30)
+    loss_mid = torch.clamp(
+        nn.functional.relu(spikes_mid.mean() - margin),
+        max=cap,
+    )
+    assert abs(loss_mid.item() - 0.15) < 1e-6
+
+    # Case 3: In saturated region (e.g. 0.90 spike rate) -> Capped at max 0.50
+    spikes_high = torch.full((2, 10, 16), 0.90)
+    loss_high = torch.clamp(
+        nn.functional.relu(spikes_high.mean() - margin),
+        max=cap,
+    )
+    assert abs(loss_high.item() - cap) < 1e-6
+

@@ -28,6 +28,8 @@ class EventWorldDataset(Dataset):
         num_objects: int = 1,
         velocity_range: Tuple[float, float] = (-1.0, 1.0),
         acceleration_std: float = 0.1,
+        drift_injection_prob: float = 0.0,
+        drift_magnitude: float = 0.05,
         cache_data: bool = True,
     ) -> None:
         super().__init__()
@@ -38,6 +40,8 @@ class EventWorldDataset(Dataset):
         self.num_objects = num_objects
         self.velocity_range = velocity_range
         self.acceleration_std = acceleration_std
+        self.drift_injection_prob = drift_injection_prob
+        self.drift_magnitude = drift_magnitude
         self.cache_data = cache_data
 
         self._cache: Dict[int, Dict[str, Any]] = {}
@@ -53,6 +57,8 @@ class EventWorldDataset(Dataset):
             num_objects=self.num_objects,
             velocity_range=self.velocity_range,
             acceleration_std=self.acceleration_std,
+            drift_injection_prob=self.drift_injection_prob,
+            drift_magnitude=self.drift_magnitude,
             seed=traj_id,
         )
         event_batch = self.event_simulator.trajectory_to_events(traj, return_sparse=False)
@@ -103,11 +109,14 @@ def create_dataloaders(
     num_objects: int = 1,
     standard_velocity_range: Tuple[float, float] = (-1.0, 1.0),
     extrapolation_velocity_range: Tuple[float, float] = (-2.0, 2.0),
+    drift_injection_prob: float = 0.0,
+    drift_magnitude: float = 0.05,
     num_workers: int = 0,
     cache_data: bool = True,
 ) -> Dict[str, DataLoader]:
     """
     Creates train, val, test, and extrapolation DataLoaders with zero temporal leakage.
+    Supports synthetic drift injection and dynamic perturbations for OOD recovery.
     """
     splits = partition_trajectories(total_trajectories, train_split, val_split)
     train_ids = list(range(splits["train"][0], splits["train"][1]))
@@ -126,6 +135,8 @@ def create_dataloaders(
         sequence_length=sequence_length,
         num_objects=num_objects,
         velocity_range=standard_velocity_range,
+        drift_injection_prob=drift_injection_prob,
+        drift_magnitude=drift_magnitude,
         cache_data=cache_data,
     )
     val_ds = EventWorldDataset(
@@ -135,6 +146,8 @@ def create_dataloaders(
         sequence_length=sequence_length,
         num_objects=num_objects,
         velocity_range=standard_velocity_range,
+        drift_injection_prob=0.0,  # Nominal evaluation on validation set
+        drift_magnitude=0.0,
         cache_data=cache_data,
     )
     test_ds = EventWorldDataset(
@@ -144,6 +157,8 @@ def create_dataloaders(
         sequence_length=sequence_length,
         num_objects=num_objects,
         velocity_range=standard_velocity_range,
+        drift_injection_prob=0.0,  # Nominal evaluation on test set
+        drift_magnitude=0.0,
         cache_data=cache_data,
     )
     extrap_ds = EventWorldDataset(
@@ -153,6 +168,8 @@ def create_dataloaders(
         sequence_length=sequence_length,
         num_objects=num_objects,
         velocity_range=extrapolation_velocity_range,
+        drift_injection_prob=drift_injection_prob,
+        drift_magnitude=drift_magnitude,
         cache_data=cache_data,
     )
 

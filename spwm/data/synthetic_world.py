@@ -74,10 +74,13 @@ class MovingObjectsWorld:
         num_objects: int = 1,
         velocity_range: Tuple[float, float] = (-1.0, 1.0),
         acceleration_std: float = 0.1,
+        drift_injection_prob: float = 0.0,
+        drift_magnitude: float = 0.05,
         seed: Optional[int] = None,
     ) -> Trajectory:
         """
         Generates a continuous trajectory deterministically from a trajectory_id/seed.
+        Supports dynamic perturbations and synthetic drift injection for OOD recovery.
         Ensures exact reproducibility across runs.
         """
         rng = np.random.default_rng(seed if seed is not None else trajectory_id)
@@ -126,6 +129,14 @@ class MovingObjectsWorld:
             # Slow acceleration variation (Ornstein-Uhlenbeck style perturbation)
             acc_perturbation = rng.normal(0, acceleration_std * 0.1, size=(num_objects, 2))
             curr_acc = 0.95 * curr_acc + acc_perturbation
+
+            # Synthetic drift injection / dynamic perturbation (SPWM-v8.1)
+            # Injects impulsive velocity and position kicks to force recovery from OOD states
+            if drift_injection_prob > 0.0 and rng.uniform(0.0, 1.0) < drift_injection_prob:
+                drift_pos = rng.normal(0, drift_magnitude, size=(num_objects, 2))
+                drift_vel = rng.normal(0, drift_magnitude * 2.0, size=(num_objects, 2))
+                curr_pos += drift_pos
+                curr_vel += drift_vel
 
             # Euler-Maruyama integration
             noise = rng.normal(0, self.noise_std, size=(num_objects, 2))

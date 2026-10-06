@@ -47,3 +47,18 @@ def test_trajectory_partitioning_disjoint():
     assert len(train_set.intersection(val_set)) == 0
     assert len(train_set.intersection(test_set)) == 0
     assert len(val_set.intersection(test_set)) == 0
+
+
+def test_drift_injection_and_perturbations():
+    world = MovingObjectsWorld()
+    # Nominal trajectory (drift_prob = 0)
+    traj_nom = world.generate_trajectory(trajectory_id=5, length=50, drift_injection_prob=0.0, seed=5)
+    # Trajectory with synthetic drift injection
+    traj_drift = world.generate_trajectory(trajectory_id=5, length=50, drift_injection_prob=0.3, drift_magnitude=0.1, seed=5)
+
+    assert len(traj_drift.states) == 50
+    # Both trajectories start identically at t=0
+    np.testing.assert_allclose(traj_nom.positions[0], traj_drift.positions[0])
+    # Over time, synthetic drift perturbates the trajectory forcing OOD divergence
+    assert not np.allclose(traj_nom.positions, traj_drift.positions)
+

@@ -242,6 +242,7 @@ def main() -> None:
         extrapolation_velocity_range=tuple(data_cfg.get("extrapolation_velocity_range", (-2.0, 2.0))),
         drift_injection_prob=data_cfg.get("drift_injection_prob", 0.0),
         drift_magnitude=data_cfg.get("drift_magnitude", 0.05),
+        mixed_drift=data_cfg.get("mixed_drift", False),
         num_workers=data_cfg.get("num_workers", 0),
         cache_data=data_cfg.get("cache_data", True),
     )
@@ -260,6 +261,10 @@ def main() -> None:
         lambda_vel=loss_cfg.get("lambda_vel", 0.5),
         lambda_probe=loss_cfg.get("lambda_probe", 0.5),
         lambda_coord=loss_cfg.get("lambda_coord", 0.0),
+        beta_v=loss_cfg.get("beta_v", 2.0),
+        sigma_q=loss_cfg.get("sigma_q", 1.0),
+        sigma_v=loss_cfg.get("sigma_v", 1.0),
+        use_empirical_variance=loss_cfg.get("use_empirical_variance", False),
         multi_step_horizon=loss_cfg.get("multi_step_horizon", 3),
         target_variance=loss_cfg.get("target_variance", 1.0),
         target_spike_rate=loss_cfg.get("target_spike_rate", 0.10),

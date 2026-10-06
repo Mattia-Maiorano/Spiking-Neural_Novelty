@@ -1,0 +1,121 @@
+# SPWM-v8.2: Two-Timescale Predictor-Corrector Architecture with
+# 50/50 Mixed Drift Sampling and Normalized/Rebalanced Kinematic Probe Loss
+#
+# Core Improvements in v8.2:
+#   1. Kinematic Loss Normalization & Rebalancing:
+#      L_kin = ||q_hat - q||^2 / sigma_q^2 + beta_v * ||v_hat - v||^2 / sigma_v^2
+#      with beta_v >= 2.0 (default 2.0) to prevent impulsive position corrections
+#      from degrading fine temporal velocity derivatives (smooth C^1 dynamics).
+#   2. 50/50 Mixed Drift Batch Sampling (No temporal scheduling):
+#      Replaces 20% uniform drift with a structured 50/50 mixed split:
+#      - 50% clean nominal trajectories (p_drift = 0.0) for fine velocity tracking.
+#      - 50% impulsive drift trajectories (p_drift = 0.10, sigma_drift = 0.05) for OOD recovery authority.
+#   3. Preserved v8.1 Full Static Authority & Dead-Zone Quiescence Loss:
+#      Static gains g_v, g_p = 0.25, dead-zone margin M = 0.15, capping C = 0.50.
+
+project:
+  name: "spwm_v8_2"
+  seed: 42
+
+environment:
+  num_objects: 1
+  height: 32
+  width: 32
+  event_threshold: 0.08
+
+data:
+  total_trajectories: 600
+  train_split: 0.8
+  val_split: 0.1
+  sequence_length: 150
+  batch_size: 32
+  drift_injection_prob: 0.10     # Impulsive drift probability on 50% perturbed slice
+  drift_magnitude: 0.05          # Impulsive perturbation scale on positions & velocities
+  mixed_drift: true              # 50/50 mixed batch sampling (50% nominal p=0, 50% drift p=0.10)
+
+model:
+  type: "spwm"
+  encoder_type: "spatial_softmax"
+  num_keypoints: 16
+  encoder_dim: 128
+  encoder_conv_channels: [16, 32]
+  latent_dim: 128  # total = q_dim + p_dim (32 + 96)
+  q_dim: 32
+  p_dim: 96
+  predictor_hidden_dim: 256
+  local_lr: 0.0002
+  lambda_kin_feedback: 1.0
+  ema_decay: 0.9
+  rls_enabled: false
+  rls_forgetting: 0.99
+  rls_delta: 1.0
+
+neuron:
+  model: "alif"
+  threshold: 1.0
+  beta_mem: 0.80
+  gamma: 0.18
+  surrogate: "atan"
+  surrogate_alpha: 2.0
+
+memory:
+  num_timescales: 2
+  timescale_dims: [128, 128]  # 256 ALIF spiking neurons (128 reactive, 128 context)
+  betas: [0.90, 0.985]
+
+corrector:
+  enabled: true
+  dim: 64                       # Independent slow ALIF population
+  cadence: 5                    # Rarefied intervention cadence Delta = 5 steps
+  beta_mem: 0.95                # Slower membrane potential decay
+  beta_adapt: 0.995             # Slower threshold adaptation time constant
+  v_th0: 1.5                    # Elevated resting threshold for quiescent firing regime
+  gamma: 0.25                   # Threshold adaptation coupling strength
+  max_gain_v: 0.25              # Static velocity steering authority (0.25)
+  max_gain_p: 0.25              # Static momentum modulation authority (0.25)
+  max_damp: 0.40                # Maximum sub-threshold damping factor
+  inter_step_decay: 0.85        # Smooth exponential decay between cadences (C^1 continuity)
+
+training:
+  epochs: 450
+  encoder_warmup_epochs: 60
+  learning_rate: 0.0002
+  probe_lr: 0.0005
+  probe_weight_decay: 0.01
+  corrector_lr: 0.0002
+  corrector_horizon: 25         # Protected training horizon H >= 25
+  weight_decay: 0.0001
+  batch_size: 32
+  grad_clip_norm: 1.0
+  curriculum_multi_step: true   # Restored stable v7.2 curriculum
+  smooth_horizon_sampling: false
+
+loss:
+  lambda_pred: 1.0
+  lambda_multi: 0.5
+  lambda_var: 0.1
+  lambda_sparse: 0.5
+  lambda_probe: 2.0
+  lambda_vel: 0.5
+  lambda_coord: 0.15
+  beta_v: 2.0                    # Velocity loss weighting (beta_v >= 2.0)
+  sigma_q: 1.0                   # Position variance normalization scale
+  sigma_v: 1.0                   # Velocity variance normalization scale
+  use_empirical_variance: false  # Static variance or batch empirical variance
+  lambda_corrector_asymptotic: 1.0
+  lambda_corrector_quiescence: 0.5
+  corrector_quiescence_margin: 0.15   # Dead-zone threshold (zero penalty for fast recovery spikes <= 15%)
+  corrector_quiescence_cap: 0.50      # Upper capping on quiescence loss to prevent numerical chattering
+  multi_step_horizon: 3
+  target_spike_rate: 0.10
+  curriculum_thresholds:
+    phase_1_horizon: 3
+    phase_2_horizon: 6
+    phase_2_threshold: 0.20
+    phase_3_horizon: 10
+    phase_3_threshold: 0.12
+
+evaluation:
+  save_best_metric: "dynamic_score"   # Dynamic Score Weighting (Single-step loss & Drift distance to target)
+  rollout_horizons: [1, 5, 10, 25, 50, 100]
+  max_drift_ratio: 2.0

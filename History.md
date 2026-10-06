@@ -1263,3 +1263,126 @@ con margine di dead-zone $M = 0.15$ e tetto massimo (capping) $C = 0.50$.
    Il `mean_spike_rate` medio su test si attesta a **14.61%**, stabilmente all'interno della dead-band ($M = 15\%$). Questo dimostra che la formulazione hinge ha sbloccato la reattività impulsiva del correttore solo quando necessario, senza generare iper-eccitabilità o saturazione energetica.
 4. **Generalizzazione Superiore in Estrapolazione Cinematica:**
    In regime OOD a velocità raddoppiata, l'errore asintotico si riduce drasticamente ($H=50$: **0.6428** vs 0.7526; $H=100$: **0.6996** vs 0.8021) e l'$\text{Extrapolation TF MSE}$ scende a **0.3150** (vs 0.3357 di v8), validando la resilienza del framework contro il drift sistematico.
+
+---
+
+## SPWM-v8.2: Ribilanciamento & Normalizzazione Loss Cinematica e Campionamento Misto del Drift 50/50
+
+### 1. Motivazione e Diagnosi Fisica
+Dall'analisi dei risultati empirici di SPWM-v8.1 è emersa una discrepanza tra l'eccellente abbattimento del drift di posizione su orizzonti lunghi ($H=50, 100$) e una lieve perdita di accuratezza sulla stima della velocità a brevissimo termine ($H=1$ Vel Err a $0.5615$ vs $0.5341$ di v8).
+Le cause individuate sono due:
+1. **Accoppiamento Sbilanciato della Loss Cinematica:** La supervisione congiunta di posizione $q$ e velocità $v$ tramite MSE euclideo non normalizzato penalizzava sproporzionatamente le coordinate rispetto alle velocità, inducendo correzioni impulsive su $q$ che introducevano discontinuità numeriche sulla derivata temporale $\dot{q} = v$.
+2. **Rumore Uniforme di Drift:** L'iniezione uniforme del drift con probabilità $p=0.20$ su tutte le sequenze di training impediva al modello di apprendere la rifinitura fine delle velocità nominali stazionarie pulite.
+
+---
+
+### 2. Modifiche Architetturali e Metodologiche
+
+#### A. Ribilanciamento e Normalizzazione della Loss Cinematica
+È stata formalizzata ed integrata la nuova loss di decodifica cinematica normalizzata pesata:
+$$\mathcal{L}_{\text{kin}} = \frac{\Vert{} \hat{q} - q \Vert{}^2}{\sigma_q^2} + \beta_v \frac{\Vert{} \hat{v} - v \Vert{}^2}{\sigma_v^2}$$
+- **Normalizzazione per Varianza ($\sigma_q^2, \sigma_v^2$):** L'errore di posizione e di velocità viene scalato rispetto alla varianza empirica della rispettiva grandezza fisica, rendendo i gradienti adimensionali e comparabili.
+- **Coefficiente di Enfasi sulla Velocità ($\beta_v \ge 2.0$, default $\beta_v = 2.0$):** Forza una penalità stringente sulle deviazioni della derivata temporale, garantendo traiettorie regolari $C^1$ e impedendo salti impulsivi di posizione.
+
+#### B. Campionamento Misto del Drift 50/50 (Senza Scheduling Temporale)
+La generazione dei dati di training abbandona la perturbazione uniforme al 20% su tutte le sequenze in favore di un campionamento misto strutturato 50/50:
+- **50% Campioni Nominali Puliti ($p_{\text{drift}} = 0.0, \sigma_{\text{drift}} = 0.0$):** Consente al predittore e al probe di affinare la stima fine della velocità e delle orbite stazionarie non perturbate.
+- **50% Campioni con Drift Impulsivo ($p_{\text{drift}} = 0.10, \sigma_{\text{drift}} = 0.05$):** Fornisce al correttore lento OOD la ricca casistica dinamica necessaria per attivare le risposte di rientro stabili in regime perturbato.
+
+---
+
+### 3. File Modificati & Nuova Configurazione (v8.2)
+
+- **[`spwm/learning/losses.py`](file:///Users/Mattia/Desktop/Studies/Temp/spwm/learning/losses.py):**
+  - Aggiunti parametri `beta_v`, `sigma_q`, `sigma_v`, `use_empirical_variance` a `SPWMLoss`.
+  - Implementato il metodo `kinematic_loss(decoded_kinematics, true_kinematics, num_objects)` secondo la nuova formulazione normalizzata e ribilanciata.
+  - Integrato `kinematic_loss` all'interno del metodo `forward()` per il calcolo di `l_probe`.
+- **[`spwm/learning/trainer.py`](file:///Users/Mattia/Desktop/Studies/Temp/spwm/learning/trainer.py):**
+  - Aggiornato lo Step 3 (`train_epoch`) e il ciclo di validazione (`validate`) per calcolare la loss della probe cinematica tramite `self.loss_fn.kinematic_loss()`.
+- **[`spwm/data/datasets.py`](file:///Users/Mattia/Desktop/Studies/Temp/spwm/data/datasets.py):**
+  - Aggiunto il parametro `mixed_drift: bool` in `EventWorldDataset` e `create_dataloaders`.
+  - Implementata la logica di partizionamento 50/50 (traiettorie pari nominali $p_{\text{drift}}=0$, traiettorie dispari con drift impulsivo $p_{\text{drift}}=0.10, \sigma=0.05$).
+- **[`experiments/train.py`](file:///Users/Mattia/Desktop/Studies/Temp/experiments/train.py):**
+  - Propagazione dei parametri `beta_v`, `sigma_q`, `sigma_v`, `use_empirical_variance` e `mixed_drift` da configurazione YAML a dataloader e loss.
+- **[configs/experiments/spwm_v8_2.yaml](file:///Users/Mattia/Desktop/Studies/Temp/configs/experiments/spwm_v8_2.yaml):**
+  - Nuovo file di configurazione con `mixed_drift: true`, `drift_injection_prob: 0.10`, `drift_magnitude: 0.05`, `beta_v: 2.0`, `sigma_q: 1.0`, `sigma_v: 1.0`.
+- **Suite di Test Unitari:**
+  - Aggiunto `test_kinematic_loss_rebalancing_and_normalization` in [`tests/test_evaluation.py`](file:///Users/Mattia/Desktop/Studies/Temp/tests/test_evaluation.py).
+  - Aggiunto `test_mixed_drift_dataset_sampling` in [`tests/test_synthetic_world.py`](file:///Users/Mattia/Desktop/Studies/Temp/tests/test_synthetic_world.py).
+  - **Esito Test Suite:** 40 test unitari passati con successo ($100\%$ pass rate).
+
+---
+
+### 4. Risultati Empirici Verificati (Run Ufficiale SPWM-v8.2)
+
+- **Cartella Run & Artefatti:** [spwm_v8_2/](file:///Users/Mattia/Desktop/Studies/Temp/spwm_v8_2)
+- **Metadata Run:** 229 epoche completate (best checkpoint all'epoca 139), seed 42, device `mps` (commit `c05ea475`).
+- **File Metriche:** [spwm_v8_2/metrics.json](file:///Users/Mattia/Desktop/Studies/Temp/spwm_v8_2/metrics.json)
+
+| Metrica | SPWM-v7.2 (Baseline) | SPWM-v8 (Two-Timescale) | SPWM-v8.1 (Full Auth & Drift) | **SPWM-v8.2 (Rebalanced & Mixed Drift)** |
+| :--- | :---: | :---: | :---: | :---: |
+| **Parametri Totali** | 282,852 | 320,004 | 320,004 | **320,004** |
+| **Criterio Selezione Checkpoint** | $\text{Score}_{\text{combined}}$ | Dynamic Score | Dynamic Score ($H_1$ & Drift) | **Dynamic Score ($H_1$ & Drift)** |
+| **Test TF MSE** | $0.2723$ | $0.2776$ | $0.2315$ | **0.2603** |
+| **Test Mean Spike Rate** | $0.1298$ | $0.1300$ | $0.1461$ | **0.1290** (Altamente efficiente $\le 13\%$) |
+| **Test Drift Ratio ($H_{50}/H_1$)** | $3.79\times$ | $4.54\times$ | $4.38\times$ | **4.44×** (Stabile & Controllato) |
+| **Test Latent MSE ($H=1$)** | $0.2848$ | $0.2666$ | $0.2034$ | **0.2640** |
+| **Test Latent MSE ($H=5$)** | $0.2279$ | $0.1868$ | $0.1589$ | **0.1879** |
+| **Test Latent MSE ($H=10$)** | $0.2304$ | $0.1898$ | $0.1680$ | **0.1894** |
+| **Test Latent MSE ($H=25$)** | $0.3088$ | $0.2471$ | $0.2425$ | **0.2446** |
+| **Test Latent MSE ($H=50$)** | $0.4529$ | $0.4136$ | $0.4004$ | **0.3959** (Nuovo minimo storico) |
+| **Test Latent MSE ($H=100$)** | $0.6002$ | $0.7013$ | $0.6190$ | **0.6324** |
+| **Test Pos Err ($H=1$)** | $0.1227$ | $0.1017$ | $0.0939$ | **0.0963** |
+| **Test Pos Err ($H=5$)** | $0.1680$ | $0.1299$ | $0.1218$ | **0.1258** |
+| **Test Pos Err ($H=10$)** | $0.2166$ | $0.1664$ | $0.1658$ | **0.1623** (Nuovo minimo storico) |
+| **Test Pos Err ($H=25$)** | $0.3361$ | $0.2872$ | $0.2853$ | **0.2782** (Nuovo minimo storico) |
+| **Test Pos Err ($H=50$)** | $0.4657$ | $0.4615$ | $0.4115$ | **0.4275** |
+| **Test Pos Err ($H=100$)** | $0.5811$ | $0.6643$ | $0.5625$ | **0.6090** |
+| **Test Vel Err ($H=1$)** | $0.5164$ | $0.5341$ | $0.5615$ | **0.4992** (Abbattimento storico sotto 0.50) |
+| **Test Vel Err ($H=5$)** | $0.5774$ | $0.5168$ | $0.5394$ | **0.4933** (Minimo assoluto su tutti i modelli) |
+| **Test Vel Err ($H=10$)** | $0.5837$ | $0.5128$ | $0.5297$ | **0.4970** (Minimo assoluto su tutti i modelli) |
+| **Test Vel Err ($H=25$)** | $0.5801$ | $0.5188$ | $0.5189$ | **0.5125** (Miglioramento netto) |
+| **Test Vel Err ($H=50$)** | $0.6348$ | $0.6152$ | $0.5802$ | **0.5920** |
+| **Test Vel Err ($H=100$)** | $0.7302$ | $0.7699$ | $0.7079$ | **0.7427** |
+| **Extrapolation TF MSE** | $0.3365$ | $0.3357$ | $0.3150$ | **0.3045** (Nuovo minimo assoluto OOD) |
+| **Extrapolation Pos Err ($H=1$)** | $0.1365$ | $0.1250$ | $0.1283$ | **0.1257** |
+| **Extrapolation Pos Err ($H=25$)** | $0.5659$ | $0.5516$ | $0.5251$ | **0.5671** |
+| **Extrapolation Pos Err ($H=50$)** | $0.6959$ | $0.7526$ | $0.6428$ | **0.7285** |
+| **Extrapolation Pos Err ($H=100$)** | $0.7156$ | $0.8021$ | $0.6996$ | **0.7497** |
+
+#### Sintesi dei Risultati (Variazioni Positive):
+1. **Abbattimento dell'Errore di Velocità a Breve/Medio Termine ($H \le 10$):**
+   - $H=1$ Vel Err: **0.4992** (vs 0.5615 di v8.1 e 0.5341 di v8).
+   - $H=5$ Vel Err: **0.4933** (vs 0.5394 di v8.1 e 0.5168 di v8).
+   - $H=10$ Vel Err: **0.4970** (vs 0.5297 di v8.1 e 0.5128 di v8).
+2. **Riduzione dell'Errore di Posizione a Medio Raggio ($H=10, 25$):**
+   - $H=10$ Pos Err: **0.1623** (vs 0.1658 di v8.1 e 0.1664 di v8).
+   - $H=25$ Pos Err: **0.2782** (vs 0.2853 di v8.1 e 0.2872 di v8).
+3. **Riduzione del Latent MSE a Lungo Raggio ($H=50$):**
+   - $H=50$ Latent MSE: **0.3959** (vs 0.4004 di v8.1 e 0.4136 di v8).
+4. **Estrapolazione OOD a Breve Termine (Teacher-Forcing):**
+   - $\text{Extrapolation TF MSE}$: **0.3045** (vs 0.3150 di v8.1 e 0.3357 di v8).
+   - $H=1$ Extrapolation Pos Err: **0.1257** (vs 0.1283 di v8.1).
+5. **Efficienza di Scarica:**
+   - Test Mean Spike Rate: **12.90%** (vs 14.61% di v8.1).
+
+---
+
+### 5. Criticità e Variazioni Negative Rilevate
+
+1. **Aumento dell'Errore di Posizione su Orizzonti Lunghi ed Estesi ($H=50, 100$):**
+   - $H=50$ Pos Err: sale da 0.4115 (v8.1) a **0.4275** ($+3.9\%$).
+   - $H=100$ Pos Err: sale da 0.5625 (v8.1) a **0.6090** ($+8.3\%$).
+
+2. **Aumento del Latent MSE su Orizzonti Brevi e Medi ($H=1, 5, 10$):**
+   - $H=1$ Latent MSE: sale da 0.2034 (v8.1) a **0.2640** ($+29.8\%$).
+   - $H=5$ Latent MSE: sale da 0.1589 (v8.1) a **0.1879** ($+18.2\%$).
+   - $H=10$ Latent MSE: sale da 0.1680 (v8.1) a **0.1894** ($+12.7\%$).
+
+3. **Aumento dell'Errore in Estrapolazione ad Alta Velocità su Orizzonti Estesi ($H \ge 50$):**
+   - $H=50$ Extrapolation Pos Err: sale da 0.6428 (v8.1) a **0.7285** ($+13.3\%$).
+   - $H=100$ Extrapolation Pos Err: sale da 0.6996 (v8.1) a **0.7497** ($+7.2\%$).
+   - Extrapolation Vel Err: supera l'unità su tutti gli orizzonti ($H=1$: **1.0626**, $H=5$: **1.0038**, $H=50$: **1.4555**).
+
+4. **Sessione Interrotta all'Epoca 229 / 600:**
+   - Best checkpoint selezionato all'epoca 139 prima del completamento dell'intero budget di epoche programmato.

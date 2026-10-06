@@ -30,6 +30,7 @@ class EventWorldDataset(Dataset):
         acceleration_std: float = 0.1,
         drift_injection_prob: float = 0.0,
         drift_magnitude: float = 0.05,
+        mixed_drift: bool = False,
         cache_data: bool = True,
     ) -> None:
         super().__init__()
@@ -42,6 +43,7 @@ class EventWorldDataset(Dataset):
         self.acceleration_std = acceleration_std
         self.drift_injection_prob = drift_injection_prob
         self.drift_magnitude = drift_magnitude
+        self.mixed_drift = mixed_drift
         self.cache_data = cache_data
 
         self._cache: Dict[int, Dict[str, Any]] = {}
@@ -51,14 +53,28 @@ class EventWorldDataset(Dataset):
                 self._cache[traj_id] = self._generate_item(traj_id)
 
     def _generate_item(self, traj_id: int) -> Dict[str, Any]:
+        # SPWM-v8.2 50/50 Mixed Drift Sampling:
+        # 50% clean nominal (p_drift = 0.0) for fine velocity tracking,
+        # 50% impulsive drift (p_drift = drift_injection_prob, sigma_drift = drift_magnitude) for OOD recovery.
+        if self.mixed_drift:
+            if traj_id % 2 == 0:
+                p_drift = 0.0
+                mag_drift = 0.0
+            else:
+                p_drift = self.drift_injection_prob
+                mag_drift = self.drift_magnitude
+        else:
+            p_drift = self.drift_injection_prob
+            mag_drift = self.drift_magnitude
+
         traj = self.world.generate_trajectory(
             trajectory_id=traj_id,
             length=self.sequence_length,
             num_objects=self.num_objects,
             velocity_range=self.velocity_range,
             acceleration_std=self.acceleration_std,
-            drift_injection_prob=self.drift_injection_prob,
-            drift_magnitude=self.drift_magnitude,
+            drift_injection_prob=p_drift,
+            drift_magnitude=mag_drift,
             seed=traj_id,
         )
         event_batch = self.event_simulator.trajectory_to_events(traj, return_sparse=False)
@@ -111,12 +127,13 @@ def create_dataloaders(
     extrapolation_velocity_range: Tuple[float, float] = (-2.0, 2.0),
     drift_injection_prob: float = 0.0,
     drift_magnitude: float = 0.05,
+    mixed_drift: bool = False,
     num_workers: int = 0,
     cache_data: bool = True,
 ) -> Dict[str, DataLoader]:
     """
     Creates train, val, test, and extrapolation DataLoaders with zero temporal leakage.
-    Supports synthetic drift injection and dynamic perturbations for OOD recovery.
+    Supports synthetic drift injection, 50/50 mixed sampling, and dynamic perturbations for OOD recovery.
     """
     splits = partition_trajectories(total_trajectories, train_split, val_split)
     train_ids = list(range(splits["train"][0], splits["train"][1]))
@@ -137,6 +154,7 @@ def create_dataloaders(
         velocity_range=standard_velocity_range,
         drift_injection_prob=drift_injection_prob,
         drift_magnitude=drift_magnitude,
+        mixed_drift=mixed_drift,
         cache_data=cache_data,
     )
     val_ds = EventWorldDataset(
@@ -148,6 +166,7 @@ def create_dataloaders(
         velocity_range=standard_velocity_range,
         drift_injection_prob=0.0,  # Nominal evaluation on validation set
         drift_magnitude=0.0,
+        mixed_drift=False,
         cache_data=cache_data,
     )
     test_ds = EventWorldDataset(
@@ -159,6 +178,7 @@ def create_dataloaders(
         velocity_range=standard_velocity_range,
         drift_injection_prob=0.0,  # Nominal evaluation on test set
         drift_magnitude=0.0,
+        mixed_drift=False,
         cache_data=cache_data,
     )
     extrap_ds = EventWorldDataset(
@@ -170,6 +190,7 @@ def create_dataloaders(
         velocity_range=extrapolation_velocity_range,
         drift_injection_prob=drift_injection_prob,
         drift_magnitude=drift_magnitude,
+        mixed_drift=mixed_drift,
         cache_data=cache_data,
     )
 

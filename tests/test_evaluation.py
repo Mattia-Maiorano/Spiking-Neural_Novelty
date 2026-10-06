@@ -111,3 +111,29 @@ def test_multi_step_rollout_loss():
         if p.requires_grad:
             assert p.grad is not None
 
+
+def test_kinematic_loss_rebalancing_and_normalization():
+    from spwm.learning.losses import SPWMLoss
+    import torch.nn.functional as F
+
+    loss_fn = SPWMLoss(beta_v=2.5, sigma_q=0.5, sigma_v=0.8, use_empirical_variance=False)
+    B, T = 4, 20
+    # Decoded & true kinematics: [B, T, 4] -> [q_x, q_y, v_x, v_y]
+    true_kin = torch.randn(B, T, 4)
+    pred_kin = true_kin + 0.1 * torch.randn(B, T, 4)
+
+    l_kin = loss_fn.kinematic_loss(pred_kin, true_kin, num_objects=1)
+
+    # Calculate expected value manually:
+    pos_err = F.mse_loss(pred_kin[..., :2], true_kin[..., :2]) / (0.5 ** 2)
+    vel_err = F.mse_loss(pred_kin[..., 2:4], true_kin[..., 2:4]) / (0.8 ** 2)
+    expected_kin = pos_err + 2.5 * vel_err
+
+    assert torch.isclose(l_kin, expected_kin, rtol=1e-5)
+
+    # Test empirical variance mode
+    loss_fn_emp = SPWMLoss(beta_v=2.0, use_empirical_variance=True)
+    l_kin_emp = loss_fn_emp.kinematic_loss(pred_kin, true_kin, num_objects=1)
+    assert l_kin_emp.item() > 0.0
+
+

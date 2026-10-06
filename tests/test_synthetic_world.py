@@ -62,3 +62,31 @@ def test_drift_injection_and_perturbations():
     # Over time, synthetic drift perturbates the trajectory forcing OOD divergence
     assert not np.allclose(traj_nom.positions, traj_drift.positions)
 
+
+def test_mixed_drift_dataset_sampling():
+    from spwm.data.datasets import EventWorldDataset
+    world = MovingObjectsWorld()
+    # Create dataset with mixed_drift enabled:
+    # Even traj_ids (0, 2, 4...) should be clean nominal (p_drift = 0.0)
+    # Odd traj_ids (1, 3, 5...) should have impulsive drift (p_drift = 0.5)
+    ds = EventWorldDataset(
+        trajectory_indices=[0, 1],
+        world=world,
+        sequence_length=40,
+        drift_injection_prob=0.5,
+        drift_magnitude=0.1,
+        mixed_drift=True,
+        cache_data=False,
+    )
+    # Item 0 (even) should be identical to nominal generation
+    traj_nom = world.generate_trajectory(trajectory_id=0, length=40, drift_injection_prob=0.0, seed=0)
+    item_0 = ds[0]
+    np.testing.assert_allclose(item_0["positions"].numpy(), traj_nom.positions)
+
+    # Item 1 (odd) has drift injection
+    item_1 = ds[1]
+    traj_odd_nom = world.generate_trajectory(trajectory_id=1, length=40, drift_injection_prob=0.0, seed=1)
+    # With p=0.5 over 40 steps, item_1 should diverge from pure nominal
+    assert not np.allclose(item_1["positions"].numpy(), traj_odd_nom.positions)
+
+

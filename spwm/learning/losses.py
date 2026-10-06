@@ -90,6 +90,10 @@ class SPWMLoss(nn.Module):
         lambda_vel: float = 0.5,
         lambda_probe: float = 2.0,
         lambda_coord: float = 0.15,
+        beta_v: float = 2.0,
+        sigma_q: float = 1.0,
+        sigma_v: float = 1.0,
+        use_empirical_variance: bool = False,
         multi_step_horizon: int = 3,
         target_variance: float = 1.0,
         target_spike_rate: float = 0.10,
@@ -106,6 +110,10 @@ class SPWMLoss(nn.Module):
         # Backwards-compat alias so that existing code using lambda_decoder still works
         self.lambda_decoder = lambda_probe
         self.lambda_coord = lambda_coord
+        self.beta_v = beta_v
+        self.sigma_q = sigma_q
+        self.sigma_v = sigma_v
+        self.use_empirical_variance = use_empirical_variance
         self.multi_step_horizon = multi_step_horizon
         self.target_variance = target_variance
         self.target_spike_rate = target_spike_rate
@@ -204,6 +212,33 @@ class SPWMLoss(nn.Module):
         return F.smooth_l1_loss(pred_sub, target_vel_valid, beta=1.0)
 
 
+    def kinematic_loss(
+        self,
+        decoded_kinematics: torch.Tensor,
+        true_kinematics: torch.Tensor,
+        num_objects: int = 1,
+    ) -> torch.Tensor:
+        """
+        Normalized & Rebalanced Kinematic Probe Loss (SPWM-v8.2):
+        L_kin = ||q_hat - q||^2 / sigma_q^2 + beta_v * ||v_hat - v||^2 / sigma_v^2
+        """
+        pred_pos = decoded_kinematics[..., : 2 * num_objects]
+        pred_vel = decoded_kinematics[..., 2 * num_objects : 4 * num_objects]
+        true_pos = true_kinematics[..., : 2 * num_objects]
+        true_vel = true_kinematics[..., 2 * num_objects : 4 * num_objects]
+
+        if self.use_empirical_variance:
+            sigma_q_sq = true_pos.var().clamp(min=1e-4)
+            sigma_v_sq = true_vel.var().clamp(min=1e-4)
+        else:
+            sigma_q_sq = max(1e-4, float(self.sigma_q) ** 2)
+            sigma_v_sq = max(1e-4, float(self.sigma_v) ** 2)
+
+        l_pos = F.mse_loss(pred_pos, true_pos) / sigma_q_sq
+        l_vel = F.mse_loss(pred_vel, true_vel) / sigma_v_sq
+
+        return l_pos + self.beta_v * l_vel
+
     # ------------------------------------------------------------------
     # Combined forward (kept for compatibility; trainer uses sub-losses)
     # ------------------------------------------------------------------
@@ -253,7 +288,7 @@ class SPWMLoss(nn.Module):
         # 6. Kinematic probe loss (decoded from detached z)
         l_probe = torch.tensor(0.0, device=device)
         if self.lambda_probe > 0.0 and decoded_kinematics is not None and true_kinematics is not None:
-            l_probe = F.mse_loss(decoded_kinematics, true_kinematics)
+            l_probe = self.kinematic_loss(decoded_kinematics, true_kinematics)
 
         # 7. Coordinate loss (geometric encoder supervision)
         l_coord = torch.tensor(0.0, device=device)

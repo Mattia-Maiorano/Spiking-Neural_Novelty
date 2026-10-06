@@ -481,7 +481,10 @@ class Trainer:
                 with torch.enable_grad():
                     z_states = out.latent_states.detach()
                     decoded = self.model.physical_decoder(z_states)
-                    probe_loss = nn.functional.mse_loss(decoded, true_kin)
+                    if hasattr(self.loss_fn, "kinematic_loss"):
+                        probe_loss = self.loss_fn.kinematic_loss(decoded, true_kin)
+                    else:
+                        probe_loss = nn.functional.mse_loss(decoded, true_kin)
                     probe_loss.backward()
                     if self.grad_clip_norm > 0:
                         torch.nn.utils.clip_grad_norm_(
@@ -620,7 +623,10 @@ class Trainer:
 
             # Decodifica cinematica ed errori fisici
             if out.decoded_kinematics is not None and true_kin is not None:
-                probe_loss = nn.functional.mse_loss(out.decoded_kinematics, true_kin)
+                if hasattr(self.loss_fn, "kinematic_loss"):
+                    probe_loss = self.loss_fn.kinematic_loss(out.decoded_kinematics, true_kin)
+                else:
+                    probe_loss = nn.functional.mse_loss(out.decoded_kinematics, true_kin)
                 val_losses["val_l_probe"] += probe_loss.item()
                 lambda_probe = getattr(self.loss_fn, "lambda_probe", 2.0)
                 val_losses["val_total_loss"] += lambda_probe * probe_loss.item()

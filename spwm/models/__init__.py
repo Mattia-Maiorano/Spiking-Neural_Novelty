@@ -15,6 +15,7 @@ from spwm.models.memory import MultiTimescaleMemory, MultiTimescaleState, comput
 from spwm.models.encoder import EventEncoder
 from spwm.models.latent_dynamics import SpikingLatentDynamics, DynamicsState, DynamicsOutput
 from spwm.models.predictor import LatentPredictor, PhysicalDecoder, PredictorOutput
+from spwm.models.corrector import SlowCorrector, SlowCorrectorState, SlowCorrectorOutput
 from spwm.models.world_model import SPWM, SPWMState, SPWMStepOutput, SPWMSequenceOutput
 
 __all__ = [
@@ -38,6 +39,9 @@ __all__ = [
     "LatentPredictor",
     "PhysicalDecoder",
     "PredictorOutput",
+    "SlowCorrector",
+    "SlowCorrectorState",
+    "SlowCorrectorOutput",
     "SPWM",
     "SPWMState",
     "SPWMStepOutput",

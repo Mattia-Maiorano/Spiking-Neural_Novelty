@@ -1,0 +1,113 @@
+# SPWM-v8: Two-Timescale Predictor-Corrector Architecture
+# Resolves asymptotic rollout divergence and ALIF spike-rate saturation on extended horizons (H >= 25)
+# while preserving the record local acuity of v7.2 on short horizons (H <= 10).
+#
+# Core Innovations:
+#   1. Consolidated Baseline: Full computational stack restored to stable SPWM-v7.2.
+#   2. Fast Predictor Isolation: Fast predictor (delta_t = 1) is frozen during long-horizon
+#      corrector training to shield local short-range acuity from long-term gradient corruption.
+#   3. Slow Neuromorphic Corrector: Independent slow ALIF population (beta_mem=0.95, beta_adapt=0.995,
+#      v_th0=1.5) operating at rarefied cadence Delta=5 in a quiescent baseline regime.
+#   4. Non-Destructive Continuous Coupling: Modulates derivative (force/velocity) and dampens
+#      internal momentum/sub-threshold variables, preserving continuous C^1 integration of q.
+#   5. Protected Block Optimization: Long-horizon asymptotic error (H >= 25) optimizes ONLY the
+#      corrector parameters with sparsity/quiescence regularization.
+
+project:
+  name: "spwm_v8"
+  seed: 42
+
+environment:
+  num_objects: 1
+  height: 32
+  width: 32
+  event_threshold: 0.08
+
+data:
+  total_trajectories: 600
+  train_split: 0.8
+  val_split: 0.1
+  sequence_length: 150
+  batch_size: 32
+
+model:
+  type: "spwm"
+  encoder_type: "spatial_softmax"
+  num_keypoints: 16
+  encoder_dim: 128
+  encoder_conv_channels: [16, 32]
+  latent_dim: 128  # total = q_dim + p_dim (32 + 96)
+  q_dim: 32
+  p_dim: 96
+  predictor_hidden_dim: 256
+  local_lr: 0.0002
+  lambda_kin_feedback: 1.0
+  ema_decay: 0.9
+  rls_enabled: false
+  rls_forgetting: 0.99
+  rls_delta: 1.0
+
+neuron:
+  model: "alif"
+  threshold: 1.0
+  beta_mem: 0.80
+  gamma: 0.18
+  surrogate: "atan"
+  surrogate_alpha: 2.0
+
+memory:
+  num_timescales: 2
+  timescale_dims: [128, 128]  # 256 ALIF spiking neurons (128 reactive, 128 context)
+  betas: [0.90, 0.985]
+
+corrector:
+  enabled: true
+  dim: 64                       # Independent slow ALIF population
+  cadence: 5                    # Rarefied intervention cadence Delta = 5 steps
+  beta_mem: 0.95                # Markedly slower membrane potential decay
+  beta_adapt: 0.995             # Slower threshold adaptation time constant
+  v_th0: 1.5                    # Elevated resting threshold for quiescent firing regime
+  gamma: 0.25                   # Threshold adaptation coupling strength
+  max_gain_v: 0.08              # Maximum velocity steering force
+  max_gain_p: 0.08              # Maximum momentum modulation
+  max_damp: 0.40                # Maximum sub-threshold damping factor (anti runaway excitation)
+  inter_step_decay: 0.85        # Smooth exponential decay between cadences (C^1 continuity)
+
+training:
+  epochs: 450
+  encoder_warmup_epochs: 60
+  learning_rate: 0.0002
+  probe_lr: 0.0005
+  probe_weight_decay: 0.01
+  corrector_lr: 0.0002
+  corrector_horizon: 25         # Protected training horizon H >= 25
+  weight_decay: 0.0001
+  batch_size: 32
+  grad_clip_norm: 1.0
+  curriculum_multi_step: true   # Restored stable v7.2 curriculum
+  smooth_horizon_sampling: false
+
+loss:
+  lambda_pred: 1.0
+  lambda_multi: 0.5
+  lambda_var: 0.1
+  lambda_sparse: 0.5
+  lambda_probe: 2.0
+  lambda_vel: 0.5
+  lambda_coord: 0.15
+  lambda_corrector_asymptotic: 1.0
+  lambda_corrector_quiescence: 0.5
+  multi_step_horizon: 3
+  target_spike_rate: 0.10
+  curriculum_thresholds:
+    phase_1_horizon: 3
+    phase_2_horizon: 6
+    phase_2_threshold: 0.20
+    phase_3_horizon: 10
+    phase_3_threshold: 0.12
+
+evaluation:
+  save_best_metric: "dynamic_score"   # Dynamic Score Weighting (Single-step loss & Drift distance to target)
+  rollout_horizons: [1, 5, 10, 25, 50, 100]
+  max_drift_ratio: 2.0                # Legacy drift reference / bounds (H50/H1 <= 5.0)
+

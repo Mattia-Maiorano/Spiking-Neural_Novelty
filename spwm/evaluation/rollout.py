@@ -26,6 +26,86 @@ class RolloutEvaluationResult:
     teacher_forcing_mse: float
     mean_spike_rate: float
 
+    @property
+    def drift_ratio(self) -> float:
+        """
+        Computes the Drift Ratio between long-horizon (H=50 or max horizon)
+        and short-horizon (H=1 or min horizon).
+        """
+        if not self.position_error_per_horizon:
+            return float("inf")
+        min_k = 1 if 1 in self.position_error_per_horizon else min(self.position_error_per_horizon.keys())
+        max_k = 50 if 50 in self.position_error_per_horizon else max(self.position_error_per_horizon.keys())
+        h1 = self.position_error_per_horizon.get(min_k, 0.0)
+        h_max = self.position_error_per_horizon.get(max_k, float("inf"))
+        if h1 <= 0 or not np.isfinite(h_max) or not np.isfinite(h1):
+            return float("inf")
+        return float(h_max / max(h1, 1e-6))
+
+    @property
+    def rollout_mae(self) -> float:
+        """Computes the mean absolute position error across all evaluated rollout horizons."""
+        if not self.position_error_per_horizon:
+            return float("inf")
+        return float(np.mean(list(self.position_error_per_horizon.values())))
+
+    @property
+    def rollout_vel_mae(self) -> float:
+        """Computes the mean absolute velocity error across all evaluated rollout horizons."""
+        if not self.velocity_error_per_horizon:
+            return float("inf")
+        return float(np.mean(list(self.velocity_error_per_horizon.values())))
+
+    def compute_dynamic_score(
+        self,
+        max_h1: float = 0.4,
+        ideal_drift: float = 1.0,
+        max_drift_delta: float = 4.0,
+        epsilon: float = 1e-6,
+    ) -> float:
+        """
+        Computes dynamic score weighting based on distance from global goals:
+        - Absolute single-step loss target: 0.0 (normalized against max_h1 ~ 0.4)
+        - Deviation / drift ratio target: 1.0 (normalized against max_drift_delta ~ 4.0, reaching up to 5.0)
+
+        Distance weights dynamically penalize the axis that is further from its optimal goal.
+        Lower score is better.
+        """
+        min_k = 1 if 1 in self.position_error_per_horizon else (min(self.position_error_per_horizon.keys()) if self.position_error_per_horizon else 1)
+        h1_loss = self.position_error_per_horizon.get(min_k, float("inf"))
+        drift = self.drift_ratio
+
+        if not np.isfinite(h1_loss) or not np.isfinite(drift):
+            return float("inf")
+
+        # Normalized distances from target:
+        # d_loss in [0, 1] relative to max_h1 (0.4)
+        d_loss = max(0.0, float(h1_loss)) / max(max_h1, epsilon)
+        # d_dev in [0, 1] relative to ideal_drift (1.0) up to max_drift (5.0 -> delta 4.0)
+        d_dev = max(0.0, float(drift) - ideal_drift) / max(max_drift_delta, epsilon)
+
+        # Dynamic weighting: weight is higher if further from goal
+        w_loss = d_loss + epsilon
+        w_dev = d_dev + epsilon
+
+        score = (w_loss * d_loss + w_dev * d_dev) / (w_loss + w_dev)
+        return float(score)
+
+    @property
+    def dynamic_score(self) -> float:
+        """Computes default dynamic score."""
+        return self.compute_dynamic_score()
+
+    def is_gate_passed(self, max_drift_ratio: float = 5.0, max_long_err: float = 2.0) -> bool:
+        """
+        Soft/Legacy Gate compatibility check.
+        """
+        ratio = self.drift_ratio
+        max_k = 50 if 50 in self.position_error_per_horizon else max(self.position_error_per_horizon.keys(), default=1)
+        h_max_val = self.position_error_per_horizon.get(max_k, float("inf"))
+        return bool((ratio <= max_drift_ratio) and (h_max_val < max_long_err) and np.isfinite(ratio) and (ratio > 0))
+
+
 
 class RolloutEvaluator:
     """

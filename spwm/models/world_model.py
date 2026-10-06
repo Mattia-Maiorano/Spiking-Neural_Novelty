@@ -19,6 +19,7 @@ import torch.nn.functional as F
 from spwm.models.encoder import EventEncoder
 from spwm.models.latent_dynamics import SpikingLatentDynamics, DynamicsState, DynamicsOutput
 from spwm.models.predictor import LatentPredictor, PhysicalDecoder, PredictorOutput
+from spwm.models.corrector import SlowCorrector, SlowCorrectorState, SlowCorrectorOutput
 from spwm.models.neurons import NeuronState
 
 
@@ -53,6 +54,7 @@ class SPWMSequenceOutput:
     dynamics_spike_rate: torch.Tensor
     mean_spike_rate: torch.Tensor
     decoded_kinematics: Optional[torch.Tensor] = None
+    corrector_spikes: Optional[torch.Tensor] = None
 
 
 class SPWM(nn.Module):
@@ -86,6 +88,17 @@ class SPWM(nn.Module):
         q_dim: Optional[int] = None,
         p_dim: Optional[int] = None,
         ema_decay: float = 0.9,
+        enable_corrector: bool = True,
+        corrector_dim: int = 64,
+        corrector_cadence: int = 5,
+        corrector_beta_mem: float = 0.95,
+        corrector_beta_adapt: float = 0.995,
+        corrector_v_th0: float = 1.5,
+        corrector_gamma: float = 0.25,
+        corrector_max_gain_v: float = 0.08,
+        corrector_max_gain_p: float = 0.08,
+        corrector_max_damp: float = 0.40,
+        corrector_inter_step_decay: float = 0.85,
     ) -> None:
         super().__init__()
         self.in_channels = in_channels
@@ -142,12 +155,34 @@ class SPWM(nn.Module):
             surrogate_alpha=surrogate_alpha,
         )
 
-        # 4. Latent Predictor (z_hat_(t+1) = LatentPredictor(z_t))
+        # 4. Latent Predictor (z_hat_(t+1) = LatentPredictor(z_t)) - Fast Predictor
         self.predictor = LatentPredictor(
             latent_dim=latent_dim,
             hidden_dim=predictor_hidden_dim,
             residual=True,
         )
+
+        # 4b. Slow Neuromorphic Corrector (SPWM-v8: Two-Timescale Predictor-Corrector)
+        self.enable_corrector = enable_corrector
+        if enable_corrector:
+            self.corrector = SlowCorrector(
+                q_dim=q_dim,
+                p_dim=p_dim,
+                corrector_dim=corrector_dim,
+                cadence=corrector_cadence,
+                beta_mem=corrector_beta_mem,
+                beta_adapt=corrector_beta_adapt,
+                v_th0=corrector_v_th0,
+                gamma=corrector_gamma,
+                surrogate_name=surrogate_name,
+                surrogate_alpha=surrogate_alpha,
+                max_gain_v=corrector_max_gain_v,
+                max_gain_p=corrector_max_gain_p,
+                max_damp=corrector_max_damp,
+                inter_step_decay=corrector_inter_step_decay,
+            )
+        else:
+            self.corrector = None
 
         # 5. Physical Decoder Probe (ground truth kinematics evaluation)
         self.physical_decoder = PhysicalDecoder(
@@ -424,18 +459,82 @@ class SPWM(nn.Module):
         self,
         initial_latent: torch.Tensor,
         horizon: int = 50,
+        use_corrector: bool = True,
     ) -> torch.Tensor:
-        """Autonomous Rollout without future sensory observations."""
+        """
+        Autonomous Rollout without future sensory observations.
+        When use_corrector is True and corrector is enabled, executes the
+        two-timescale Predictor-Corrector architecture (SPWM-v8):
+        - Fast predictor operates at every step (delta_t = 1)
+        - Slow corrector intervenes at cadence Delta with continuous modulation
+        """
         predictions = []
         curr_z = initial_latent
+
+        corr_state = None
+        if use_corrector and self.corrector is not None:
+            corr_state = self.corrector.init_state(initial_latent.shape[0], device=initial_latent.device)
 
         with torch.no_grad():
             for _ in range(horizon):
                 pred_out = self.predictor(curr_z)
-                curr_z = pred_out.predicted_latent
+                z_fast_next = pred_out.predicted_latent
+
+                if use_corrector and self.corrector is not None and corr_state is not None:
+                    z_next, _, corr_state = self.corrector.forward_step(
+                        z_prev=curr_z,
+                        z_fast_proposed=z_fast_next,
+                        state=corr_state,
+                    )
+                else:
+                    z_next = z_fast_next
+
+                curr_z = z_next
                 predictions.append(curr_z)
 
         return torch.stack(predictions, dim=1)
+
+    def predict_rollout(
+        self,
+        initial_latent: torch.Tensor,
+        horizon: int = 25,
+        use_corrector: bool = True,
+    ) -> Tuple[torch.Tensor, Optional[torch.Tensor]]:
+        """
+        Differentiable rollout for multi-step / asymptotic training.
+        Maintains computational graph for backpropagation.
+        Returns:
+            predicted_trajectory: [B, horizon, latent_dim]
+            corrector_spikes: [B, horizon, corrector_dim] (or None)
+        """
+        predictions = []
+        spikes_list = []
+        curr_z = initial_latent
+
+        corr_state = None
+        if use_corrector and self.corrector is not None:
+            corr_state = self.corrector.init_state(initial_latent.shape[0], device=initial_latent.device)
+
+        for _ in range(horizon):
+            pred_out = self.predictor(curr_z)
+            z_fast_next = pred_out.predicted_latent
+
+            if use_corrector and self.corrector is not None and corr_state is not None:
+                z_next, corr_out, corr_state = self.corrector.forward_step(
+                    z_prev=curr_z,
+                    z_fast_proposed=z_fast_next,
+                    state=corr_state,
+                )
+                spikes_list.append(corr_out.spikes)
+            else:
+                z_next = z_fast_next
+
+            curr_z = z_next
+            predictions.append(curr_z)
+
+        traj = torch.stack(predictions, dim=1)
+        spikes = torch.stack(spikes_list, dim=1) if spikes_list else None
+        return traj, spikes
 
     def online_step(
         self,

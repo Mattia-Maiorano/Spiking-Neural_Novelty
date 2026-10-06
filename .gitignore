@@ -45,7 +45,7 @@ data_cache/
 # macOS
 .DS_Store
 # Model files (large binaries)
-models/
+/models/
 *.pt
 *.pth
 *.h5

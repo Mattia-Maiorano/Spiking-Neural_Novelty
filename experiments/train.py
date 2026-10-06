@@ -87,6 +87,18 @@ def build_model(config: Dict[str, Any], device: torch.device) -> torch.nn.Module
             rls_enabled=model_cfg.get("rls_enabled", False),
             rls_forgetting=model_cfg.get("rls_forgetting", 0.99),
             rls_delta=model_cfg.get("rls_delta", 1.0),
+            # v8: Slow Neuromorphic Corrector
+            enable_corrector=config.get("corrector", {}).get("enabled", True),
+            corrector_dim=config.get("corrector", {}).get("dim", 64),
+            corrector_cadence=config.get("corrector", {}).get("cadence", 5),
+            corrector_beta_mem=config.get("corrector", {}).get("beta_mem", 0.95),
+            corrector_beta_adapt=config.get("corrector", {}).get("beta_adapt", 0.995),
+            corrector_v_th0=config.get("corrector", {}).get("v_th0", 1.5),
+            corrector_gamma=config.get("corrector", {}).get("gamma", 0.25),
+            corrector_max_gain_v=config.get("corrector", {}).get("max_gain_v", 0.08),
+            corrector_max_gain_p=config.get("corrector", {}).get("max_gain_p", 0.08),
+            corrector_max_damp=config.get("corrector", {}).get("max_damp", 0.40),
+            corrector_inter_step_decay=config.get("corrector", {}).get("inter_step_decay", 0.85),
         )
     elif model_type == "gru":
         model = GRUWorldModel(
@@ -266,6 +278,9 @@ def main() -> None:
     best_val_pos_err = float("inf")
     best_val_vel_err = float("inf")
     best_combined_score = float("inf")
+    best_rollout_mae = float("inf")
+    best_drift_ratio = float("inf")
+    best_gate_passed = False
     history = []
     optimizer_state = None
     loaded_existing = False
@@ -281,6 +296,9 @@ def main() -> None:
             best_val_pos_err = ckpt.get("best_val_pos_err", float("inf"))
             best_val_vel_err = ckpt.get("best_val_vel_err", float("inf"))
             best_combined_score = ckpt.get("best_combined_score", float("inf"))
+            best_rollout_mae = ckpt.get("best_rollout_mae", float("inf"))
+            best_drift_ratio = ckpt.get("best_drift_ratio", float("inf"))
+            best_gate_passed = ckpt.get("best_gate_passed", False)
             history = ckpt.get("history", []) or []
             optimizer_state = ckpt.get("optimizer_state", None)
             loaded_existing = True
@@ -311,6 +329,7 @@ def main() -> None:
 
     probe_lr = train_cfg.get("probe_lr", 5e-4)
     probe_weight_decay = train_cfg.get("probe_weight_decay", 1e-2)
+    eval_cfg = config.get("evaluation", {})
 
     trainer = Trainer(
         model=model,
@@ -328,13 +347,25 @@ def main() -> None:
         best_val_loss=best_val_loss,
         best_val_pos_err=best_val_pos_err,
         best_val_vel_err=best_val_vel_err,
-        k_max=config.get("k_max", 50),
         best_combined_score=best_combined_score,
+        best_rollout_mae=best_rollout_mae,
+        best_drift_ratio=best_drift_ratio,
+        best_gate_passed=best_gate_passed,
         history=history,
         optimizer_state=optimizer_state,
         curriculum_multi_step=train_cfg.get("curriculum_multi_step", False),
+        smooth_horizon_sampling=train_cfg.get("smooth_horizon_sampling", False),
+        k_max=config.get("k_max", 50),
+        corrector_lr=train_cfg.get("corrector_lr", None),
+        corrector_horizon=train_cfg.get("corrector_horizon", 25),
+        lambda_corrector_asymptotic=loss_cfg.get("lambda_corrector_asymptotic", 1.0),
+        lambda_corrector_quiescence=loss_cfg.get("lambda_corrector_quiescence", 0.5),
         curriculum_thresholds=loss_cfg.get("curriculum_thresholds", None),
         encoder_warmup_epochs=train_cfg.get("encoder_warmup_epochs", 60),
+        max_drift_ratio=eval_cfg.get("max_drift_ratio", 5.0),
+        rollout_horizons=eval_cfg.get("rollout_horizons", [1, 5, 10, 25, 50]),
+        save_best_metric=eval_cfg.get("save_best_metric", "pareto_rollout"),
+        num_objects=env_cfg.get("num_objects", 1),
     )
 
     if loaded_existing and (best_val_pos_err == float("inf") or best_val_loss == float("inf")):
@@ -358,7 +389,7 @@ def main() -> None:
         evaluator = RolloutEvaluator(
             model=model,
             device=device,
-            horizons=config.get("evaluation", {}).get("rollout_horizons", [1, 5, 10, 25]),
+            horizons=eval_cfg.get("rollout_horizons", [1, 5, 10, 25, 50]),
             num_objects=env_cfg.get("num_objects", 1),
         )
 
@@ -367,6 +398,8 @@ def main() -> None:
 
         chronicle.log_detail("Test TF MSE", f"{test_results.teacher_forcing_mse:.4e}")
         chronicle.log_detail("Test Mean Spike Rate", f"{test_results.mean_spike_rate:.3f}")
+        chronicle.log_detail("Test Rollout MAE", f"{test_results.rollout_mae:.4f}")
+        chronicle.log_detail("Test Drift Ratio (H50/H1)", f"{test_results.drift_ratio:.2f}x")
         chronicle.log_detail("Extrapolation TF MSE", f"{extrap_results.teacher_forcing_mse:.4e}")
         if test_results.position_error_per_horizon:
             chronicle.log_detail("Test Pos Error by Horizon", test_results.position_error_per_horizon)

@@ -36,7 +36,7 @@ try:
 except ImportError:
     SummaryWriter = None
 
-from spwm.learning.losses import LossOutput, SPWMLoss
+from spwm.learning.losses import LossOutput, SPWMLoss, _frozen
 from spwm.learning.metrics import (
     position_error,
     velocity_error,
@@ -83,24 +83,46 @@ class Trainer:
         best_val_pos_err: float = float("inf"),
         best_val_vel_err: float = float("inf"),          
         best_combined_score: float = float("inf"),
+        best_rollout_mae: float = float("inf"),
+        best_drift_ratio: float = float("inf"),
+        best_gate_passed: bool = False,
         best_epoch: Optional[int] = None,   
         history: Optional[List[Dict[str, float]]] = None,
         optimizer_state: Optional[Dict] = None,
         curriculum_multi_step: bool = False,
-        smooth_horizon_sampling: bool = True,
+        smooth_horizon_sampling: bool = False,
         k_max: int = 50,
+        corrector_lr: Optional[float] = None,
+        corrector_horizon: int = 25,
+        lambda_corrector_asymptotic: float = 1.0,
+        lambda_corrector_quiescence: float = 0.5,
         curriculum_thresholds: Optional[Dict[str, Any]] = None,
         encoder_warmup_epochs: int = 60,
+        max_drift_ratio: float = 5.0,
+        rollout_horizons: Optional[Sequence[int]] = None,
+        save_best_metric: str = "pareto_rollout",
+        num_objects: int = 1,
     ) -> None:
-        self.best_epoch: Optional[int] = None
+        self.best_epoch: Optional[int] = best_epoch
         self.best_val_pos_err: float = best_val_pos_err
-        self.best_val_vel_err: float = float("inf")
-        self.best_combined_score: float = float("inf")
+        self.best_val_vel_err: float = best_val_vel_err
+        self.best_combined_score: float = best_combined_score
+        self.best_rollout_mae: float = best_rollout_mae
+        self.best_drift_ratio: float = best_drift_ratio
+        self.best_gate_passed: bool = best_gate_passed
+        self.max_drift_ratio: float = float(max_drift_ratio)
+        self.rollout_horizons: List[int] = list(rollout_horizons) if rollout_horizons is not None else [1, 5, 10, 25, 50]
+        self.save_best_metric: str = save_best_metric
+        self.num_objects: int = num_objects
+
         self.learning_algorithm = learning_algorithm.lower()
         self.learning_rate = learning_rate
         self.curriculum_multi_step = curriculum_multi_step
         self.smooth_horizon_sampling = smooth_horizon_sampling
         self.k_max = k_max
+        self.corrector_horizon = corrector_horizon
+        self.lambda_corrector_asymptotic = lambda_corrector_asymptotic
+        self.lambda_corrector_quiescence = lambda_corrector_quiescence
         self.encoder_warmup_epochs = encoder_warmup_epochs
         self.curriculum_thresholds = curriculum_thresholds or {
             "phase_1_horizon": 3,
@@ -129,6 +151,15 @@ class Trainer:
         self.grad_clip_norm = grad_clip_norm
         self.save_dir = Path(save_dir)
         self.save_dir.mkdir(parents=True, exist_ok=True)
+
+        from spwm.evaluation.rollout import RolloutEvaluator
+
+        self.rollout_evaluator = RolloutEvaluator(
+            model=self.model,
+            device=self.device,
+            horizons=self.rollout_horizons,
+            num_objects=self.num_objects,
+        )
 
         # ------------------------------------------------------------------
         # Configurazione Ottimizzatori
@@ -178,6 +209,22 @@ class Trainer:
             else None
         )
 
+        # Step-4: Ottimizzatore Modulo Correttore Lento (SPWM-v8: Ottimizzazione a blocchi protetti)
+        corrector_params = (
+            list(self.model.corrector.parameters())
+            if hasattr(self.model, "corrector") and self.model.corrector is not None
+            else []
+        )
+        self.corrector_optimizer = (
+            torch.optim.AdamW(
+                corrector_params,
+                lr=(corrector_lr if corrector_lr is not None else learning_rate),
+                weight_decay=weight_decay,
+            )
+            if corrector_params
+            else None
+        )
+
         self.decoder_scheduler = None
 
         self.writer = (
@@ -186,21 +233,26 @@ class Trainer:
             else None
         )
 
-        # Ripristino stato Checkpoint
+        # Ripristino stato Checkpoint & Pareto Tracker
         self.start_epoch = start_epoch
         self.best_val_loss = best_val_loss
         self.history = history if history is not None else []
         
-        # Fallback automatico: se c'è una cronologia precedente ma best_combined_score è infinito
-        if self.history and self.best_combined_score == float("inf"):
-            best_entry = min(
-                self.history, 
-                key=lambda x: x.get("combined_score", float("inf"))
-            )
-            self.best_combined_score = best_entry.get("combined_score", float("inf"))
+        # Fallback automatico da cronologia con ordinamento per Dynamic Score Weighting
+        if self.history and (self.best_combined_score == float("inf") or self.best_rollout_mae == float("inf")):
+            def _selection_key(rec):
+                # Prefer dynamic_score if present, fallback to combined_score or rollout_mae
+                score = rec.get("val_dynamic_score", rec.get("combined_score", rec.get("val_rollout_mae", float("inf"))))
+                return score
+
+            best_entry = min(self.history, key=_selection_key)
+            self.best_gate_passed = bool(best_entry.get("val_gate_passed", False))
+            self.best_rollout_mae = best_entry.get("val_rollout_mae", float("inf"))
+            self.best_drift_ratio = best_entry.get("val_drift_ratio", float("inf"))
+            self.best_combined_score = best_entry.get("val_dynamic_score", best_entry.get("combined_score", self.best_rollout_mae))
             self.best_val_pos_err = best_entry.get("val_pos_err", self.best_val_pos_err)
             self.best_val_vel_err = best_entry.get("val_vel_err", self.best_val_vel_err)
-            self.best_epoch = best_entry.get("epoch", None)
+            self.best_epoch = best_entry.get("epoch", self.best_epoch)
 
         if optimizer_state:
             if self.encoder_optimizer and "encoder_optimizer" in optimizer_state:
@@ -209,6 +261,15 @@ class Trainer:
                 self.probe_optimizer.load_state_dict(optimizer_state["probe_optimizer"])
             if self.predictor_optimizer and "predictor_optimizer" in optimizer_state:
                 self.predictor_optimizer.load_state_dict(optimizer_state["predictor_optimizer"])
+            if self.corrector_optimizer and "corrector_optimizer" in optimizer_state:
+                if optimizer_state["corrector_optimizer"] is not None:
+                    self.corrector_optimizer.load_state_dict(optimizer_state["corrector_optimizer"])
+            if "best_rollout_mae" in optimizer_state:
+                self.best_rollout_mae = optimizer_state["best_rollout_mae"]
+            if "best_drift_ratio" in optimizer_state:
+                self.best_drift_ratio = optimizer_state["best_drift_ratio"]
+            if "best_gate_passed" in optimizer_state:
+                self.best_gate_passed = optimizer_state["best_gate_passed"]
             if "best_combined_score" in optimizer_state:
                 self.best_combined_score = optimizer_state["best_combined_score"]
             if "best_val_vel_err" in optimizer_state:
@@ -233,6 +294,7 @@ class Trainer:
         chronicle.log_detail("Encoder Optimizer", "Enabled" if self.encoder_optimizer else "Disabled")
         chronicle.log_detail("Probe Optimizer", "Enabled" if self.probe_optimizer else "Disabled")
         chronicle.log_detail("Predictor Optimizer", "Enabled" if self.predictor_optimizer else "Disabled")
+        chronicle.log_detail("Corrector Optimizer", "Enabled" if self.corrector_optimizer else "Disabled")
         sampling_mode = f"Smooth U(1, {self.k_max})" if self.smooth_horizon_sampling else "Curriculum Thresholds"
         chronicle.log_detail("Horizon Mode", sampling_mode)
         chronicle.log_newline()
@@ -249,6 +311,9 @@ class Trainer:
             "l_sparse": 0.0,
             "l_probe": 0.0,
             "l_coord": 0.0,
+            "l_corr": 0.0,
+            "l_corr_asymptotic": 0.0,
+            "l_corr_quiescence": 0.0,
             "spike_rate": 0.0,
             "grad_norm": 0.0,
         }
@@ -424,13 +489,75 @@ class Trainer:
 
                 epoch_losses["l_probe"] += probe_loss_val
 
+            # ----------------------------------------------------------
+            # Step 4: Protected Corrector Optimization (SPWM-v8)
+            # ----------------------------------------------------------
+            corr_loss_val = 0.0
+            if (
+                self.corrector_optimizer is not None
+                and not is_warmup
+                and hasattr(self.model, "corrector")
+                and self.model.corrector is not None
+                and hasattr(self.model, "predict_rollout")
+            ):
+                self.corrector_optimizer.zero_grad()
+                with torch.enable_grad():
+                    # Congela rigorosamente il modulo predittore rapido per isolare
+                    # le sue capacità locali a breve raggio (H <= 10) dai gradienti a lungo termine (H >= 25)
+                    with _frozen(self.model.predictor):
+                        latents = out.latent_states.detach()
+                        B_lat, T_tot, D_lat = latents.shape
+                        H_corr = min(self.corrector_horizon, T_tot - 2)
+
+                        if H_corr >= 5:
+                            max_start = max(1, T_tot - H_corr - 1)
+                            t0 = random.randint(0, max_start - 1) if max_start > 1 else 0
+
+                            z_init = latents[:, t0].detach()
+                            target_rollout = latents[:, t0 + 1 : t0 + 1 + H_corr].detach()
+
+                            pred_rollout, corr_spikes = self.model.predict_rollout(
+                                initial_latent=z_init,
+                                horizon=H_corr,
+                                use_corrector=True,
+                            )
+
+                            # 1. Asymptotic Trajectory Stabilization Loss (H >= 25)
+                            l_asymptotic = nn.functional.mse_loss(pred_rollout, target_rollout)
+
+                            # 2. Quiescent Sparsity Penalty on Corrector Spikes
+                            l_quiescence = (
+                                corr_spikes.mean()
+                                if corr_spikes is not None
+                                else torch.tensor(0.0, device=self.device)
+                            )
+
+                            loss_corr = (
+                                self.lambda_corrector_asymptotic * l_asymptotic
+                                + self.lambda_corrector_quiescence * l_quiescence
+                            )
+
+                            loss_corr.backward()
+
+                            if self.grad_clip_norm > 0:
+                                torch.nn.utils.clip_grad_norm_(
+                                    self.corrector_optimizer.param_groups[0]["params"],
+                                    self.grad_clip_norm,
+                                )
+                            self.corrector_optimizer.step()
+                            corr_loss_val = loss_corr.item()
+                            epoch_losses["l_corr_asymptotic"] += l_asymptotic.item()
+                            epoch_losses["l_corr_quiescence"] += l_quiescence.item()
+
+                epoch_losses["l_corr"] += corr_loss_val
+
             if hasattr(out, "mean_spike_rate"):
                 epoch_losses["spike_rate"] += out.mean_spike_rate.item()
 
             # Aggregazione Loss complessiva
             lambda_probe = getattr(self.loss_fn, "lambda_probe", 2.0)
             epoch_losses["total_loss"] += (
-                pred_loss_val + enc_loss_val + (lambda_probe * probe_loss_val)
+                pred_loss_val + enc_loss_val + (lambda_probe * probe_loss_val) + corr_loss_val
             )
             num_batches += 1
 
@@ -512,6 +639,21 @@ class Trainer:
         for k in val_losses:
             val_losses[k] /= max(1, num_batches)
 
+        # ------------------------------------------------------------------
+        # Autonomous Multi-Step Rollout Evaluation on Validation Set
+        # ------------------------------------------------------------------
+        rollout_res = self.rollout_evaluator.evaluate_dataset(self.val_loader)
+        val_losses["val_rollout_mae"] = rollout_res.rollout_mae
+        val_losses["val_rollout_vel_mae"] = rollout_res.rollout_vel_mae
+        val_losses["val_drift_ratio"] = rollout_res.drift_ratio
+        val_losses["val_gate_passed"] = 1.0 if rollout_res.is_gate_passed(self.max_drift_ratio) else 0.0
+        val_losses["val_dynamic_score"] = rollout_res.dynamic_score
+
+        for h, pos_h in rollout_res.position_error_per_horizon.items():
+            val_losses[f"val_pos_err_h{h}"] = pos_h
+        for h, vel_h in rollout_res.velocity_error_per_horizon.items():
+            val_losses[f"val_vel_err_h{h}"] = vel_h
+
         return val_losses
 
     def fit(
@@ -572,20 +714,30 @@ class Trainer:
                             self.loss_fn.multi_step_horizon = 1
 
                 # ------------------------------------------------------
-                # Selezione del Miglior Modello (Posizione + Velocità)
+                # Selezione del Miglior Modello: Dynamic Score Weighting
                 # ------------------------------------------------------
-                current_pos = val_metrics["val_pos_err"]
-                current_vel = val_metrics["val_vel_err"]
+                curr_drift_ratio = val_metrics["val_drift_ratio"]
+                curr_rollout_mae = val_metrics["val_rollout_mae"]
+                curr_gate_passed = bool(val_metrics["val_gate_passed"] > 0.5)
+                curr_dynamic_score = val_metrics.get("val_dynamic_score", curr_rollout_mae)
 
-                # Punteggio normalizzato: pos + 0.5 * vel
-                combined_score = current_pos + (0.5 * current_vel)
+                current_pos_h1 = val_metrics.get("val_pos_err_h1", val_metrics["val_pos_err"])
+                current_vel_h1 = val_metrics.get("val_vel_err_h1", val_metrics["val_vel_err"])
+                combined_score = curr_dynamic_score
 
-                is_best = combined_score < self.best_combined_score
+                # Dynamic score weighting balances single-step error vs deviation rate
+                is_best = False
+                if curr_dynamic_score < self.best_combined_score:
+                    is_best = True
+
                 if is_best:
-                    self.best_combined_score = combined_score
+                    self.best_gate_passed = curr_gate_passed
+                    self.best_rollout_mae = curr_rollout_mae
+                    self.best_drift_ratio = curr_drift_ratio
+                    self.best_combined_score = curr_dynamic_score
                     self.best_epoch = epoch
-                    self.best_val_pos_err = current_pos
-                    self.best_val_vel_err = current_vel
+                    self.best_val_pos_err = current_pos_h1
+                    self.best_val_vel_err = current_vel_h1
                     torch.save(self.model.state_dict(), self.save_dir / "model.pt")
 
                 record = {
@@ -616,6 +768,10 @@ class Trainer:
                         "best_val_pos_err": self.best_val_pos_err,
                         "best_val_vel_err": self.best_val_vel_err,
                         "best_combined_score": self.best_combined_score,
+                        "best_rollout_mae": self.best_rollout_mae,
+                        "best_drift_ratio": self.best_drift_ratio,
+                        "best_gate_passed": self.best_gate_passed,
+                        "best_epoch": self.best_epoch,
                         "history": self.history,
                         "optimizer_state": {
                             "encoder_optimizer": self.encoder_optimizer.state_dict()
@@ -627,6 +783,13 @@ class Trainer:
                             "predictor_optimizer": self.predictor_optimizer.state_dict()
                             if self.predictor_optimizer
                             else None,
+                            "corrector_optimizer": self.corrector_optimizer.state_dict()
+                            if self.corrector_optimizer
+                            else None,
+                            "best_rollout_mae": self.best_rollout_mae,
+                            "best_drift_ratio": self.best_drift_ratio,
+                            "best_gate_passed": self.best_gate_passed,
+                            "best_epoch": self.best_epoch,
                         },
                     },
                     checkpoint_path,
@@ -640,69 +803,110 @@ class Trainer:
                         else getattr(self.loss_fn, "multi_step_horizon", 1)
                     )
                     warmup_tag = " [WARMUP]" if epoch <= self.encoder_warmup_epochs else ""
+                    h_corr_used = min(self.corrector_horizon, 150) if (hasattr(self.model, "corrector") and self.model.corrector is not None) else None
+                    corrector_k_str = f", H_slow={self.corrector_horizon}, Cadence={getattr(self.model.corrector, 'cadence', 5)}" if h_corr_used else ""
+                    
                     header = (
                         f"Epoch [{epoch:03d}/{end_epoch:03d}]"
-                        f" (K={current_k}){warmup_tag}"
+                        f" (K_fast={current_k}{corrector_k_str}){warmup_tag}"
                         f"  Time: {epoch_duration:5.1f}s"
                         f"  Total: {total_elapsed / 60:4.1f}m"
                         f"{best_tag}"
                     )
                     chronicle.log_section_header(header)
+
+                    # --- FAST PREDICTOR BREAKDOWN ---
                     chronicle.log_detail(
-                        "Train Loss",
+                        "⚡ Fast Predictor (Short-Range Dynamics)",
                         (
-                            f"{train_metrics['total_loss']:.5f}"
-                            f"  (Pred: {train_metrics['l_pred']:.5f},"
-                            f" Multi: {train_metrics.get('l_multi', 0.0):.5f},"
-                            f" Var: {train_metrics.get('l_var', 0.0):.5f},"
-                            f" Probe: {train_metrics['l_probe']:.5f})"
+                            f"L_1step(k=1): {train_metrics['l_pred']:.5f} | "
+                            f"L_multi(k={current_k}): {train_metrics.get('l_multi', 0.0):.5f} | "
+                            f"L_vel(k=1,3): {train_metrics.get('l_vel', 0.0):.5f} | "
+                            f"L_var: {train_metrics.get('l_var', 0.0):.5f} | "
+                            f"L_sparse: {train_metrics.get('l_sparse', 0.0):.5f}"
                         ),
                         indent_level=1,
                     )
+
+                    # --- SLOW CORRECTOR BREAKDOWN ---
+                    if hasattr(self.model, "corrector") and self.model.corrector is not None:
+                        corr_cad = getattr(self.model.corrector, 'cadence', 5)
+                        chronicle.log_detail(
+                            "🐢 Slow Corrector (Long-Horizon Stabilization)",
+                            (
+                                f"Total L_corr: {train_metrics.get('l_corr', 0.0):.5f} | "
+                                f"L_asymptotic(H={self.corrector_horizon}, Δ={corr_cad}): {train_metrics.get('l_corr_asymptotic', 0.0):.5f} | "
+                                f"L_quiescence: {train_metrics.get('l_corr_quiescence', 0.0):.5f}"
+                            ),
+                            indent_level=1,
+                        )
+
+                    # --- ENCODER & PROBE SUPERVISION ---
                     chronicle.log_detail(
-                        "Val Loss",
+                        "🎯 Representation & Probe",
                         (
-                            f"{val_metrics['val_total_loss']:.5f}"
-                            f"  (Pred: {val_metrics['val_l_pred']:.5f},"
-                            f" Multi: {val_metrics.get('val_l_multi', 0.0):.5f},"
-                            f" Probe: {val_metrics.get('val_l_probe', 0.0):.5f})"
+                            f"L_coord(SpatialSoftmax): {train_metrics['l_coord']:.5f} | "
+                            f"L_probe(Kinematics): {train_metrics['l_probe']:.5f}"
                         ),
                         indent_level=1,
                     )
+
+                    # --- VALIDATION SUMMARY (TEACHER-FORCING & INSTANTANEOUS) ---
                     chronicle.log_detail(
-                        "Pos Err / Vel Err",
-                        f"Pos: {current_pos:.5f} | Vel: {current_vel:.5f}",
-                        indent_level=1,
-                    )
-                    chronicle.log_detail(
-                        "L_coord",
+                        "📊 Validation Losses",
                         (
-                            f"Train {train_metrics['l_coord']:.5f}"
-                            f" / Val {val_metrics.get('val_l_coord', 0.0):.5f}"
+                            f"Val Loss: {val_metrics['val_total_loss']:.5f} (Pred: {val_metrics['val_l_pred']:.5f}, Multi: {val_metrics.get('val_l_multi', 0.0):.5f}, Probe: {val_metrics.get('val_l_probe', 0.0):.5f}) | "
+                            f"TF Pos Err: {current_pos_h1:.5f} | TF Vel Err: {current_vel_h1:.5f}"
                         ),
                         indent_level=1,
                     )
+
+                    # --- MODEL SELECTION & DYNAMIC SCORE (H1 & DRIFT) ---
+                    curr_dyn_score = val_metrics.get("val_dynamic_score", curr_rollout_mae)
+                    curr_h1_pos = val_metrics.get("val_pos_err_h1", val_metrics.get("val_pos_err", 0.0))
+                    h_pos_str = " | ".join([f"H{h}: {val_metrics.get(f'val_pos_err_h{h}', 0.0):.4f}" for h in self.rollout_horizons])
+
                     chronicle.log_detail(
-                        "L_vel / L_sparse",
+                        "🎯 Model Selection (Dynamic Score = H1 & Drift)",
                         (
-                            f"Vel {train_metrics.get('l_vel', 0.0):.5f}"
-                            f" / Sparse {train_metrics.get('l_sparse', 0.0):.5f}"
+                            f"Dynamic Score: {curr_dyn_score:.5f} [H1 Error: {curr_h1_pos:.4f}, Drift (H50/H1): {curr_drift_ratio:.2f}x]\n"
+                            f"    Best Selection: Score={self.best_combined_score:.5f} (H1={self.best_val_pos_err:.4f}, Drift={self.best_drift_ratio:.2f}x @ Ep {self.best_epoch})"
                         ),
                         indent_level=1,
                     )
+
+                    # --- AUTONOMOUS ROLLOUT TRAJECTORY BREAKDOWN ---
                     chronicle.log_detail(
-                        "Spike Rate",
+                        "📈 Rollout Trajectory Diagnostics",
                         (
-                            f"Train {train_metrics['spike_rate']:.3f}"
-                            f" / Val {val_metrics['val_spike_rate']:.3f}"
+                            f"Rollout Mean MAE: {curr_rollout_mae:.5f} | "
+                            f"Spike Rate (Tr/Val): {train_metrics['spike_rate']:.3f} / {val_metrics['val_spike_rate']:.3f}\n"
+                            f"    Pos Error per Horizon: {h_pos_str}"
                         ),
                         indent_level=1,
                     )
-                    chronicle.log_detail(
-                        "Score (Comb)",
-                        f"{combined_score:.5f} (Best: {self.best_combined_score:.5f} @ Ep {self.best_epoch})",
-                        indent_level=1,
-                    )
+
+                    # --- DEBUG REMINDER (EVERY 10 EPOCHS) ---
+                    if epoch % 10 == 0:
+                        debug_reminders = (
+                            "[SPWM Loss Guide Reminder]\n"
+                            "  • L_1step: 1-step next-latent MSE (z_t -> z_t+1) to guarantee immediate local trajectory fidelity.\n"
+                            f"  • L_multi (k={current_k}): Autoregressive rollout loss over horizon k to enforce temporal consistency.\n"
+                            "  • L_vel (k=1, k=3): Differentiable two-scale velocity supervision through frozen decoder probe to ground latent momentum p.\n"
+                            "  • L_var: Anti-collapse variance penalty (VICReg-style) preventing latent representation collapse.\n"
+                            "  • L_sparse: Differentiable L1 spike sparsity keeping spiking activity around the target rate.\n"
+                            f"  • L_corr / L_asymptotic (H={self.corrector_horizon}, Δ={getattr(self.model.corrector, 'cadence', 5) if hasattr(self.model, 'corrector') and self.model.corrector else 'N/A'}): "
+                            "Optimizes slow ALIF population on long horizons (with frozen fast predictor) to eliminate asymptotic drift.\n"
+                            "  • L_quiescence: Heavy sparsity penalty on corrector spikes so it remains silent except during trajectory drift.\n"
+                            "  • L_coord: Pure geometric coordinate supervision for SpatialSoftmax encoder.\n"
+                            "  • L_probe: Supervised kinematic decoder training on detached latents.\n"
+                            "  • Dynamic Score Selection: Model choice is solely based on balancing H=1 error (target 0.0) and drift ratio (target 1.0)."
+                        )
+                        if hasattr(chronicle, "log_debug"):
+                            chronicle.log_debug(debug_reminders)
+                        else:
+                            chronicle.log_info(f"[DEBUG] {debug_reminders}")
+
                     chronicle.log_newline()
 
         except KeyboardInterrupt:
@@ -712,14 +916,22 @@ class Trainer:
             try:
                 chronicle.log_info("Valutazione dello stato attuale in corso...")
                 val_metrics = self.evaluate()
-                c_pos = val_metrics.get("val_pos_err", float("inf"))
-                c_vel = val_metrics.get("val_vel_err", float("inf"))
-                c_score = c_pos + (0.5 * c_vel)
+                c_drift = val_metrics["val_drift_ratio"]
+                c_mae = val_metrics["val_rollout_mae"]
+                c_gate = bool(val_metrics["val_gate_passed"] > 0.5)
+                c_dynamic_score = val_metrics.get("val_dynamic_score", c_mae)
 
-                if c_score < self.best_combined_score:
-                    self.best_combined_score = c_score
-                    self.best_val_pos_err = c_pos
-                    self.best_val_vel_err = c_vel
+                is_best_interrupt = False
+                if c_dynamic_score < self.best_combined_score:
+                    is_best_interrupt = True
+
+                if is_best_interrupt:
+                    self.best_gate_passed = c_gate
+                    self.best_rollout_mae = c_mae
+                    self.best_drift_ratio = c_drift
+                    self.best_combined_score = c_dynamic_score
+                    self.best_val_pos_err = val_metrics.get("val_pos_err_h1", val_metrics.get("val_pos_err", float("inf")))
+                    self.best_val_vel_err = val_metrics.get("val_vel_err_h1", val_metrics.get("val_vel_err", float("inf")))
                     model_path = self.save_dir / "model.pt"
                     torch.save(self.model.state_dict(), model_path)
                     chronicle.log_success(
@@ -733,9 +945,7 @@ class Trainer:
         self.save_training_log()
         chronicle.log_success(
             f"Session complete. Logs saved in '{self.save_dir}'. "
-            f"Best Val Pos Err: {self.best_val_pos_err:.5f} | "
-            f"Best Val Vel Err: {self.best_val_vel_err:.5f} | "
-            f"Best Score: {self.best_combined_score:.5f} (Epoch {self.best_epoch})"
+            f"Best Dynamic Score: {self.best_combined_score:.5f} (H1 Error: {self.best_val_pos_err:.4f}, Drift: {self.best_drift_ratio:.2f}x @ Epoch {self.best_epoch})"
         )
         return self.history
 
@@ -749,9 +959,13 @@ class Trainer:
             json.dump(self.history, f, indent=2)
 
         csv_path = self.save_dir / "training_log.csv"
-        keys = list(self.history[0].keys())
+        fieldnames = []
+        for rec in self.history:
+            for k in rec.keys():
+                if k not in fieldnames:
+                    fieldnames.append(k)
         with open(csv_path, "w", newline="", encoding="utf-8") as f:
-            writer = csv.DictWriter(f, fieldnames=keys)
+            writer = csv.DictWriter(f, fieldnames=fieldnames, extrasaction="ignore")
             writer.writeheader()
             writer.writerows(self.history)
 
@@ -780,6 +994,10 @@ class Trainer:
                     f"val_pos_err={rec.get('val_pos_err'):.4f}",
                     f"val_vel_err={rec.get('val_vel_err'):.4f}",
                     f"val_spike_rate={rec.get('val_spike_rate'):.3f}",
+                    f"val_rollout_mae={rec.get('val_rollout_mae', 0.0):.4f}",
+                    f"val_drift_ratio={rec.get('val_drift_ratio', 0.0):.2f}",
+                    f"val_gate_passed={rec.get('val_gate_passed', 0.0)}",
+                    f"val_dynamic_score={rec.get('val_dynamic_score', 0.0):.4f}",
                     f"combined_score={rec.get('combined_score'):.4f}",
                 ]
                 f.write("  Losses: " + ", ".join(loss_items) + "\n")

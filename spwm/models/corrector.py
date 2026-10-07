@@ -106,13 +106,13 @@ class SlowCorrector(nn.Module):
         self.to_p = nn.Linear(corrector_dim, p_dim)
         self.to_damp = nn.Linear(corrector_dim, p_dim)
 
-        # Initialize coupling weights with small magnitude for gentle, stable initial modulation
-        nn.init.normal_(self.to_v.weight, mean=0.0, std=0.01)
+        # Initialize coupling weights for responsive and stable gradient flow
+        nn.init.normal_(self.to_v.weight, mean=0.0, std=0.05)
         nn.init.zeros_(self.to_v.bias)
-        nn.init.normal_(self.to_p.weight, mean=0.0, std=0.01)
+        nn.init.normal_(self.to_p.weight, mean=0.0, std=0.05)
         nn.init.zeros_(self.to_p.bias)
-        nn.init.normal_(self.to_damp.weight, mean=0.0, std=0.01)
-        nn.init.constant_(self.to_damp.bias, -2.0)  # sigmoid(-2) ~ 0.12 initial damping
+        nn.init.normal_(self.to_damp.weight, mean=0.0, std=0.05)
+        nn.init.constant_(self.to_damp.bias, -1.0)  # sigmoid(-1) ~ 0.27 initial damping ceiling
 
     def init_state(self, batch_size: int, device: Optional[torch.device] = None) -> SlowCorrectorState:
         """Initializes quiescent state for the corrector."""

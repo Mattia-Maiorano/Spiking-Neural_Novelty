@@ -44,8 +44,8 @@ def get_git_commit_hash() -> str:
         return "git_unavailable"
 
 
-def build_model(config: Dict[str, Any], device: torch.device) -> torch.nn.Module:
-    """Builds appropriate model based on configuration."""
+def build_model(config: Dict[str, Any], device: torch.device, mode: str = "train_predictor") -> torch.nn.Module:
+    """Builds appropriate model based on configuration and training mode."""
     model_cfg = config.get("model", {})
     model_type = model_cfg.get("type", "spwm").lower()
     env_cfg = config.get("environment", {})
@@ -60,6 +60,12 @@ def build_model(config: Dict[str, Any], device: torch.device) -> torch.nn.Module
     encoder_dim = model_cfg.get("encoder_dim", 128)
 
     if model_type == "spwm":
+        # In train_predictor mode, corrector is strictly deactivated/bypassed
+        if mode == "train_predictor":
+            enable_corrector = False
+        else:
+            enable_corrector = config.get("corrector", {}).get("enabled", True)
+
         model = SPWM(
             in_channels=in_channels,
             height=height,
@@ -88,7 +94,7 @@ def build_model(config: Dict[str, Any], device: torch.device) -> torch.nn.Module
             rls_forgetting=model_cfg.get("rls_forgetting", 0.99),
             rls_delta=model_cfg.get("rls_delta", 1.0),
             # v8: Slow Neuromorphic Corrector
-            enable_corrector=config.get("corrector", {}).get("enabled", True),
+            enable_corrector=enable_corrector,
             corrector_dim=config.get("corrector", {}).get("dim", 64),
             corrector_cadence=config.get("corrector", {}).get("cadence", 5),
             corrector_beta_mem=config.get("corrector", {}).get("beta_mem", 0.95),
@@ -171,6 +177,25 @@ def main() -> None:
         default="latest",
         help="Path to experiment config YAML, or 'latest' to automatically use the highest version (default: 'latest')",
     )
+    parser.add_argument(
+        "--mode",
+        type=str,
+        default=None,
+        choices=["train_predictor", "train_corrector", "joint"],
+        help="Decoupled training mode: 'train_predictor' (Nominal clean phase) or 'train_corrector' (Stabilization & Drift phase with frozen predictor).",
+    )
+    parser.add_argument(
+        "--predictor-checkpoint",
+        type=str,
+        default=None,
+        help="Path to pre-trained predictor checkpoint (required when --mode train_corrector).",
+    )
+    parser.add_argument(
+        "--drift-prob",
+        type=float,
+        default=None,
+        help="Override drift injection probability (for train_corrector, must be >= 0.15).",
+    )
     parser.add_argument("--seed", type=int, default=None, help="Random seed for reproducibility")
     parser.add_argument("--epochs", type=int, default=None, help="Override training epochs")
     parser.add_argument("--device", type=str, default=None, help="Device (cpu, mps, cuda)")
@@ -195,6 +220,12 @@ def main() -> None:
     seed = config.get("project", {}).get("seed", 42)
     set_seed(seed)
 
+    # Resolve training mode (CLI flag takes precedence over config)
+    train_cfg = config.get("training", {})
+    mode = (args.mode or train_cfg.get("mode", "train_predictor")).lower()
+    if mode not in ("train_predictor", "train_corrector", "joint"):
+        raise ValueError(f"Invalid mode '{mode}'. Must be 'train_predictor', 'train_corrector', or 'joint'.")
+
     # Hardware & Device Selection (Cross-Platform)
     if args.device is not None:
         device = torch.device(args.device)
@@ -212,22 +243,44 @@ def main() -> None:
     if args.output_dir is not None:
         save_dir = Path(args.output_dir)
     else:
-        save_dir = Path("results") / config_path.stem
+        mode_suffix = f"_{mode}" if mode != "joint" else ""
+        save_dir = Path("results") / f"{config_path.stem}{mode_suffix}"
     save_dir.mkdir(parents=True, exist_ok=True)
     figures_dir = save_dir / "figures"
     figures_dir.mkdir(parents=True, exist_ok=True)
 
-    chronicle.log_application_title(f"Starting Experiment: {config_path.stem}")
+    chronicle.log_application_title(f"Starting Experiment: {config_path.stem} [{mode.upper()}]")
     chronicle.log_detail("Device", device)
     chronicle.log_detail("Seed", seed)
+    chronicle.log_detail("Training Mode", mode)
     chronicle.log_detail("Save Dir", save_dir)
 
-    # 2. Build DataLoaders
+    # 2. Build DataLoaders based on Training Mode
     data_cfg = config.get("data", {})
     env_cfg = config.get("environment", {})
-    train_cfg = config.get("training", {})
     batch_size = train_cfg.get("batch_size", 32)
     seq_len = data_cfg.get("sequence_length", 30)
+
+    if mode == "train_predictor":
+        # Fase Nominale: solo traiettorie nominali pulite (nessuna iniezione di drift)
+        drift_injection_prob = 0.0
+        mixed_drift = False
+        drift_magnitude = 0.0
+        chronicle.log_detail("Dataset Dynamics", "Nominal clean trajectories (p_drift=0.0, mixed_drift=False)")
+    elif mode == "train_corrector":
+        # Fase di Stabilizzazione & Drift: traiettorie con iniezione di drift (p_drift >= 0.15)
+        raw_drift = args.drift_prob if args.drift_prob is not None else data_cfg.get("drift_injection_prob", 0.15)
+        drift_injection_prob = max(0.15, float(raw_drift))
+        mixed_drift = data_cfg.get("mixed_drift", False)
+        drift_magnitude = data_cfg.get("drift_magnitude", 0.05)
+        chronicle.log_detail(
+            "Dataset Dynamics",
+            f"Drift perturbation trajectories (p_drift={drift_injection_prob:.2f}, mag={drift_magnitude})",
+        )
+    else:  # joint
+        drift_injection_prob = data_cfg.get("drift_injection_prob", 0.0)
+        mixed_drift = data_cfg.get("mixed_drift", False)
+        drift_magnitude = data_cfg.get("drift_magnitude", 0.05)
 
     dataloaders = create_dataloaders(
         total_trajectories=data_cfg.get("total_trajectories", 600),
@@ -240,16 +293,55 @@ def main() -> None:
         num_objects=env_cfg.get("num_objects", 1),
         standard_velocity_range=tuple(data_cfg.get("standard_velocity_range", (-1.0, 1.0))),
         extrapolation_velocity_range=tuple(data_cfg.get("extrapolation_velocity_range", (-2.0, 2.0))),
-        drift_injection_prob=data_cfg.get("drift_injection_prob", 0.0),
-        drift_magnitude=data_cfg.get("drift_magnitude", 0.05),
-        mixed_drift=data_cfg.get("mixed_drift", False),
+        drift_injection_prob=drift_injection_prob,
+        drift_magnitude=drift_magnitude,
+        mixed_drift=mixed_drift,
         num_workers=data_cfg.get("num_workers", 0),
         cache_data=data_cfg.get("cache_data", True),
     )
 
     # 3. Build Model & Loss
-    model = build_model(config, device=device)
+    model = build_model(config, device=device, mode=mode)
     model.init_buffer()
+
+    # In train_corrector mode: Carica il checkpoint del predittore pre-addestrato
+    if mode == "train_corrector":
+        predictor_ckpt = args.predictor_checkpoint or train_cfg.get("predictor_checkpoint")
+        if not predictor_ckpt:
+            # Cerca automaticamente candidati nella directory results
+            candidates = [
+                save_dir / "predictor_checkpoint.pt",
+                save_dir / "model.pt",
+                Path("results") / f"{config_path.stem}_train_predictor" / "model.pt",
+                Path("results") / f"{config_path.stem}_predictor" / "model.pt",
+                Path("results") / "spwm_v8_2_train_predictor" / "model.pt",
+            ]
+            for cand in candidates:
+                if cand.is_file():
+                    predictor_ckpt = str(cand)
+                    break
+
+        if not predictor_ckpt:
+            raise ValueError(
+                "Mode '--mode train_corrector' requires a pre-trained predictor checkpoint. "
+                "Please specify '--predictor-checkpoint <path_to_model.pt>' or set "
+                "'training.predictor_checkpoint' in your YAML config."
+            )
+
+        ckpt_file = Path(predictor_ckpt)
+        if not ckpt_file.is_file():
+            raise FileNotFoundError(f"Pre-trained predictor checkpoint not found at: {predictor_ckpt}")
+
+        loaded_data = torch.load(ckpt_file, map_location=device)
+        state_dict_to_load = (
+            loaded_data["model_state"]
+            if (isinstance(loaded_data, dict) and "model_state" in loaded_data)
+            else loaded_data
+        )
+        missing_keys, unexpected_keys = model.load_state_dict(state_dict_to_load, strict=False)
+        chronicle.log_success(f"Loaded pre-trained predictor checkpoint from: {ckpt_file}")
+        if missing_keys:
+            chronicle.log_detail("Newly initialized modules (e.g. corrector)", missing_keys)
     
     loss_cfg = config.get("loss", {})
     model_cfg = config.get("model", {})
@@ -292,8 +384,15 @@ def main() -> None:
     optimizer_state = None
     loaded_existing = False
 
-    # Check for full training checkpoint first
-    if checkpoint_path.is_file():
+    # Check for full training checkpoint first (only if resuming in same save_dir)
+    if mode == "train_corrector":
+        # In modalità train_corrector, la cronologia e i best score del correttore partono isolati
+        chronicle.log_info("Starting independent Slow Corrector training on top of frozen Predictor.")
+        start_epoch = 1
+        history = []
+        best_combined_score = float("inf")
+        best_rollout_mae = float("inf")
+    elif checkpoint_path.is_file():
         ckpt = torch.load(checkpoint_path, map_location=device)
         if isinstance(ckpt, dict):
             if "model_state" in ckpt:
@@ -332,7 +431,7 @@ def main() -> None:
                 chronicle.log_warning(f"Could not load existing history: {e}")
                 history = []
     else:
-        chronicle.log_info("No existing model or checkpoint — starting fresh.")
+        chronicle.log_info("Starting fresh training session.")
 
     probe_lr = train_cfg.get("probe_lr", 5e-4)
     probe_weight_decay = train_cfg.get("probe_weight_decay", 1e-2)
@@ -375,6 +474,7 @@ def main() -> None:
         rollout_horizons=eval_cfg.get("rollout_horizons", [1, 5, 10, 25, 50]),
         save_best_metric=eval_cfg.get("save_best_metric", "pareto_rollout"),
         num_objects=env_cfg.get("num_objects", 1),
+        mode=mode,
     )
 
     if loaded_existing and (best_val_pos_err == float("inf") or best_val_loss == float("inf")):
@@ -389,17 +489,27 @@ def main() -> None:
     # Ricarica il miglior modello prima della valutazione finale
     best_weights_path = save_dir / "model.pt"
     if best_weights_path.is_file():
-        model.load_state_dict(torch.load(best_weights_path, map_location=device))
-        chronicle.log_info(f"Loaded best checkpoint from {best_weights_path} for final evaluation.")
+        try:
+            ckpt_state = torch.load(best_weights_path, map_location=device)
+            if isinstance(ckpt_state, dict) and "model_state" in ckpt_state:
+                ckpt_state = ckpt_state["model_state"]
+            model.load_state_dict(ckpt_state, strict=False)
+            chronicle.log_info(f"Loaded best checkpoint from {best_weights_path} for final evaluation.")
+        except Exception as e:
+            chronicle.log_warning(f"Could not load best checkpoint from {best_weights_path}: {e}")
 
     # 5. Evaluate on Test and Extrapolation sets
     try:
         chronicle.log_section_header("Rollout & Generalization Evaluation")
+        eval_horizons = eval_cfg.get("rollout_horizons", [1, 5, 10, 25, 50])
+        num_objs = env_cfg.get("num_objects", 1)
+
         evaluator = RolloutEvaluator(
             model=model,
             device=device,
-            horizons=eval_cfg.get("rollout_horizons", [1, 5, 10, 25, 50]),
-            num_objects=env_cfg.get("num_objects", 1),
+            horizons=eval_horizons,
+            num_objects=num_objs,
+            use_corrector=(mode != "train_predictor"),
         )
 
         test_results = evaluator.evaluate_dataset(dataloaders["test"])
@@ -412,6 +522,42 @@ def main() -> None:
         chronicle.log_detail("Extrapolation TF MSE", f"{extrap_results.teacher_forcing_mse:.4e}")
         if test_results.position_error_per_horizon:
             chronicle.log_detail("Test Pos Error by Horizon", test_results.position_error_per_horizon)
+
+        # Se in modalità train_corrector, esegue anche la comparazione A/B (senza correttore)
+        ab_comparison = {}
+        if mode == "train_corrector":
+            chronicle.log_section_header("A/B Evaluation: Baseline Predictor (No Corrector) vs Predictor + Corrector")
+            evaluator_no_corr = RolloutEvaluator(
+                model=model,
+                device=device,
+                horizons=eval_horizons,
+                num_objects=num_objs,
+                use_corrector=False,
+            )
+            test_no_corr = evaluator_no_corr.evaluate_dataset(dataloaders["test"])
+            extrap_no_corr = evaluator_no_corr.evaluate_dataset(dataloaders["extrapolation"])
+
+            chronicle.log_detail("Predictor ONLY - Test Rollout MAE", f"{test_no_corr.rollout_mae:.4f}")
+            chronicle.log_detail("Predictor ONLY - Test Drift Ratio", f"{test_no_corr.drift_ratio:.2f}x")
+            chronicle.log_detail("Predictor + Corrector - Test Rollout MAE", f"{test_results.rollout_mae:.4f}")
+            chronicle.log_detail("Predictor + Corrector - Test Drift Ratio", f"{test_results.drift_ratio:.2f}x")
+
+            ab_comparison = {
+                "predictor_only": {
+                    "test_rollout_mae": test_no_corr.rollout_mae,
+                    "test_drift_ratio": test_no_corr.drift_ratio,
+                    "test_pos_error_per_horizon": test_no_corr.position_error_per_horizon,
+                    "extrap_rollout_mae": extrap_no_corr.rollout_mae,
+                    "extrap_drift_ratio": extrap_no_corr.drift_ratio,
+                },
+                "predictor_with_corrector": {
+                    "test_rollout_mae": test_results.rollout_mae,
+                    "test_drift_ratio": test_results.drift_ratio,
+                    "test_pos_error_per_horizon": test_results.position_error_per_horizon,
+                    "extrap_rollout_mae": extrap_results.rollout_mae,
+                    "extrap_drift_ratio": extrap_results.drift_ratio,
+                }
+            }
 
         metrics_payload = {
             "parameters": parameter_count(model),
@@ -429,6 +575,8 @@ def main() -> None:
                 "velocity_error_per_horizon": extrap_results.velocity_error_per_horizon,
             },
         }
+        if ab_comparison:
+            metrics_payload["ab_comparison"] = ab_comparison
 
         with open(save_dir / "metrics.json", "w", encoding="utf-8") as f:
             json.dump(metrics_payload, f, indent=2)

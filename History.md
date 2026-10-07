@@ -1386,3 +1386,48 @@ La generazione dei dati di training abbandona la perturbazione uniforme al 20% s
 
 4. **Sessione Interrotta all'Epoca 229 / 600:**
    - Best checkpoint selezionato all'epoca 139 prima del completamento dell'intero budget di epoche programmato.
+
+---
+---
+
+# SPWM-v8.3: Disaccoppiamento Formale delle Dinamiche in Due Fasi (Nominale vs Drift)
+
+### 1. Motivazione Teorica e Diagnosi
+L'addestramento congiunto end-to-end eseguito in SPWM-v8.2 ha evidenziato una **forte interferenza tra gradienti**: l'ottimizzazione locale della velocità e della cinematica nominale ha degradato la stabilizzazione asintotica a $H \ge 50$.
+Per risolvere definitivamente il conflitto dinamico, SPWM-v8.3 disaccoppia formalmente l'architettura in **due modalità di training distinte e mutuamente esclusive**:
+
+1. **Modalità `--mode train_predictor` (Fase Nominale):**
+   - **Correttore disattivato**: istanza bypassata / forzata a zero (`enable_corrector = False`, parametri correttore con `requires_grad = False`).
+   - **Dataset Nominale Pulito**: $p_{\text{drift}} = 0.0$, `mixed_drift = False`.
+   - **Ottimizzazione**: allena esclusivamente il modulo Predittore/World Model (Encoder, Predictor, Dynamics $p$, Physical Decoder probe) per minimizzare l'errore cinematico locale ($q, v$) e stabilizzare la fisica nominale.
+
+2. **Modalità `--mode train_corrector` (Fase di Stabilizzazione & Drift):**
+   - **Pre-trained Predictor**: richiede obbligatoriamente il checkpoint del predittore pre-addestrato (`--predictor-checkpoint <path>`).
+   - **Freezing Rigoroso del World Model**: pesi del predittore, encoder, dinamica e probe congelati (`requires_grad = False`) con sottomoduli in modalità `eval()`.
+   - **Dataset OOD Drift**: traiettorie con iniezione di drift ($p_{\text{drift}} \ge 0.15$).
+   - **Ottimizzazione**: allena esclusivamente il Correttore Lento ALIF e i suoi parametri di steering/smorzamento per contrastare le divergenze OOD a medio-lungo raggio senza alterare le feature del predittore.
+
+3. **Verifica tramite Asserzioni a Inizio Training:**
+   - Esecuzione automatica di `verify_gradient_isolation()` per garantire l'assenza assoluta di gradient leak tra i moduli non coinvolti prima del lancio dei batch.
+
+4. **Logica di Selezione Modello Disaccoppiata (`compute_selection_score`):**
+   - **`train_predictor`**: orientato esclusivamente all'acutezza cinematica nominale a breve termine:
+     $$\text{Score}_{\text{predictor}} = \text{PosErr}_{H=1} + 0.5 \cdot \text{VelErr}_{H=1} + 0.25 \cdot \text{PosErr}_{H=5}$$
+   - **`train_corrector`**: orientato alla soppressione asintotica e stabilità OOD a lungo raggio:
+     $$\text{Score}_{\text{corrector}} = \text{DynamicScore} = \text{RolloutMAE} \cdot \left(1 + \frac{\max(0, \text{DriftRatio} - 1)}{5.0}\right)$$
+
+5. **Logging a Terminale Specifico per Fase:**
+   - Visualizzazione chiara dello stato dei moduli (congelamento esplicito del Fast Predictor in `train_corrector`, disattivazione del Correttore in `train_predictor`) e breakdown metrico dedicato per ciascuna modalità.
+
+6. **Disaccoppiamento Checkpoint e Valutazione Comparativa A/B (SPWM-v8.3):**
+   - **Checkpoint dedicati per ruolo**:
+     - `train_predictor`: salva `model_predictor.pt` focalizzato sul world model cinematico.
+     - `train_corrector`: salva `model_corrector.pt` e `corrector_weights.pt` isolando il modulo di stabilizzazione lenta.
+   - **Isolamento e Safe Loading**: gestione a prova di mismatch architetturale (`strict=False` e fallback checkpoint per evitare errori di missing keys nel correttore o predittore).
+   - **Valutazione A/B Diretta**: a fine sessione `train_corrector`, `RolloutEvaluator` esegue automaticamente il benchmark comparativo (*Predictor Only* vs *Predictor + Slow Corrector*) per quantificare la riduzione esatta del Drift Ratio su orizzonti $H=1..50$.
+
+7. **Ottimizzazione e Dinamica di Steering del Correttore (SPWM-v8.4):**
+   - **Preservazione del Predictor di Base**: checkpoint del World Model isolato e salvato in `model_predictor.pt` (46 parametri congelati).
+   - **Score Indipendente del Correttore**: metrica dedicata $\text{Score}_{\text{corrector}} = 0.5 \cdot \text{RolloutMAE} + 0.5 \cdot \text{PosErr}_{H=50}$, svincolata dalle epoche del predittore per tracciare il reale abbattimento del residuo.
+   - **Supervisione cinematica fisica integrata**: $\mathcal{L}_{\text{asymptotic}} = \mathcal{L}_{\text{latent}} + 2.0 \cdot \mathcal{L}_{\text{kin}}$, guidando l'azione correttiva direttamente nello spazio fisico decodificato $(q, v)$.
+   - **Reset di addestramento per il correttore**: il correttore parte da epoca 1 con stato pulito sopra il modello congelato, salvando in modo incrementale ogni miglioramento asintotico.

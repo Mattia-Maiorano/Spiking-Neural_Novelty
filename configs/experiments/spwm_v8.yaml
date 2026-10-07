@@ -66,10 +66,10 @@ corrector:
   cadence: 5                    # Rarefied intervention cadence Delta = 5 steps
   beta_mem: 0.95                # Markedly slower membrane potential decay
   beta_adapt: 0.995             # Slower threshold adaptation time constant
-  v_th0: 1.5                    # Elevated resting threshold for quiescent firing regime
-  gamma: 0.25                   # Threshold adaptation coupling strength
-  max_gain_v: 0.08              # Maximum velocity steering force
-  max_gain_p: 0.08              # Maximum momentum modulation
+  v_th0: 1.0                    # Responsive resting threshold for effective drift integration
+  gamma: 0.20                   # Threshold adaptation coupling strength
+  max_gain_v: 0.25              # Maximum velocity steering force
+  max_gain_p: 0.25              # Maximum momentum modulation
   max_damp: 0.40                # Maximum sub-threshold damping factor (anti runaway excitation)
   inter_step_decay: 0.85        # Smooth exponential decay between cadences (C^1 continuity)
 
@@ -79,8 +79,8 @@ training:
   learning_rate: 0.0002
   probe_lr: 0.0005
   probe_weight_decay: 0.01
-  corrector_lr: 0.0002
-  corrector_horizon: 25         # Protected training horizon H >= 25
+  corrector_lr: 0.0005          # Increased learning rate for corrector steering
+  corrector_horizon: 50         # Extended training horizon H=50 for long-term drift suppression
   weight_decay: 0.0001
   batch_size: 32
   grad_clip_norm: 1.0

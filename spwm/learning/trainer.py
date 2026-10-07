@@ -104,7 +104,14 @@ class Trainer:
         rollout_horizons: Optional[Sequence[int]] = None,
         save_best_metric: str = "pareto_rollout",
         num_objects: int = 1,
+        mode: str = "train_predictor",
     ) -> None:
+        self.mode = mode.lower()
+        if self.mode not in ("train_predictor", "train_corrector", "joint"):
+            raise ValueError(
+                f"Unknown training mode '{mode}'. Must be one of: 'train_predictor', 'train_corrector', 'joint'."
+            )
+
         self.best_epoch: Optional[int] = best_epoch
         self.best_val_pos_err: float = best_val_pos_err
         self.best_val_vel_err: float = best_val_vel_err
@@ -127,7 +134,7 @@ class Trainer:
         self.lambda_corrector_quiescence = lambda_corrector_quiescence
         self.corrector_quiescence_margin = corrector_quiescence_margin
         self.corrector_quiescence_cap = corrector_quiescence_cap
-        self.encoder_warmup_epochs = encoder_warmup_epochs
+        self.encoder_warmup_epochs = encoder_warmup_epochs if self.mode != "train_corrector" else 0
         self.curriculum_thresholds = curriculum_thresholds or {
             "phase_1_horizon": 3,
             "phase_2_horizon": 6,
@@ -166,68 +173,164 @@ class Trainer:
         )
 
         # ------------------------------------------------------------------
-        # Configurazione Ottimizzatori
+        # Configurazione Ottimizzatori e Disaccoppiamento Gradienti
         # ------------------------------------------------------------------
 
-        # Step-1: Ottimizzatore Encoder (SpatialSoftmax + front-end convoluzionale)
-        encoder_params = (
-            list(self.model.encoder.parameters())
-            if hasattr(self.model, "encoder")
-            else []
-        )
-        self.encoder_optimizer = (
-            torch.optim.AdamW(encoder_params, lr=2e-4, weight_decay=1e-4)
-            if encoder_params
-            else None
-        )
+        if self.mode == "train_predictor":
+            # MODALITÀ 1: train_predictor (Fase Nominale)
+            # Allena solo Encoder, Predictor/Dynamics p e Probe decoder.
+            # Il correttore è disattivato / congelato (nessun gradiente, nessun ottimizzatore).
+            if hasattr(self.model, "corrector") and self.model.corrector is not None:
+                for p in self.model.corrector.parameters():
+                    p.requires_grad = False
 
-        # Step-2: Ottimizzatore Predictor + Dinamica del Momento Latente p
-        predictor_params = [
-            p
-            for n, p in self.model.named_parameters()
-            if "predictor" in n and "sensory_predictor" not in n
-        ]
-        if hasattr(self.model, "dynamics"):
-            dynamics_p_params = [
-                p
-                for n, p in self.model.dynamics.named_parameters()
-                if "fuse_" in n or "recurrent_proj" in n or "norm" in n
-            ]
-            predictor_params.extend(dynamics_p_params)
-
-        self.predictor_optimizer = (
-            torch.optim.AdamW(predictor_params, lr=learning_rate, weight_decay=weight_decay)
-            if predictor_params
-            else None
-        )
-
-        # Step-3: Ottimizzatore Probe Cinematico (SOLO decoder / probe)
-        probe_params = [
-            p
-            for n, p in self.model.named_parameters()
-            if "decoder" in n or "probe" in n
-        ]
-        self.probe_optimizer = (
-            torch.optim.AdamW(probe_params, lr=probe_lr, weight_decay=probe_weight_decay)
-            if probe_params
-            else None
-        )
-
-        # Step-4: Ottimizzatore Modulo Correttore Lento (SPWM-v8: Ottimizzazione a blocchi protetti)
-        corrector_params = (
-            list(self.model.corrector.parameters())
-            if hasattr(self.model, "corrector") and self.model.corrector is not None
-            else []
-        )
-        self.corrector_optimizer = (
-            torch.optim.AdamW(
-                corrector_params,
-                lr=(corrector_lr if corrector_lr is not None else learning_rate),
-                weight_decay=weight_decay,
+            # Step-1: Ottimizzatore Encoder
+            encoder_params = (
+                list(self.model.encoder.parameters())
+                if hasattr(self.model, "encoder")
+                else []
             )
-            if corrector_params
-            else None
-        )
+            self.encoder_optimizer = (
+                torch.optim.AdamW(encoder_params, lr=2e-4, weight_decay=1e-4)
+                if encoder_params
+                else None
+            )
+
+            # Step-2: Ottimizzatore Predictor + Dinamica del Momento Latente p
+            predictor_params = [
+                p
+                for n, p in self.model.named_parameters()
+                if "predictor" in n and "sensory_predictor" not in n and "corrector" not in n
+            ]
+            if hasattr(self.model, "dynamics"):
+                dynamics_p_params = [
+                    p
+                    for n, p in self.model.dynamics.named_parameters()
+                    if "fuse_" in n or "recurrent_proj" in n or "norm" in n
+                ]
+                predictor_params.extend(dynamics_p_params)
+
+            self.predictor_optimizer = (
+                torch.optim.AdamW(predictor_params, lr=learning_rate, weight_decay=weight_decay)
+                if predictor_params
+                else None
+            )
+
+            # Step-3: Ottimizzatore Probe Cinematico
+            probe_params = [
+                p
+                for n, p in self.model.named_parameters()
+                if ("decoder" in n or "probe" in n) and "corrector" not in n
+            ]
+            self.probe_optimizer = (
+                torch.optim.AdamW(probe_params, lr=probe_lr, weight_decay=probe_weight_decay)
+                if probe_params
+                else None
+            )
+
+            # Modulo correttore disattivato
+            self.corrector_optimizer = None
+
+        elif self.mode == "train_corrector":
+            # MODALITÀ 2: train_corrector (Fase di Stabilizzazione & Drift)
+            # Modello Predittore/World Model rigorosamente congelato (requires_grad = False).
+            # Allena esclusivamente i parametri del correttore.
+            for n, p in self.model.named_parameters():
+                if "corrector" not in n:
+                    p.requires_grad = False
+                else:
+                    p.requires_grad = True
+
+            # Imposta i sottomoduli del predittore in modalità eval per stabilità
+            if hasattr(self.model, "encoder"):
+                self.model.encoder.eval()
+            if hasattr(self.model, "dynamics"):
+                self.model.dynamics.eval()
+            if hasattr(self.model, "predictor"):
+                self.model.predictor.eval()
+            if hasattr(self.model, "sensory_predictor"):
+                self.model.sensory_predictor.eval()
+            if hasattr(self.model, "physical_decoder"):
+                self.model.physical_decoder.eval()
+
+            self.encoder_optimizer = None
+            self.predictor_optimizer = None
+            self.probe_optimizer = None
+
+            corrector_params = (
+                list(self.model.corrector.parameters())
+                if hasattr(self.model, "corrector") and self.model.corrector is not None
+                else []
+            )
+            self.corrector_optimizer = (
+                torch.optim.AdamW(
+                    corrector_params,
+                    lr=(corrector_lr if corrector_lr is not None else learning_rate),
+                    weight_decay=weight_decay,
+                )
+                if corrector_params
+                else None
+            )
+
+        else:  # mode == "joint" (Legacy)
+            encoder_params = (
+                list(self.model.encoder.parameters())
+                if hasattr(self.model, "encoder")
+                else []
+            )
+            self.encoder_optimizer = (
+                torch.optim.AdamW(encoder_params, lr=2e-4, weight_decay=1e-4)
+                if encoder_params
+                else None
+            )
+
+            predictor_params = [
+                p
+                for n, p in self.model.named_parameters()
+                if "predictor" in n and "sensory_predictor" not in n
+            ]
+            if hasattr(self.model, "dynamics"):
+                dynamics_p_params = [
+                    p
+                    for n, p in self.model.dynamics.named_parameters()
+                    if "fuse_" in n or "recurrent_proj" in n or "norm" in n
+                ]
+                predictor_params.extend(dynamics_p_params)
+
+            self.predictor_optimizer = (
+                torch.optim.AdamW(predictor_params, lr=learning_rate, weight_decay=weight_decay)
+                if predictor_params
+                else None
+            )
+
+            probe_params = [
+                p
+                for n, p in self.model.named_parameters()
+                if "decoder" in n or "probe" in n
+            ]
+            self.probe_optimizer = (
+                torch.optim.AdamW(probe_params, lr=probe_lr, weight_decay=probe_weight_decay)
+                if probe_params
+                else None
+            )
+
+            corrector_params = (
+                list(self.model.corrector.parameters())
+                if hasattr(self.model, "corrector") and self.model.corrector is not None
+                else []
+            )
+            self.corrector_optimizer = (
+                torch.optim.AdamW(
+                    corrector_params,
+                    lr=(corrector_lr if corrector_lr is not None else learning_rate),
+                    weight_decay=weight_decay,
+                )
+                if corrector_params
+                else None
+            )
+
+        # Verifica di isolamento gradienti a inizio training
+        self.verify_gradient_isolation()
 
         self.decoder_scheduler = None
 
@@ -242,18 +345,30 @@ class Trainer:
         self.best_val_loss = best_val_loss
         self.history = history if history is not None else []
         
-        # Fallback automatico da cronologia con ordinamento per Dynamic Score Weighting
+        # Fallback automatico da cronologia con ordinamento specifico per modalità
         if self.history and (self.best_combined_score == float("inf") or self.best_rollout_mae == float("inf")):
             def _selection_key(rec):
-                # Prefer dynamic_score if present, fallback to combined_score or rollout_mae
-                score = rec.get("val_dynamic_score", rec.get("combined_score", rec.get("val_rollout_mae", float("inf"))))
-                return score
+                if self.mode == "train_predictor":
+                    pos_h1 = rec.get("val_pos_err_h1", rec.get("val_pos_err", float("inf")))
+                    vel_h1 = rec.get("val_vel_err_h1", rec.get("val_vel_err", 0.0))
+                    pos_h5 = rec.get("val_pos_err_h5", pos_h1)
+                    beta_v = getattr(self.loss_fn, "beta_v", 2.0)
+                    return pos_h1 + beta_v * vel_h1 + 0.5 * pos_h5
+                else:
+                    return rec.get("val_dynamic_score", rec.get("combined_score", rec.get("val_rollout_mae", float("inf"))))
 
             best_entry = min(self.history, key=_selection_key)
             self.best_gate_passed = bool(best_entry.get("val_gate_passed", False))
             self.best_rollout_mae = best_entry.get("val_rollout_mae", float("inf"))
             self.best_drift_ratio = best_entry.get("val_drift_ratio", float("inf"))
-            self.best_combined_score = best_entry.get("val_dynamic_score", best_entry.get("combined_score", self.best_rollout_mae))
+            if self.mode == "train_predictor":
+                pos_h1 = best_entry.get("val_pos_err_h1", best_entry.get("val_pos_err", float("inf")))
+                vel_h1 = best_entry.get("val_vel_err_h1", best_entry.get("val_vel_err", 0.0))
+                pos_h5 = best_entry.get("val_pos_err_h5", pos_h1)
+                beta_v = getattr(self.loss_fn, "beta_v", 2.0)
+                self.best_combined_score = pos_h1 + beta_v * vel_h1 + 0.5 * pos_h5
+            else:
+                self.best_combined_score = best_entry.get("val_dynamic_score", best_entry.get("combined_score", self.best_rollout_mae))
             self.best_val_pos_err = best_entry.get("val_pos_err", self.best_val_pos_err)
             self.best_val_vel_err = best_entry.get("val_vel_err", self.best_val_vel_err)
             self.best_epoch = best_entry.get("epoch", self.best_epoch)
@@ -283,10 +398,111 @@ class Trainer:
             if "best_epoch" in optimizer_state:
                 self.best_epoch = optimizer_state["best_epoch"]
 
+    def verify_gradient_isolation(self) -> None:
+        """
+        Verifies via assertions that gradients of non-involved modules are strictly deactivated.
+        """
+        if self.mode == "train_predictor":
+            # 1. Corrector must be inactive or have no trainable parameters
+            if hasattr(self.model, "corrector") and self.model.corrector is not None:
+                for name, param in self.model.corrector.named_parameters():
+                    assert not param.requires_grad, (
+                        f"[train_predictor mode] Gradient leak detected! "
+                        f"Corrector parameter '{name}' has requires_grad=True, but should be frozen."
+                    )
+            assert self.corrector_optimizer is None, (
+                "[train_predictor mode] corrector_optimizer must be None."
+            )
+            # 2. Predictor / World Model must have trainable parameters
+            trainable_predictor_params = [
+                n for n, p in self.model.named_parameters()
+                if "corrector" not in n and p.requires_grad
+            ]
+            assert len(trainable_predictor_params) > 0, (
+                "[train_predictor mode] No trainable parameters found for predictor / world model!"
+            )
+
+        elif self.mode == "train_corrector":
+            # 1. All non-corrector parameters must be frozen
+            for name, param in self.model.named_parameters():
+                if "corrector" not in name:
+                    assert not param.requires_grad, (
+                        f"[train_corrector mode] Gradient leak detected! "
+                        f"Non-corrector parameter '{name}' has requires_grad=True, but must be frozen."
+                    )
+                else:
+                    assert param.requires_grad, (
+                        f"[train_corrector mode] Corrector parameter '{name}' has requires_grad=False, but must be trainable."
+                    )
+            # 2. Optimizers for predictor, encoder, probe must be None
+            assert self.encoder_optimizer is None, (
+                "[train_corrector mode] encoder_optimizer must be None."
+            )
+            assert self.predictor_optimizer is None, (
+                "[train_corrector mode] predictor_optimizer must be None."
+            )
+            assert self.probe_optimizer is None, (
+                "[train_corrector mode] probe_optimizer must be None."
+            )
+            assert self.corrector_optimizer is not None, (
+                "[train_corrector mode] corrector_optimizer must not be None."
+            )
+            assert hasattr(self.model, "corrector") and self.model.corrector is not None, (
+                "[train_corrector mode] Model must have an active corrector module."
+            )
+
+    def compute_selection_score(self, val_metrics: Dict[str, float]) -> Tuple[float, str]:
+        """Calcola la metrica di selezione del miglior checkpoint in modo specifico per la modalità attiva.
+        
+        - Modalità train_predictor (Fase Nominale):
+          L'obiettivo è l'accuratezza cinematica locale e la fedeltà fisica a breve termine.
+          Score = val_pos_err_h1 + 0.5 * val_vel_err_h1 + 0.25 * val_pos_err_h5
+        
+        - Modalità train_corrector (Fase di Drift & Stabilizzazione):
+          L'obiettivo è la soppressione del drift asintotico su orizzonti estesi (H>=25, 50).
+          Score = Dynamic Score (Rollout MAE pesato con drift ratio H50/H1)
+        """
+        if self.mode == "train_predictor":
+            h1_pos = val_metrics.get("val_pos_err_h1", val_metrics.get("val_pos_err", 0.0))
+            h1_vel = val_metrics.get("val_vel_err_h1", val_metrics.get("val_vel_err", 0.0))
+            h5_pos = val_metrics.get("val_pos_err_h5", h1_pos)
+            # Local Kinematic Acuity Score
+            score = float(h1_pos + 0.5 * h1_vel + 0.25 * h5_pos)
+            desc = f"Local Kinematic Error (H1 Pos: {h1_pos:.4f}, H1 Vel: {h1_vel:.4f}, H5 Pos: {h5_pos:.4f})"
+            return score, desc
+        else:
+            # train_corrector: Valutazione asintotica e soppressione del drift a lungo raggio
+            mae = float(val_metrics.get("val_rollout_mae", 0.0))
+            drift_ratio = float(val_metrics.get("val_drift_ratio", 1.0))
+            h50_pos = float(val_metrics.get("val_pos_err_h50", mae))
+            # Score dedicato al correttore: MAE complessivo + penalità diretta su H50
+            score = float(0.5 * mae + 0.5 * h50_pos)
+            desc = f"Corrector Rollout Score (Mean MAE: {mae:.4f}, H50 Pos: {h50_pos:.4f}, Drift: {drift_ratio:.2f}x)"
+            return score, desc
+
     def _print_training_header(self, total_epochs: int) -> None:
         """Visualizza i parametri principali prima dell'avvio."""
         chronicle.log_application_title("SPWM CONTINUOUS ONLINE TRAINER")
         chronicle.log_detail("Device", self.device)
+        chronicle.log_detail("Training Mode", self.mode.upper())
+        if self.mode == "train_predictor":
+            chronicle.log_detail(
+                "Phase Objective",
+                "⚡ FAST PREDICTOR NOMINAL TRAINING (Local Kinematics & Physical Acuity)",
+            )
+            chronicle.log_detail(
+                "Model Selection Metric",
+                "Local Kinematic Score: H1_Pos + 0.5*H1_Vel + 0.25*H5_Pos",
+            )
+        elif self.mode == "train_corrector":
+            chronicle.log_detail(
+                "Phase Objective",
+                "🐢 SLOW NEUROMORPHIC CORRECTOR (Drift Mitigation & Long-Horizon Stabilization)",
+            )
+            chronicle.log_detail(
+                "Model Selection Metric",
+                f"Dynamic Drift Score (Rollout MAE x Drift Ratio, Max Drift Gate: {self.max_drift_ratio:.1f}x)",
+            )
         chronicle.log_detail(
             "Epochs",
             f"{self.start_epoch} -> {self.start_epoch + total_epochs - 1}  (Total: {total_epochs})",
@@ -295,17 +511,23 @@ class Trainer:
         chronicle.log_detail("Algorithm", self.learning_algorithm)
         chronicle.log_detail("Checkpoint Dir", str(self.save_dir))
         chronicle.log_detail("Encoder Warmup Epochs", f"{self.encoder_warmup_epochs}")
-        chronicle.log_detail("Encoder Optimizer", "Enabled" if self.encoder_optimizer else "Disabled")
-        chronicle.log_detail("Probe Optimizer", "Enabled" if self.probe_optimizer else "Disabled")
-        chronicle.log_detail("Predictor Optimizer", "Enabled" if self.predictor_optimizer else "Disabled")
-        chronicle.log_detail("Corrector Optimizer", "Enabled" if self.corrector_optimizer else "Disabled")
+        chronicle.log_detail("Encoder Optimizer", "Enabled" if self.encoder_optimizer else "Disabled (Frozen)")
+        chronicle.log_detail("Probe Optimizer", "Enabled" if self.probe_optimizer else "Disabled (Frozen)")
+        chronicle.log_detail("Predictor Optimizer", "Enabled" if self.predictor_optimizer else "Disabled (Frozen)")
+        chronicle.log_detail("Corrector Optimizer", "Enabled" if self.corrector_optimizer else "Disabled (Bypassed)")
         sampling_mode = f"Smooth U(1, {self.k_max})" if self.smooth_horizon_sampling else "Curriculum Thresholds"
         chronicle.log_detail("Horizon Mode", sampling_mode)
         chronicle.log_newline()
 
     def train_epoch(self, epoch: int) -> Dict[str, float]:
         """Esegue una singola epoca di training su tutti i batch dello stream."""
-        self.model.train()
+        if self.mode == "train_corrector":
+            self.model.eval()
+            if hasattr(self.model, "corrector") and self.model.corrector is not None:
+                self.model.corrector.train()
+        else:
+            self.model.train()
+
         epoch_losses: Dict[str, float] = {
             "total_loss": 0.0,
             "l_pred": 0.0,
@@ -323,7 +545,8 @@ class Trainer:
         }
         num_batches = 0
         total_grad_norm_accum = 0.0
-        is_warmup = epoch <= self.encoder_warmup_epochs
+        is_warmup = (epoch <= self.encoder_warmup_epochs) if self.mode != "train_corrector" else False
+        accum_eprop = (self.mode != "train_corrector")
 
         for batch in self.train_loader:
             # Scheduled sampling continuo: campionamento uniforme stocastico K_t ~ U(1, K_max)
@@ -338,16 +561,16 @@ class Trainer:
             if true_kin is not None:
                 true_kin = true_kin.to(self.device)
 
-            # Passaggio neuromorfo forward-only con accumulo locale e-prop
+            # Passaggio neuromorfo forward-only con accumulo locale e-prop (solo se non in train_corrector)
             with torch.no_grad():
                 out = self.model(
                     events,
-                    accumulate_local_updates=True,
+                    accumulate_local_updates=accum_eprop,
                     learning_rate=self.learning_rate,
                     target_kinematics=true_kin,
                 )
 
-            if hasattr(self.model, "apply_accumulated_updates"):
+            if accum_eprop and hasattr(self.model, "apply_accumulated_updates"):
                 self.model.apply_accumulated_updates(learning_rate=self.learning_rate)
 
             # ----------------------------------------------------------
@@ -529,8 +752,16 @@ class Trainer:
                                 use_corrector=True,
                             )
 
-                            # 1. Asymptotic Trajectory Stabilization Loss (H >= 25)
-                            l_asymptotic = nn.functional.mse_loss(pred_rollout, target_rollout)
+                            # 1. Asymptotic Trajectory Stabilization Loss (Latent MSE + Kinematic Position Divergence)
+                            l_asymptotic_latent = nn.functional.mse_loss(pred_rollout, target_rollout)
+                            l_asymptotic_kin = torch.tensor(0.0, device=self.device)
+                            if true_kin is not None and hasattr(self.model, "physical_decoder"):
+                                decoded_rollout = self.model.physical_decoder(pred_rollout)
+                                target_kin_rollout = true_kin[:, t0 + 1 : t0 + 1 + H_corr]
+                                # Penalizza direttamente l'errore di posizione decodificato su orizzonti lunghi
+                                l_asymptotic_kin = nn.functional.mse_loss(decoded_rollout, target_kin_rollout)
+
+                            l_asymptotic = l_asymptotic_latent + 2.0 * l_asymptotic_kin
 
                             # 2. Quiescent Sparsity Penalty on Corrector Spikes (Hinge / Dead-Zone Margin with Upper Capping)
                             # Zero penalty for corrective activity below margin (e.g. 15%), and capped upper bound against chattering
@@ -539,6 +770,7 @@ class Trainer:
                                 l_quiescence = torch.clamp(
                                     nn.functional.relu(spike_activity - self.corrector_quiescence_margin),
                                     max=self.corrector_quiescence_cap,
+                                    min=0.0,
                                 )
                             else:
                                 l_quiescence = torch.tensor(0.0, device=self.device)
@@ -726,33 +958,37 @@ class Trainer:
                     else:
                         if self.loss_fn.multi_step_horizon != 1:
                             self.loss_fn.multi_step_horizon = 1
-
                 # ------------------------------------------------------
-                # Selezione del Miglior Modello: Dynamic Score Weighting
+                # Selezione del Miglior Modello: Specifico per Modalità
                 # ------------------------------------------------------
-                curr_drift_ratio = val_metrics["val_drift_ratio"]
-                curr_rollout_mae = val_metrics["val_rollout_mae"]
-                curr_gate_passed = bool(val_metrics["val_gate_passed"] > 0.5)
-                curr_dynamic_score = val_metrics.get("val_dynamic_score", curr_rollout_mae)
+                curr_score, score_description = self.compute_selection_score(val_metrics)
+                curr_drift_ratio = val_metrics.get("val_drift_ratio", 1.0)
+                curr_rollout_mae = val_metrics.get("val_rollout_mae", 0.0)
+                curr_gate_passed = bool(val_metrics.get("val_gate_passed", 0.0) > 0.5)
 
-                current_pos_h1 = val_metrics.get("val_pos_err_h1", val_metrics["val_pos_err"])
-                current_vel_h1 = val_metrics.get("val_vel_err_h1", val_metrics["val_vel_err"])
-                combined_score = curr_dynamic_score
+                current_pos_h1 = val_metrics.get("val_pos_err_h1", val_metrics.get("val_pos_err", 0.0))
+                current_vel_h1 = val_metrics.get("val_vel_err_h1", val_metrics.get("val_vel_err", 0.0))
 
-                # Dynamic score weighting balances single-step error vs deviation rate
                 is_best = False
-                if curr_dynamic_score < self.best_combined_score:
+                if curr_score < self.best_combined_score:
                     is_best = True
 
                 if is_best:
                     self.best_gate_passed = curr_gate_passed
                     self.best_rollout_mae = curr_rollout_mae
                     self.best_drift_ratio = curr_drift_ratio
-                    self.best_combined_score = curr_dynamic_score
+                    self.best_combined_score = curr_score
                     self.best_epoch = epoch
                     self.best_val_pos_err = current_pos_h1
                     self.best_val_vel_err = current_vel_h1
+                    # Salva il checkpoint del modello completo e del modulo target per la modalità
                     torch.save(self.model.state_dict(), self.save_dir / "model.pt")
+                    if self.mode == "train_corrector":
+                        torch.save(self.model.state_dict(), self.save_dir / "model_corrector.pt")
+                        if hasattr(self.model, "corrector") and self.model.corrector is not None:
+                            torch.save(self.model.corrector.state_dict(), self.save_dir / "corrector_weights.pt")
+                    elif self.mode == "train_predictor":
+                        torch.save(self.model.state_dict(), self.save_dir / "model_predictor.pt")
 
                 record = {
                     "epoch": epoch,
@@ -760,7 +996,8 @@ class Trainer:
                     **train_metrics,
                     **val_metrics,
                     "grad_norm_recent": recent_norm,
-                    "combined_score": combined_score,
+                    "selection_score": curr_score,
+                    "combined_score": curr_score,
                 }
                 self.history.append(record)
 
@@ -817,36 +1054,69 @@ class Trainer:
                         else getattr(self.loss_fn, "multi_step_horizon", 1)
                     )
                     warmup_tag = " [WARMUP]" if epoch <= self.encoder_warmup_epochs else ""
-                    h_corr_used = min(self.corrector_horizon, 150) if (hasattr(self.model, "corrector") and self.model.corrector is not None) else None
-                    corrector_k_str = f", H_slow={self.corrector_horizon}, Cadence={getattr(self.model.corrector, 'cadence', 5)}" if h_corr_used else ""
                     
-                    header = (
-                        f"Epoch [{epoch:03d}/{end_epoch:03d}]"
-                        f" (K_fast={current_k}{corrector_k_str}){warmup_tag}"
-                        f"  Time: {epoch_duration:5.1f}s"
-                        f"  Total: {total_elapsed / 60:4.1f}m"
-                        f"{best_tag}"
-                    )
-                    chronicle.log_section_header(header)
+                    if self.mode == "train_predictor":
+                        header = (
+                            f"Epoch [{epoch:03d}/{end_epoch:03d}] [PREDICTOR-PHASE] (K_fast={current_k}){warmup_tag}"
+                            f"  Time: {epoch_duration:5.1f}s | Total: {total_elapsed / 60:4.1f}m{best_tag}"
+                        )
+                        chronicle.log_section_header(header)
 
-                    # --- FAST PREDICTOR BREAKDOWN ---
-                    chronicle.log_detail(
-                        "⚡ Fast Predictor (Short-Range Dynamics)",
-                        (
-                            f"L_1step(k=1): {train_metrics['l_pred']:.5f} | "
-                            f"L_multi(k={current_k}): {train_metrics.get('l_multi', 0.0):.5f} | "
-                            f"L_vel(k=1,3): {train_metrics.get('l_vel', 0.0):.5f} | "
-                            f"L_var: {train_metrics.get('l_var', 0.0):.5f} | "
-                            f"L_sparse: {train_metrics.get('l_sparse', 0.0):.5f}"
-                        ),
-                        indent_level=1,
-                    )
-
-                    # --- SLOW CORRECTOR BREAKDOWN ---
-                    if hasattr(self.model, "corrector") and self.model.corrector is not None:
-                        corr_cad = getattr(self.model.corrector, 'cadence', 5)
+                        # FAST PREDICTOR & REPRESENTATION
                         chronicle.log_detail(
-                            "🐢 Slow Corrector (Long-Horizon Stabilization)",
+                            "⚡ Fast Predictor Optimization (Nominal)",
+                            (
+                                f"L_1step(k=1): {train_metrics['l_pred']:.5f} | "
+                                f"L_multi(k={current_k}): {train_metrics.get('l_multi', 0.0):.5f} | "
+                                f"L_vel(k=1,3): {train_metrics.get('l_vel', 0.0):.5f} | "
+                                f"L_var: {train_metrics.get('l_var', 0.0):.5f} | "
+                                f"L_sparse: {train_metrics.get('l_sparse', 0.0):.5f}"
+                            ),
+                            indent_level=1,
+                        )
+                        chronicle.log_detail(
+                            "🎯 Representation & Probe",
+                            (
+                                f"L_coord(SpatialSoftmax): {train_metrics['l_coord']:.5f} | "
+                                f"L_probe(Kinematics): {train_metrics['l_probe']:.5f}"
+                            ),
+                            indent_level=1,
+                        )
+                        chronicle.log_detail(
+                            "📊 Validation Kinematics & Rollout",
+                            (
+                                f"Val Loss: {val_metrics['val_total_loss']:.5f} (Pred: {val_metrics['val_l_pred']:.5f}, Multi: {val_metrics.get('val_l_multi', 0.0):.5f}) | "
+                                f"TF Pos: {current_pos_h1:.4f} | TF Vel: {current_vel_h1:.4f}\n"
+                                f"    Rollout Horizons -> H1: {val_metrics.get('val_pos_err_h1', 0.0):.4f} | "
+                                f"H5: {val_metrics.get('val_pos_err_h5', 0.0):.4f} | "
+                                f"H10: {val_metrics.get('val_pos_err_h10', 0.0):.4f}"
+                            ),
+                            indent_level=1,
+                        )
+                        chronicle.log_detail(
+                            "🎯 Model Selection (Kinematic Acuity)",
+                            (
+                                f"Current Score: {curr_score:.5f} ({score_description})\n"
+                                f"    Best Selection: Score={self.best_combined_score:.5f} (H1_Pos={self.best_val_pos_err:.4f}, H1_Vel={self.best_val_vel_err:.4f} @ Ep {self.best_epoch})"
+                            ),
+                            indent_level=1,
+                        )
+
+                    elif self.mode == "train_corrector":
+                        corr_cad = getattr(self.model.corrector, 'cadence', 5) if hasattr(self.model, "corrector") and self.model.corrector else 5
+                        header = (
+                            f"Epoch [{epoch:03d}/{end_epoch:03d}] [CORRECTOR-PHASE] (H_slow={self.corrector_horizon}, Δ={corr_cad})"
+                            f"  Time: {epoch_duration:5.1f}s | Total: {total_elapsed / 60:4.1f}m{best_tag}"
+                        )
+                        chronicle.log_section_header(header)
+
+                        chronicle.log_detail(
+                            "🔒 Predictor Core & Representation",
+                            "FROZEN (requires_grad=False, eval mode). No kinematic gradient interference.",
+                            indent_level=1,
+                        )
+                        chronicle.log_detail(
+                            "🐢 Slow Neuromorphic Corrector (ALIF)",
                             (
                                 f"Total L_corr: {train_metrics.get('l_corr', 0.0):.5f} | "
                                 f"L_asymptotic(H={self.corrector_horizon}, Δ={corr_cad}): {train_metrics.get('l_corr_asymptotic', 0.0):.5f} | "
@@ -854,68 +1124,56 @@ class Trainer:
                             ),
                             indent_level=1,
                         )
-
-                    # --- ENCODER & PROBE SUPERVISION ---
-                    chronicle.log_detail(
-                        "🎯 Representation & Probe",
-                        (
-                            f"L_coord(SpatialSoftmax): {train_metrics['l_coord']:.5f} | "
-                            f"L_probe(Kinematics): {train_metrics['l_probe']:.5f}"
-                        ),
-                        indent_level=1,
-                    )
-
-                    # --- VALIDATION SUMMARY (TEACHER-FORCING & INSTANTANEOUS) ---
-                    chronicle.log_detail(
-                        "📊 Validation Losses",
-                        (
-                            f"Val Loss: {val_metrics['val_total_loss']:.5f} (Pred: {val_metrics['val_l_pred']:.5f}, Multi: {val_metrics.get('val_l_multi', 0.0):.5f}, Probe: {val_metrics.get('val_l_probe', 0.0):.5f}) | "
-                            f"TF Pos Err: {current_pos_h1:.5f} | TF Vel Err: {current_vel_h1:.5f}"
-                        ),
-                        indent_level=1,
-                    )
-
-                    # --- MODEL SELECTION & DYNAMIC SCORE (H1 & DRIFT) ---
-                    curr_dyn_score = val_metrics.get("val_dynamic_score", curr_rollout_mae)
-                    curr_h1_pos = val_metrics.get("val_pos_err_h1", val_metrics.get("val_pos_err", 0.0))
-                    h_pos_str = " | ".join([f"H{h}: {val_metrics.get(f'val_pos_err_h{h}', 0.0):.4f}" for h in self.rollout_horizons])
-
-                    chronicle.log_detail(
-                        "🎯 Model Selection (Dynamic Score = H1 & Drift)",
-                        (
-                            f"Dynamic Score: {curr_dyn_score:.5f} [H1 Error: {curr_h1_pos:.4f}, Drift (H50/H1): {curr_drift_ratio:.2f}x]\n"
-                            f"    Best Selection: Score={self.best_combined_score:.5f} (H1={self.best_val_pos_err:.4f}, Drift={self.best_drift_ratio:.2f}x @ Ep {self.best_epoch})"
-                        ),
-                        indent_level=1,
-                    )
-
-                    # --- AUTONOMOUS ROLLOUT TRAJECTORY BREAKDOWN ---
-                    chronicle.log_detail(
-                        "📈 Rollout Trajectory Diagnostics",
-                        (
-                            f"Rollout Mean MAE: {curr_rollout_mae:.5f} | "
-                            f"Spike Rate (Tr/Val): {train_metrics['spike_rate']:.3f} / {val_metrics['val_spike_rate']:.3f}\n"
-                            f"    Pos Error per Horizon: {h_pos_str}"
-                        ),
-                        indent_level=1,
-                    )
+                        h_pos_str = " | ".join([f"H{h}: {val_metrics.get(f'val_pos_err_h{h}', 0.0):.4f}" for h in self.rollout_horizons])
+                        chronicle.log_detail(
+                            "📈 Autonomous Rollout Trajectory (Drift Stabilization)",
+                            (
+                                f"Rollout Mean MAE: {curr_rollout_mae:.5f} | Drift Ratio (H50/H1): {curr_drift_ratio:.2f}x | "
+                                f"Spike Rate: {val_metrics.get('val_spike_rate', 0.0):.3f}\n"
+                                f"    Horizon Trajectory -> {h_pos_str}"
+                            ),
+                            indent_level=1,
+                        )
+                        chronicle.log_detail(
+                            "🎯 Model Selection (Long-Horizon Dynamic Drift Score)",
+                            (
+                                f"Current Score: {curr_score:.5f} ({score_description})\n"
+                                f"    Best Selection: Score={self.best_combined_score:.5f} (Drift Ratio={self.best_drift_ratio:.2f}x, Mean MAE={self.best_rollout_mae:.4f} @ Ep {self.best_epoch})"
+                            ),
+                            indent_level=1,
+                        )
+                    else:
+                        # Fallback generic logging
+                        header = (
+                            f"Epoch [{epoch:03d}/{end_epoch:03d}]"
+                            f"  Time: {epoch_duration:5.1f}s | Total: {total_elapsed / 60:4.1f}m{best_tag}"
+                        )
+                        chronicle.log_section_header(header)
+                        chronicle.log_detail(
+                            "📊 Losses & Metrics",
+                            f"Train Loss: {train_metrics.get('total_loss', 0.0):.5f} | Val Loss: {val_metrics.get('val_total_loss', 0.0):.5f}",
+                            indent_level=1,
+                        )
 
                     # --- DEBUG REMINDER (EVERY 10 EPOCHS) ---
                     if epoch % 10 == 0:
-                        debug_reminders = (
-                            "[SPWM Loss Guide Reminder]\n"
-                            "  • L_1step: 1-step next-latent MSE (z_t -> z_t+1) to guarantee immediate local trajectory fidelity.\n"
-                            f"  • L_multi (k={current_k}): Autoregressive rollout loss over horizon k to enforce temporal consistency.\n"
-                            "  • L_vel (k=1, k=3): Differentiable two-scale velocity supervision through frozen decoder probe to ground latent momentum p.\n"
-                            "  • L_var: Anti-collapse variance penalty (VICReg-style) preventing latent representation collapse.\n"
-                            "  • L_sparse: Differentiable L1 spike sparsity keeping spiking activity around the target rate.\n"
-                            f"  • L_corr / L_asymptotic (H={self.corrector_horizon}, Δ={getattr(self.model.corrector, 'cadence', 5) if hasattr(self.model, 'corrector') and self.model.corrector else 'N/A'}): "
-                            "Optimizes slow ALIF population on long horizons (with frozen fast predictor) to eliminate asymptotic drift.\n"
-                            "  • L_quiescence: Heavy sparsity penalty on corrector spikes so it remains silent except during trajectory drift.\n"
-                            "  • L_coord: Pure geometric coordinate supervision for SpatialSoftmax encoder.\n"
-                            "  • L_probe: Supervised kinematic decoder training on detached latents.\n"
-                            "  • Dynamic Score Selection: Model choice is solely based on balancing H=1 error (target 0.0) and drift ratio (target 1.0)."
-                        )
+                        if self.mode == "train_predictor":
+                            debug_reminders = (
+                                "[SPWM Predictor Training Guide Reminder]\n"
+                                "  • L_1step: Next-latent MSE (z_t -> z_t+1) guaranteeing clean local transition dynamics.\n"
+                                f"  • L_multi (k={current_k}): Autoregressive rollout loss over horizon k for multi-step temporal consistency.\n"
+                                "  • L_vel (k=1, k=3): Differentiable velocity supervision via frozen probe grounding latent momentum p.\n"
+                                "  • L_var & L_sparse: Representation variance protection and neuromorphic sparsity.\n"
+                                "  • Selection Criterion: Local kinematic acuity (H1_Pos + 0.5*H1_Vel + 0.25*H5_Pos) on nominal physics."
+                            )
+                        else:
+                            debug_reminders = (
+                                "[SPWM Corrector Training Guide Reminder]\n"
+                                f"  • L_asymptotic (H={self.corrector_horizon}, Δ={getattr(self.model.corrector, 'cadence', 5) if hasattr(self.model, 'corrector') and self.model.corrector else 'N/A'}): "
+                                "Optimizes slow ALIF population on long rollout horizons with frozen predictor core to suppress drift.\n"
+                                "  • L_quiescence: Sparsity penalty keeping corrector silent on nominal trajectories.\n"
+                                "  • Selection Criterion: Dynamic drift score penalizing error growth over long horizons (H25, H50, H100)."
+                            )
                         if hasattr(chronicle, "log_debug"):
                             chronicle.log_debug(debug_reminders)
                         else:
@@ -930,24 +1188,30 @@ class Trainer:
             try:
                 chronicle.log_info("Valutazione dello stato attuale in corso...")
                 val_metrics = self.evaluate()
-                c_drift = val_metrics["val_drift_ratio"]
-                c_mae = val_metrics["val_rollout_mae"]
-                c_gate = bool(val_metrics["val_gate_passed"] > 0.5)
-                c_dynamic_score = val_metrics.get("val_dynamic_score", c_mae)
+                c_score, _ = self.compute_selection_score(val_metrics)
+                c_drift = val_metrics.get("val_drift_ratio", 1.0)
+                c_mae = val_metrics.get("val_rollout_mae", 0.0)
+                c_gate = bool(val_metrics.get("val_gate_passed", 0.0) > 0.5)
 
                 is_best_interrupt = False
-                if c_dynamic_score < self.best_combined_score:
+                if c_score < self.best_combined_score:
                     is_best_interrupt = True
 
                 if is_best_interrupt:
                     self.best_gate_passed = c_gate
                     self.best_rollout_mae = c_mae
                     self.best_drift_ratio = c_drift
-                    self.best_combined_score = c_dynamic_score
+                    self.best_combined_score = c_score
                     self.best_val_pos_err = val_metrics.get("val_pos_err_h1", val_metrics.get("val_pos_err", float("inf")))
                     self.best_val_vel_err = val_metrics.get("val_vel_err_h1", val_metrics.get("val_vel_err", float("inf")))
                     model_path = self.save_dir / "model.pt"
                     torch.save(self.model.state_dict(), model_path)
+                    if self.mode == "train_corrector":
+                        torch.save(self.model.state_dict(), self.save_dir / "model_corrector.pt")
+                        if hasattr(self.model, "corrector") and self.model.corrector is not None:
+                            torch.save(self.model.corrector.state_dict(), self.save_dir / "corrector_weights.pt")
+                    elif self.mode == "train_predictor":
+                        torch.save(self.model.state_dict(), self.save_dir / "model_predictor.pt")
                     chronicle.log_success(
                         f"Nuovo miglior modello salvato su interrupt in: {model_path}"
                     )
@@ -955,11 +1219,17 @@ class Trainer:
                 chronicle.log_error(f"Errore post-interrupt: {e}")
                 model_path = self.save_dir / "model.pt"
                 torch.save(self.model.state_dict(), model_path)
+                if self.mode == "train_corrector":
+                    torch.save(self.model.state_dict(), self.save_dir / "model_corrector.pt")
+                    if hasattr(self.model, "corrector") and self.model.corrector is not None:
+                        torch.save(self.model.corrector.state_dict(), self.save_dir / "corrector_weights.pt")
+                elif self.mode == "train_predictor":
+                    torch.save(self.model.state_dict(), self.save_dir / "model_predictor.pt")
 
         self.save_training_log()
         chronicle.log_success(
             f"Session complete. Logs saved in '{self.save_dir}'. "
-            f"Best Dynamic Score: {self.best_combined_score:.5f} (H1 Error: {self.best_val_pos_err:.4f}, Drift: {self.best_drift_ratio:.2f}x @ Epoch {self.best_epoch})"
+            f"Best Selection Score: {self.best_combined_score:.5f} @ Epoch {self.best_epoch}"
         )
         return self.history
 

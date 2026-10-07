@@ -118,6 +118,7 @@ class RolloutEvaluator:
         device: Optional[Union[str, torch.device]] = None,
         horizons: Sequence[int] = (1, 5, 10, 25, 50),
         num_objects: int = 1,
+        use_corrector: bool = True,
     ) -> None:
         if device is None:
             if torch.backends.mps.is_available():
@@ -133,6 +134,7 @@ class RolloutEvaluator:
         self.model.eval()
         self.horizons = list(horizons)
         self.num_objects = num_objects
+        self.use_corrector = use_corrector
 
     @torch.no_grad()
     def evaluate_dataset(self, data_loader: DataLoader, max_batches: Optional[int] = None) -> RolloutEvaluationResult:
@@ -171,7 +173,14 @@ class RolloutEvaluator:
                 max_eval_h = min(max(self.horizons), T - t_warmup - 1)
 
                 if max_eval_h > 0:
-                    rollout_predictions = self.model.predict_future(z_warmup, horizon=max_eval_h)  # [B, max_h, D]
+                    if hasattr(self.model, "predict_future"):
+                        rollout_predictions = self.model.predict_future(
+                            z_warmup, horizon=max_eval_h, use_corrector=self.use_corrector
+                        )  # [B, max_h, D]
+                    else:
+                        rollout_predictions = self.model.predict_rollout(
+                            z_warmup, horizon=max_eval_h, use_corrector=self.use_corrector
+                        )[0]
 
                     for h in self.horizons:
                         if h <= max_eval_h and (t_warmup + 1 + h) <= T:

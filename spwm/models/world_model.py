@@ -89,16 +89,16 @@ class SPWM(nn.Module):
         p_dim: Optional[int] = None,
         ema_decay: float = 0.9,
         enable_corrector: bool = True,
-        corrector_dim: int = 64,
+        corrector_dim: int = 128,
         corrector_cadence: int = 5,
         corrector_beta_mem: float = 0.95,
         corrector_beta_adapt: float = 0.995,
-        corrector_v_th0: float = 1.5,
+        corrector_v_th0: float = 1.0,
         corrector_gamma: float = 0.25,
-        corrector_max_gain_v: float = 0.25,
-        corrector_max_gain_p: float = 0.25,
-        corrector_max_damp: float = 0.40,
-        corrector_inter_step_decay: float = 0.85,
+        corrector_max_gain_v: float = 0.45,
+        corrector_max_gain_p: float = 0.45,
+        corrector_max_damp: float = 0.15,
+        corrector_inter_step_decay: float = 0.90,
     ) -> None:
         super().__init__()
         self.in_channels = in_channels
@@ -162,7 +162,7 @@ class SPWM(nn.Module):
             residual=True,
         )
 
-        # 4b. Slow Neuromorphic Corrector (SPWM-v8: Two-Timescale Predictor-Corrector)
+        # 4b. Slow Neuromorphic Corrector (SPWM-v9: Hamiltonian Energy & Impulsive Jump)
         self.enable_corrector = enable_corrector
         if enable_corrector:
             self.corrector = SlowCorrector(
@@ -176,10 +176,8 @@ class SPWM(nn.Module):
                 gamma=corrector_gamma,
                 surrogate_name=surrogate_name,
                 surrogate_alpha=surrogate_alpha,
-                max_gain_v=corrector_max_gain_v,
                 max_gain_p=corrector_max_gain_p,
                 max_damp=corrector_max_damp,
-                inter_step_decay=corrector_inter_step_decay,
             )
         else:
             self.corrector = None
@@ -460,6 +458,7 @@ class SPWM(nn.Module):
         initial_latent: torch.Tensor,
         horizon: int = 50,
         use_corrector: bool = True,
+        initial_corrector_state: Optional[SlowCorrectorState] = None,
     ) -> torch.Tensor:
         """
         Autonomous Rollout without future sensory observations.
@@ -471,12 +470,16 @@ class SPWM(nn.Module):
         predictions = []
         curr_z = initial_latent
 
-        corr_state = None
-        if use_corrector and self.corrector is not None:
-            corr_state = self.corrector.init_state(initial_latent.shape[0], device=initial_latent.device)
+        corr_state = initial_corrector_state
+        if use_corrector and self.corrector is not None and corr_state is None:
+            corr_state = self.corrector.init_state(
+                initial_latent.shape[0],
+                device=initial_latent.device,
+                initial_latent=initial_latent,
+            )
 
         with torch.no_grad():
-            for _ in range(horizon):
+            for t in range(horizon):
                 pred_out = self.predictor(curr_z)
                 z_fast_next = pred_out.predicted_latent
 
@@ -485,6 +488,7 @@ class SPWM(nn.Module):
                         z_prev=curr_z,
                         z_fast_proposed=z_fast_next,
                         state=corr_state,
+                        step_idx=t,
                     )
                 else:
                     z_next = z_fast_next
@@ -497,33 +501,50 @@ class SPWM(nn.Module):
     def predict_rollout(
         self,
         initial_latent: torch.Tensor,
-        horizon: int = 25,
+        horizon: int = 100,
         use_corrector: bool = True,
-    ) -> Tuple[torch.Tensor, Optional[torch.Tensor]]:
+        initial_corrector_state: Optional[SlowCorrectorState] = None,
+        return_corrector_state: bool = False,
+        return_fast_trajectory: bool = False,
+    ) -> Union[
+        Tuple[torch.Tensor, Optional[torch.Tensor]],
+        Tuple[torch.Tensor, Optional[torch.Tensor], Optional[SlowCorrectorState]],
+        Tuple[torch.Tensor, Optional[torch.Tensor], torch.Tensor],
+        Tuple[torch.Tensor, Optional[torch.Tensor], Optional[SlowCorrectorState], torch.Tensor],
+    ]:
         """
-        Differentiable rollout for multi-step / asymptotic training.
+        Differentiable rollout for multi-step / long-horizon training (SPWM-v9).
         Maintains computational graph for backpropagation.
         Returns:
             predicted_trajectory: [B, horizon, latent_dim]
             corrector_spikes: [B, horizon, corrector_dim] (or None)
+            (optional) final_corrector_state: SlowCorrectorState if return_corrector_state is True
+            (optional) fast_trajectory: [B, horizon, latent_dim] if return_fast_trajectory is True
         """
         predictions = []
+        fast_predictions = []
         spikes_list = []
         curr_z = initial_latent
 
-        corr_state = None
-        if use_corrector and self.corrector is not None:
-            corr_state = self.corrector.init_state(initial_latent.shape[0], device=initial_latent.device)
+        corr_state = initial_corrector_state
+        if use_corrector and self.corrector is not None and corr_state is None:
+            corr_state = self.corrector.init_state(
+                initial_latent.shape[0],
+                device=initial_latent.device,
+                initial_latent=initial_latent,
+            )
 
-        for _ in range(horizon):
+        for t in range(horizon):
             pred_out = self.predictor(curr_z)
             z_fast_next = pred_out.predicted_latent
+            fast_predictions.append(z_fast_next)
 
             if use_corrector and self.corrector is not None and corr_state is not None:
                 z_next, corr_out, corr_state = self.corrector.forward_step(
                     z_prev=curr_z,
                     z_fast_proposed=z_fast_next,
                     state=corr_state,
+                    step_idx=t,
                 )
                 spikes_list.append(corr_out.spikes)
             else:
@@ -533,7 +554,15 @@ class SPWM(nn.Module):
             predictions.append(curr_z)
 
         traj = torch.stack(predictions, dim=1)
+        fast_traj = torch.stack(fast_predictions, dim=1)
         spikes = torch.stack(spikes_list, dim=1) if spikes_list else None
+
+        if return_corrector_state and return_fast_trajectory:
+            return traj, spikes, corr_state, fast_traj
+        if return_corrector_state:
+            return traj, spikes, corr_state
+        if return_fast_trajectory:
+            return traj, spikes, fast_traj
         return traj, spikes
 
     def online_step(

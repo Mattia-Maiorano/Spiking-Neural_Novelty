@@ -1426,8 +1426,59 @@ Per risolvere definitivamente il conflitto dinamico, SPWM-v8.3 disaccoppia forma
    - **Isolamento e Safe Loading**: gestione a prova di mismatch architetturale (`strict=False` e fallback checkpoint per evitare errori di missing keys nel correttore o predittore).
    - **Valutazione A/B Diretta**: a fine sessione `train_corrector`, `RolloutEvaluator` esegue automaticamente il benchmark comparativo (*Predictor Only* vs *Predictor + Slow Corrector*) per quantificare la riduzione esatta del Drift Ratio su orizzonti $H=1..50$.
 
-7. **Ottimizzazione e Dinamica di Steering del Correttore (SPWM-v8.4):**
-   - **Preservazione del Predictor di Base**: checkpoint del World Model isolato e salvato in `model_predictor.pt` (46 parametri congelati).
-   - **Score Indipendente del Correttore**: metrica dedicata $\text{Score}_{\text{corrector}} = 0.5 \cdot \text{RolloutMAE} + 0.5 \cdot \text{PosErr}_{H=50}$, svincolata dalle epoche del predittore per tracciare il reale abbattimento del residuo.
-   - **Supervisione cinematica fisica integrata**: $\mathcal{L}_{\text{asymptotic}} = \mathcal{L}_{\text{latent}} + 2.0 \cdot \mathcal{L}_{\text{kin}}$, guidando l'azione correttiva direttamente nello spazio fisico decodificato $(q, v)$.
-   - **Reset di addestramento per il correttore**: il correttore parte da epoca 1 con stato pulito sopra il modello congelato, salvando in modo incrementale ogni miglioramento asintotico.
+---
+---
+
+# SPWM-v9: Rimodellamento Energetico Hamiltoniano, Impulsive Jump ed Isometria Latente
+
+### 1. Diagnosi delle Limitazioni del Correttore Euristiche (Post-Mortem v8.x)
+Le analisi sulle evoluzioni della serie v8 hanno rivelato tre problemi strutturali nel modulo correttore a due scale temporali:
+1. **Disaccoppiamento Non Fisico tra Coordinate e Momento:**
+   L'utilizzo di offset additivi liberi e indipendenti ($\Delta q, \Delta p$) slegati tra loro violava la geometria simplettica dello spazio delle fasi. L'alterazione artificiale di $q$ introduceva shock cinematici e incoerenze rispetto al momento dinamico $p$.
+2. **Interferenza da Decay Inter-Step:**
+   L'applicazione di code esponenziali continue tra le cadenze ($\text{decay} \approx 0.90$) creava una continua resistenza e trascinamento sull'evoluzione autonoma del Fast Predictor, degradando l'acuità predittiva locale ad alta frequenza ($H \le 10$).
+3. **Deformazione del Null-Space Latente (128D $\to$ 4D):**
+   Poiché il Physical Decoder proietta lo spazio latente $128$-dimensionale nello spazio fisico $4$-dimensionale $(x, y, v_x, v_y)$, possiede un null-space di $124$ dimensioni. La supervisione del correttore basata esclusivamente sull'errore cinematico decodificato permetteva al correttore di deformare arbitrariamente le 124 dimensioni latenti ortogonali per abbattere la loss fisica, innescando l'esplosione del Latent MSE.
+
+---
+
+### 2. Specifiche Architetturali e Formulazione Matematica (SPWM-v9)
+
+#### A. Rimodellamento Energetico Hamiltoniano e Correzione Accoppiata $(q, p)$
+Il correttore abbandona qualsiasi offset libero su posizione e momento e adotta un potenziale scalare conservativo:
+1. **Predizione del Potenziale Scalare Correttivo $\Delta\Phi(q_t)$:**
+   La popolazione ALIF lenta (condizionata da $u_t = \tanh(W_v V_t^{\text{slow}}) + W_s S_t^{\text{slow}}$) modula una rete neurale energetica:
+   $$\Delta\Phi(q_t; u_t) \in \mathbb{R}$$
+2. **Forza Conservativa come Gradiente Spaziale Negativo:**
+   La correzione conservativa del momento è calcolata rigorosamente mediante differenziazione automatica spaziale:
+   $$F_{\text{cons}}(q_t) = -\nabla_q \Delta\Phi(q_t), \quad \Delta p_{\text{cons}} = M F_{\text{cons}}(q_t)$$
+   dove $M$ è la matrice di accoppiamento geometrico coordinate-momento.
+3. **Dissipazione Viscosa Controllata del Drift:**
+   Lo smorzamento interviene unicamente per drenare l'eccesso parassita accumulato dal drift:
+   $$\Delta p = \Delta p_{\text{cons}} - d_{\text{damp}, t} \cdot p_t^{\text{fast}}$$
+   con $d_{\text{damp}, t} = \sigma(W_{\text{damp}} u_t) \cdot \alpha_{\text{max}}$.
+4. **Aggiornamento Simplettico Coerente della Posizione:**
+   La posizione $q_t$ non subisce mai offset arbitrari indipendenti, ma evolve in modo simplettico coerente con la correzione del momento:
+   $$\Delta q = M^{-1} \Delta p, \quad q_t^{\text{corr}} = \text{clamp}(q_t^{\text{fast}} + \Delta q, -1.0, 1.0)$$
+   Se $\Delta p = 0$, ne consegue identicamente $\Delta q = 0$.
+
+#### B. Paradigma Impulsive Jump (Sistema Ibrido a Eventi)
+Eliminato completamente il decadimento geometrico continuo inter-step:
+- **Per $t \pmod \Delta \ne 0$:** Il Fast Predictor opera in **piena autonomia**, privo di interferenze, code esponenziali o forze frenanti:
+  $$\Delta q = 0, \quad \Delta p = 0, \quad \text{damp} = 0, \quad z_t^{\text{corr}} = z_t^{\text{fast}}$$
+- **Per $t \pmod \Delta == 0$:** Il correttore esegue un **reset discreto istantaneo (salto ortogonale)** sullo stato corrente, correggendo l'orbita e azzerando completamente l'intervento al passo successivo.
+
+#### C. Pipeline di Training a Lungo Orizzonte ($H=100$) su Stati Perturbati
+- Nessun troncamento o reset ad orizzonti brevi ($H=25$). Il rollout differenziabile è esteso a $H = 100$ passi temporali completi.
+- Addestramento su stati latenti perturbati ($z_{\text{init}} \sim \mathcal{N}(z_0, \sigma^2)$) e traiettorie con iniezione di drift per garantire l'autorità di richiamo dell'attrattore su derive profonde.
+
+#### D. Vincolo di Isometria Cinematica Locale (Preservazione della Varietà Latente $Z$)
+Per neutralizzare l'esplosione del Latent MSE dovuta al null-space a 124 dimensioni del decoder fisico, è integrato nella funzione di costo un vincolo di isometria metrica:
+$$\mathcal{L}_{\text{isometry}} = \text{MSE}\left(\| z^{\text{corr}} - z^{\text{fast}} \|^2, \; k \cdot \| \text{Decoder}(z^{\text{corr}}) - \text{Decoder}(z^{\text{fast}}) \|^2\right)$$
+Qualsiasi deformazione nello spazio latente $Z$ che non produca una variazione proporzionale nello spazio fisico decodificato $(x, y, v_x, v_y)$ viene penalizzata quadraticamente, impedendo al correttore di collassare le dimensioni ortogonali.
+
+---
+
+### 3. Configurazione & Risorse SPWM-v9
+- **Configurazione Ufficiale:** [configs/experiments/spwm_v9.yaml](file:///Users/Mattia/Desktop/Studies/Temp/configs/experiments/spwm_v9.yaml)
+- **Suite di Test Dedicata:** [tests/test_corrector.py](file:///Users/Mattia/Desktop/Studies/Temp/tests/test_corrector.py) (10 test specifici passati con successo).

@@ -104,11 +104,15 @@ def main() -> None:
         true_latents = out.latent_states[:, 6:26].cpu().numpy()
         np.savez(out_dir / "rollout_predictions.npz", predictions=rollout_preds, ground_truth=true_latents)
 
-    # Plot degradation curve
-    curve_data = {config.get("project", {}).get("name", "Model"): test_results.latent_mse_per_horizon}
-    plot_multi_step_degradation(curve_data, figures_dir / "fig3_rollout_degradation.png")
+    # Plot degradation curve with distinct model labeling
+    eval_tag = "corrector" if "corrector" in str(ckpt_path).lower() else "predictor"
+    base_name = config.get("project", {}).get("name", "SPWM")
+    model_label = f"{base_name} (+ Corrector)" if eval_tag == "corrector" else f"{base_name} (Predictor)"
+    curve_data = {model_label: test_results.latent_mse_per_horizon}
 
-    print("Evaluation completed successfully.")
+    plot_multi_step_degradation(curve_data, figures_dir / f"fig3_rollout_degradation_{eval_tag}.png")
+
+    print(f"Evaluation completed successfully. Saved degradation figures for {eval_tag} mode.")
 
 
 if __name__ == "__main__":

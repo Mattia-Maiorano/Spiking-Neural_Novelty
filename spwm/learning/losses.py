@@ -239,6 +239,36 @@ class SPWMLoss(nn.Module):
 
         return l_pos + self.beta_v * l_vel
 
+    def isometry_loss(
+        self,
+        z_corr: torch.Tensor,
+        z_fast: torch.Tensor,
+        physical_decoder: nn.Module,
+        k_isometry: float = 1.0,
+    ) -> torch.Tensor:
+        """
+        Local Kinematic Isometry Regularization (SPWM-v9).
+        Constrains distances in latent space to proportionally correspond to distances
+        in decoded physical space, preventing the slow corrector from arbitrarily
+        deforming the 124D null-space of the physical decoder (128D -> 4D).
+
+        L_isometry = MSE(||z_corr - z_fast||^2, k * ||Decoder(z_corr) - Decoder(z_fast)||^2)
+        """
+        # Squared L2 distance in latent space Z (sum over feature dimension)
+        diff_z = z_corr - z_fast
+        d_z_sq = torch.sum(diff_z ** 2, dim=-1)
+
+        # Decoded physical kinematics
+        dec_corr = physical_decoder(z_corr)
+        dec_fast = physical_decoder(z_fast)
+
+        # Squared L2 distance in decoded physical space
+        diff_dec = dec_corr - dec_fast
+        d_dec_sq = torch.sum(diff_dec ** 2, dim=-1)
+
+        # Isometry constraint: ||z_corr - z_fast||^2 ~ k * ||Dec(z_corr) - Dec(z_fast)||^2
+        return F.mse_loss(d_z_sq, k_isometry * d_dec_sq)
+
     # ------------------------------------------------------------------
     # Combined forward (kept for compatibility; trainer uses sub-losses)
     # ------------------------------------------------------------------

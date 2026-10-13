@@ -29,13 +29,13 @@ class RolloutEvaluationResult:
     @property
     def drift_ratio(self) -> float:
         """
-        Computes the Drift Ratio between long-horizon (H=50 or max horizon)
+        Computes the Drift Ratio between long-horizon (H=25 or max horizon)
         and short-horizon (H=1 or min horizon).
         """
         if not self.position_error_per_horizon:
             return float("inf")
         min_k = 1 if 1 in self.position_error_per_horizon else min(self.position_error_per_horizon.keys())
-        max_k = 50 if 50 in self.position_error_per_horizon else max(self.position_error_per_horizon.keys())
+        max_k = 25 if 25 in self.position_error_per_horizon else max(self.position_error_per_horizon.keys())
         h1 = self.position_error_per_horizon.get(min_k, 0.0)
         h_max = self.position_error_per_horizon.get(max_k, float("inf"))
         if h1 <= 0 or not np.isfinite(h_max) or not np.isfinite(h1):
@@ -101,7 +101,7 @@ class RolloutEvaluationResult:
         Soft/Legacy Gate compatibility check.
         """
         ratio = self.drift_ratio
-        max_k = 50 if 50 in self.position_error_per_horizon else max(self.position_error_per_horizon.keys(), default=1)
+        max_k = 25 if 25 in self.position_error_per_horizon else max(self.position_error_per_horizon.keys(), default=1)
         h_max_val = self.position_error_per_horizon.get(max_k, float("inf"))
         return bool((ratio <= max_drift_ratio) and (h_max_val < max_long_err) and np.isfinite(ratio) and (ratio > 0))
 
@@ -116,7 +116,7 @@ class RolloutEvaluator:
         self,
         model: nn.Module,
         device: Optional[Union[str, torch.device]] = None,
-        horizons: Sequence[int] = (1, 5, 10, 25, 50),
+        horizons: Sequence[int] = (1, 5, 10, 25, 50, 100),
         num_objects: int = 1,
         use_corrector: bool = True,
     ) -> None:

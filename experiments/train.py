@@ -29,7 +29,7 @@ from spwm.learning.metrics import parameter_count
 from spwm.evaluation.rollout import RolloutEvaluator
 from spwm.evaluation.plots import (
     plot_training_curves,
-    plot_architecture_diagram,
+    plot_corrector_ab_impact,
     plot_spike_raster,
     plot_fast_vs_slow_memory,
 )
@@ -141,9 +141,27 @@ def build_model(config: Dict[str, Any], device: torch.device, mode: str = "train
     return model.to(device)
 
 
+def parse_version_key(path_or_stem: Path | str):
+    """Parses version tokens for version comparison (e.g. spwm_v8_3 -> ('spwm', [(1, 8), (1, 3)]))."""
+    import re
+    stem = path_or_stem.stem if isinstance(path_or_stem, Path) else str(path_or_stem)
+    clean_stem = re.sub(r"_(train_predictor|train_corrector|predictor|corrector|joint)$", "", stem)
+    m = re.match(r"^(.*?)(?:_v?(\d+.*))?$", clean_stem)
+    if not m or not m.group(2):
+        return (0, clean_stem, ())
+    prefix, v_str = m.group(1), m.group(2)
+    tokens = re.findall(r"[0-9]+|[a-zA-Z]+", v_str)
+    parsed = []
+    for t in tokens:
+        if t.isdigit():
+            parsed.append((1, int(t)))
+        else:
+            parsed.append((2, t.upper()))
+    return (1, prefix, parsed)
+
+
 def get_latest_config_path(configs_dir: Path = Path("configs/experiments")) -> Path:
     """Finds the latest experiment configuration file based on versioning."""
-    import re
     if not configs_dir.is_dir():
         raise FileNotFoundError(f"Configs directory not found at: {configs_dir}")
 
@@ -151,22 +169,50 @@ def get_latest_config_path(configs_dir: Path = Path("configs/experiments")) -> P
     if not yaml_files:
         raise FileNotFoundError(f"No YAML configuration files found in: {configs_dir}")
 
-    def parse_version_key(path: Path):
-        stem = path.stem
-        m = re.match(r"^(.*?)(?:_v?(\d+.*))?$", stem)
-        if not m or not m.group(2):
-            return (0, stem, ())
-        prefix, v_str = m.group(1), m.group(2)
-        tokens = re.findall(r"[0-9]+|[a-zA-Z]+", v_str)
-        parsed = []
-        for t in tokens:
-            if t.isdigit():
-                parsed.append((1, int(t)))
-            else:
-                parsed.append((2, t.upper()))
-        return (1, prefix, parsed)
-
     return max(yaml_files, key=parse_version_key)
+
+
+def find_antecedent_predictor_checkpoint(config_path: Path, results_dir: Path = Path("results")) -> Path | None:
+    """
+    Searches for the most recent antecedent predictor checkpoint in the results directory.
+    Checks candidate directories ordered by version precedence descending.
+    """
+    if not results_dir.is_dir():
+        return None
+
+    curr_key = parse_version_key(config_path)
+    candidate_dirs = [d for d in results_dir.iterdir() if d.is_dir() and not d.name.startswith(".")]
+
+    # Sort descending by parsed version
+    sorted_dirs = sorted(candidate_dirs, key=parse_version_key, reverse=True)
+
+    # Prioritize runs with same prefix and version <= curr_key (or < curr_key)
+    prioritized_dirs = []
+    other_dirs = []
+    for d in sorted_dirs:
+        d_key = parse_version_key(d)
+        if d_key[0] == 1 and curr_key[0] == 1 and d_key[1] == curr_key[1]:
+            if d_key[2] <= curr_key[2]:
+                prioritized_dirs.append(d)
+            else:
+                other_dirs.append(d)
+        else:
+            other_dirs.append(d)
+
+    target_files = [
+        "model_predictor.pt",
+        "predictor_checkpoint.pt",
+        "model.pt",
+        "checkpoint.pt",
+    ]
+
+    for d in prioritized_dirs + other_dirs:
+        for fname in target_files:
+            candidate_file = d / fname
+            if candidate_file.is_file():
+                return candidate_file
+
+    return None
 
 
 def main() -> None:
@@ -189,6 +235,12 @@ def main() -> None:
         type=str,
         default=None,
         help="Path to pre-trained predictor checkpoint (required when --mode train_corrector).",
+    )
+    parser.add_argument(
+        "--try-antecedent-predictor",
+        action="store_true",
+        default=False,
+        help="Automatically search and load the most recent antecedent predictor checkpoint from previous results.",
     )
     parser.add_argument(
         "--drift-prob",
@@ -306,20 +358,36 @@ def main() -> None:
 
     # In train_corrector mode: Carica il checkpoint del predittore pre-addestrato
     if mode == "train_corrector":
-        predictor_ckpt = args.predictor_checkpoint or train_cfg.get("predictor_checkpoint")
+        predictor_ckpt = args.predictor_checkpoint
+        if args.try_antecedent_predictor:
+            antecedent_ckpt = find_antecedent_predictor_checkpoint(config_path)
+            if antecedent_ckpt is not None:
+                predictor_ckpt = str(antecedent_ckpt)
+                chronicle.log_info(f"Loaded antecedent predictor checkpoint via --try-antecedent-predictor: {predictor_ckpt}")
+            else:
+                chronicle.log_warning("Flag --try-antecedent-predictor specified, but no antecedent predictor checkpoint was found.")
+
         if not predictor_ckpt:
-            # Cerca automaticamente candidati nella directory results
-            candidates = [
-                save_dir / "predictor_checkpoint.pt",
-                save_dir / "model.pt",
-                Path("results") / f"{config_path.stem}_train_predictor" / "model.pt",
-                Path("results") / f"{config_path.stem}_predictor" / "model.pt",
-                Path("results") / "spwm_v8_2_train_predictor" / "model.pt",
-            ]
-            for cand in candidates:
-                if cand.is_file():
-                    predictor_ckpt = str(cand)
-                    break
+            predictor_ckpt = train_cfg.get("predictor_checkpoint")
+
+        if not predictor_ckpt:
+            antecedent_ckpt = find_antecedent_predictor_checkpoint(config_path)
+            if antecedent_ckpt is not None:
+                predictor_ckpt = str(antecedent_ckpt)
+                chronicle.log_info(f"Automatically located predictor checkpoint from previous run: {predictor_ckpt}")
+            else:
+                # Cerca automaticamente candidati nella directory results
+                candidates = [
+                    save_dir / "predictor_checkpoint.pt",
+                    save_dir / "model_predictor.pt",
+                    save_dir / "model.pt",
+                    Path("results") / f"{config_path.stem}_train_predictor" / "model.pt",
+                    Path("results") / f"{config_path.stem}_predictor" / "model.pt",
+                ]
+                for cand in candidates:
+                    if cand.is_file():
+                        predictor_ckpt = str(cand)
+                        break
 
         if not predictor_ckpt:
             raise ValueError(
@@ -384,15 +452,8 @@ def main() -> None:
     optimizer_state = None
     loaded_existing = False
 
-    # Check for full training checkpoint first (only if resuming in same save_dir)
-    if mode == "train_corrector":
-        # In modalità train_corrector, la cronologia e i best score del correttore partono isolati
-        chronicle.log_info("Starting independent Slow Corrector training on top of frozen Predictor.")
-        start_epoch = 1
-        history = []
-        best_combined_score = float("inf")
-        best_rollout_mae = float("inf")
-    elif checkpoint_path.is_file():
+    # Check for full training checkpoint first (if resuming in same save_dir)
+    if checkpoint_path.is_file():
         ckpt = torch.load(checkpoint_path, map_location=device)
         if isinstance(ckpt, dict):
             if "model_state" in ckpt:
@@ -431,7 +492,10 @@ def main() -> None:
                 chronicle.log_warning(f"Could not load existing history: {e}")
                 history = []
     else:
-        chronicle.log_info("Starting fresh training session.")
+        if mode == "train_corrector":
+            chronicle.log_info("Starting fresh independent Slow Corrector training session on top of frozen Predictor.")
+        else:
+            chronicle.log_info("Starting fresh training session.")
 
     probe_lr = train_cfg.get("probe_lr", 5e-4)
     probe_weight_decay = train_cfg.get("probe_weight_decay", 1e-2)
@@ -463,15 +527,19 @@ def main() -> None:
         smooth_horizon_sampling=train_cfg.get("smooth_horizon_sampling", False),
         k_max=config.get("k_max", 50),
         corrector_lr=train_cfg.get("corrector_lr", None),
-        corrector_horizon=train_cfg.get("corrector_horizon", 25),
+        corrector_horizon=train_cfg.get("corrector_horizon", 100),
         lambda_corrector_asymptotic=loss_cfg.get("lambda_corrector_asymptotic", 1.0),
         lambda_corrector_quiescence=loss_cfg.get("lambda_corrector_quiescence", 0.5),
         corrector_quiescence_margin=loss_cfg.get("corrector_quiescence_margin", 0.15),
         corrector_quiescence_cap=loss_cfg.get("corrector_quiescence_cap", 0.50),
+        lambda_isometry=loss_cfg.get("lambda_isometry", 1.0),
+        k_isometry=loss_cfg.get("k_isometry", 1.0),
+        perturb_corrector_states=train_cfg.get("perturb_corrector_states", True),
+        corrector_perturbation_std=train_cfg.get("corrector_perturbation_std", 0.05),
         curriculum_thresholds=loss_cfg.get("curriculum_thresholds", None),
         encoder_warmup_epochs=train_cfg.get("encoder_warmup_epochs", 60),
         max_drift_ratio=eval_cfg.get("max_drift_ratio", 5.0),
-        rollout_horizons=eval_cfg.get("rollout_horizons", [1, 5, 10, 25, 50]),
+        rollout_horizons=eval_cfg.get("rollout_horizons", [1, 5, 10, 25, 50, 100]),
         save_best_metric=eval_cfg.get("save_best_metric", "pareto_rollout"),
         num_objects=env_cfg.get("num_objects", 1),
         mode=mode,
@@ -518,7 +586,7 @@ def main() -> None:
         chronicle.log_detail("Test TF MSE", f"{test_results.teacher_forcing_mse:.4e}")
         chronicle.log_detail("Test Mean Spike Rate", f"{test_results.mean_spike_rate:.3f}")
         chronicle.log_detail("Test Rollout MAE", f"{test_results.rollout_mae:.4f}")
-        chronicle.log_detail("Test Drift Ratio (H50/H1)", f"{test_results.drift_ratio:.2f}x")
+        chronicle.log_detail("Test Drift Ratio (H25/H1)", f"{test_results.drift_ratio:.2f}x")
         chronicle.log_detail("Extrapolation TF MSE", f"{extrap_results.teacher_forcing_mse:.4e}")
         if test_results.position_error_per_horizon:
             chronicle.log_detail("Test Pos Error by Horizon", test_results.position_error_per_horizon)
@@ -604,10 +672,18 @@ def main() -> None:
     with open(save_dir / "run_metadata.json", "w", encoding="utf-8") as f:
         json.dump(metadata, f, indent=2)
 
-    # 7. Generate Figures
+    # 7. Generate Figures with distinct insight per training stage (no duplicates, no static fig1)
+    mode_tag = "corrector" if mode == "train_corrector" else ("predictor" if mode == "train_predictor" else "joint")
     if history:
-        plot_training_curves(history, figures_dir / "fig2_training_curves.png")
-    plot_architecture_diagram(figures_dir / "fig1_architecture.png")
+        plot_training_curves(history, figures_dir / f"fig2_training_curves_{mode_tag}.png", mode=mode)
+
+    # In Corrector mode: generate dedicated A/B comparison figure showcasing exact corrector incision
+    if mode == "train_corrector" and ab_comparison:
+        try:
+            plot_corrector_ab_impact(ab_comparison, figures_dir / "fig3_corrector_ab_impact.png")
+            chronicle.log_success(f"Generated Figure 3: Corrector A/B Impact Analysis -> '{figures_dir / 'fig3_corrector_ab_impact.png'}'")
+        except Exception as e:
+            chronicle.log_warning(f"Could not generate corrector A/B impact plot: {e}")
 
     if hasattr(model, "dynamics") and hasattr(model.dynamics, "memory"):
         with torch.no_grad():
@@ -619,7 +695,7 @@ def main() -> None:
                     sample_out = model(sample_events)
                     fast_spk = sample_out.fast_spikes[0].cpu().numpy()
                     slow_spk = sample_out.slow_spikes[0].cpu().numpy()
-                    plot_spike_raster(fast_spk, slow_spk, figures_dir / "fig4_spike_raster.png")
+                    plot_spike_raster(fast_spk, slow_spk, figures_dir / f"fig4_spike_raster_{mode_tag}.png", mode=mode)
             except Exception as e:
                 chronicle.log_warning(f"Spike raster generation skipped: {e}")
 

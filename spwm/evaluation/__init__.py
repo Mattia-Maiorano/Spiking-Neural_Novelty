@@ -6,6 +6,7 @@ from spwm.evaluation.rollout import RolloutEvaluator, RolloutEvaluationResult
 from spwm.evaluation.plots import (
     plot_architecture_diagram,
     plot_training_curves,
+    plot_corrector_ab_impact,
     plot_multi_step_degradation,
     plot_spike_raster,
     plot_fast_vs_slow_memory,
@@ -18,6 +19,7 @@ __all__ = [
     "RolloutEvaluationResult",
     "plot_architecture_diagram",
     "plot_training_curves",
+    "plot_corrector_ab_impact",
     "plot_multi_step_degradation",
     "plot_spike_raster",
     "plot_fast_vs_slow_memory",

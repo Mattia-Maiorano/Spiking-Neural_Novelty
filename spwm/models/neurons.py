@@ -18,6 +18,12 @@ class NeuronState:
     v_mem: torch.Tensor  # Membrane potential [B, ...]
     spikes: torch.Tensor  # Emitted spikes {0, 1} [B, ...]
 
+    def detach(self) -> "NeuronState":
+        return NeuronState(
+            v_mem=self.v_mem.detach(),
+            spikes=self.spikes.detach(),
+        )
+
 
 @dataclass
 class ALIFState:
@@ -27,6 +33,15 @@ class ALIFState:
     spikes: torch.Tensor  # Emitted spikes z_t [B, D]
     e_trace_v: Optional[torch.Tensor] = None  # Filtered presynaptic input trace on V
     e_trace_a: Optional[torch.Tensor] = None  # Adaptation eligibility trace on A
+
+    def detach(self) -> "ALIFState":
+        return ALIFState(
+            v_mem=self.v_mem.detach(),
+            a_adapt=self.a_adapt.detach(),
+            spikes=self.spikes.detach(),
+            e_trace_v=self.e_trace_v.detach() if self.e_trace_v is not None else None,
+            e_trace_a=self.e_trace_a.detach() if self.e_trace_a is not None else None,
+        )
 
 
 class LIFCell(nn.Module):

@@ -93,11 +93,15 @@ class Trainer:
         smooth_horizon_sampling: bool = False,
         k_max: int = 50,
         corrector_lr: Optional[float] = None,
-        corrector_horizon: int = 25,
+        corrector_horizon: int = 100,
         lambda_corrector_asymptotic: float = 1.0,
         lambda_corrector_quiescence: float = 0.5,
         corrector_quiescence_margin: float = 0.15,
         corrector_quiescence_cap: float = 0.50,
+        lambda_isometry: float = 1.0,
+        k_isometry: float = 1.0,
+        perturb_corrector_states: bool = True,
+        corrector_perturbation_std: float = 0.05,
         curriculum_thresholds: Optional[Dict[str, Any]] = None,
         encoder_warmup_epochs: int = 60,
         max_drift_ratio: float = 5.0,
@@ -120,7 +124,7 @@ class Trainer:
         self.best_drift_ratio: float = best_drift_ratio
         self.best_gate_passed: bool = best_gate_passed
         self.max_drift_ratio: float = float(max_drift_ratio)
-        self.rollout_horizons: List[int] = list(rollout_horizons) if rollout_horizons is not None else [1, 5, 10, 25, 50]
+        self.rollout_horizons: List[int] = list(rollout_horizons) if rollout_horizons is not None else [1, 5, 10, 25, 50, 100]
         self.save_best_metric: str = save_best_metric
         self.num_objects: int = num_objects
 
@@ -134,6 +138,10 @@ class Trainer:
         self.lambda_corrector_quiescence = lambda_corrector_quiescence
         self.corrector_quiescence_margin = corrector_quiescence_margin
         self.corrector_quiescence_cap = corrector_quiescence_cap
+        self.lambda_isometry = lambda_isometry
+        self.k_isometry = k_isometry
+        self.perturb_corrector_states = perturb_corrector_states
+        self.corrector_perturbation_std = corrector_perturbation_std
         self.encoder_warmup_epochs = encoder_warmup_epochs if self.mode != "train_corrector" else 0
         self.curriculum_thresholds = curriculum_thresholds or {
             "phase_1_horizon": 3,
@@ -459,8 +467,8 @@ class Trainer:
           Score = val_pos_err_h1 + 0.5 * val_vel_err_h1 + 0.25 * val_pos_err_h5
         
         - Modalità train_corrector (Fase di Drift & Stabilizzazione):
-          L'obiettivo è la soppressione del drift asintotico su orizzonti estesi (H>=25, 50).
-          Score = Dynamic Score (Rollout MAE pesato con drift ratio H50/H1)
+          L'obiettivo è la soppressione del drift asintotico su orizzonti estesi (H>=25).
+          Score = Dynamic Score (Rollout MAE pesato con drift ratio H25/H1)
         """
         if self.mode == "train_predictor":
             h1_pos = val_metrics.get("val_pos_err_h1", val_metrics.get("val_pos_err", 0.0))
@@ -471,13 +479,13 @@ class Trainer:
             desc = f"Local Kinematic Error (H1 Pos: {h1_pos:.4f}, H1 Vel: {h1_vel:.4f}, H5 Pos: {h5_pos:.4f})"
             return score, desc
         else:
-            # train_corrector: Valutazione asintotica e soppressione del drift a lungo raggio
+            # train_corrector: Valutazione asintotica e soppressione del drift a lungo raggio (SPWM-v9)
             mae = float(val_metrics.get("val_rollout_mae", 0.0))
             drift_ratio = float(val_metrics.get("val_drift_ratio", 1.0))
-            h50_pos = float(val_metrics.get("val_pos_err_h50", mae))
-            # Score dedicato al correttore: MAE complessivo + penalità diretta su H50
-            score = float(0.5 * mae + 0.5 * h50_pos)
-            desc = f"Corrector Rollout Score (Mean MAE: {mae:.4f}, H50 Pos: {h50_pos:.4f}, Drift: {drift_ratio:.2f}x)"
+            h_long_pos = float(val_metrics.get("val_pos_err_h100", val_metrics.get("val_pos_err_h50", val_metrics.get("val_pos_err_h25", mae))))
+            # Score dedicato al correttore: MAE complessivo + penalità diretta su lungo orizzonte
+            score = float(0.5 * mae + 0.5 * h_long_pos)
+            desc = f"Corrector Rollout Score (Mean MAE: {mae:.4f}, Long Horizon Pos: {h_long_pos:.4f}, Drift: {drift_ratio:.2f}x)"
             return score, desc
 
     def _print_training_header(self, total_epochs: int) -> None:
@@ -540,6 +548,7 @@ class Trainer:
             "l_corr": 0.0,
             "l_corr_asymptotic": 0.0,
             "l_corr_quiescence": 0.0,
+            "l_corr_isometry": 0.0,
             "spike_rate": 0.0,
             "grad_norm": 0.0,
         }
@@ -720,7 +729,7 @@ class Trainer:
                 epoch_losses["l_probe"] += probe_loss_val
 
             # ----------------------------------------------------------
-            # Step 4: Protected Corrector Optimization (SPWM-v8)
+            # Step 4: Protected Corrector Optimization - Deep Rollout & Isometry (SPWM-v9)
             # ----------------------------------------------------------
             corr_loss_val = 0.0
             if (
@@ -732,53 +741,67 @@ class Trainer:
             ):
                 self.corrector_optimizer.zero_grad()
                 with torch.enable_grad():
-                    # Congela rigorosamente il modulo predittore rapido per isolare
-                    # le sue capacità locali a breve raggio (H <= 10) dai gradienti a lungo termine (H >= 25)
-                    with _frozen(self.model.predictor):
+                    # Congela rigorosamente il modulo predittore rapido e il decoder per isolare
+                    # l'ottimizzazione del correttore
+                    with _frozen(self.model.predictor), _frozen(self.model.physical_decoder):
                         latents = out.latent_states.detach()
                         B_lat, T_tot, D_lat = latents.shape
                         H_corr = min(self.corrector_horizon, T_tot - 2)
 
-                        if H_corr >= 5:
+                        if H_corr >= 1 and true_kin is not None:
                             max_start = max(1, T_tot - H_corr - 1)
                             t0 = random.randint(0, max_start - 1) if max_start > 1 else 0
 
                             z_init = latents[:, t0].detach()
-                            target_rollout = latents[:, t0 + 1 : t0 + 1 + H_corr].detach()
+                            # Deep training on perturbed states
+                            if self.perturb_corrector_states and self.corrector_perturbation_std > 0.0:
+                                z_init = z_init + torch.randn_like(z_init) * self.corrector_perturbation_std
 
-                            pred_rollout, corr_spikes = self.model.predict_rollout(
+                            pred_rollout, corr_spikes, fast_rollout = self.model.predict_rollout(
                                 initial_latent=z_init,
                                 horizon=H_corr,
                                 use_corrector=True,
+                                return_fast_trajectory=True,
                             )
 
-                            # 1. Asymptotic Trajectory Stabilization Loss (Latent MSE + Kinematic Position Divergence)
-                            l_asymptotic_latent = nn.functional.mse_loss(pred_rollout, target_rollout)
-                            l_asymptotic_kin = torch.tensor(0.0, device=self.device)
-                            if true_kin is not None and hasattr(self.model, "physical_decoder"):
-                                decoded_rollout = self.model.physical_decoder(pred_rollout)
-                                target_kin_rollout = true_kin[:, t0 + 1 : t0 + 1 + H_corr]
-                                # Penalizza direttamente l'errore di posizione decodificato su orizzonti lunghi
-                                l_asymptotic_kin = nn.functional.mse_loss(decoded_rollout, target_kin_rollout)
+                            decoded_rollout = self.model.physical_decoder(pred_rollout)
+                            target_kin = true_kin[:, t0 + 1 : t0 + 1 + H_corr]
 
-                            l_asymptotic = l_asymptotic_latent + 2.0 * l_asymptotic_kin
+                            # Extended trajectory kinematic error across full rollout
+                            pred_pos = decoded_rollout[..., : 2 * self.num_objects]
+                            true_pos = target_kin[..., : 2 * self.num_objects]
+                            pred_vel = decoded_rollout[..., 2 * self.num_objects : 4 * self.num_objects]
+                            true_vel = target_kin[..., 2 * self.num_objects : 4 * self.num_objects]
 
-                            # 2. Quiescent Sparsity Penalty on Corrector Spikes (Hinge / Dead-Zone Margin with Upper Capping)
-                            # Zero penalty for corrective activity below margin (e.g. 15%), and capped upper bound against chattering
-                            if corr_spikes is not None:
+                            l_pos = nn.functional.mse_loss(pred_pos, true_pos)
+                            l_vel = nn.functional.mse_loss(pred_vel, true_vel)
+
+                            beta_v = getattr(self.loss_fn, "beta_v", 1.0)
+                            l_kin = l_pos + beta_v * l_vel
+
+                            # Local Kinematic Isometry Regularization
+                            l_isometry = self.loss_fn.isometry_loss(
+                                z_corr=pred_rollout,
+                                z_fast=fast_rollout,
+                                physical_decoder=self.model.physical_decoder,
+                                k_isometry=self.k_isometry,
+                            )
+
+                            loss_corr = (
+                                self.lambda_corrector_asymptotic * l_kin
+                                + self.lambda_isometry * l_isometry
+                            )
+
+                            # Quiescence regularization (se abilitata)
+                            if self.lambda_corrector_quiescence > 0.0 and corr_spikes is not None:
                                 spike_activity = corr_spikes.mean()
                                 l_quiescence = torch.clamp(
                                     nn.functional.relu(spike_activity - self.corrector_quiescence_margin),
                                     max=self.corrector_quiescence_cap,
                                     min=0.0,
                                 )
-                            else:
-                                l_quiescence = torch.tensor(0.0, device=self.device)
-
-                            loss_corr = (
-                                self.lambda_corrector_asymptotic * l_asymptotic
-                                + self.lambda_corrector_quiescence * l_quiescence
-                            )
+                                loss_corr = loss_corr + self.lambda_corrector_quiescence * l_quiescence
+                                epoch_losses["l_corr_quiescence"] += l_quiescence.item()
 
                             loss_corr.backward()
 
@@ -789,8 +812,8 @@ class Trainer:
                                 )
                             self.corrector_optimizer.step()
                             corr_loss_val = loss_corr.item()
-                            epoch_losses["l_corr_asymptotic"] += l_asymptotic.item()
-                            epoch_losses["l_corr_quiescence"] += l_quiescence.item()
+                            epoch_losses["l_corr_asymptotic"] += l_kin.item()
+                            epoch_losses["l_corr_isometry"] += l_isometry.item()
 
                 epoch_losses["l_corr"] += corr_loss_val
 
@@ -1058,7 +1081,7 @@ class Trainer:
                     if self.mode == "train_predictor":
                         header = (
                             f"Epoch [{epoch:03d}/{end_epoch:03d}] [PREDICTOR-PHASE] (K_fast={current_k}){warmup_tag}"
-                            f"  Time: {epoch_duration:5.1f}s | Total: {total_elapsed / 60:4.1f}m{best_tag}"
+                            f"  Time: {epoch_duration:5.1f}s | Total: {total_elapsed / 60:4.1f}m{best_tag} | Remaining: {epoch_duration * (end_epoch - epoch) / 60:4.1f}m"
                         )
                         chronicle.log_section_header(header)
 
@@ -1106,7 +1129,7 @@ class Trainer:
                         corr_cad = getattr(self.model.corrector, 'cadence', 5) if hasattr(self.model, "corrector") and self.model.corrector else 5
                         header = (
                             f"Epoch [{epoch:03d}/{end_epoch:03d}] [CORRECTOR-PHASE] (H_slow={self.corrector_horizon}, Δ={corr_cad})"
-                            f"  Time: {epoch_duration:5.1f}s | Total: {total_elapsed / 60:4.1f}m{best_tag}"
+                            f"  Time: {epoch_duration:5.1f}s | Total: {total_elapsed / 60:4.1f}m{best_tag} | Remaining: {epoch_duration * (end_epoch - epoch) / 60:4.1f}m"
                         )
                         chronicle.log_section_header(header)
 
@@ -1128,7 +1151,7 @@ class Trainer:
                         chronicle.log_detail(
                             "📈 Autonomous Rollout Trajectory (Drift Stabilization)",
                             (
-                                f"Rollout Mean MAE: {curr_rollout_mae:.5f} | Drift Ratio (H50/H1): {curr_drift_ratio:.2f}x | "
+                                f"Rollout Mean MAE: {curr_rollout_mae:.5f} | Drift Ratio (H25/H1): {curr_drift_ratio:.2f}x | "
                                 f"Spike Rate: {val_metrics.get('val_spike_rate', 0.0):.3f}\n"
                                 f"    Horizon Trajectory -> {h_pos_str}"
                             ),
@@ -1146,7 +1169,7 @@ class Trainer:
                         # Fallback generic logging
                         header = (
                             f"Epoch [{epoch:03d}/{end_epoch:03d}]"
-                            f"  Time: {epoch_duration:5.1f}s | Total: {total_elapsed / 60:4.1f}m{best_tag}"
+                            f"  Time: {epoch_duration:5.1f}s | Total: {total_elapsed / 60:4.1f}m{best_tag} | Remaining: {epoch_duration * (end_epoch - epoch) / 60:4.1f}m"
                         )
                         chronicle.log_section_header(header)
                         chronicle.log_detail(
@@ -1172,12 +1195,10 @@ class Trainer:
                                 f"  • L_asymptotic (H={self.corrector_horizon}, Δ={getattr(self.model.corrector, 'cadence', 5) if hasattr(self.model, 'corrector') and self.model.corrector else 'N/A'}): "
                                 "Optimizes slow ALIF population on long rollout horizons with frozen predictor core to suppress drift.\n"
                                 "  • L_quiescence: Sparsity penalty keeping corrector silent on nominal trajectories.\n"
-                                "  • Selection Criterion: Dynamic drift score penalizing error growth over long horizons (H25, H50, H100)."
+                                "  • Selection Criterion: Dynamic drift score penalizing error growth over long horizons (H10, H25, H50, H100)."
                             )
                         if hasattr(chronicle, "log_debug"):
-                            chronicle.log_debug(debug_reminders)
-                        else:
-                            chronicle.log_info(f"[DEBUG] {debug_reminders}")
+                            chronicle.log_debug(debug_reminders, indentation_tabs=0, newline_before=2)
 
                     chronicle.log_newline()
 

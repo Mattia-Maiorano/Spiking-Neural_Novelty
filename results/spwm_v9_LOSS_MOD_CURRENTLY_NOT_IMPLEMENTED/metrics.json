@@ -1,0 +1,480 @@
+{
+  "total_epochs": 183,
+  "parameters": 98720,
+  "test": {
+    "teacher_forcing_mse": 0.2502969428896904,
+    "mean_spike_rate": 0.12403680756688118,
+    "latent_mse_per_horizon": {
+      "1": 0.2594672068953514,
+      "5": 0.20098216086626053,
+      "10": 0.21215105056762695,
+      "25": 0.32213690876960754,
+      "50": 0.565852165222168,
+      "100": 0.7761898934841156
+    },
+    "position_error_per_horizon": {
+      "1": 0.11002595350146294,
+      "5": 0.1342826411128044,
+      "10": 0.18002672493457794,
+      "25": 0.3161350339651108,
+      "50": 0.4896811246871948,
+      "100": 0.6246783137321472
+    },
+    "velocity_error_per_horizon": {
+      "1": 0.5461151599884033,
+      "5": 0.5446574985980988,
+      "10": 0.535195529460907,
+      "25": 0.5611275136470795,
+      "50": 0.6395071148872375,
+      "100": 0.7425583004951477
+    }
+  },
+  "extrapolation": {
+    "teacher_forcing_mse": 0.30950232595205307,
+    "latent_mse_per_horizon": {
+      "1": 0.30505529046058655,
+      "5": 0.21570583432912827,
+      "10": 0.24628174677491188,
+      "25": 0.4617043808102608,
+      "50": 0.6819653362035751,
+      "100": 0.8075335770845413
+    },
+    "position_error_per_horizon": {
+      "1": 0.15667256340384483,
+      "5": 0.21407228708267212,
+      "10": 0.3016199544072151,
+      "25": 0.534535713493824,
+      "50": 0.6490593403577805,
+      "100": 0.7041140645742416
+    },
+    "velocity_error_per_horizon": {
+      "1": 1.0990000665187836,
+      "5": 1.064175397157669,
+      "10": 1.1259307563304901,
+      "25": 1.2742307484149933,
+      "50": 1.3966435194015503,
+      "100": 1.4973979890346527
+    }
+  },
+  "training_progression": {
+    "total_epochs": 183,
+    "initial_epoch": 1,
+    "checkpoints": {
+      "0%": {
+        "epoch": 1,
+        "train_loss": 2.224638,
+        "val_loss": 0.855779,
+        "val_rollout_mae": 0.365234,
+        "val_drift_ratio": 2.416802,
+        "val_position_error_h1": 0.150913,
+        "val_position_error_mae": 0.365234,
+        "val_velocity_error_h1": 0.45869,
+        "val_velocity_error_mae": 0.566543
+      },
+      "25%": {
+        "epoch": 46,
+        "train_loss": 1.905002,
+        "val_loss": 0.855779,
+        "val_rollout_mae": 0.334245,
+        "val_drift_ratio": 2.342377,
+        "val_position_error_h1": 0.147436,
+        "val_position_error_mae": 0.334245,
+        "val_velocity_error_h1": 0.459832,
+        "val_velocity_error_mae": 0.554892
+      },
+      "50%": {
+        "epoch": 92,
+        "train_loss": 1.866134,
+        "val_loss": 0.855779,
+        "val_rollout_mae": 0.358053,
+        "val_drift_ratio": 2.489506,
+        "val_position_error_h1": 0.156283,
+        "val_position_error_mae": 0.358053,
+        "val_velocity_error_h1": 0.461766,
+        "val_velocity_error_mae": 0.554904
+      },
+      "75%": {
+        "epoch": 137,
+        "train_loss": 1.833721,
+        "val_loss": 0.855779,
+        "val_rollout_mae": 0.353889,
+        "val_drift_ratio": 2.354787,
+        "val_position_error_h1": 0.159796,
+        "val_position_error_mae": 0.353889,
+        "val_velocity_error_h1": 0.4582,
+        "val_velocity_error_mae": 0.553291
+      },
+      "100%": {
+        "epoch": 183,
+        "train_loss": 1.777329,
+        "val_loss": 0.855779,
+        "val_rollout_mae": 0.338016,
+        "val_drift_ratio": 2.261821,
+        "val_position_error_h1": 0.156566,
+        "val_position_error_mae": 0.338016,
+        "val_velocity_error_h1": 0.457771,
+        "val_velocity_error_mae": 0.537526
+      }
+    },
+    "intervals": [
+      {
+        "interval": "0%-25%",
+        "from_epoch": 1,
+        "to_epoch": 46,
+        "metrics": {
+          "train_loss": {
+            "from": 2.224638,
+            "to": 1.905002,
+            "change": -0.319636,
+            "percent_change": "-14.37%"
+          },
+          "val_loss": {
+            "from": 0.855779,
+            "to": 0.855779,
+            "change": 0.0,
+            "percent_change": "+0.00%"
+          },
+          "val_rollout_mae": {
+            "from": 0.365234,
+            "to": 0.334245,
+            "change": -0.030989,
+            "percent_change": "-8.48%"
+          },
+          "val_drift_ratio": {
+            "from": 2.416802,
+            "to": 2.342377,
+            "change": -0.074425,
+            "percent_change": "-3.08%"
+          },
+          "val_position_error_h1": {
+            "from": 0.150913,
+            "to": 0.147436,
+            "change": -0.003477,
+            "percent_change": "-2.30%"
+          },
+          "val_position_error_mae": {
+            "from": 0.365234,
+            "to": 0.334245,
+            "change": -0.030989,
+            "percent_change": "-8.48%"
+          },
+          "val_velocity_error_h1": {
+            "from": 0.45869,
+            "to": 0.459832,
+            "change": 0.001142,
+            "percent_change": "+0.25%"
+          },
+          "val_velocity_error_mae": {
+            "from": 0.566543,
+            "to": 0.554892,
+            "change": -0.011651,
+            "percent_change": "-2.06%"
+          }
+        },
+        "narrative": [
+          "train loss moved from 2.2246 to 1.9050 (-14.37%) in the first 25% (epoch 1 to 46)",
+          "val loss moved from 0.8558 to 0.8558 (+0.00%) in the first 25% (epoch 1 to 46)",
+          "val rollout MAE moved from 0.3652 to 0.3342 (-8.48%) in the first 25% (epoch 1 to 46)",
+          "val drift ratio moved from 2.4168 to 2.3424 (-3.08%) in the first 25% (epoch 1 to 46)",
+          "val position error (H=1) moved from 0.1509 to 0.1474 (-2.30%) in the first 25% (epoch 1 to 46)",
+          "val position error (rollout MAE) moved from 0.3652 to 0.3342 (-8.48%) in the first 25% (epoch 1 to 46)",
+          "val velocity error (H=1) moved from 0.4587 to 0.4598 (+0.25%) in the first 25% (epoch 1 to 46)",
+          "val velocity error (rollout MAE) moved from 0.5665 to 0.5549 (-2.06%) in the first 25% (epoch 1 to 46)"
+        ]
+      },
+      {
+        "interval": "25%-50%",
+        "from_epoch": 46,
+        "to_epoch": 92,
+        "metrics": {
+          "train_loss": {
+            "from": 1.905002,
+            "to": 1.866134,
+            "change": -0.038868,
+            "percent_change": "-2.04%"
+          },
+          "val_loss": {
+            "from": 0.855779,
+            "to": 0.855779,
+            "change": 0.0,
+            "percent_change": "+0.00%"
+          },
+          "val_rollout_mae": {
+            "from": 0.334245,
+            "to": 0.358053,
+            "change": 0.023807,
+            "percent_change": "+7.12%"
+          },
+          "val_drift_ratio": {
+            "from": 2.342377,
+            "to": 2.489506,
+            "change": 0.147129,
+            "percent_change": "+6.28%"
+          },
+          "val_position_error_h1": {
+            "from": 0.147436,
+            "to": 0.156283,
+            "change": 0.008847,
+            "percent_change": "+6.00%"
+          },
+          "val_position_error_mae": {
+            "from": 0.334245,
+            "to": 0.358053,
+            "change": 0.023807,
+            "percent_change": "+7.12%"
+          },
+          "val_velocity_error_h1": {
+            "from": 0.459832,
+            "to": 0.461766,
+            "change": 0.001935,
+            "percent_change": "+0.42%"
+          },
+          "val_velocity_error_mae": {
+            "from": 0.554892,
+            "to": 0.554904,
+            "change": 1.2e-05,
+            "percent_change": "+0.00%"
+          }
+        },
+        "narrative": [
+          "train loss moved from 1.9050 to 1.8661 (-2.04%) between 25%-50% (epoch 46 to 92)",
+          "val loss moved from 0.8558 to 0.8558 (+0.00%) between 25%-50% (epoch 46 to 92)",
+          "val rollout MAE moved from 0.3342 to 0.3581 (+7.12%) between 25%-50% (epoch 46 to 92)",
+          "val drift ratio moved from 2.3424 to 2.4895 (+6.28%) between 25%-50% (epoch 46 to 92)",
+          "val position error (H=1) moved from 0.1474 to 0.1563 (+6.00%) between 25%-50% (epoch 46 to 92)",
+          "val position error (rollout MAE) moved from 0.3342 to 0.3581 (+7.12%) between 25%-50% (epoch 46 to 92)",
+          "val velocity error (H=1) moved from 0.4598 to 0.4618 (+0.42%) between 25%-50% (epoch 46 to 92)",
+          "val velocity error (rollout MAE) moved from 0.5549 to 0.5549 (+0.00%) between 25%-50% (epoch 46 to 92)"
+        ]
+      },
+      {
+        "interval": "50%-75%",
+        "from_epoch": 92,
+        "to_epoch": 137,
+        "metrics": {
+          "train_loss": {
+            "from": 1.866134,
+            "to": 1.833721,
+            "change": -0.032413,
+            "percent_change": "-1.74%"
+          },
+          "val_loss": {
+            "from": 0.855779,
+            "to": 0.855779,
+            "change": 0.0,
+            "percent_change": "+0.00%"
+          },
+          "val_rollout_mae": {
+            "from": 0.358053,
+            "to": 0.353889,
+            "change": -0.004164,
+            "percent_change": "-1.16%"
+          },
+          "val_drift_ratio": {
+            "from": 2.489506,
+            "to": 2.354787,
+            "change": -0.134719,
+            "percent_change": "-5.41%"
+          },
+          "val_position_error_h1": {
+            "from": 0.156283,
+            "to": 0.159796,
+            "change": 0.003513,
+            "percent_change": "+2.25%"
+          },
+          "val_position_error_mae": {
+            "from": 0.358053,
+            "to": 0.353889,
+            "change": -0.004164,
+            "percent_change": "-1.16%"
+          },
+          "val_velocity_error_h1": {
+            "from": 0.461766,
+            "to": 0.4582,
+            "change": -0.003567,
+            "percent_change": "-0.77%"
+          },
+          "val_velocity_error_mae": {
+            "from": 0.554904,
+            "to": 0.553291,
+            "change": -0.001612,
+            "percent_change": "-0.29%"
+          }
+        },
+        "narrative": [
+          "train loss moved from 1.8661 to 1.8337 (-1.74%) between 50%-75% (epoch 92 to 137)",
+          "val loss moved from 0.8558 to 0.8558 (+0.00%) between 50%-75% (epoch 92 to 137)",
+          "val rollout MAE moved from 0.3581 to 0.3539 (-1.16%) between 50%-75% (epoch 92 to 137)",
+          "val drift ratio moved from 2.4895 to 2.3548 (-5.41%) between 50%-75% (epoch 92 to 137)",
+          "val position error (H=1) moved from 0.1563 to 0.1598 (+2.25%) between 50%-75% (epoch 92 to 137)",
+          "val position error (rollout MAE) moved from 0.3581 to 0.3539 (-1.16%) between 50%-75% (epoch 92 to 137)",
+          "val velocity error (H=1) moved from 0.4618 to 0.4582 (-0.77%) between 50%-75% (epoch 92 to 137)",
+          "val velocity error (rollout MAE) moved from 0.5549 to 0.5533 (-0.29%) between 50%-75% (epoch 92 to 137)"
+        ]
+      },
+      {
+        "interval": "75%-100%",
+        "from_epoch": 137,
+        "to_epoch": 183,
+        "metrics": {
+          "train_loss": {
+            "from": 1.833721,
+            "to": 1.777329,
+            "change": -0.056392,
+            "percent_change": "-3.08%"
+          },
+          "val_loss": {
+            "from": 0.855779,
+            "to": 0.855779,
+            "change": 0.0,
+            "percent_change": "+0.00%"
+          },
+          "val_rollout_mae": {
+            "from": 0.353889,
+            "to": 0.338016,
+            "change": -0.015873,
+            "percent_change": "-4.49%"
+          },
+          "val_drift_ratio": {
+            "from": 2.354787,
+            "to": 2.261821,
+            "change": -0.092966,
+            "percent_change": "-3.95%"
+          },
+          "val_position_error_h1": {
+            "from": 0.159796,
+            "to": 0.156566,
+            "change": -0.003229,
+            "percent_change": "-2.02%"
+          },
+          "val_position_error_mae": {
+            "from": 0.353889,
+            "to": 0.338016,
+            "change": -0.015873,
+            "percent_change": "-4.49%"
+          },
+          "val_velocity_error_h1": {
+            "from": 0.4582,
+            "to": 0.457771,
+            "change": -0.000429,
+            "percent_change": "-0.09%"
+          },
+          "val_velocity_error_mae": {
+            "from": 0.553291,
+            "to": 0.537526,
+            "change": -0.015766,
+            "percent_change": "-2.85%"
+          }
+        },
+        "narrative": [
+          "train loss moved from 1.8337 to 1.7773 (-3.08%) between 75%-100% (epoch 137 to 183)",
+          "val loss moved from 0.8558 to 0.8558 (+0.00%) between 75%-100% (epoch 137 to 183)",
+          "val rollout MAE moved from 0.3539 to 0.3380 (-4.49%) between 75%-100% (epoch 137 to 183)",
+          "val drift ratio moved from 2.3548 to 2.2618 (-3.95%) between 75%-100% (epoch 137 to 183)",
+          "val position error (H=1) moved from 0.1598 to 0.1566 (-2.02%) between 75%-100% (epoch 137 to 183)",
+          "val position error (rollout MAE) moved from 0.3539 to 0.3380 (-4.49%) between 75%-100% (epoch 137 to 183)",
+          "val velocity error (H=1) moved from 0.4582 to 0.4578 (-0.09%) between 75%-100% (epoch 137 to 183)",
+          "val velocity error (rollout MAE) moved from 0.5533 to 0.5375 (-2.85%) between 75%-100% (epoch 137 to 183)"
+        ]
+      }
+    ],
+    "overall_summary": {
+      "train_loss": {
+        "start": 2.224638,
+        "final": 1.777329,
+        "change": -0.447308,
+        "percent_change": "-20.11%",
+        "summary": "train loss moved from 2.2246 to 1.7773 (-20.11%) across all 183 epochs (100%)"
+      },
+      "val_loss": {
+        "start": 0.855779,
+        "final": 0.855779,
+        "change": 0.0,
+        "percent_change": "+0.00%",
+        "summary": "val loss moved from 0.8558 to 0.8558 (+0.00%) across all 183 epochs (100%)"
+      },
+      "val_rollout_mae": {
+        "start": 0.365234,
+        "final": 0.338016,
+        "change": -0.027219,
+        "percent_change": "-7.45%",
+        "summary": "val rollout MAE moved from 0.3652 to 0.3380 (-7.45%) across all 183 epochs (100%)"
+      },
+      "val_drift_ratio": {
+        "start": 2.416802,
+        "final": 2.261821,
+        "change": -0.15498,
+        "percent_change": "-6.41%",
+        "summary": "val drift ratio moved from 2.4168 to 2.2618 (-6.41%) across all 183 epochs (100%)"
+      },
+      "val_position_error_h1": {
+        "start": 0.150913,
+        "final": 0.156566,
+        "change": 0.005653,
+        "percent_change": "+3.75%",
+        "summary": "val position error (H=1) moved from 0.1509 to 0.1566 (+3.75%) across all 183 epochs (100%)"
+      },
+      "val_position_error_mae": {
+        "start": 0.365234,
+        "final": 0.338016,
+        "change": -0.027219,
+        "percent_change": "-7.45%",
+        "summary": "val position error (rollout MAE) moved from 0.3652 to 0.3380 (-7.45%) across all 183 epochs (100%)"
+      },
+      "val_velocity_error_h1": {
+        "start": 0.45869,
+        "final": 0.457771,
+        "change": -0.000919,
+        "percent_change": "-0.20%",
+        "summary": "val velocity error (H=1) moved from 0.4587 to 0.4578 (-0.20%) across all 183 epochs (100%)"
+      },
+      "val_velocity_error_mae": {
+        "start": 0.566543,
+        "final": 0.537526,
+        "change": -0.029017,
+        "percent_change": "-5.12%",
+        "summary": "val velocity error (rollout MAE) moved from 0.5665 to 0.5375 (-5.12%) across all 183 epochs (100%)"
+      }
+    },
+    "narrative": [
+      "train loss moved from 2.2246 to 1.7773 (-20.11%) across all 183 epochs (100%)",
+      "val loss moved from 0.8558 to 0.8558 (+0.00%) across all 183 epochs (100%)",
+      "val rollout MAE moved from 0.3652 to 0.3380 (-7.45%) across all 183 epochs (100%)",
+      "val drift ratio moved from 2.4168 to 2.2618 (-6.41%) across all 183 epochs (100%)",
+      "val position error (H=1) moved from 0.1509 to 0.1566 (+3.75%) across all 183 epochs (100%)",
+      "val position error (rollout MAE) moved from 0.3652 to 0.3380 (-7.45%) across all 183 epochs (100%)",
+      "val velocity error (H=1) moved from 0.4587 to 0.4578 (-0.20%) across all 183 epochs (100%)",
+      "val velocity error (rollout MAE) moved from 0.5665 to 0.5375 (-5.12%) across all 183 epochs (100%)"
+    ]
+  },
+  "ab_comparison": {
+    "predictor_only": {
+      "test_rollout_mae": 0.32813404003779095,
+      "test_drift_ratio": 2.9234933409540016,
+      "test_pos_error_per_horizon": {
+        "1": 0.10860077664256096,
+        "5": 0.13453153893351555,
+        "10": 0.17936209589242935,
+        "25": 0.31749364733695984,
+        "50": 0.5104075968265533,
+        "100": 0.7184085845947266
+      },
+      "extrap_rollout_mae": 0.4797891480848193,
+      "extrap_drift_ratio": 3.7933642161118035
+    },
+    "predictor_with_corrector": {
+      "test_rollout_mae": 0.3091382986555497,
+      "test_drift_ratio": 2.873276930618987,
+      "test_pos_error_per_horizon": {
+        "1": 0.11002595350146294,
+        "5": 0.1342826411128044,
+        "10": 0.18002672493457794,
+        "25": 0.3161350339651108,
+        "50": 0.4896811246871948,
+        "100": 0.6246783137321472
+      },
+      "extrap_rollout_mae": 0.4266789872199297,
+      "extrap_drift_ratio": 3.4118016701876863
+    }
+  }
+}

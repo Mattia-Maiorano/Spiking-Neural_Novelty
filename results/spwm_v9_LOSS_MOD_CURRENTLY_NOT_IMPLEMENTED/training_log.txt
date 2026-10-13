@@ -1,0 +1,732 @@
+Epoch 001 | TrainLoss 2.2246 | ValLoss 0.8558 | SpikeRate 0.123 | Time 4.8s
+  Losses: total_loss=2.2246, l_pred=0.0000, l_multi=0.0000, l_var=0.0000, l_vel=0.0000, l_sparse=0.0000, l_probe=0.0000, l_coord=0.0000, spike_rate=0.123, val_total_loss=0.8558, val_l_pred=0.2414, val_l_multi=0.1914, val_l_probe=1.0373, val_pos_err=0.0996, val_vel_err=0.6577, val_spike_rate=0.123, val_rollout_mae=0.3652, val_drift_ratio=2.42, val_gate_passed=0.0, val_dynamic_score=0.3661, combined_score=0.5311
+  GradNormOverall=0.0000, GradNormRecent10=0.0000
+
+Epoch 002 | TrainLoss 2.1515 | ValLoss 0.8558 | SpikeRate 0.123 | Time 8.8s
+  Losses: total_loss=2.1515, l_pred=0.0000, l_multi=0.0000, l_var=0.0000, l_vel=0.0000, l_sparse=0.0000, l_probe=0.0000, l_coord=0.0000, spike_rate=0.123, val_total_loss=0.8558, val_l_pred=0.2414, val_l_multi=0.1914, val_l_probe=1.0373, val_pos_err=0.0996, val_vel_err=0.6577, val_spike_rate=0.123, val_rollout_mae=0.3588, val_drift_ratio=2.41, val_gate_passed=0.0, val_dynamic_score=0.3648, combined_score=0.5175
+  GradNormOverall=0.0000, GradNormRecent10=0.0000
+
+Epoch 003 | TrainLoss 2.0467 | ValLoss 0.8558 | SpikeRate 0.123 | Time 12.8s
+  Losses: total_loss=2.0467, l_pred=0.0000, l_multi=0.0000, l_var=0.0000, l_vel=0.0000, l_sparse=0.0000, l_probe=0.0000, l_coord=0.0000, spike_rate=0.123, val_total_loss=0.8558, val_l_pred=0.2414, val_l_multi=0.1914, val_l_probe=1.0373, val_pos_err=0.0996, val_vel_err=0.6577, val_spike_rate=0.123, val_rollout_mae=0.3517, val_drift_ratio=2.38, val_gate_passed=0.0, val_dynamic_score=0.3609, combined_score=0.5062
+  GradNormOverall=0.0000, GradNormRecent10=0.0000
+
+Epoch 004 | TrainLoss 2.0062 | ValLoss 0.8558 | SpikeRate 0.123 | Time 17.2s
+  Losses: total_loss=2.0062, l_pred=0.0000, l_multi=0.0000, l_var=0.0000, l_vel=0.0000, l_sparse=0.0000, l_probe=0.0000, l_coord=0.0000, spike_rate=0.123, val_total_loss=0.8558, val_l_pred=0.2414, val_l_multi=0.1914, val_l_probe=1.0373, val_pos_err=0.0996, val_vel_err=0.6577, val_spike_rate=0.123, val_rollout_mae=0.3479, val_drift_ratio=2.36, val_gate_passed=0.0, val_dynamic_score=0.3575, combined_score=0.5011
+  GradNormOverall=0.0000, GradNormRecent10=0.0000
+
+Epoch 005 | TrainLoss 2.0055 | ValLoss 0.8558 | SpikeRate 0.123 | Time 21.3s
+  Losses: total_loss=2.0055, l_pred=0.0000, l_multi=0.0000, l_var=0.0000, l_vel=0.0000, l_sparse=0.0000, l_probe=0.0000, l_coord=0.0000, spike_rate=0.123, val_total_loss=0.8558, val_l_pred=0.2414, val_l_multi=0.1914, val_l_probe=1.0373, val_pos_err=0.0996, val_vel_err=0.6577, val_spike_rate=0.123, val_rollout_mae=0.3465, val_drift_ratio=2.34, val_gate_passed=0.0, val_dynamic_score=0.3552, combined_score=0.4987
+  GradNormOverall=0.0000, GradNormRecent10=0.0000
+
+Epoch 006 | TrainLoss 2.0005 | ValLoss 0.8558 | SpikeRate 0.123 | Time 25.4s
+  Losses: total_loss=2.0005, l_pred=0.0000, l_multi=0.0000, l_var=0.0000, l_vel=0.0000, l_sparse=0.0000, l_probe=0.0000, l_coord=0.0000, spike_rate=0.123, val_total_loss=0.8558, val_l_pred=0.2414, val_l_multi=0.1914, val_l_probe=1.0373, val_pos_err=0.0996, val_vel_err=0.6577, val_spike_rate=0.123, val_rollout_mae=0.3485, val_drift_ratio=2.37, val_gate_passed=0.0, val_dynamic_score=0.3576, combined_score=0.5037
+  GradNormOverall=0.0000, GradNormRecent10=0.0000
+
+Epoch 007 | TrainLoss 1.9694 | ValLoss 0.8558 | SpikeRate 0.123 | Time 29.4s
+  Losses: total_loss=1.9694, l_pred=0.0000, l_multi=0.0000, l_var=0.0000, l_vel=0.0000, l_sparse=0.0000, l_probe=0.0000, l_coord=0.0000, spike_rate=0.123, val_total_loss=0.8558, val_l_pred=0.2414, val_l_multi=0.1914, val_l_probe=1.0373, val_pos_err=0.0996, val_vel_err=0.6577, val_spike_rate=0.123, val_rollout_mae=0.3525, val_drift_ratio=2.39, val_gate_passed=0.0, val_dynamic_score=0.3605, combined_score=0.5152
+  GradNormOverall=0.0000, GradNormRecent10=0.0000
+
+Epoch 008 | TrainLoss 1.8972 | ValLoss 0.8558 | SpikeRate 0.123 | Time 33.4s
+  Losses: total_loss=1.8972, l_pred=0.0000, l_multi=0.0000, l_var=0.0000, l_vel=0.0000, l_sparse=0.0000, l_probe=0.0000, l_coord=0.0000, spike_rate=0.123, val_total_loss=0.8558, val_l_pred=0.2414, val_l_multi=0.1914, val_l_probe=1.0373, val_pos_err=0.0996, val_vel_err=0.6577, val_spike_rate=0.123, val_rollout_mae=0.3512, val_drift_ratio=2.40, val_gate_passed=0.0, val_dynamic_score=0.3611, combined_score=0.5133
+  GradNormOverall=0.0000, GradNormRecent10=0.0000
+
+Epoch 009 | TrainLoss 2.0418 | ValLoss 0.8558 | SpikeRate 0.123 | Time 37.4s
+  Losses: total_loss=2.0418, l_pred=0.0000, l_multi=0.0000, l_var=0.0000, l_vel=0.0000, l_sparse=0.0000, l_probe=0.0000, l_coord=0.0000, spike_rate=0.123, val_total_loss=0.8558, val_l_pred=0.2414, val_l_multi=0.1914, val_l_probe=1.0373, val_pos_err=0.0996, val_vel_err=0.6577, val_spike_rate=0.123, val_rollout_mae=0.3516, val_drift_ratio=2.40, val_gate_passed=0.0, val_dynamic_score=0.3614, combined_score=0.5156
+  GradNormOverall=0.0000, GradNormRecent10=0.0000
+
+Epoch 010 | TrainLoss 1.9752 | ValLoss 0.8558 | SpikeRate 0.123 | Time 41.4s
+  Losses: total_loss=1.9752, l_pred=0.0000, l_multi=0.0000, l_var=0.0000, l_vel=0.0000, l_sparse=0.0000, l_probe=0.0000, l_coord=0.0000, spike_rate=0.123, val_total_loss=0.8558, val_l_pred=0.2414, val_l_multi=0.1914, val_l_probe=1.0373, val_pos_err=0.0996, val_vel_err=0.6577, val_spike_rate=0.123, val_rollout_mae=0.3484, val_drift_ratio=2.39, val_gate_passed=0.0, val_dynamic_score=0.3607, combined_score=0.5050
+  GradNormOverall=0.0000, GradNormRecent10=0.0000
+
+Epoch 011 | TrainLoss 2.0488 | ValLoss 0.8558 | SpikeRate 0.123 | Time 45.3s
+  Losses: total_loss=2.0488, l_pred=0.0000, l_multi=0.0000, l_var=0.0000, l_vel=0.0000, l_sparse=0.0000, l_probe=0.0000, l_coord=0.0000, spike_rate=0.123, val_total_loss=0.8558, val_l_pred=0.2414, val_l_multi=0.1914, val_l_probe=1.0373, val_pos_err=0.0996, val_vel_err=0.6577, val_spike_rate=0.123, val_rollout_mae=0.3438, val_drift_ratio=2.36, val_gate_passed=0.0, val_dynamic_score=0.3558, combined_score=0.4990
+  GradNormOverall=0.0000, GradNormRecent10=0.0000
+
+Epoch 012 | TrainLoss 1.9784 | ValLoss 0.8558 | SpikeRate 0.123 | Time 49.4s
+  Losses: total_loss=1.9784, l_pred=0.0000, l_multi=0.0000, l_var=0.0000, l_vel=0.0000, l_sparse=0.0000, l_probe=0.0000, l_coord=0.0000, spike_rate=0.123, val_total_loss=0.8558, val_l_pred=0.2414, val_l_multi=0.1914, val_l_probe=1.0373, val_pos_err=0.0996, val_vel_err=0.6577, val_spike_rate=0.123, val_rollout_mae=0.3427, val_drift_ratio=2.36, val_gate_passed=0.0, val_dynamic_score=0.3573, combined_score=0.4939
+  GradNormOverall=0.0000, GradNormRecent10=0.0000
+
+Epoch 013 | TrainLoss 1.9814 | ValLoss 0.8558 | SpikeRate 0.123 | Time 53.3s
+  Losses: total_loss=1.9814, l_pred=0.0000, l_multi=0.0000, l_var=0.0000, l_vel=0.0000, l_sparse=0.0000, l_probe=0.0000, l_coord=0.0000, spike_rate=0.123, val_total_loss=0.8558, val_l_pred=0.2414, val_l_multi=0.1914, val_l_probe=1.0373, val_pos_err=0.0996, val_vel_err=0.6577, val_spike_rate=0.123, val_rollout_mae=0.3414, val_drift_ratio=2.35, val_gate_passed=0.0, val_dynamic_score=0.3563, combined_score=0.4909
+  GradNormOverall=0.0000, GradNormRecent10=0.0000
+
+Epoch 014 | TrainLoss 1.9787 | ValLoss 0.8558 | SpikeRate 0.123 | Time 57.3s
+  Losses: total_loss=1.9787, l_pred=0.0000, l_multi=0.0000, l_var=0.0000, l_vel=0.0000, l_sparse=0.0000, l_probe=0.0000, l_coord=0.0000, spike_rate=0.123, val_total_loss=0.8558, val_l_pred=0.2414, val_l_multi=0.1914, val_l_probe=1.0373, val_pos_err=0.0996, val_vel_err=0.6577, val_spike_rate=0.123, val_rollout_mae=0.3428, val_drift_ratio=2.36, val_gate_passed=0.0, val_dynamic_score=0.3563, combined_score=0.4985
+  GradNormOverall=0.0000, GradNormRecent10=0.0000
+
+Epoch 015 | TrainLoss 1.9603 | ValLoss 0.8558 | SpikeRate 0.123 | Time 61.2s
+  Losses: total_loss=1.9603, l_pred=0.0000, l_multi=0.0000, l_var=0.0000, l_vel=0.0000, l_sparse=0.0000, l_probe=0.0000, l_coord=0.0000, spike_rate=0.123, val_total_loss=0.8558, val_l_pred=0.2414, val_l_multi=0.1914, val_l_probe=1.0373, val_pos_err=0.0996, val_vel_err=0.6577, val_spike_rate=0.123, val_rollout_mae=0.3409, val_drift_ratio=2.35, val_gate_passed=0.0, val_dynamic_score=0.3544, combined_score=0.4937
+  GradNormOverall=0.0000, GradNormRecent10=0.0000
+
+Epoch 016 | TrainLoss 2.0177 | ValLoss 0.8558 | SpikeRate 0.123 | Time 65.2s
+  Losses: total_loss=2.0177, l_pred=0.0000, l_multi=0.0000, l_var=0.0000, l_vel=0.0000, l_sparse=0.0000, l_probe=0.0000, l_coord=0.0000, spike_rate=0.123, val_total_loss=0.8558, val_l_pred=0.2414, val_l_multi=0.1914, val_l_probe=1.0373, val_pos_err=0.0996, val_vel_err=0.6577, val_spike_rate=0.123, val_rollout_mae=0.3418, val_drift_ratio=2.37, val_gate_passed=0.0, val_dynamic_score=0.3563, combined_score=0.4940
+  GradNormOverall=0.0000, GradNormRecent10=0.0000
+
+Epoch 017 | TrainLoss 1.9733 | ValLoss 0.8558 | SpikeRate 0.123 | Time 69.1s
+  Losses: total_loss=1.9733, l_pred=0.0000, l_multi=0.0000, l_var=0.0000, l_vel=0.0000, l_sparse=0.0000, l_probe=0.0000, l_coord=0.0000, spike_rate=0.123, val_total_loss=0.8558, val_l_pred=0.2414, val_l_multi=0.1914, val_l_probe=1.0373, val_pos_err=0.0996, val_vel_err=0.6577, val_spike_rate=0.123, val_rollout_mae=0.3405, val_drift_ratio=2.35, val_gate_passed=0.0, val_dynamic_score=0.3542, combined_score=0.4941
+  GradNormOverall=0.0000, GradNormRecent10=0.0000
+
+Epoch 018 | TrainLoss 1.9552 | ValLoss 0.8558 | SpikeRate 0.123 | Time 73.0s
+  Losses: total_loss=1.9552, l_pred=0.0000, l_multi=0.0000, l_var=0.0000, l_vel=0.0000, l_sparse=0.0000, l_probe=0.0000, l_coord=0.0000, spike_rate=0.123, val_total_loss=0.8558, val_l_pred=0.2414, val_l_multi=0.1914, val_l_probe=1.0373, val_pos_err=0.0996, val_vel_err=0.6577, val_spike_rate=0.123, val_rollout_mae=0.3362, val_drift_ratio=2.33, val_gate_passed=0.0, val_dynamic_score=0.3512, combined_score=0.4827
+  GradNormOverall=0.0000, GradNormRecent10=0.0000
+
+Epoch 019 | TrainLoss 1.9702 | ValLoss 0.8558 | SpikeRate 0.123 | Time 77.0s
+  Losses: total_loss=1.9702, l_pred=0.0000, l_multi=0.0000, l_var=0.0000, l_vel=0.0000, l_sparse=0.0000, l_probe=0.0000, l_coord=0.0000, spike_rate=0.123, val_total_loss=0.8558, val_l_pred=0.2414, val_l_multi=0.1914, val_l_probe=1.0373, val_pos_err=0.0996, val_vel_err=0.6577, val_spike_rate=0.123, val_rollout_mae=0.3351, val_drift_ratio=2.32, val_gate_passed=0.0, val_dynamic_score=0.3501, combined_score=0.4804
+  GradNormOverall=0.0000, GradNormRecent10=0.0000
+
+Epoch 020 | TrainLoss 1.9471 | ValLoss 0.8558 | SpikeRate 0.123 | Time 81.0s
+  Losses: total_loss=1.9471, l_pred=0.0000, l_multi=0.0000, l_var=0.0000, l_vel=0.0000, l_sparse=0.0000, l_probe=0.0000, l_coord=0.0000, spike_rate=0.123, val_total_loss=0.8558, val_l_pred=0.2414, val_l_multi=0.1914, val_l_probe=1.0373, val_pos_err=0.0996, val_vel_err=0.6577, val_spike_rate=0.123, val_rollout_mae=0.3366, val_drift_ratio=2.32, val_gate_passed=0.0, val_dynamic_score=0.3496, combined_score=0.4852
+  GradNormOverall=0.0000, GradNormRecent10=0.0000
+
+Epoch 021 | TrainLoss 1.9025 | ValLoss 0.8558 | SpikeRate 0.123 | Time 84.9s
+  Losses: total_loss=1.9025, l_pred=0.0000, l_multi=0.0000, l_var=0.0000, l_vel=0.0000, l_sparse=0.0000, l_probe=0.0000, l_coord=0.0000, spike_rate=0.123, val_total_loss=0.8558, val_l_pred=0.2414, val_l_multi=0.1914, val_l_probe=1.0373, val_pos_err=0.0996, val_vel_err=0.6577, val_spike_rate=0.123, val_rollout_mae=0.3363, val_drift_ratio=2.34, val_gate_passed=0.0, val_dynamic_score=0.3518, combined_score=0.4834
+  GradNormOverall=0.0000, GradNormRecent10=0.0000
+
+Epoch 022 | TrainLoss 1.9031 | ValLoss 0.8558 | SpikeRate 0.123 | Time 88.9s
+  Losses: total_loss=1.9031, l_pred=0.0000, l_multi=0.0000, l_var=0.0000, l_vel=0.0000, l_sparse=0.0000, l_probe=0.0000, l_coord=0.0000, spike_rate=0.123, val_total_loss=0.8558, val_l_pred=0.2414, val_l_multi=0.1914, val_l_probe=1.0373, val_pos_err=0.0996, val_vel_err=0.6577, val_spike_rate=0.123, val_rollout_mae=0.3365, val_drift_ratio=2.35, val_gate_passed=0.0, val_dynamic_score=0.3532, combined_score=0.4845
+  GradNormOverall=0.0000, GradNormRecent10=0.0000
+
+Epoch 023 | TrainLoss 1.9747 | ValLoss 0.8558 | SpikeRate 0.123 | Time 92.9s
+  Losses: total_loss=1.9747, l_pred=0.0000, l_multi=0.0000, l_var=0.0000, l_vel=0.0000, l_sparse=0.0000, l_probe=0.0000, l_coord=0.0000, spike_rate=0.123, val_total_loss=0.8558, val_l_pred=0.2414, val_l_multi=0.1914, val_l_probe=1.0373, val_pos_err=0.0996, val_vel_err=0.6577, val_spike_rate=0.123, val_rollout_mae=0.3371, val_drift_ratio=2.35, val_gate_passed=0.0, val_dynamic_score=0.3524, combined_score=0.4877
+  GradNormOverall=0.0000, GradNormRecent10=0.0000
+
+Epoch 024 | TrainLoss 1.9215 | ValLoss 0.8558 | SpikeRate 0.123 | Time 96.8s
+  Losses: total_loss=1.9215, l_pred=0.0000, l_multi=0.0000, l_var=0.0000, l_vel=0.0000, l_sparse=0.0000, l_probe=0.0000, l_coord=0.0000, spike_rate=0.123, val_total_loss=0.8558, val_l_pred=0.2414, val_l_multi=0.1914, val_l_probe=1.0373, val_pos_err=0.0996, val_vel_err=0.6577, val_spike_rate=0.123, val_rollout_mae=0.3347, val_drift_ratio=2.34, val_gate_passed=0.0, val_dynamic_score=0.3522, combined_score=0.4833
+  GradNormOverall=0.0000, GradNormRecent10=0.0000
+
+Epoch 025 | TrainLoss 1.9185 | ValLoss 0.8558 | SpikeRate 0.123 | Time 100.8s
+  Losses: total_loss=1.9185, l_pred=0.0000, l_multi=0.0000, l_var=0.0000, l_vel=0.0000, l_sparse=0.0000, l_probe=0.0000, l_coord=0.0000, spike_rate=0.123, val_total_loss=0.8558, val_l_pred=0.2414, val_l_multi=0.1914, val_l_probe=1.0373, val_pos_err=0.0996, val_vel_err=0.6577, val_spike_rate=0.123, val_rollout_mae=0.3331, val_drift_ratio=2.33, val_gate_passed=0.0, val_dynamic_score=0.3499, combined_score=0.4819
+  GradNormOverall=0.0000, GradNormRecent10=0.0000
+
+Epoch 026 | TrainLoss 1.9258 | ValLoss 0.8558 | SpikeRate 0.123 | Time 104.9s
+  Losses: total_loss=1.9258, l_pred=0.0000, l_multi=0.0000, l_var=0.0000, l_vel=0.0000, l_sparse=0.0000, l_probe=0.0000, l_coord=0.0000, spike_rate=0.123, val_total_loss=0.8558, val_l_pred=0.2414, val_l_multi=0.1914, val_l_probe=1.0373, val_pos_err=0.0996, val_vel_err=0.6577, val_spike_rate=0.123, val_rollout_mae=0.3313, val_drift_ratio=2.31, val_gate_passed=0.0, val_dynamic_score=0.3489, combined_score=0.4785
+  GradNormOverall=0.0000, GradNormRecent10=0.0000
+
+Epoch 027 | TrainLoss 1.8977 | ValLoss 0.8558 | SpikeRate 0.123 | Time 108.8s
+  Losses: total_loss=1.8977, l_pred=0.0000, l_multi=0.0000, l_var=0.0000, l_vel=0.0000, l_sparse=0.0000, l_probe=0.0000, l_coord=0.0000, spike_rate=0.123, val_total_loss=0.8558, val_l_pred=0.2414, val_l_multi=0.1914, val_l_probe=1.0373, val_pos_err=0.0996, val_vel_err=0.6577, val_spike_rate=0.123, val_rollout_mae=0.3316, val_drift_ratio=2.30, val_gate_passed=0.0, val_dynamic_score=0.3478, combined_score=0.4799
+  GradNormOverall=0.0000, GradNormRecent10=0.0000
+
+Epoch 028 | TrainLoss 1.8777 | ValLoss 0.8558 | SpikeRate 0.123 | Time 112.7s
+  Losses: total_loss=1.8777, l_pred=0.0000, l_multi=0.0000, l_var=0.0000, l_vel=0.0000, l_sparse=0.0000, l_probe=0.0000, l_coord=0.0000, spike_rate=0.123, val_total_loss=0.8558, val_l_pred=0.2414, val_l_multi=0.1914, val_l_probe=1.0373, val_pos_err=0.0996, val_vel_err=0.6577, val_spike_rate=0.123, val_rollout_mae=0.3300, val_drift_ratio=2.28, val_gate_passed=0.0, val_dynamic_score=0.3463, combined_score=0.4760
+  GradNormOverall=0.0000, GradNormRecent10=0.0000
+
+Epoch 029 | TrainLoss 1.9366 | ValLoss 0.8558 | SpikeRate 0.123 | Time 116.7s
+  Losses: total_loss=1.9366, l_pred=0.0000, l_multi=0.0000, l_var=0.0000, l_vel=0.0000, l_sparse=0.0000, l_probe=0.0000, l_coord=0.0000, spike_rate=0.123, val_total_loss=0.8558, val_l_pred=0.2414, val_l_multi=0.1914, val_l_probe=1.0373, val_pos_err=0.0996, val_vel_err=0.6577, val_spike_rate=0.123, val_rollout_mae=0.3326, val_drift_ratio=2.29, val_gate_passed=0.0, val_dynamic_score=0.3483, combined_score=0.4812
+  GradNormOverall=0.0000, GradNormRecent10=0.0000
+
+Epoch 030 | TrainLoss 1.8978 | ValLoss 0.8558 | SpikeRate 0.123 | Time 120.6s
+  Losses: total_loss=1.8978, l_pred=0.0000, l_multi=0.0000, l_var=0.0000, l_vel=0.0000, l_sparse=0.0000, l_probe=0.0000, l_coord=0.0000, spike_rate=0.123, val_total_loss=0.8558, val_l_pred=0.2414, val_l_multi=0.1914, val_l_probe=1.0373, val_pos_err=0.0996, val_vel_err=0.6577, val_spike_rate=0.123, val_rollout_mae=0.3319, val_drift_ratio=2.32, val_gate_passed=0.0, val_dynamic_score=0.3493, combined_score=0.4790
+  GradNormOverall=0.0000, GradNormRecent10=0.0000
+
+Epoch 031 | TrainLoss 1.9317 | ValLoss 0.8558 | SpikeRate 0.123 | Time 124.5s
+  Losses: total_loss=1.9317, l_pred=0.0000, l_multi=0.0000, l_var=0.0000, l_vel=0.0000, l_sparse=0.0000, l_probe=0.0000, l_coord=0.0000, spike_rate=0.123, val_total_loss=0.8558, val_l_pred=0.2414, val_l_multi=0.1914, val_l_probe=1.0373, val_pos_err=0.0996, val_vel_err=0.6577, val_spike_rate=0.123, val_rollout_mae=0.3322, val_drift_ratio=2.31, val_gate_passed=0.0, val_dynamic_score=0.3488, combined_score=0.4789
+  GradNormOverall=0.0000, GradNormRecent10=0.0000
+
+Epoch 032 | TrainLoss 1.8914 | ValLoss 0.8558 | SpikeRate 0.123 | Time 128.3s
+  Losses: total_loss=1.8914, l_pred=0.0000, l_multi=0.0000, l_var=0.0000, l_vel=0.0000, l_sparse=0.0000, l_probe=0.0000, l_coord=0.0000, spike_rate=0.123, val_total_loss=0.8558, val_l_pred=0.2414, val_l_multi=0.1914, val_l_probe=1.0373, val_pos_err=0.0996, val_vel_err=0.6577, val_spike_rate=0.123, val_rollout_mae=0.3339, val_drift_ratio=2.30, val_gate_passed=0.0, val_dynamic_score=0.3490, combined_score=0.4790
+  GradNormOverall=0.0000, GradNormRecent10=0.0000
+
+Epoch 033 | TrainLoss 1.9399 | ValLoss 0.8558 | SpikeRate 0.123 | Time 132.2s
+  Losses: total_loss=1.9399, l_pred=0.0000, l_multi=0.0000, l_var=0.0000, l_vel=0.0000, l_sparse=0.0000, l_probe=0.0000, l_coord=0.0000, spike_rate=0.123, val_total_loss=0.8558, val_l_pred=0.2414, val_l_multi=0.1914, val_l_probe=1.0373, val_pos_err=0.0996, val_vel_err=0.6577, val_spike_rate=0.123, val_rollout_mae=0.3375, val_drift_ratio=2.33, val_gate_passed=0.0, val_dynamic_score=0.3534, combined_score=0.4837
+  GradNormOverall=0.0000, GradNormRecent10=0.0000
+
+Epoch 034 | TrainLoss 1.8916 | ValLoss 0.8558 | SpikeRate 0.123 | Time 136.2s
+  Losses: total_loss=1.8916, l_pred=0.0000, l_multi=0.0000, l_var=0.0000, l_vel=0.0000, l_sparse=0.0000, l_probe=0.0000, l_coord=0.0000, spike_rate=0.123, val_total_loss=0.8558, val_l_pred=0.2414, val_l_multi=0.1914, val_l_probe=1.0373, val_pos_err=0.0996, val_vel_err=0.6577, val_spike_rate=0.123, val_rollout_mae=0.3399, val_drift_ratio=2.37, val_gate_passed=0.0, val_dynamic_score=0.3567, combined_score=0.4890
+  GradNormOverall=0.0000, GradNormRecent10=0.0000
+
+Epoch 035 | TrainLoss 1.8848 | ValLoss 0.8558 | SpikeRate 0.123 | Time 140.1s
+  Losses: total_loss=1.8848, l_pred=0.0000, l_multi=0.0000, l_var=0.0000, l_vel=0.0000, l_sparse=0.0000, l_probe=0.0000, l_coord=0.0000, spike_rate=0.123, val_total_loss=0.8558, val_l_pred=0.2414, val_l_multi=0.1914, val_l_probe=1.0373, val_pos_err=0.0996, val_vel_err=0.6577, val_spike_rate=0.123, val_rollout_mae=0.3402, val_drift_ratio=2.38, val_gate_passed=0.0, val_dynamic_score=0.3576, combined_score=0.4902
+  GradNormOverall=0.0000, GradNormRecent10=0.0000
+
+Epoch 036 | TrainLoss 1.9010 | ValLoss 0.8558 | SpikeRate 0.123 | Time 144.0s
+  Losses: total_loss=1.9010, l_pred=0.0000, l_multi=0.0000, l_var=0.0000, l_vel=0.0000, l_sparse=0.0000, l_probe=0.0000, l_coord=0.0000, spike_rate=0.123, val_total_loss=0.8558, val_l_pred=0.2414, val_l_multi=0.1914, val_l_probe=1.0373, val_pos_err=0.0996, val_vel_err=0.6577, val_spike_rate=0.123, val_rollout_mae=0.3394, val_drift_ratio=2.36, val_gate_passed=0.0, val_dynamic_score=0.3551, combined_score=0.4882
+  GradNormOverall=0.0000, GradNormRecent10=0.0000
+
+Epoch 037 | TrainLoss 1.8818 | ValLoss 0.8558 | SpikeRate 0.123 | Time 147.9s
+  Losses: total_loss=1.8818, l_pred=0.0000, l_multi=0.0000, l_var=0.0000, l_vel=0.0000, l_sparse=0.0000, l_probe=0.0000, l_coord=0.0000, spike_rate=0.123, val_total_loss=0.8558, val_l_pred=0.2414, val_l_multi=0.1914, val_l_probe=1.0373, val_pos_err=0.0996, val_vel_err=0.6577, val_spike_rate=0.123, val_rollout_mae=0.3408, val_drift_ratio=2.34, val_gate_passed=0.0, val_dynamic_score=0.3538, combined_score=0.4923
+  GradNormOverall=0.0000, GradNormRecent10=0.0000
+
+Epoch 038 | TrainLoss 1.9826 | ValLoss 0.8558 | SpikeRate 0.123 | Time 151.8s
+  Losses: total_loss=1.9826, l_pred=0.0000, l_multi=0.0000, l_var=0.0000, l_vel=0.0000, l_sparse=0.0000, l_probe=0.0000, l_coord=0.0000, spike_rate=0.123, val_total_loss=0.8558, val_l_pred=0.2414, val_l_multi=0.1914, val_l_probe=1.0373, val_pos_err=0.0996, val_vel_err=0.6577, val_spike_rate=0.123, val_rollout_mae=0.3424, val_drift_ratio=2.36, val_gate_passed=0.0, val_dynamic_score=0.3556, combined_score=0.4976
+  GradNormOverall=0.0000, GradNormRecent10=0.0000
+
+Epoch 039 | TrainLoss 1.9143 | ValLoss 0.8558 | SpikeRate 0.123 | Time 155.7s
+  Losses: total_loss=1.9143, l_pred=0.0000, l_multi=0.0000, l_var=0.0000, l_vel=0.0000, l_sparse=0.0000, l_probe=0.0000, l_coord=0.0000, spike_rate=0.123, val_total_loss=0.8558, val_l_pred=0.2414, val_l_multi=0.1914, val_l_probe=1.0373, val_pos_err=0.0996, val_vel_err=0.6577, val_spike_rate=0.123, val_rollout_mae=0.3430, val_drift_ratio=2.37, val_gate_passed=0.0, val_dynamic_score=0.3573, combined_score=0.4975
+  GradNormOverall=0.0000, GradNormRecent10=0.0000
+
+Epoch 040 | TrainLoss 1.9568 | ValLoss 0.8558 | SpikeRate 0.123 | Time 159.6s
+  Losses: total_loss=1.9568, l_pred=0.0000, l_multi=0.0000, l_var=0.0000, l_vel=0.0000, l_sparse=0.0000, l_probe=0.0000, l_coord=0.0000, spike_rate=0.123, val_total_loss=0.8558, val_l_pred=0.2414, val_l_multi=0.1914, val_l_probe=1.0373, val_pos_err=0.0996, val_vel_err=0.6577, val_spike_rate=0.123, val_rollout_mae=0.3393, val_drift_ratio=2.34, val_gate_passed=0.0, val_dynamic_score=0.3546, combined_score=0.4897
+  GradNormOverall=0.0000, GradNormRecent10=0.0000
+
+Epoch 041 | TrainLoss 1.9522 | ValLoss 0.8558 | SpikeRate 0.123 | Time 164.0s
+  Losses: total_loss=1.9522, l_pred=0.0000, l_multi=0.0000, l_var=0.0000, l_vel=0.0000, l_sparse=0.0000, l_probe=0.0000, l_coord=0.0000, spike_rate=0.123, val_total_loss=0.8558, val_l_pred=0.2414, val_l_multi=0.1914, val_l_probe=1.0373, val_pos_err=0.0996, val_vel_err=0.6577, val_spike_rate=0.123, val_rollout_mae=0.3369, val_drift_ratio=2.33, val_gate_passed=0.0, val_dynamic_score=0.3531, combined_score=0.4870
+  GradNormOverall=0.0000, GradNormRecent10=0.0000
+
+Epoch 042 | TrainLoss 1.8927 | ValLoss 0.8558 | SpikeRate 0.123 | Time 168.0s
+  Losses: total_loss=1.8927, l_pred=0.0000, l_multi=0.0000, l_var=0.0000, l_vel=0.0000, l_sparse=0.0000, l_probe=0.0000, l_coord=0.0000, spike_rate=0.123, val_total_loss=0.8558, val_l_pred=0.2414, val_l_multi=0.1914, val_l_probe=1.0373, val_pos_err=0.0996, val_vel_err=0.6577, val_spike_rate=0.123, val_rollout_mae=0.3349, val_drift_ratio=2.34, val_gate_passed=0.0, val_dynamic_score=0.3523, combined_score=0.4836
+  GradNormOverall=0.0000, GradNormRecent10=0.0000
+
+Epoch 043 | TrainLoss 1.8665 | ValLoss 0.8558 | SpikeRate 0.123 | Time 172.0s
+  Losses: total_loss=1.8665, l_pred=0.0000, l_multi=0.0000, l_var=0.0000, l_vel=0.0000, l_sparse=0.0000, l_probe=0.0000, l_coord=0.0000, spike_rate=0.123, val_total_loss=0.8558, val_l_pred=0.2414, val_l_multi=0.1914, val_l_probe=1.0373, val_pos_err=0.0996, val_vel_err=0.6577, val_spike_rate=0.123, val_rollout_mae=0.3342, val_drift_ratio=2.34, val_gate_passed=0.0, val_dynamic_score=0.3524, combined_score=0.4813
+  GradNormOverall=0.0000, GradNormRecent10=0.0000
+
+Epoch 044 | TrainLoss 1.9494 | ValLoss 0.8558 | SpikeRate 0.123 | Time 175.9s
+  Losses: total_loss=1.9494, l_pred=0.0000, l_multi=0.0000, l_var=0.0000, l_vel=0.0000, l_sparse=0.0000, l_probe=0.0000, l_coord=0.0000, spike_rate=0.123, val_total_loss=0.8558, val_l_pred=0.2414, val_l_multi=0.1914, val_l_probe=1.0373, val_pos_err=0.0996, val_vel_err=0.6577, val_spike_rate=0.123, val_rollout_mae=0.3363, val_drift_ratio=2.33, val_gate_passed=0.0, val_dynamic_score=0.3523, combined_score=0.4862
+  GradNormOverall=0.0000, GradNormRecent10=0.0000
+
+Epoch 045 | TrainLoss 1.8769 | ValLoss 0.8558 | SpikeRate 0.123 | Time 179.8s
+  Losses: total_loss=1.8769, l_pred=0.0000, l_multi=0.0000, l_var=0.0000, l_vel=0.0000, l_sparse=0.0000, l_probe=0.0000, l_coord=0.0000, spike_rate=0.123, val_total_loss=0.8558, val_l_pred=0.2414, val_l_multi=0.1914, val_l_probe=1.0373, val_pos_err=0.0996, val_vel_err=0.6577, val_spike_rate=0.123, val_rollout_mae=0.3334, val_drift_ratio=2.34, val_gate_passed=0.0, val_dynamic_score=0.3523, combined_score=0.4776
+  GradNormOverall=0.0000, GradNormRecent10=0.0000
+
+Epoch 046 | TrainLoss 1.9050 | ValLoss 0.8558 | SpikeRate 0.123 | Time 183.7s
+  Losses: total_loss=1.9050, l_pred=0.0000, l_multi=0.0000, l_var=0.0000, l_vel=0.0000, l_sparse=0.0000, l_probe=0.0000, l_coord=0.0000, spike_rate=0.123, val_total_loss=0.8558, val_l_pred=0.2414, val_l_multi=0.1914, val_l_probe=1.0373, val_pos_err=0.0996, val_vel_err=0.6577, val_spike_rate=0.123, val_rollout_mae=0.3342, val_drift_ratio=2.34, val_gate_passed=0.0, val_dynamic_score=0.3529, combined_score=0.4782
+  GradNormOverall=0.0000, GradNormRecent10=0.0000
+
+Epoch 047 | TrainLoss 1.8912 | ValLoss 0.8558 | SpikeRate 0.123 | Time 187.6s
+  Losses: total_loss=1.8912, l_pred=0.0000, l_multi=0.0000, l_var=0.0000, l_vel=0.0000, l_sparse=0.0000, l_probe=0.0000, l_coord=0.0000, spike_rate=0.123, val_total_loss=0.8558, val_l_pred=0.2414, val_l_multi=0.1914, val_l_probe=1.0373, val_pos_err=0.0996, val_vel_err=0.6577, val_spike_rate=0.123, val_rollout_mae=0.3366, val_drift_ratio=2.33, val_gate_passed=0.0, val_dynamic_score=0.3523, combined_score=0.4843
+  GradNormOverall=0.0000, GradNormRecent10=0.0000
+
+Epoch 048 | TrainLoss 1.8149 | ValLoss 0.8558 | SpikeRate 0.123 | Time 191.5s
+  Losses: total_loss=1.8149, l_pred=0.0000, l_multi=0.0000, l_var=0.0000, l_vel=0.0000, l_sparse=0.0000, l_probe=0.0000, l_coord=0.0000, spike_rate=0.123, val_total_loss=0.8558, val_l_pred=0.2414, val_l_multi=0.1914, val_l_probe=1.0373, val_pos_err=0.0996, val_vel_err=0.6577, val_spike_rate=0.123, val_rollout_mae=0.3372, val_drift_ratio=2.30, val_gate_passed=0.0, val_dynamic_score=0.3507, combined_score=0.4868
+  GradNormOverall=0.0000, GradNormRecent10=0.0000
+
+Epoch 049 | TrainLoss 1.9132 | ValLoss 0.8558 | SpikeRate 0.123 | Time 195.3s
+  Losses: total_loss=1.9132, l_pred=0.0000, l_multi=0.0000, l_var=0.0000, l_vel=0.0000, l_sparse=0.0000, l_probe=0.0000, l_coord=0.0000, spike_rate=0.123, val_total_loss=0.8558, val_l_pred=0.2414, val_l_multi=0.1914, val_l_probe=1.0373, val_pos_err=0.0996, val_vel_err=0.6577, val_spike_rate=0.123, val_rollout_mae=0.3378, val_drift_ratio=2.31, val_gate_passed=0.0, val_dynamic_score=0.3517, combined_score=0.4872
+  GradNormOverall=0.0000, GradNormRecent10=0.0000
+
+Epoch 050 | TrainLoss 1.8306 | ValLoss 0.8558 | SpikeRate 0.123 | Time 199.2s
+  Losses: total_loss=1.8306, l_pred=0.0000, l_multi=0.0000, l_var=0.0000, l_vel=0.0000, l_sparse=0.0000, l_probe=0.0000, l_coord=0.0000, spike_rate=0.123, val_total_loss=0.8558, val_l_pred=0.2414, val_l_multi=0.1914, val_l_probe=1.0373, val_pos_err=0.0996, val_vel_err=0.6577, val_spike_rate=0.123, val_rollout_mae=0.3377, val_drift_ratio=2.32, val_gate_passed=0.0, val_dynamic_score=0.3527, combined_score=0.4849
+  GradNormOverall=0.0000, GradNormRecent10=0.0000
+
+Epoch 051 | TrainLoss 1.9316 | ValLoss 0.8558 | SpikeRate 0.123 | Time 203.1s
+  Losses: total_loss=1.9316, l_pred=0.0000, l_multi=0.0000, l_var=0.0000, l_vel=0.0000, l_sparse=0.0000, l_probe=0.0000, l_coord=0.0000, spike_rate=0.123, val_total_loss=0.8558, val_l_pred=0.2414, val_l_multi=0.1914, val_l_probe=1.0373, val_pos_err=0.0996, val_vel_err=0.6577, val_spike_rate=0.123, val_rollout_mae=0.3405, val_drift_ratio=2.29, val_gate_passed=0.0, val_dynamic_score=0.3516, combined_score=0.4944
+  GradNormOverall=0.0000, GradNormRecent10=0.0000
+
+Epoch 052 | TrainLoss 1.8443 | ValLoss 0.8558 | SpikeRate 0.123 | Time 207.0s
+  Losses: total_loss=1.8443, l_pred=0.0000, l_multi=0.0000, l_var=0.0000, l_vel=0.0000, l_sparse=0.0000, l_probe=0.0000, l_coord=0.0000, spike_rate=0.123, val_total_loss=0.8558, val_l_pred=0.2414, val_l_multi=0.1914, val_l_probe=1.0373, val_pos_err=0.0996, val_vel_err=0.6577, val_spike_rate=0.123, val_rollout_mae=0.3404, val_drift_ratio=2.26, val_gate_passed=0.0, val_dynamic_score=0.3515, combined_score=0.4944
+  GradNormOverall=0.0000, GradNormRecent10=0.0000
+
+Epoch 053 | TrainLoss 1.8520 | ValLoss 0.8558 | SpikeRate 0.123 | Time 210.9s
+  Losses: total_loss=1.8520, l_pred=0.0000, l_multi=0.0000, l_var=0.0000, l_vel=0.0000, l_sparse=0.0000, l_probe=0.0000, l_coord=0.0000, spike_rate=0.123, val_total_loss=0.8558, val_l_pred=0.2414, val_l_multi=0.1914, val_l_probe=1.0373, val_pos_err=0.0996, val_vel_err=0.6577, val_spike_rate=0.123, val_rollout_mae=0.3377, val_drift_ratio=2.25, val_gate_passed=0.0, val_dynamic_score=0.3510, combined_score=0.4868
+  GradNormOverall=0.0000, GradNormRecent10=0.0000
+
+Epoch 054 | TrainLoss 1.8025 | ValLoss 0.8558 | SpikeRate 0.123 | Time 214.8s
+  Losses: total_loss=1.8025, l_pred=0.0000, l_multi=0.0000, l_var=0.0000, l_vel=0.0000, l_sparse=0.0000, l_probe=0.0000, l_coord=0.0000, spike_rate=0.123, val_total_loss=0.8558, val_l_pred=0.2414, val_l_multi=0.1914, val_l_probe=1.0373, val_pos_err=0.0996, val_vel_err=0.6577, val_spike_rate=0.123, val_rollout_mae=0.3384, val_drift_ratio=2.25, val_gate_passed=0.0, val_dynamic_score=0.3526, combined_score=0.4853
+  GradNormOverall=0.0000, GradNormRecent10=0.0000
+
+Epoch 055 | TrainLoss 1.8329 | ValLoss 0.8558 | SpikeRate 0.123 | Time 218.7s
+  Losses: total_loss=1.8329, l_pred=0.0000, l_multi=0.0000, l_var=0.0000, l_vel=0.0000, l_sparse=0.0000, l_probe=0.0000, l_coord=0.0000, spike_rate=0.123, val_total_loss=0.8558, val_l_pred=0.2414, val_l_multi=0.1914, val_l_probe=1.0373, val_pos_err=0.0996, val_vel_err=0.6577, val_spike_rate=0.123, val_rollout_mae=0.3399, val_drift_ratio=2.24, val_gate_passed=0.0, val_dynamic_score=0.3524, combined_score=0.4908
+  GradNormOverall=0.0000, GradNormRecent10=0.0000
+
+Epoch 056 | TrainLoss 1.8220 | ValLoss 0.8558 | SpikeRate 0.123 | Time 222.6s
+  Losses: total_loss=1.8220, l_pred=0.0000, l_multi=0.0000, l_var=0.0000, l_vel=0.0000, l_sparse=0.0000, l_probe=0.0000, l_coord=0.0000, spike_rate=0.123, val_total_loss=0.8558, val_l_pred=0.2414, val_l_multi=0.1914, val_l_probe=1.0373, val_pos_err=0.0996, val_vel_err=0.6577, val_spike_rate=0.123, val_rollout_mae=0.3388, val_drift_ratio=2.24, val_gate_passed=0.0, val_dynamic_score=0.3519, combined_score=0.4860
+  GradNormOverall=0.0000, GradNormRecent10=0.0000
+
+Epoch 057 | TrainLoss 1.8524 | ValLoss 0.8558 | SpikeRate 0.123 | Time 226.4s
+  Losses: total_loss=1.8524, l_pred=0.0000, l_multi=0.0000, l_var=0.0000, l_vel=0.0000, l_sparse=0.0000, l_probe=0.0000, l_coord=0.0000, spike_rate=0.123, val_total_loss=0.8558, val_l_pred=0.2414, val_l_multi=0.1914, val_l_probe=1.0373, val_pos_err=0.0996, val_vel_err=0.6577, val_spike_rate=0.123, val_rollout_mae=0.3375, val_drift_ratio=2.22, val_gate_passed=0.0, val_dynamic_score=0.3514, combined_score=0.4831
+  GradNormOverall=0.0000, GradNormRecent10=0.0000
+
+Epoch 058 | TrainLoss 1.8424 | ValLoss 0.8558 | SpikeRate 0.123 | Time 230.4s
+  Losses: total_loss=1.8424, l_pred=0.0000, l_multi=0.0000, l_var=0.0000, l_vel=0.0000, l_sparse=0.0000, l_probe=0.0000, l_coord=0.0000, spike_rate=0.123, val_total_loss=0.8558, val_l_pred=0.2414, val_l_multi=0.1914, val_l_probe=1.0373, val_pos_err=0.0996, val_vel_err=0.6577, val_spike_rate=0.123, val_rollout_mae=0.3388, val_drift_ratio=2.23, val_gate_passed=0.0, val_dynamic_score=0.3539, combined_score=0.4828
+  GradNormOverall=0.0000, GradNormRecent10=0.0000
+
+Epoch 059 | TrainLoss 1.9015 | ValLoss 0.8558 | SpikeRate 0.123 | Time 234.3s
+  Losses: total_loss=1.9015, l_pred=0.0000, l_multi=0.0000, l_var=0.0000, l_vel=0.0000, l_sparse=0.0000, l_probe=0.0000, l_coord=0.0000, spike_rate=0.123, val_total_loss=0.8558, val_l_pred=0.2414, val_l_multi=0.1914, val_l_probe=1.0373, val_pos_err=0.0996, val_vel_err=0.6577, val_spike_rate=0.123, val_rollout_mae=0.3453, val_drift_ratio=2.24, val_gate_passed=0.0, val_dynamic_score=0.3577, combined_score=0.4959
+  GradNormOverall=0.0000, GradNormRecent10=0.0000
+
+Epoch 060 | TrainLoss 1.8930 | ValLoss 0.8558 | SpikeRate 0.123 | Time 238.2s
+  Losses: total_loss=1.8930, l_pred=0.0000, l_multi=0.0000, l_var=0.0000, l_vel=0.0000, l_sparse=0.0000, l_probe=0.0000, l_coord=0.0000, spike_rate=0.123, val_total_loss=0.8558, val_l_pred=0.2414, val_l_multi=0.1914, val_l_probe=1.0373, val_pos_err=0.0996, val_vel_err=0.6577, val_spike_rate=0.123, val_rollout_mae=0.3439, val_drift_ratio=2.24, val_gate_passed=0.0, val_dynamic_score=0.3574, combined_score=0.4928
+  GradNormOverall=0.0000, GradNormRecent10=0.0000
+
+Epoch 061 | TrainLoss 1.8072 | ValLoss 0.8558 | SpikeRate 0.123 | Time 242.1s
+  Losses: total_loss=1.8072, l_pred=0.0000, l_multi=0.0000, l_var=0.0000, l_vel=0.0000, l_sparse=0.0000, l_probe=0.0000, l_coord=0.0000, spike_rate=0.123, val_total_loss=0.8558, val_l_pred=0.2414, val_l_multi=0.1914, val_l_probe=1.0373, val_pos_err=0.0996, val_vel_err=0.6577, val_spike_rate=0.123, val_rollout_mae=0.3461, val_drift_ratio=2.28, val_gate_passed=0.0, val_dynamic_score=0.3582, combined_score=0.4984
+  GradNormOverall=0.0000, GradNormRecent10=0.0000
+
+Epoch 062 | TrainLoss 1.9206 | ValLoss 0.8558 | SpikeRate 0.123 | Time 246.0s
+  Losses: total_loss=1.9206, l_pred=0.0000, l_multi=0.0000, l_var=0.0000, l_vel=0.0000, l_sparse=0.0000, l_probe=0.0000, l_coord=0.0000, spike_rate=0.123, val_total_loss=0.8558, val_l_pred=0.2414, val_l_multi=0.1914, val_l_probe=1.0373, val_pos_err=0.0996, val_vel_err=0.6577, val_spike_rate=0.123, val_rollout_mae=0.3476, val_drift_ratio=2.31, val_gate_passed=0.0, val_dynamic_score=0.3592, combined_score=0.5010
+  GradNormOverall=0.0000, GradNormRecent10=0.0000
+
+Epoch 063 | TrainLoss 1.9243 | ValLoss 0.8558 | SpikeRate 0.123 | Time 250.0s
+  Losses: total_loss=1.9243, l_pred=0.0000, l_multi=0.0000, l_var=0.0000, l_vel=0.0000, l_sparse=0.0000, l_probe=0.0000, l_coord=0.0000, spike_rate=0.123, val_total_loss=0.8558, val_l_pred=0.2414, val_l_multi=0.1914, val_l_probe=1.0373, val_pos_err=0.0996, val_vel_err=0.6577, val_spike_rate=0.123, val_rollout_mae=0.3431, val_drift_ratio=2.30, val_gate_passed=0.0, val_dynamic_score=0.3565, combined_score=0.4915
+  GradNormOverall=0.0000, GradNormRecent10=0.0000
+
+Epoch 064 | TrainLoss 1.8956 | ValLoss 0.8558 | SpikeRate 0.123 | Time 254.0s
+  Losses: total_loss=1.8956, l_pred=0.0000, l_multi=0.0000, l_var=0.0000, l_vel=0.0000, l_sparse=0.0000, l_probe=0.0000, l_coord=0.0000, spike_rate=0.123, val_total_loss=0.8558, val_l_pred=0.2414, val_l_multi=0.1914, val_l_probe=1.0373, val_pos_err=0.0996, val_vel_err=0.6577, val_spike_rate=0.123, val_rollout_mae=0.3438, val_drift_ratio=2.31, val_gate_passed=0.0, val_dynamic_score=0.3582, combined_score=0.4904
+  GradNormOverall=0.0000, GradNormRecent10=0.0000
+
+Epoch 065 | TrainLoss 1.9628 | ValLoss 0.8558 | SpikeRate 0.123 | Time 257.9s
+  Losses: total_loss=1.9628, l_pred=0.0000, l_multi=0.0000, l_var=0.0000, l_vel=0.0000, l_sparse=0.0000, l_probe=0.0000, l_coord=0.0000, spike_rate=0.123, val_total_loss=0.8558, val_l_pred=0.2414, val_l_multi=0.1914, val_l_probe=1.0373, val_pos_err=0.0996, val_vel_err=0.6577, val_spike_rate=0.123, val_rollout_mae=0.3468, val_drift_ratio=2.30, val_gate_passed=0.0, val_dynamic_score=0.3612, combined_score=0.4943
+  GradNormOverall=0.0000, GradNormRecent10=0.0000
+
+Epoch 066 | TrainLoss 1.8357 | ValLoss 0.8558 | SpikeRate 0.123 | Time 261.8s
+  Losses: total_loss=1.8357, l_pred=0.0000, l_multi=0.0000, l_var=0.0000, l_vel=0.0000, l_sparse=0.0000, l_probe=0.0000, l_coord=0.0000, spike_rate=0.123, val_total_loss=0.8558, val_l_pred=0.2414, val_l_multi=0.1914, val_l_probe=1.0373, val_pos_err=0.0996, val_vel_err=0.6577, val_spike_rate=0.123, val_rollout_mae=0.3462, val_drift_ratio=2.28, val_gate_passed=0.0, val_dynamic_score=0.3608, combined_score=0.4939
+  GradNormOverall=0.0000, GradNormRecent10=0.0000
+
+Epoch 067 | TrainLoss 1.9468 | ValLoss 0.8558 | SpikeRate 0.123 | Time 265.7s
+  Losses: total_loss=1.9468, l_pred=0.0000, l_multi=0.0000, l_var=0.0000, l_vel=0.0000, l_sparse=0.0000, l_probe=0.0000, l_coord=0.0000, spike_rate=0.123, val_total_loss=0.8558, val_l_pred=0.2414, val_l_multi=0.1914, val_l_probe=1.0373, val_pos_err=0.0996, val_vel_err=0.6577, val_spike_rate=0.123, val_rollout_mae=0.3494, val_drift_ratio=2.31, val_gate_passed=0.0, val_dynamic_score=0.3632, combined_score=0.4988
+  GradNormOverall=0.0000, GradNormRecent10=0.0000
+
+Epoch 068 | TrainLoss 1.8427 | ValLoss 0.8558 | SpikeRate 0.123 | Time 269.6s
+  Losses: total_loss=1.8427, l_pred=0.0000, l_multi=0.0000, l_var=0.0000, l_vel=0.0000, l_sparse=0.0000, l_probe=0.0000, l_coord=0.0000, spike_rate=0.123, val_total_loss=0.8558, val_l_pred=0.2414, val_l_multi=0.1914, val_l_probe=1.0373, val_pos_err=0.0996, val_vel_err=0.6577, val_spike_rate=0.123, val_rollout_mae=0.3468, val_drift_ratio=2.31, val_gate_passed=0.0, val_dynamic_score=0.3630, combined_score=0.4915
+  GradNormOverall=0.0000, GradNormRecent10=0.0000
+
+Epoch 069 | TrainLoss 1.9029 | ValLoss 0.8558 | SpikeRate 0.123 | Time 273.5s
+  Losses: total_loss=1.9029, l_pred=0.0000, l_multi=0.0000, l_var=0.0000, l_vel=0.0000, l_sparse=0.0000, l_probe=0.0000, l_coord=0.0000, spike_rate=0.123, val_total_loss=0.8558, val_l_pred=0.2414, val_l_multi=0.1914, val_l_probe=1.0373, val_pos_err=0.0996, val_vel_err=0.6577, val_spike_rate=0.123, val_rollout_mae=0.3450, val_drift_ratio=2.31, val_gate_passed=0.0, val_dynamic_score=0.3615, combined_score=0.4901
+  GradNormOverall=0.0000, GradNormRecent10=0.0000
+
+Epoch 070 | TrainLoss 1.8599 | ValLoss 0.8558 | SpikeRate 0.123 | Time 277.4s
+  Losses: total_loss=1.8599, l_pred=0.0000, l_multi=0.0000, l_var=0.0000, l_vel=0.0000, l_sparse=0.0000, l_probe=0.0000, l_coord=0.0000, spike_rate=0.123, val_total_loss=0.8558, val_l_pred=0.2414, val_l_multi=0.1914, val_l_probe=1.0373, val_pos_err=0.0996, val_vel_err=0.6577, val_spike_rate=0.123, val_rollout_mae=0.3438, val_drift_ratio=2.31, val_gate_passed=0.0, val_dynamic_score=0.3609, combined_score=0.4894
+  GradNormOverall=0.0000, GradNormRecent10=0.0000
+
+Epoch 071 | TrainLoss 1.8673 | ValLoss 0.8558 | SpikeRate 0.123 | Time 281.4s
+  Losses: total_loss=1.8673, l_pred=0.0000, l_multi=0.0000, l_var=0.0000, l_vel=0.0000, l_sparse=0.0000, l_probe=0.0000, l_coord=0.0000, spike_rate=0.123, val_total_loss=0.8558, val_l_pred=0.2414, val_l_multi=0.1914, val_l_probe=1.0373, val_pos_err=0.0996, val_vel_err=0.6577, val_spike_rate=0.123, val_rollout_mae=0.3412, val_drift_ratio=2.32, val_gate_passed=0.0, val_dynamic_score=0.3591, combined_score=0.4869
+  GradNormOverall=0.0000, GradNormRecent10=0.0000
+
+Epoch 072 | TrainLoss 1.8812 | ValLoss 0.8558 | SpikeRate 0.123 | Time 285.3s
+  Losses: total_loss=1.8812, l_pred=0.0000, l_multi=0.0000, l_var=0.0000, l_vel=0.0000, l_sparse=0.0000, l_probe=0.0000, l_coord=0.0000, spike_rate=0.123, val_total_loss=0.8558, val_l_pred=0.2414, val_l_multi=0.1914, val_l_probe=1.0373, val_pos_err=0.0996, val_vel_err=0.6577, val_spike_rate=0.123, val_rollout_mae=0.3428, val_drift_ratio=2.32, val_gate_passed=0.0, val_dynamic_score=0.3604, combined_score=0.4874
+  GradNormOverall=0.0000, GradNormRecent10=0.0000
+
+Epoch 073 | TrainLoss 1.8184 | ValLoss 0.8558 | SpikeRate 0.123 | Time 289.3s
+  Losses: total_loss=1.8184, l_pred=0.0000, l_multi=0.0000, l_var=0.0000, l_vel=0.0000, l_sparse=0.0000, l_probe=0.0000, l_coord=0.0000, spike_rate=0.123, val_total_loss=0.8558, val_l_pred=0.2414, val_l_multi=0.1914, val_l_probe=1.0373, val_pos_err=0.0996, val_vel_err=0.6577, val_spike_rate=0.123, val_rollout_mae=0.3408, val_drift_ratio=2.31, val_gate_passed=0.0, val_dynamic_score=0.3581, combined_score=0.4865
+  GradNormOverall=0.0000, GradNormRecent10=0.0000
+
+Epoch 074 | TrainLoss 1.9196 | ValLoss 0.8558 | SpikeRate 0.123 | Time 293.5s
+  Losses: total_loss=1.9196, l_pred=0.0000, l_multi=0.0000, l_var=0.0000, l_vel=0.0000, l_sparse=0.0000, l_probe=0.0000, l_coord=0.0000, spike_rate=0.123, val_total_loss=0.8558, val_l_pred=0.2414, val_l_multi=0.1914, val_l_probe=1.0373, val_pos_err=0.0996, val_vel_err=0.6577, val_spike_rate=0.123, val_rollout_mae=0.3406, val_drift_ratio=2.31, val_gate_passed=0.0, val_dynamic_score=0.3566, combined_score=0.4886
+  GradNormOverall=0.0000, GradNormRecent10=0.0000
+
+Epoch 075 | TrainLoss 1.9270 | ValLoss 0.8558 | SpikeRate 0.123 | Time 297.6s
+  Losses: total_loss=1.9270, l_pred=0.0000, l_multi=0.0000, l_var=0.0000, l_vel=0.0000, l_sparse=0.0000, l_probe=0.0000, l_coord=0.0000, spike_rate=0.123, val_total_loss=0.8558, val_l_pred=0.2414, val_l_multi=0.1914, val_l_probe=1.0373, val_pos_err=0.0996, val_vel_err=0.6577, val_spike_rate=0.123, val_rollout_mae=0.3384, val_drift_ratio=2.30, val_gate_passed=0.0, val_dynamic_score=0.3555, combined_score=0.4860
+  GradNormOverall=0.0000, GradNormRecent10=0.0000
+
+Epoch 076 | TrainLoss 1.8893 | ValLoss 0.8558 | SpikeRate 0.123 | Time 301.5s
+  Losses: total_loss=1.8893, l_pred=0.0000, l_multi=0.0000, l_var=0.0000, l_vel=0.0000, l_sparse=0.0000, l_probe=0.0000, l_coord=0.0000, spike_rate=0.123, val_total_loss=0.8558, val_l_pred=0.2414, val_l_multi=0.1914, val_l_probe=1.0373, val_pos_err=0.0996, val_vel_err=0.6577, val_spike_rate=0.123, val_rollout_mae=0.3349, val_drift_ratio=2.31, val_gate_passed=0.0, val_dynamic_score=0.3546, combined_score=0.4775
+  GradNormOverall=0.0000, GradNormRecent10=0.0000
+
+Epoch 077 | TrainLoss 1.8840 | ValLoss 0.8558 | SpikeRate 0.123 | Time 305.4s
+  Losses: total_loss=1.8840, l_pred=0.0000, l_multi=0.0000, l_var=0.0000, l_vel=0.0000, l_sparse=0.0000, l_probe=0.0000, l_coord=0.0000, spike_rate=0.123, val_total_loss=0.8558, val_l_pred=0.2414, val_l_multi=0.1914, val_l_probe=1.0373, val_pos_err=0.0996, val_vel_err=0.6577, val_spike_rate=0.123, val_rollout_mae=0.3349, val_drift_ratio=2.31, val_gate_passed=0.0, val_dynamic_score=0.3564, combined_score=0.4743
+  GradNormOverall=0.0000, GradNormRecent10=0.0000
+
+Epoch 078 | TrainLoss 1.8705 | ValLoss 0.8558 | SpikeRate 0.123 | Time 309.3s
+  Losses: total_loss=1.8705, l_pred=0.0000, l_multi=0.0000, l_var=0.0000, l_vel=0.0000, l_sparse=0.0000, l_probe=0.0000, l_coord=0.0000, spike_rate=0.123, val_total_loss=0.8558, val_l_pred=0.2414, val_l_multi=0.1914, val_l_probe=1.0373, val_pos_err=0.0996, val_vel_err=0.6577, val_spike_rate=0.123, val_rollout_mae=0.3340, val_drift_ratio=2.31, val_gate_passed=0.0, val_dynamic_score=0.3568, combined_score=0.4720
+  GradNormOverall=0.0000, GradNormRecent10=0.0000
+
+Epoch 079 | TrainLoss 1.8935 | ValLoss 0.8558 | SpikeRate 0.123 | Time 313.3s
+  Losses: total_loss=1.8935, l_pred=0.0000, l_multi=0.0000, l_var=0.0000, l_vel=0.0000, l_sparse=0.0000, l_probe=0.0000, l_coord=0.0000, spike_rate=0.123, val_total_loss=0.8558, val_l_pred=0.2414, val_l_multi=0.1914, val_l_probe=1.0373, val_pos_err=0.0996, val_vel_err=0.6577, val_spike_rate=0.123, val_rollout_mae=0.3376, val_drift_ratio=2.33, val_gate_passed=0.0, val_dynamic_score=0.3606, combined_score=0.4758
+  GradNormOverall=0.0000, GradNormRecent10=0.0000
+
+Epoch 080 | TrainLoss 1.8576 | ValLoss 0.8558 | SpikeRate 0.123 | Time 317.3s
+  Losses: total_loss=1.8576, l_pred=0.0000, l_multi=0.0000, l_var=0.0000, l_vel=0.0000, l_sparse=0.0000, l_probe=0.0000, l_coord=0.0000, spike_rate=0.123, val_total_loss=0.8558, val_l_pred=0.2414, val_l_multi=0.1914, val_l_probe=1.0373, val_pos_err=0.0996, val_vel_err=0.6577, val_spike_rate=0.123, val_rollout_mae=0.3394, val_drift_ratio=2.32, val_gate_passed=0.0, val_dynamic_score=0.3630, combined_score=0.4745
+  GradNormOverall=0.0000, GradNormRecent10=0.0000
+
+Epoch 081 | TrainLoss 1.9062 | ValLoss 0.8558 | SpikeRate 0.123 | Time 321.2s
+  Losses: total_loss=1.9062, l_pred=0.0000, l_multi=0.0000, l_var=0.0000, l_vel=0.0000, l_sparse=0.0000, l_probe=0.0000, l_coord=0.0000, spike_rate=0.123, val_total_loss=0.8558, val_l_pred=0.2414, val_l_multi=0.1914, val_l_probe=1.0373, val_pos_err=0.0996, val_vel_err=0.6577, val_spike_rate=0.123, val_rollout_mae=0.3482, val_drift_ratio=2.34, val_gate_passed=0.0, val_dynamic_score=0.3686, combined_score=0.4881
+  GradNormOverall=0.0000, GradNormRecent10=0.0000
+
+Epoch 082 | TrainLoss 1.8880 | ValLoss 0.8558 | SpikeRate 0.123 | Time 325.1s
+  Losses: total_loss=1.8880, l_pred=0.0000, l_multi=0.0000, l_var=0.0000, l_vel=0.0000, l_sparse=0.0000, l_probe=0.0000, l_coord=0.0000, spike_rate=0.123, val_total_loss=0.8558, val_l_pred=0.2414, val_l_multi=0.1914, val_l_probe=1.0373, val_pos_err=0.0996, val_vel_err=0.6577, val_spike_rate=0.123, val_rollout_mae=0.3517, val_drift_ratio=2.36, val_gate_passed=0.0, val_dynamic_score=0.3718, combined_score=0.4902
+  GradNormOverall=0.0000, GradNormRecent10=0.0000
+
+Epoch 083 | TrainLoss 1.8828 | ValLoss 0.8558 | SpikeRate 0.123 | Time 329.0s
+  Losses: total_loss=1.8828, l_pred=0.0000, l_multi=0.0000, l_var=0.0000, l_vel=0.0000, l_sparse=0.0000, l_probe=0.0000, l_coord=0.0000, spike_rate=0.123, val_total_loss=0.8558, val_l_pred=0.2414, val_l_multi=0.1914, val_l_probe=1.0373, val_pos_err=0.0996, val_vel_err=0.6577, val_spike_rate=0.123, val_rollout_mae=0.3555, val_drift_ratio=2.38, val_gate_passed=0.0, val_dynamic_score=0.3751, combined_score=0.4974
+  GradNormOverall=0.0000, GradNormRecent10=0.0000
+
+Epoch 084 | TrainLoss 1.9256 | ValLoss 0.8558 | SpikeRate 0.123 | Time 333.0s
+  Losses: total_loss=1.9256, l_pred=0.0000, l_multi=0.0000, l_var=0.0000, l_vel=0.0000, l_sparse=0.0000, l_probe=0.0000, l_coord=0.0000, spike_rate=0.123, val_total_loss=0.8558, val_l_pred=0.2414, val_l_multi=0.1914, val_l_probe=1.0373, val_pos_err=0.0996, val_vel_err=0.6577, val_spike_rate=0.123, val_rollout_mae=0.3555, val_drift_ratio=2.38, val_gate_passed=0.0, val_dynamic_score=0.3759, combined_score=0.4930
+  GradNormOverall=0.0000, GradNormRecent10=0.0000
+
+Epoch 085 | TrainLoss 1.8813 | ValLoss 0.8558 | SpikeRate 0.123 | Time 337.0s
+  Losses: total_loss=1.8813, l_pred=0.0000, l_multi=0.0000, l_var=0.0000, l_vel=0.0000, l_sparse=0.0000, l_probe=0.0000, l_coord=0.0000, spike_rate=0.123, val_total_loss=0.8558, val_l_pred=0.2414, val_l_multi=0.1914, val_l_probe=1.0373, val_pos_err=0.0996, val_vel_err=0.6577, val_spike_rate=0.123, val_rollout_mae=0.3631, val_drift_ratio=2.41, val_gate_passed=0.0, val_dynamic_score=0.3839, combined_score=0.5023
+  GradNormOverall=0.0000, GradNormRecent10=0.0000
+
+Epoch 086 | TrainLoss 1.8570 | ValLoss 0.8558 | SpikeRate 0.123 | Time 340.9s
+  Losses: total_loss=1.8570, l_pred=0.0000, l_multi=0.0000, l_var=0.0000, l_vel=0.0000, l_sparse=0.0000, l_probe=0.0000, l_coord=0.0000, spike_rate=0.123, val_total_loss=0.8558, val_l_pred=0.2414, val_l_multi=0.1914, val_l_probe=1.0373, val_pos_err=0.0996, val_vel_err=0.6577, val_spike_rate=0.123, val_rollout_mae=0.3604, val_drift_ratio=2.41, val_gate_passed=0.0, val_dynamic_score=0.3817, combined_score=0.4989
+  GradNormOverall=0.0000, GradNormRecent10=0.0000
+
+Epoch 087 | TrainLoss 1.8908 | ValLoss 0.8558 | SpikeRate 0.123 | Time 344.9s
+  Losses: total_loss=1.8908, l_pred=0.0000, l_multi=0.0000, l_var=0.0000, l_vel=0.0000, l_sparse=0.0000, l_probe=0.0000, l_coord=0.0000, spike_rate=0.123, val_total_loss=0.8558, val_l_pred=0.2414, val_l_multi=0.1914, val_l_probe=1.0373, val_pos_err=0.0996, val_vel_err=0.6577, val_spike_rate=0.123, val_rollout_mae=0.3596, val_drift_ratio=2.44, val_gate_passed=0.0, val_dynamic_score=0.3814, combined_score=0.4995
+  GradNormOverall=0.0000, GradNormRecent10=0.0000
+
+Epoch 088 | TrainLoss 1.8983 | ValLoss 0.8558 | SpikeRate 0.123 | Time 348.8s
+  Losses: total_loss=1.8983, l_pred=0.0000, l_multi=0.0000, l_var=0.0000, l_vel=0.0000, l_sparse=0.0000, l_probe=0.0000, l_coord=0.0000, spike_rate=0.123, val_total_loss=0.8558, val_l_pred=0.2414, val_l_multi=0.1914, val_l_probe=1.0373, val_pos_err=0.0996, val_vel_err=0.6577, val_spike_rate=0.123, val_rollout_mae=0.3645, val_drift_ratio=2.48, val_gate_passed=0.0, val_dynamic_score=0.3879, combined_score=0.5027
+  GradNormOverall=0.0000, GradNormRecent10=0.0000
+
+Epoch 089 | TrainLoss 1.8748 | ValLoss 0.8558 | SpikeRate 0.123 | Time 352.8s
+  Losses: total_loss=1.8748, l_pred=0.0000, l_multi=0.0000, l_var=0.0000, l_vel=0.0000, l_sparse=0.0000, l_probe=0.0000, l_coord=0.0000, spike_rate=0.123, val_total_loss=0.8558, val_l_pred=0.2414, val_l_multi=0.1914, val_l_probe=1.0373, val_pos_err=0.0996, val_vel_err=0.6577, val_spike_rate=0.123, val_rollout_mae=0.3604, val_drift_ratio=2.48, val_gate_passed=0.0, val_dynamic_score=0.3836, combined_score=0.4990
+  GradNormOverall=0.0000, GradNormRecent10=0.0000
+
+Epoch 090 | TrainLoss 1.8850 | ValLoss 0.8558 | SpikeRate 0.123 | Time 356.7s
+  Losses: total_loss=1.8850, l_pred=0.0000, l_multi=0.0000, l_var=0.0000, l_vel=0.0000, l_sparse=0.0000, l_probe=0.0000, l_coord=0.0000, spike_rate=0.123, val_total_loss=0.8558, val_l_pred=0.2414, val_l_multi=0.1914, val_l_probe=1.0373, val_pos_err=0.0996, val_vel_err=0.6577, val_spike_rate=0.123, val_rollout_mae=0.3579, val_drift_ratio=2.50, val_gate_passed=0.0, val_dynamic_score=0.3829, combined_score=0.4944
+  GradNormOverall=0.0000, GradNormRecent10=0.0000
+
+Epoch 091 | TrainLoss 1.9176 | ValLoss 0.8558 | SpikeRate 0.123 | Time 360.6s
+  Losses: total_loss=1.9176, l_pred=0.0000, l_multi=0.0000, l_var=0.0000, l_vel=0.0000, l_sparse=0.0000, l_probe=0.0000, l_coord=0.0000, spike_rate=0.123, val_total_loss=0.8558, val_l_pred=0.2414, val_l_multi=0.1914, val_l_probe=1.0373, val_pos_err=0.0996, val_vel_err=0.6577, val_spike_rate=0.123, val_rollout_mae=0.3547, val_drift_ratio=2.48, val_gate_passed=0.0, val_dynamic_score=0.3796, combined_score=0.4926
+  GradNormOverall=0.0000, GradNormRecent10=0.0000
+
+Epoch 092 | TrainLoss 1.8661 | ValLoss 0.8558 | SpikeRate 0.123 | Time 364.5s
+  Losses: total_loss=1.8661, l_pred=0.0000, l_multi=0.0000, l_var=0.0000, l_vel=0.0000, l_sparse=0.0000, l_probe=0.0000, l_coord=0.0000, spike_rate=0.123, val_total_loss=0.8558, val_l_pred=0.2414, val_l_multi=0.1914, val_l_probe=1.0373, val_pos_err=0.0996, val_vel_err=0.6577, val_spike_rate=0.123, val_rollout_mae=0.3581, val_drift_ratio=2.49, val_gate_passed=0.0, val_dynamic_score=0.3818, combined_score=0.4974
+  GradNormOverall=0.0000, GradNormRecent10=0.0000
+
+Epoch 093 | TrainLoss 1.8419 | ValLoss 0.8558 | SpikeRate 0.123 | Time 368.4s
+  Losses: total_loss=1.8419, l_pred=0.0000, l_multi=0.0000, l_var=0.0000, l_vel=0.0000, l_sparse=0.0000, l_probe=0.0000, l_coord=0.0000, spike_rate=0.123, val_total_loss=0.8558, val_l_pred=0.2414, val_l_multi=0.1914, val_l_probe=1.0373, val_pos_err=0.0996, val_vel_err=0.6577, val_spike_rate=0.123, val_rollout_mae=0.3587, val_drift_ratio=2.51, val_gate_passed=0.0, val_dynamic_score=0.3824, combined_score=0.4995
+  GradNormOverall=0.0000, GradNormRecent10=0.0000
+
+Epoch 094 | TrainLoss 1.9513 | ValLoss 0.8558 | SpikeRate 0.123 | Time 372.3s
+  Losses: total_loss=1.9513, l_pred=0.0000, l_multi=0.0000, l_var=0.0000, l_vel=0.0000, l_sparse=0.0000, l_probe=0.0000, l_coord=0.0000, spike_rate=0.123, val_total_loss=0.8558, val_l_pred=0.2414, val_l_multi=0.1914, val_l_probe=1.0373, val_pos_err=0.0996, val_vel_err=0.6577, val_spike_rate=0.123, val_rollout_mae=0.3612, val_drift_ratio=2.50, val_gate_passed=0.0, val_dynamic_score=0.3851, combined_score=0.5010
+  GradNormOverall=0.0000, GradNormRecent10=0.0000
+
+Epoch 095 | TrainLoss 1.9075 | ValLoss 0.8558 | SpikeRate 0.123 | Time 376.1s
+  Losses: total_loss=1.9075, l_pred=0.0000, l_multi=0.0000, l_var=0.0000, l_vel=0.0000, l_sparse=0.0000, l_probe=0.0000, l_coord=0.0000, spike_rate=0.123, val_total_loss=0.8558, val_l_pred=0.2414, val_l_multi=0.1914, val_l_probe=1.0373, val_pos_err=0.0996, val_vel_err=0.6577, val_spike_rate=0.123, val_rollout_mae=0.3547, val_drift_ratio=2.44, val_gate_passed=0.0, val_dynamic_score=0.3756, combined_score=0.4999
+  GradNormOverall=0.0000, GradNormRecent10=0.0000
+
+Epoch 096 | TrainLoss 1.8601 | ValLoss 0.8558 | SpikeRate 0.123 | Time 380.0s
+  Losses: total_loss=1.8601, l_pred=0.0000, l_multi=0.0000, l_var=0.0000, l_vel=0.0000, l_sparse=0.0000, l_probe=0.0000, l_coord=0.0000, spike_rate=0.123, val_total_loss=0.8558, val_l_pred=0.2414, val_l_multi=0.1914, val_l_probe=1.0373, val_pos_err=0.0996, val_vel_err=0.6577, val_spike_rate=0.123, val_rollout_mae=0.3516, val_drift_ratio=2.41, val_gate_passed=0.0, val_dynamic_score=0.3719, combined_score=0.4941
+  GradNormOverall=0.0000, GradNormRecent10=0.0000
+
+Epoch 097 | TrainLoss 1.8245 | ValLoss 0.8558 | SpikeRate 0.123 | Time 383.9s
+  Losses: total_loss=1.8245, l_pred=0.0000, l_multi=0.0000, l_var=0.0000, l_vel=0.0000, l_sparse=0.0000, l_probe=0.0000, l_coord=0.0000, spike_rate=0.123, val_total_loss=0.8558, val_l_pred=0.2414, val_l_multi=0.1914, val_l_probe=1.0373, val_pos_err=0.0996, val_vel_err=0.6577, val_spike_rate=0.123, val_rollout_mae=0.3526, val_drift_ratio=2.41, val_gate_passed=0.0, val_dynamic_score=0.3711, combined_score=0.4956
+  GradNormOverall=0.0000, GradNormRecent10=0.0000
+
+Epoch 098 | TrainLoss 1.8944 | ValLoss 0.8558 | SpikeRate 0.123 | Time 387.8s
+  Losses: total_loss=1.8944, l_pred=0.0000, l_multi=0.0000, l_var=0.0000, l_vel=0.0000, l_sparse=0.0000, l_probe=0.0000, l_coord=0.0000, spike_rate=0.123, val_total_loss=0.8558, val_l_pred=0.2414, val_l_multi=0.1914, val_l_probe=1.0373, val_pos_err=0.0996, val_vel_err=0.6577, val_spike_rate=0.123, val_rollout_mae=0.3508, val_drift_ratio=2.41, val_gate_passed=0.0, val_dynamic_score=0.3721, combined_score=0.4907
+  GradNormOverall=0.0000, GradNormRecent10=0.0000
+
+Epoch 099 | TrainLoss 1.8724 | ValLoss 0.8558 | SpikeRate 0.123 | Time 391.6s
+  Losses: total_loss=1.8724, l_pred=0.0000, l_multi=0.0000, l_var=0.0000, l_vel=0.0000, l_sparse=0.0000, l_probe=0.0000, l_coord=0.0000, spike_rate=0.123, val_total_loss=0.8558, val_l_pred=0.2414, val_l_multi=0.1914, val_l_probe=1.0373, val_pos_err=0.0996, val_vel_err=0.6577, val_spike_rate=0.123, val_rollout_mae=0.3525, val_drift_ratio=2.39, val_gate_passed=0.0, val_dynamic_score=0.3714, combined_score=0.4937
+  GradNormOverall=0.0000, GradNormRecent10=0.0000
+
+Epoch 100 | TrainLoss 1.8902 | ValLoss 0.8558 | SpikeRate 0.123 | Time 395.5s
+  Losses: total_loss=1.8902, l_pred=0.0000, l_multi=0.0000, l_var=0.0000, l_vel=0.0000, l_sparse=0.0000, l_probe=0.0000, l_coord=0.0000, spike_rate=0.123, val_total_loss=0.8558, val_l_pred=0.2414, val_l_multi=0.1914, val_l_probe=1.0373, val_pos_err=0.0996, val_vel_err=0.6577, val_spike_rate=0.123, val_rollout_mae=0.3560, val_drift_ratio=2.39, val_gate_passed=0.0, val_dynamic_score=0.3747, combined_score=0.4947
+  GradNormOverall=0.0000, GradNormRecent10=0.0000
+
+Epoch 101 | TrainLoss 1.8863 | ValLoss 0.8558 | SpikeRate 0.123 | Time 399.9s
+  Losses: total_loss=1.8863, l_pred=0.0000, l_multi=0.0000, l_var=0.0000, l_vel=0.0000, l_sparse=0.0000, l_probe=0.0000, l_coord=0.0000, spike_rate=0.123, val_total_loss=0.8558, val_l_pred=0.2414, val_l_multi=0.1914, val_l_probe=1.0373, val_pos_err=0.0996, val_vel_err=0.6577, val_spike_rate=0.123, val_rollout_mae=0.3572, val_drift_ratio=2.37, val_gate_passed=0.0, val_dynamic_score=0.3737, combined_score=0.5006
+  GradNormOverall=0.0000, GradNormRecent10=0.0000
+
+Epoch 102 | TrainLoss 1.8606 | ValLoss 0.8558 | SpikeRate 0.123 | Time 403.9s
+  Losses: total_loss=1.8606, l_pred=0.0000, l_multi=0.0000, l_var=0.0000, l_vel=0.0000, l_sparse=0.0000, l_probe=0.0000, l_coord=0.0000, spike_rate=0.123, val_total_loss=0.8558, val_l_pred=0.2414, val_l_multi=0.1914, val_l_probe=1.0373, val_pos_err=0.0996, val_vel_err=0.6577, val_spike_rate=0.123, val_rollout_mae=0.3614, val_drift_ratio=2.40, val_gate_passed=0.0, val_dynamic_score=0.3806, combined_score=0.5018
+  GradNormOverall=0.0000, GradNormRecent10=0.0000
+
+Epoch 103 | TrainLoss 1.9195 | ValLoss 0.8558 | SpikeRate 0.123 | Time 407.9s
+  Losses: total_loss=1.9195, l_pred=0.0000, l_multi=0.0000, l_var=0.0000, l_vel=0.0000, l_sparse=0.0000, l_probe=0.0000, l_coord=0.0000, spike_rate=0.123, val_total_loss=0.8558, val_l_pred=0.2414, val_l_multi=0.1914, val_l_probe=1.0373, val_pos_err=0.0996, val_vel_err=0.6577, val_spike_rate=0.123, val_rollout_mae=0.3673, val_drift_ratio=2.43, val_gate_passed=0.0, val_dynamic_score=0.3861, combined_score=0.5084
+  GradNormOverall=0.0000, GradNormRecent10=0.0000
+
+Epoch 104 | TrainLoss 1.8304 | ValLoss 0.8558 | SpikeRate 0.123 | Time 411.8s
+  Losses: total_loss=1.8304, l_pred=0.0000, l_multi=0.0000, l_var=0.0000, l_vel=0.0000, l_sparse=0.0000, l_probe=0.0000, l_coord=0.0000, spike_rate=0.123, val_total_loss=0.8558, val_l_pred=0.2414, val_l_multi=0.1914, val_l_probe=1.0373, val_pos_err=0.0996, val_vel_err=0.6577, val_spike_rate=0.123, val_rollout_mae=0.3754, val_drift_ratio=2.44, val_gate_passed=0.0, val_dynamic_score=0.3926, combined_score=0.5185
+  GradNormOverall=0.0000, GradNormRecent10=0.0000
+
+Epoch 105 | TrainLoss 1.8715 | ValLoss 0.8558 | SpikeRate 0.123 | Time 415.9s
+  Losses: total_loss=1.8715, l_pred=0.0000, l_multi=0.0000, l_var=0.0000, l_vel=0.0000, l_sparse=0.0000, l_probe=0.0000, l_coord=0.0000, spike_rate=0.123, val_total_loss=0.8558, val_l_pred=0.2414, val_l_multi=0.1914, val_l_probe=1.0373, val_pos_err=0.0996, val_vel_err=0.6577, val_spike_rate=0.123, val_rollout_mae=0.3770, val_drift_ratio=2.47, val_gate_passed=0.0, val_dynamic_score=0.3952, combined_score=0.5185
+  GradNormOverall=0.0000, GradNormRecent10=0.0000
+
+Epoch 106 | TrainLoss 1.8607 | ValLoss 0.8558 | SpikeRate 0.123 | Time 420.0s
+  Losses: total_loss=1.8607, l_pred=0.0000, l_multi=0.0000, l_var=0.0000, l_vel=0.0000, l_sparse=0.0000, l_probe=0.0000, l_coord=0.0000, spike_rate=0.123, val_total_loss=0.8558, val_l_pred=0.2414, val_l_multi=0.1914, val_l_probe=1.0373, val_pos_err=0.0996, val_vel_err=0.6577, val_spike_rate=0.123, val_rollout_mae=0.3760, val_drift_ratio=2.45, val_gate_passed=0.0, val_dynamic_score=0.3941, combined_score=0.5169
+  GradNormOverall=0.0000, GradNormRecent10=0.0000
+
+Epoch 107 | TrainLoss 1.9453 | ValLoss 0.8558 | SpikeRate 0.123 | Time 424.1s
+  Losses: total_loss=1.9453, l_pred=0.0000, l_multi=0.0000, l_var=0.0000, l_vel=0.0000, l_sparse=0.0000, l_probe=0.0000, l_coord=0.0000, spike_rate=0.123, val_total_loss=0.8558, val_l_pred=0.2414, val_l_multi=0.1914, val_l_probe=1.0373, val_pos_err=0.0996, val_vel_err=0.6577, val_spike_rate=0.123, val_rollout_mae=0.3701, val_drift_ratio=2.44, val_gate_passed=0.0, val_dynamic_score=0.3882, combined_score=0.5117
+  GradNormOverall=0.0000, GradNormRecent10=0.0000
+
+Epoch 108 | TrainLoss 1.8417 | ValLoss 0.8558 | SpikeRate 0.123 | Time 428.1s
+  Losses: total_loss=1.8417, l_pred=0.0000, l_multi=0.0000, l_var=0.0000, l_vel=0.0000, l_sparse=0.0000, l_probe=0.0000, l_coord=0.0000, spike_rate=0.123, val_total_loss=0.8558, val_l_pred=0.2414, val_l_multi=0.1914, val_l_probe=1.0373, val_pos_err=0.0996, val_vel_err=0.6577, val_spike_rate=0.123, val_rollout_mae=0.3582, val_drift_ratio=2.40, val_gate_passed=0.0, val_dynamic_score=0.3771, combined_score=0.4962
+  GradNormOverall=0.0000, GradNormRecent10=0.0000
+
+Epoch 109 | TrainLoss 1.8581 | ValLoss 0.8558 | SpikeRate 0.123 | Time 432.2s
+  Losses: total_loss=1.8581, l_pred=0.0000, l_multi=0.0000, l_var=0.0000, l_vel=0.0000, l_sparse=0.0000, l_probe=0.0000, l_coord=0.0000, spike_rate=0.123, val_total_loss=0.8558, val_l_pred=0.2414, val_l_multi=0.1914, val_l_probe=1.0373, val_pos_err=0.0996, val_vel_err=0.6577, val_spike_rate=0.123, val_rollout_mae=0.3527, val_drift_ratio=2.38, val_gate_passed=0.0, val_dynamic_score=0.3703, combined_score=0.4930
+  GradNormOverall=0.0000, GradNormRecent10=0.0000
+
+Epoch 110 | TrainLoss 1.8094 | ValLoss 0.8558 | SpikeRate 0.123 | Time 436.2s
+  Losses: total_loss=1.8094, l_pred=0.0000, l_multi=0.0000, l_var=0.0000, l_vel=0.0000, l_sparse=0.0000, l_probe=0.0000, l_coord=0.0000, spike_rate=0.123, val_total_loss=0.8558, val_l_pred=0.2414, val_l_multi=0.1914, val_l_probe=1.0373, val_pos_err=0.0996, val_vel_err=0.6577, val_spike_rate=0.123, val_rollout_mae=0.3525, val_drift_ratio=2.40, val_gate_passed=0.0, val_dynamic_score=0.3697, combined_score=0.4947
+  GradNormOverall=0.0000, GradNormRecent10=0.0000
+
+Epoch 111 | TrainLoss 1.8806 | ValLoss 0.8558 | SpikeRate 0.123 | Time 440.3s
+  Losses: total_loss=1.8806, l_pred=0.0000, l_multi=0.0000, l_var=0.0000, l_vel=0.0000, l_sparse=0.0000, l_probe=0.0000, l_coord=0.0000, spike_rate=0.123, val_total_loss=0.8558, val_l_pred=0.2414, val_l_multi=0.1914, val_l_probe=1.0373, val_pos_err=0.0996, val_vel_err=0.6577, val_spike_rate=0.123, val_rollout_mae=0.3525, val_drift_ratio=2.39, val_gate_passed=0.0, val_dynamic_score=0.3687, combined_score=0.4959
+  GradNormOverall=0.0000, GradNormRecent10=0.0000
+
+Epoch 112 | TrainLoss 1.8900 | ValLoss 0.8558 | SpikeRate 0.123 | Time 444.2s
+  Losses: total_loss=1.8900, l_pred=0.0000, l_multi=0.0000, l_var=0.0000, l_vel=0.0000, l_sparse=0.0000, l_probe=0.0000, l_coord=0.0000, spike_rate=0.123, val_total_loss=0.8558, val_l_pred=0.2414, val_l_multi=0.1914, val_l_probe=1.0373, val_pos_err=0.0996, val_vel_err=0.6577, val_spike_rate=0.123, val_rollout_mae=0.3530, val_drift_ratio=2.40, val_gate_passed=0.0, val_dynamic_score=0.3698, combined_score=0.4947
+  GradNormOverall=0.0000, GradNormRecent10=0.0000
+
+Epoch 113 | TrainLoss 1.8609 | ValLoss 0.8558 | SpikeRate 0.123 | Time 448.2s
+  Losses: total_loss=1.8609, l_pred=0.0000, l_multi=0.0000, l_var=0.0000, l_vel=0.0000, l_sparse=0.0000, l_probe=0.0000, l_coord=0.0000, spike_rate=0.123, val_total_loss=0.8558, val_l_pred=0.2414, val_l_multi=0.1914, val_l_probe=1.0373, val_pos_err=0.0996, val_vel_err=0.6577, val_spike_rate=0.123, val_rollout_mae=0.3526, val_drift_ratio=2.39, val_gate_passed=0.0, val_dynamic_score=0.3705, combined_score=0.4934
+  GradNormOverall=0.0000, GradNormRecent10=0.0000
+
+Epoch 114 | TrainLoss 1.8110 | ValLoss 0.8558 | SpikeRate 0.123 | Time 452.1s
+  Losses: total_loss=1.8110, l_pred=0.0000, l_multi=0.0000, l_var=0.0000, l_vel=0.0000, l_sparse=0.0000, l_probe=0.0000, l_coord=0.0000, spike_rate=0.123, val_total_loss=0.8558, val_l_pred=0.2414, val_l_multi=0.1914, val_l_probe=1.0373, val_pos_err=0.0996, val_vel_err=0.6577, val_spike_rate=0.123, val_rollout_mae=0.3528, val_drift_ratio=2.39, val_gate_passed=0.0, val_dynamic_score=0.3726, combined_score=0.4912
+  GradNormOverall=0.0000, GradNormRecent10=0.0000
+
+Epoch 115 | TrainLoss 1.8233 | ValLoss 0.8558 | SpikeRate 0.123 | Time 456.1s
+  Losses: total_loss=1.8233, l_pred=0.0000, l_multi=0.0000, l_var=0.0000, l_vel=0.0000, l_sparse=0.0000, l_probe=0.0000, l_coord=0.0000, spike_rate=0.123, val_total_loss=0.8558, val_l_pred=0.2414, val_l_multi=0.1914, val_l_probe=1.0373, val_pos_err=0.0996, val_vel_err=0.6577, val_spike_rate=0.123, val_rollout_mae=0.3569, val_drift_ratio=2.40, val_gate_passed=0.0, val_dynamic_score=0.3774, combined_score=0.4951
+  GradNormOverall=0.0000, GradNormRecent10=0.0000
+
+Epoch 116 | TrainLoss 1.8625 | ValLoss 0.8558 | SpikeRate 0.123 | Time 460.0s
+  Losses: total_loss=1.8625, l_pred=0.0000, l_multi=0.0000, l_var=0.0000, l_vel=0.0000, l_sparse=0.0000, l_probe=0.0000, l_coord=0.0000, spike_rate=0.123, val_total_loss=0.8558, val_l_pred=0.2414, val_l_multi=0.1914, val_l_probe=1.0373, val_pos_err=0.0996, val_vel_err=0.6577, val_spike_rate=0.123, val_rollout_mae=0.3572, val_drift_ratio=2.41, val_gate_passed=0.0, val_dynamic_score=0.3781, combined_score=0.4942
+  GradNormOverall=0.0000, GradNormRecent10=0.0000
+
+Epoch 117 | TrainLoss 1.8544 | ValLoss 0.8558 | SpikeRate 0.123 | Time 464.0s
+  Losses: total_loss=1.8544, l_pred=0.0000, l_multi=0.0000, l_var=0.0000, l_vel=0.0000, l_sparse=0.0000, l_probe=0.0000, l_coord=0.0000, spike_rate=0.123, val_total_loss=0.8558, val_l_pred=0.2414, val_l_multi=0.1914, val_l_probe=1.0373, val_pos_err=0.0996, val_vel_err=0.6577, val_spike_rate=0.123, val_rollout_mae=0.3585, val_drift_ratio=2.39, val_gate_passed=0.0, val_dynamic_score=0.3771, combined_score=0.4962
+  GradNormOverall=0.0000, GradNormRecent10=0.0000
+
+Epoch 118 | TrainLoss 1.7945 | ValLoss 0.8558 | SpikeRate 0.123 | Time 468.1s
+  Losses: total_loss=1.7945, l_pred=0.0000, l_multi=0.0000, l_var=0.0000, l_vel=0.0000, l_sparse=0.0000, l_probe=0.0000, l_coord=0.0000, spike_rate=0.123, val_total_loss=0.8558, val_l_pred=0.2414, val_l_multi=0.1914, val_l_probe=1.0373, val_pos_err=0.0996, val_vel_err=0.6577, val_spike_rate=0.123, val_rollout_mae=0.3566, val_drift_ratio=2.39, val_gate_passed=0.0, val_dynamic_score=0.3768, combined_score=0.4896
+  GradNormOverall=0.0000, GradNormRecent10=0.0000
+
+Epoch 119 | TrainLoss 1.8734 | ValLoss 0.8558 | SpikeRate 0.123 | Time 472.1s
+  Losses: total_loss=1.8734, l_pred=0.0000, l_multi=0.0000, l_var=0.0000, l_vel=0.0000, l_sparse=0.0000, l_probe=0.0000, l_coord=0.0000, spike_rate=0.123, val_total_loss=0.8558, val_l_pred=0.2414, val_l_multi=0.1914, val_l_probe=1.0373, val_pos_err=0.0996, val_vel_err=0.6577, val_spike_rate=0.123, val_rollout_mae=0.3613, val_drift_ratio=2.42, val_gate_passed=0.0, val_dynamic_score=0.3800, combined_score=0.4995
+  GradNormOverall=0.0000, GradNormRecent10=0.0000
+
+Epoch 120 | TrainLoss 1.8563 | ValLoss 0.8558 | SpikeRate 0.123 | Time 476.0s
+  Losses: total_loss=1.8563, l_pred=0.0000, l_multi=0.0000, l_var=0.0000, l_vel=0.0000, l_sparse=0.0000, l_probe=0.0000, l_coord=0.0000, spike_rate=0.123, val_total_loss=0.8558, val_l_pred=0.2414, val_l_multi=0.1914, val_l_probe=1.0373, val_pos_err=0.0996, val_vel_err=0.6577, val_spike_rate=0.123, val_rollout_mae=0.3654, val_drift_ratio=2.47, val_gate_passed=0.0, val_dynamic_score=0.3843, combined_score=0.5081
+  GradNormOverall=0.0000, GradNormRecent10=0.0000
+
+Epoch 121 | TrainLoss 1.8177 | ValLoss 0.8558 | SpikeRate 0.123 | Time 480.3s
+  Losses: total_loss=1.8177, l_pred=0.0000, l_multi=0.0000, l_var=0.0000, l_vel=0.0000, l_sparse=0.0000, l_probe=0.0000, l_coord=0.0000, spike_rate=0.123, val_total_loss=0.8558, val_l_pred=0.2414, val_l_multi=0.1914, val_l_probe=1.0373, val_pos_err=0.0996, val_vel_err=0.6577, val_spike_rate=0.123, val_rollout_mae=0.3613, val_drift_ratio=2.45, val_gate_passed=0.0, val_dynamic_score=0.3792, combined_score=0.5042
+  GradNormOverall=0.0000, GradNormRecent10=0.0000
+
+Epoch 122 | TrainLoss 1.7644 | ValLoss 0.8558 | SpikeRate 0.123 | Time 484.4s
+  Losses: total_loss=1.7644, l_pred=0.0000, l_multi=0.0000, l_var=0.0000, l_vel=0.0000, l_sparse=0.0000, l_probe=0.0000, l_coord=0.0000, spike_rate=0.123, val_total_loss=0.8558, val_l_pred=0.2414, val_l_multi=0.1914, val_l_probe=1.0373, val_pos_err=0.0996, val_vel_err=0.6577, val_spike_rate=0.123, val_rollout_mae=0.3605, val_drift_ratio=2.45, val_gate_passed=0.0, val_dynamic_score=0.3777, combined_score=0.5062
+  GradNormOverall=0.0000, GradNormRecent10=0.0000
+
+Epoch 123 | TrainLoss 1.8483 | ValLoss 0.8558 | SpikeRate 0.123 | Time 488.4s
+  Losses: total_loss=1.8483, l_pred=0.0000, l_multi=0.0000, l_var=0.0000, l_vel=0.0000, l_sparse=0.0000, l_probe=0.0000, l_coord=0.0000, spike_rate=0.123, val_total_loss=0.8558, val_l_pred=0.2414, val_l_multi=0.1914, val_l_probe=1.0373, val_pos_err=0.0996, val_vel_err=0.6577, val_spike_rate=0.123, val_rollout_mae=0.3576, val_drift_ratio=2.46, val_gate_passed=0.0, val_dynamic_score=0.3780, combined_score=0.5009
+  GradNormOverall=0.0000, GradNormRecent10=0.0000
+
+Epoch 124 | TrainLoss 1.8464 | ValLoss 0.8558 | SpikeRate 0.123 | Time 492.4s
+  Losses: total_loss=1.8464, l_pred=0.0000, l_multi=0.0000, l_var=0.0000, l_vel=0.0000, l_sparse=0.0000, l_probe=0.0000, l_coord=0.0000, spike_rate=0.123, val_total_loss=0.8558, val_l_pred=0.2414, val_l_multi=0.1914, val_l_probe=1.0373, val_pos_err=0.0996, val_vel_err=0.6577, val_spike_rate=0.123, val_rollout_mae=0.3571, val_drift_ratio=2.44, val_gate_passed=0.0, val_dynamic_score=0.3762, combined_score=0.5000
+  GradNormOverall=0.0000, GradNormRecent10=0.0000
+
+Epoch 125 | TrainLoss 1.8309 | ValLoss 0.8558 | SpikeRate 0.123 | Time 496.3s
+  Losses: total_loss=1.8309, l_pred=0.0000, l_multi=0.0000, l_var=0.0000, l_vel=0.0000, l_sparse=0.0000, l_probe=0.0000, l_coord=0.0000, spike_rate=0.123, val_total_loss=0.8558, val_l_pred=0.2414, val_l_multi=0.1914, val_l_probe=1.0373, val_pos_err=0.0996, val_vel_err=0.6577, val_spike_rate=0.123, val_rollout_mae=0.3551, val_drift_ratio=2.43, val_gate_passed=0.0, val_dynamic_score=0.3755, combined_score=0.4949
+  GradNormOverall=0.0000, GradNormRecent10=0.0000
+
+Epoch 126 | TrainLoss 1.8427 | ValLoss 0.8558 | SpikeRate 0.123 | Time 500.5s
+  Losses: total_loss=1.8427, l_pred=0.0000, l_multi=0.0000, l_var=0.0000, l_vel=0.0000, l_sparse=0.0000, l_probe=0.0000, l_coord=0.0000, spike_rate=0.123, val_total_loss=0.8558, val_l_pred=0.2414, val_l_multi=0.1914, val_l_probe=1.0373, val_pos_err=0.0996, val_vel_err=0.6577, val_spike_rate=0.123, val_rollout_mae=0.3548, val_drift_ratio=2.43, val_gate_passed=0.0, val_dynamic_score=0.3757, combined_score=0.4958
+  GradNormOverall=0.0000, GradNormRecent10=0.0000
+
+Epoch 127 | TrainLoss 1.8388 | ValLoss 0.8558 | SpikeRate 0.123 | Time 504.6s
+  Losses: total_loss=1.8388, l_pred=0.0000, l_multi=0.0000, l_var=0.0000, l_vel=0.0000, l_sparse=0.0000, l_probe=0.0000, l_coord=0.0000, spike_rate=0.123, val_total_loss=0.8558, val_l_pred=0.2414, val_l_multi=0.1914, val_l_probe=1.0373, val_pos_err=0.0996, val_vel_err=0.6577, val_spike_rate=0.123, val_rollout_mae=0.3540, val_drift_ratio=2.41, val_gate_passed=0.0, val_dynamic_score=0.3743, combined_score=0.4951
+  GradNormOverall=0.0000, GradNormRecent10=0.0000
+
+Epoch 128 | TrainLoss 1.7953 | ValLoss 0.8558 | SpikeRate 0.123 | Time 508.5s
+  Losses: total_loss=1.7953, l_pred=0.0000, l_multi=0.0000, l_var=0.0000, l_vel=0.0000, l_sparse=0.0000, l_probe=0.0000, l_coord=0.0000, spike_rate=0.123, val_total_loss=0.8558, val_l_pred=0.2414, val_l_multi=0.1914, val_l_probe=1.0373, val_pos_err=0.0996, val_vel_err=0.6577, val_spike_rate=0.123, val_rollout_mae=0.3514, val_drift_ratio=2.36, val_gate_passed=0.0, val_dynamic_score=0.3710, combined_score=0.4902
+  GradNormOverall=0.0000, GradNormRecent10=0.0000
+
+Epoch 129 | TrainLoss 1.8260 | ValLoss 0.8558 | SpikeRate 0.123 | Time 512.5s
+  Losses: total_loss=1.8260, l_pred=0.0000, l_multi=0.0000, l_var=0.0000, l_vel=0.0000, l_sparse=0.0000, l_probe=0.0000, l_coord=0.0000, spike_rate=0.123, val_total_loss=0.8558, val_l_pred=0.2414, val_l_multi=0.1914, val_l_probe=1.0373, val_pos_err=0.0996, val_vel_err=0.6577, val_spike_rate=0.123, val_rollout_mae=0.3517, val_drift_ratio=2.35, val_gate_passed=0.0, val_dynamic_score=0.3707, combined_score=0.4912
+  GradNormOverall=0.0000, GradNormRecent10=0.0000
+
+Epoch 130 | TrainLoss 1.8273 | ValLoss 0.8558 | SpikeRate 0.123 | Time 516.4s
+  Losses: total_loss=1.8273, l_pred=0.0000, l_multi=0.0000, l_var=0.0000, l_vel=0.0000, l_sparse=0.0000, l_probe=0.0000, l_coord=0.0000, spike_rate=0.123, val_total_loss=0.8558, val_l_pred=0.2414, val_l_multi=0.1914, val_l_probe=1.0373, val_pos_err=0.0996, val_vel_err=0.6577, val_spike_rate=0.123, val_rollout_mae=0.3504, val_drift_ratio=2.35, val_gate_passed=0.0, val_dynamic_score=0.3694, combined_score=0.4894
+  GradNormOverall=0.0000, GradNormRecent10=0.0000
+
+Epoch 131 | TrainLoss 1.8085 | ValLoss 0.8558 | SpikeRate 0.123 | Time 520.9s
+  Losses: total_loss=1.8085, l_pred=0.0000, l_multi=0.0000, l_var=0.0000, l_vel=0.0000, l_sparse=0.0000, l_probe=0.0000, l_coord=0.0000, spike_rate=0.123, val_total_loss=0.8558, val_l_pred=0.2414, val_l_multi=0.1914, val_l_probe=1.0373, val_pos_err=0.0996, val_vel_err=0.6577, val_spike_rate=0.123, val_rollout_mae=0.3494, val_drift_ratio=2.35, val_gate_passed=0.0, val_dynamic_score=0.3683, combined_score=0.4850
+  GradNormOverall=0.0000, GradNormRecent10=0.0000
+
+Epoch 132 | TrainLoss 1.7826 | ValLoss 0.8558 | SpikeRate 0.123 | Time 525.0s
+  Losses: total_loss=1.7826, l_pred=0.0000, l_multi=0.0000, l_var=0.0000, l_vel=0.0000, l_sparse=0.0000, l_probe=0.0000, l_coord=0.0000, spike_rate=0.123, val_total_loss=0.8558, val_l_pred=0.2414, val_l_multi=0.1914, val_l_probe=1.0373, val_pos_err=0.0996, val_vel_err=0.6577, val_spike_rate=0.123, val_rollout_mae=0.3521, val_drift_ratio=2.36, val_gate_passed=0.0, val_dynamic_score=0.3693, combined_score=0.4905
+  GradNormOverall=0.0000, GradNormRecent10=0.0000
+
+Epoch 133 | TrainLoss 1.8194 | ValLoss 0.8558 | SpikeRate 0.123 | Time 529.0s
+  Losses: total_loss=1.8194, l_pred=0.0000, l_multi=0.0000, l_var=0.0000, l_vel=0.0000, l_sparse=0.0000, l_probe=0.0000, l_coord=0.0000, spike_rate=0.123, val_total_loss=0.8558, val_l_pred=0.2414, val_l_multi=0.1914, val_l_probe=1.0373, val_pos_err=0.0996, val_vel_err=0.6577, val_spike_rate=0.123, val_rollout_mae=0.3520, val_drift_ratio=2.36, val_gate_passed=0.0, val_dynamic_score=0.3687, combined_score=0.4919
+  GradNormOverall=0.0000, GradNormRecent10=0.0000
+
+Epoch 134 | TrainLoss 1.8085 | ValLoss 0.8558 | SpikeRate 0.123 | Time 533.0s
+  Losses: total_loss=1.8085, l_pred=0.0000, l_multi=0.0000, l_var=0.0000, l_vel=0.0000, l_sparse=0.0000, l_probe=0.0000, l_coord=0.0000, spike_rate=0.123, val_total_loss=0.8558, val_l_pred=0.2414, val_l_multi=0.1914, val_l_probe=1.0373, val_pos_err=0.0996, val_vel_err=0.6577, val_spike_rate=0.123, val_rollout_mae=0.3545, val_drift_ratio=2.37, val_gate_passed=0.0, val_dynamic_score=0.3721, combined_score=0.4935
+  GradNormOverall=0.0000, GradNormRecent10=0.0000
+
+Epoch 135 | TrainLoss 1.7254 | ValLoss 0.8558 | SpikeRate 0.123 | Time 537.1s
+  Losses: total_loss=1.7254, l_pred=0.0000, l_multi=0.0000, l_var=0.0000, l_vel=0.0000, l_sparse=0.0000, l_probe=0.0000, l_coord=0.0000, spike_rate=0.123, val_total_loss=0.8558, val_l_pred=0.2414, val_l_multi=0.1914, val_l_probe=1.0373, val_pos_err=0.0996, val_vel_err=0.6577, val_spike_rate=0.123, val_rollout_mae=0.3564, val_drift_ratio=2.37, val_gate_passed=0.0, val_dynamic_score=0.3729, combined_score=0.4972
+  GradNormOverall=0.0000, GradNormRecent10=0.0000
+
+Epoch 136 | TrainLoss 1.7593 | ValLoss 0.8558 | SpikeRate 0.123 | Time 541.2s
+  Losses: total_loss=1.7593, l_pred=0.0000, l_multi=0.0000, l_var=0.0000, l_vel=0.0000, l_sparse=0.0000, l_probe=0.0000, l_coord=0.0000, spike_rate=0.123, val_total_loss=0.8558, val_l_pred=0.2414, val_l_multi=0.1914, val_l_probe=1.0373, val_pos_err=0.0996, val_vel_err=0.6577, val_spike_rate=0.123, val_rollout_mae=0.3571, val_drift_ratio=2.38, val_gate_passed=0.0, val_dynamic_score=0.3735, combined_score=0.4981
+  GradNormOverall=0.0000, GradNormRecent10=0.0000
+
+Epoch 137 | TrainLoss 1.8337 | ValLoss 0.8558 | SpikeRate 0.123 | Time 545.3s
+  Losses: total_loss=1.8337, l_pred=0.0000, l_multi=0.0000, l_var=0.0000, l_vel=0.0000, l_sparse=0.0000, l_probe=0.0000, l_coord=0.0000, spike_rate=0.123, val_total_loss=0.8558, val_l_pred=0.2414, val_l_multi=0.1914, val_l_probe=1.0373, val_pos_err=0.0996, val_vel_err=0.6577, val_spike_rate=0.123, val_rollout_mae=0.3539, val_drift_ratio=2.35, val_gate_passed=0.0, val_dynamic_score=0.3716, combined_score=0.4918
+  GradNormOverall=0.0000, GradNormRecent10=0.0000
+
+Epoch 138 | TrainLoss 1.8683 | ValLoss 0.8558 | SpikeRate 0.123 | Time 549.3s
+  Losses: total_loss=1.8683, l_pred=0.0000, l_multi=0.0000, l_var=0.0000, l_vel=0.0000, l_sparse=0.0000, l_probe=0.0000, l_coord=0.0000, spike_rate=0.123, val_total_loss=0.8558, val_l_pred=0.2414, val_l_multi=0.1914, val_l_probe=1.0373, val_pos_err=0.0996, val_vel_err=0.6577, val_spike_rate=0.123, val_rollout_mae=0.3542, val_drift_ratio=2.35, val_gate_passed=0.0, val_dynamic_score=0.3715, combined_score=0.4928
+  GradNormOverall=0.0000, GradNormRecent10=0.0000
+
+Epoch 139 | TrainLoss 1.8226 | ValLoss 0.8558 | SpikeRate 0.123 | Time 553.4s
+  Losses: total_loss=1.8226, l_pred=0.0000, l_multi=0.0000, l_var=0.0000, l_vel=0.0000, l_sparse=0.0000, l_probe=0.0000, l_coord=0.0000, spike_rate=0.123, val_total_loss=0.8558, val_l_pred=0.2414, val_l_multi=0.1914, val_l_probe=1.0373, val_pos_err=0.0996, val_vel_err=0.6577, val_spike_rate=0.123, val_rollout_mae=0.3488, val_drift_ratio=2.31, val_gate_passed=0.0, val_dynamic_score=0.3644, combined_score=0.4905
+  GradNormOverall=0.0000, GradNormRecent10=0.0000
+
+Epoch 140 | TrainLoss 1.7921 | ValLoss 0.8558 | SpikeRate 0.123 | Time 557.3s
+  Losses: total_loss=1.7921, l_pred=0.0000, l_multi=0.0000, l_var=0.0000, l_vel=0.0000, l_sparse=0.0000, l_probe=0.0000, l_coord=0.0000, spike_rate=0.123, val_total_loss=0.8558, val_l_pred=0.2414, val_l_multi=0.1914, val_l_probe=1.0373, val_pos_err=0.0996, val_vel_err=0.6577, val_spike_rate=0.123, val_rollout_mae=0.3488, val_drift_ratio=2.30, val_gate_passed=0.0, val_dynamic_score=0.3648, combined_score=0.4888
+  GradNormOverall=0.0000, GradNormRecent10=0.0000
+
+Epoch 141 | TrainLoss 1.8380 | ValLoss 0.8558 | SpikeRate 0.123 | Time 561.3s
+  Losses: total_loss=1.8380, l_pred=0.0000, l_multi=0.0000, l_var=0.0000, l_vel=0.0000, l_sparse=0.0000, l_probe=0.0000, l_coord=0.0000, spike_rate=0.123, val_total_loss=0.8558, val_l_pred=0.2414, val_l_multi=0.1914, val_l_probe=1.0373, val_pos_err=0.0996, val_vel_err=0.6577, val_spike_rate=0.123, val_rollout_mae=0.3548, val_drift_ratio=2.33, val_gate_passed=0.0, val_dynamic_score=0.3706, combined_score=0.4972
+  GradNormOverall=0.0000, GradNormRecent10=0.0000
+
+Epoch 142 | TrainLoss 1.8172 | ValLoss 0.8558 | SpikeRate 0.123 | Time 565.3s
+  Losses: total_loss=1.8172, l_pred=0.0000, l_multi=0.0000, l_var=0.0000, l_vel=0.0000, l_sparse=0.0000, l_probe=0.0000, l_coord=0.0000, spike_rate=0.123, val_total_loss=0.8558, val_l_pred=0.2414, val_l_multi=0.1914, val_l_probe=1.0373, val_pos_err=0.0996, val_vel_err=0.6577, val_spike_rate=0.123, val_rollout_mae=0.3564, val_drift_ratio=2.36, val_gate_passed=0.0, val_dynamic_score=0.3737, combined_score=0.4977
+  GradNormOverall=0.0000, GradNormRecent10=0.0000
+
+Epoch 143 | TrainLoss 1.8076 | ValLoss 0.8558 | SpikeRate 0.123 | Time 569.4s
+  Losses: total_loss=1.8076, l_pred=0.0000, l_multi=0.0000, l_var=0.0000, l_vel=0.0000, l_sparse=0.0000, l_probe=0.0000, l_coord=0.0000, spike_rate=0.123, val_total_loss=0.8558, val_l_pred=0.2414, val_l_multi=0.1914, val_l_probe=1.0373, val_pos_err=0.0996, val_vel_err=0.6577, val_spike_rate=0.123, val_rollout_mae=0.3544, val_drift_ratio=2.35, val_gate_passed=0.0, val_dynamic_score=0.3723, combined_score=0.4930
+  GradNormOverall=0.0000, GradNormRecent10=0.0000
+
+Epoch 144 | TrainLoss 1.7913 | ValLoss 0.8558 | SpikeRate 0.123 | Time 574.8s
+  Losses: total_loss=1.7913, l_pred=0.0000, l_multi=0.0000, l_var=0.0000, l_vel=0.0000, l_sparse=0.0000, l_probe=0.0000, l_coord=0.0000, spike_rate=0.123, val_total_loss=0.8558, val_l_pred=0.2414, val_l_multi=0.1914, val_l_probe=1.0373, val_pos_err=0.0996, val_vel_err=0.6577, val_spike_rate=0.123, val_rollout_mae=0.3491, val_drift_ratio=2.31, val_gate_passed=0.0, val_dynamic_score=0.3665, combined_score=0.4877
+  GradNormOverall=0.0000, GradNormRecent10=0.0000
+
+Epoch 145 | TrainLoss 1.7821 | ValLoss 0.8558 | SpikeRate 0.123 | Time 579.4s
+  Losses: total_loss=1.7821, l_pred=0.0000, l_multi=0.0000, l_var=0.0000, l_vel=0.0000, l_sparse=0.0000, l_probe=0.0000, l_coord=0.0000, spike_rate=0.123, val_total_loss=0.8558, val_l_pred=0.2414, val_l_multi=0.1914, val_l_probe=1.0373, val_pos_err=0.0996, val_vel_err=0.6577, val_spike_rate=0.123, val_rollout_mae=0.3497, val_drift_ratio=2.30, val_gate_passed=0.0, val_dynamic_score=0.3669, combined_score=0.4885
+  GradNormOverall=0.0000, GradNormRecent10=0.0000
+
+Epoch 146 | TrainLoss 1.8179 | ValLoss 0.8558 | SpikeRate 0.123 | Time 583.7s
+  Losses: total_loss=1.8179, l_pred=0.0000, l_multi=0.0000, l_var=0.0000, l_vel=0.0000, l_sparse=0.0000, l_probe=0.0000, l_coord=0.0000, spike_rate=0.123, val_total_loss=0.8558, val_l_pred=0.2414, val_l_multi=0.1914, val_l_probe=1.0373, val_pos_err=0.0996, val_vel_err=0.6577, val_spike_rate=0.123, val_rollout_mae=0.3464, val_drift_ratio=2.28, val_gate_passed=0.0, val_dynamic_score=0.3640, combined_score=0.4839
+  GradNormOverall=0.0000, GradNormRecent10=0.0000
+
+Epoch 147 | TrainLoss 1.7398 | ValLoss 0.8558 | SpikeRate 0.123 | Time 588.1s
+  Losses: total_loss=1.7398, l_pred=0.0000, l_multi=0.0000, l_var=0.0000, l_vel=0.0000, l_sparse=0.0000, l_probe=0.0000, l_coord=0.0000, spike_rate=0.123, val_total_loss=0.8558, val_l_pred=0.2414, val_l_multi=0.1914, val_l_probe=1.0373, val_pos_err=0.0996, val_vel_err=0.6577, val_spike_rate=0.123, val_rollout_mae=0.3457, val_drift_ratio=2.29, val_gate_passed=0.0, val_dynamic_score=0.3627, combined_score=0.4842
+  GradNormOverall=0.0000, GradNormRecent10=0.0000
+
+Epoch 148 | TrainLoss 1.7366 | ValLoss 0.8558 | SpikeRate 0.123 | Time 592.5s
+  Losses: total_loss=1.7366, l_pred=0.0000, l_multi=0.0000, l_var=0.0000, l_vel=0.0000, l_sparse=0.0000, l_probe=0.0000, l_coord=0.0000, spike_rate=0.123, val_total_loss=0.8558, val_l_pred=0.2414, val_l_multi=0.1914, val_l_probe=1.0373, val_pos_err=0.0996, val_vel_err=0.6577, val_spike_rate=0.123, val_rollout_mae=0.3443, val_drift_ratio=2.28, val_gate_passed=0.0, val_dynamic_score=0.3612, combined_score=0.4832
+  GradNormOverall=0.0000, GradNormRecent10=0.0000
+
+Epoch 149 | TrainLoss 1.7342 | ValLoss 0.8558 | SpikeRate 0.123 | Time 597.0s
+  Losses: total_loss=1.7342, l_pred=0.0000, l_multi=0.0000, l_var=0.0000, l_vel=0.0000, l_sparse=0.0000, l_probe=0.0000, l_coord=0.0000, spike_rate=0.123, val_total_loss=0.8558, val_l_pred=0.2414, val_l_multi=0.1914, val_l_probe=1.0373, val_pos_err=0.0996, val_vel_err=0.6577, val_spike_rate=0.123, val_rollout_mae=0.3430, val_drift_ratio=2.29, val_gate_passed=0.0, val_dynamic_score=0.3616, combined_score=0.4796
+  GradNormOverall=0.0000, GradNormRecent10=0.0000
+
+Epoch 150 | TrainLoss 1.7358 | ValLoss 0.8558 | SpikeRate 0.123 | Time 601.3s
+  Losses: total_loss=1.7358, l_pred=0.0000, l_multi=0.0000, l_var=0.0000, l_vel=0.0000, l_sparse=0.0000, l_probe=0.0000, l_coord=0.0000, spike_rate=0.123, val_total_loss=0.8558, val_l_pred=0.2414, val_l_multi=0.1914, val_l_probe=1.0373, val_pos_err=0.0996, val_vel_err=0.6577, val_spike_rate=0.123, val_rollout_mae=0.3484, val_drift_ratio=2.32, val_gate_passed=0.0, val_dynamic_score=0.3651, combined_score=0.4890
+  GradNormOverall=0.0000, GradNormRecent10=0.0000
+
+Epoch 151 | TrainLoss 1.6960 | ValLoss 0.8558 | SpikeRate 0.123 | Time 605.8s
+  Losses: total_loss=1.6960, l_pred=0.0000, l_multi=0.0000, l_var=0.0000, l_vel=0.0000, l_sparse=0.0000, l_probe=0.0000, l_coord=0.0000, spike_rate=0.123, val_total_loss=0.8558, val_l_pred=0.2414, val_l_multi=0.1914, val_l_probe=1.0373, val_pos_err=0.0996, val_vel_err=0.6577, val_spike_rate=0.123, val_rollout_mae=0.3474, val_drift_ratio=2.31, val_gate_passed=0.0, val_dynamic_score=0.3652, combined_score=0.4854
+  GradNormOverall=0.0000, GradNormRecent10=0.0000
+
+Epoch 152 | TrainLoss 1.7882 | ValLoss 0.8558 | SpikeRate 0.123 | Time 609.8s
+  Losses: total_loss=1.7882, l_pred=0.0000, l_multi=0.0000, l_var=0.0000, l_vel=0.0000, l_sparse=0.0000, l_probe=0.0000, l_coord=0.0000, spike_rate=0.123, val_total_loss=0.8558, val_l_pred=0.2414, val_l_multi=0.1914, val_l_probe=1.0373, val_pos_err=0.0996, val_vel_err=0.6577, val_spike_rate=0.123, val_rollout_mae=0.3425, val_drift_ratio=2.28, val_gate_passed=0.0, val_dynamic_score=0.3615, combined_score=0.4779
+  GradNormOverall=0.0000, GradNormRecent10=0.0000
+
+Epoch 153 | TrainLoss 1.7431 | ValLoss 0.8558 | SpikeRate 0.123 | Time 613.9s
+  Losses: total_loss=1.7431, l_pred=0.0000, l_multi=0.0000, l_var=0.0000, l_vel=0.0000, l_sparse=0.0000, l_probe=0.0000, l_coord=0.0000, spike_rate=0.123, val_total_loss=0.8558, val_l_pred=0.2414, val_l_multi=0.1914, val_l_probe=1.0373, val_pos_err=0.0996, val_vel_err=0.6577, val_spike_rate=0.123, val_rollout_mae=0.3414, val_drift_ratio=2.27, val_gate_passed=0.0, val_dynamic_score=0.3613, combined_score=0.4747
+  GradNormOverall=0.0000, GradNormRecent10=0.0000
+
+Epoch 154 | TrainLoss 1.8035 | ValLoss 0.8558 | SpikeRate 0.123 | Time 617.9s
+  Losses: total_loss=1.8035, l_pred=0.0000, l_multi=0.0000, l_var=0.0000, l_vel=0.0000, l_sparse=0.0000, l_probe=0.0000, l_coord=0.0000, spike_rate=0.123, val_total_loss=0.8558, val_l_pred=0.2414, val_l_multi=0.1914, val_l_probe=1.0373, val_pos_err=0.0996, val_vel_err=0.6577, val_spike_rate=0.123, val_rollout_mae=0.3438, val_drift_ratio=2.29, val_gate_passed=0.0, val_dynamic_score=0.3637, combined_score=0.4775
+  GradNormOverall=0.0000, GradNormRecent10=0.0000
+
+Epoch 155 | TrainLoss 1.7844 | ValLoss 0.8558 | SpikeRate 0.123 | Time 621.9s
+  Losses: total_loss=1.7844, l_pred=0.0000, l_multi=0.0000, l_var=0.0000, l_vel=0.0000, l_sparse=0.0000, l_probe=0.0000, l_coord=0.0000, spike_rate=0.123, val_total_loss=0.8558, val_l_pred=0.2414, val_l_multi=0.1914, val_l_probe=1.0373, val_pos_err=0.0996, val_vel_err=0.6577, val_spike_rate=0.123, val_rollout_mae=0.3460, val_drift_ratio=2.31, val_gate_passed=0.0, val_dynamic_score=0.3626, combined_score=0.4863
+  GradNormOverall=0.0000, GradNormRecent10=0.0000
+
+Epoch 156 | TrainLoss 1.7451 | ValLoss 0.8558 | SpikeRate 0.123 | Time 626.1s
+  Losses: total_loss=1.7451, l_pred=0.0000, l_multi=0.0000, l_var=0.0000, l_vel=0.0000, l_sparse=0.0000, l_probe=0.0000, l_coord=0.0000, spike_rate=0.123, val_total_loss=0.8558, val_l_pred=0.2414, val_l_multi=0.1914, val_l_probe=1.0373, val_pos_err=0.0996, val_vel_err=0.6577, val_spike_rate=0.123, val_rollout_mae=0.3469, val_drift_ratio=2.30, val_gate_passed=0.0, val_dynamic_score=0.3630, combined_score=0.4875
+  GradNormOverall=0.0000, GradNormRecent10=0.0000
+
+Epoch 157 | TrainLoss 1.7308 | ValLoss 0.8558 | SpikeRate 0.123 | Time 630.5s
+  Losses: total_loss=1.7308, l_pred=0.0000, l_multi=0.0000, l_var=0.0000, l_vel=0.0000, l_sparse=0.0000, l_probe=0.0000, l_coord=0.0000, spike_rate=0.123, val_total_loss=0.8558, val_l_pred=0.2414, val_l_multi=0.1914, val_l_probe=1.0373, val_pos_err=0.0996, val_vel_err=0.6577, val_spike_rate=0.123, val_rollout_mae=0.3424, val_drift_ratio=2.28, val_gate_passed=0.0, val_dynamic_score=0.3593, combined_score=0.4818
+  GradNormOverall=0.0000, GradNormRecent10=0.0000
+
+Epoch 158 | TrainLoss 1.7698 | ValLoss 0.8558 | SpikeRate 0.123 | Time 634.9s
+  Losses: total_loss=1.7698, l_pred=0.0000, l_multi=0.0000, l_var=0.0000, l_vel=0.0000, l_sparse=0.0000, l_probe=0.0000, l_coord=0.0000, spike_rate=0.123, val_total_loss=0.8558, val_l_pred=0.2414, val_l_multi=0.1914, val_l_probe=1.0373, val_pos_err=0.0996, val_vel_err=0.6577, val_spike_rate=0.123, val_rollout_mae=0.3401, val_drift_ratio=2.26, val_gate_passed=0.0, val_dynamic_score=0.3586, combined_score=0.4771
+  GradNormOverall=0.0000, GradNormRecent10=0.0000
+
+Epoch 159 | TrainLoss 1.7584 | ValLoss 0.8558 | SpikeRate 0.123 | Time 638.9s
+  Losses: total_loss=1.7584, l_pred=0.0000, l_multi=0.0000, l_var=0.0000, l_vel=0.0000, l_sparse=0.0000, l_probe=0.0000, l_coord=0.0000, spike_rate=0.123, val_total_loss=0.8558, val_l_pred=0.2414, val_l_multi=0.1914, val_l_probe=1.0373, val_pos_err=0.0996, val_vel_err=0.6577, val_spike_rate=0.123, val_rollout_mae=0.3387, val_drift_ratio=2.26, val_gate_passed=0.0, val_dynamic_score=0.3558, combined_score=0.4769
+  GradNormOverall=0.0000, GradNormRecent10=0.0000
+
+Epoch 160 | TrainLoss 1.7146 | ValLoss 0.8558 | SpikeRate 0.123 | Time 643.2s
+  Losses: total_loss=1.7146, l_pred=0.0000, l_multi=0.0000, l_var=0.0000, l_vel=0.0000, l_sparse=0.0000, l_probe=0.0000, l_coord=0.0000, spike_rate=0.123, val_total_loss=0.8558, val_l_pred=0.2414, val_l_multi=0.1914, val_l_probe=1.0373, val_pos_err=0.0996, val_vel_err=0.6577, val_spike_rate=0.123, val_rollout_mae=0.3389, val_drift_ratio=2.27, val_gate_passed=0.0, val_dynamic_score=0.3548, combined_score=0.4794
+  GradNormOverall=0.0000, GradNormRecent10=0.0000
+
+Epoch 161 | TrainLoss 1.7435 | ValLoss 0.8558 | SpikeRate 0.123 | Time 647.4s
+  Losses: total_loss=1.7435, l_pred=0.0000, l_multi=0.0000, l_var=0.0000, l_vel=0.0000, l_sparse=0.0000, l_probe=0.0000, l_coord=0.0000, spike_rate=0.123, val_total_loss=0.8558, val_l_pred=0.2414, val_l_multi=0.1914, val_l_probe=1.0373, val_pos_err=0.0996, val_vel_err=0.6577, val_spike_rate=0.123, val_rollout_mae=0.3353, val_drift_ratio=2.24, val_gate_passed=0.0, val_dynamic_score=0.3517, combined_score=0.4742
+  GradNormOverall=0.0000, GradNormRecent10=0.0000
+
+Epoch 162 | TrainLoss 1.7573 | ValLoss 0.8558 | SpikeRate 0.123 | Time 651.7s
+  Losses: total_loss=1.7573, l_pred=0.0000, l_multi=0.0000, l_var=0.0000, l_vel=0.0000, l_sparse=0.0000, l_probe=0.0000, l_coord=0.0000, spike_rate=0.123, val_total_loss=0.8558, val_l_pred=0.2414, val_l_multi=0.1914, val_l_probe=1.0373, val_pos_err=0.0996, val_vel_err=0.6577, val_spike_rate=0.123, val_rollout_mae=0.3350, val_drift_ratio=2.22, val_gate_passed=0.0, val_dynamic_score=0.3510, combined_score=0.4743
+  GradNormOverall=0.0000, GradNormRecent10=0.0000
+
+Epoch 163 | TrainLoss 1.7765 | ValLoss 0.8558 | SpikeRate 0.123 | Time 655.9s
+  Losses: total_loss=1.7765, l_pred=0.0000, l_multi=0.0000, l_var=0.0000, l_vel=0.0000, l_sparse=0.0000, l_probe=0.0000, l_coord=0.0000, spike_rate=0.123, val_total_loss=0.8558, val_l_pred=0.2414, val_l_multi=0.1914, val_l_probe=1.0373, val_pos_err=0.0996, val_vel_err=0.6577, val_spike_rate=0.123, val_rollout_mae=0.3359, val_drift_ratio=2.24, val_gate_passed=0.0, val_dynamic_score=0.3521, combined_score=0.4749
+  GradNormOverall=0.0000, GradNormRecent10=0.0000
+
+Epoch 164 | TrainLoss 1.7181 | ValLoss 0.8558 | SpikeRate 0.123 | Time 660.0s
+  Losses: total_loss=1.7181, l_pred=0.0000, l_multi=0.0000, l_var=0.0000, l_vel=0.0000, l_sparse=0.0000, l_probe=0.0000, l_coord=0.0000, spike_rate=0.123, val_total_loss=0.8558, val_l_pred=0.2414, val_l_multi=0.1914, val_l_probe=1.0373, val_pos_err=0.0996, val_vel_err=0.6577, val_spike_rate=0.123, val_rollout_mae=0.3375, val_drift_ratio=2.26, val_gate_passed=0.0, val_dynamic_score=0.3528, combined_score=0.4792
+  GradNormOverall=0.0000, GradNormRecent10=0.0000
+
+Epoch 165 | TrainLoss 1.7496 | ValLoss 0.8558 | SpikeRate 0.123 | Time 664.2s
+  Losses: total_loss=1.7496, l_pred=0.0000, l_multi=0.0000, l_var=0.0000, l_vel=0.0000, l_sparse=0.0000, l_probe=0.0000, l_coord=0.0000, spike_rate=0.123, val_total_loss=0.8558, val_l_pred=0.2414, val_l_multi=0.1914, val_l_probe=1.0373, val_pos_err=0.0996, val_vel_err=0.6577, val_spike_rate=0.123, val_rollout_mae=0.3378, val_drift_ratio=2.27, val_gate_passed=0.0, val_dynamic_score=0.3532, combined_score=0.4792
+  GradNormOverall=0.0000, GradNormRecent10=0.0000
+
+Epoch 166 | TrainLoss 1.7815 | ValLoss 0.8558 | SpikeRate 0.123 | Time 668.3s
+  Losses: total_loss=1.7815, l_pred=0.0000, l_multi=0.0000, l_var=0.0000, l_vel=0.0000, l_sparse=0.0000, l_probe=0.0000, l_coord=0.0000, spike_rate=0.123, val_total_loss=0.8558, val_l_pred=0.2414, val_l_multi=0.1914, val_l_probe=1.0373, val_pos_err=0.0996, val_vel_err=0.6577, val_spike_rate=0.123, val_rollout_mae=0.3377, val_drift_ratio=2.27, val_gate_passed=0.0, val_dynamic_score=0.3544, combined_score=0.4766
+  GradNormOverall=0.0000, GradNormRecent10=0.0000
+
+Epoch 167 | TrainLoss 1.7381 | ValLoss 0.8558 | SpikeRate 0.123 | Time 672.2s
+  Losses: total_loss=1.7381, l_pred=0.0000, l_multi=0.0000, l_var=0.0000, l_vel=0.0000, l_sparse=0.0000, l_probe=0.0000, l_coord=0.0000, spike_rate=0.123, val_total_loss=0.8558, val_l_pred=0.2414, val_l_multi=0.1914, val_l_probe=1.0373, val_pos_err=0.0996, val_vel_err=0.6577, val_spike_rate=0.123, val_rollout_mae=0.3371, val_drift_ratio=2.26, val_gate_passed=0.0, val_dynamic_score=0.3553, combined_score=0.4731
+  GradNormOverall=0.0000, GradNormRecent10=0.0000
+
+Epoch 168 | TrainLoss 1.7600 | ValLoss 0.8558 | SpikeRate 0.123 | Time 676.2s
+  Losses: total_loss=1.7600, l_pred=0.0000, l_multi=0.0000, l_var=0.0000, l_vel=0.0000, l_sparse=0.0000, l_probe=0.0000, l_coord=0.0000, spike_rate=0.123, val_total_loss=0.8558, val_l_pred=0.2414, val_l_multi=0.1914, val_l_probe=1.0373, val_pos_err=0.0996, val_vel_err=0.6577, val_spike_rate=0.123, val_rollout_mae=0.3382, val_drift_ratio=2.26, val_gate_passed=0.0, val_dynamic_score=0.3571, combined_score=0.4735
+  GradNormOverall=0.0000, GradNormRecent10=0.0000
+
+Epoch 169 | TrainLoss 1.7436 | ValLoss 0.8558 | SpikeRate 0.123 | Time 680.0s
+  Losses: total_loss=1.7436, l_pred=0.0000, l_multi=0.0000, l_var=0.0000, l_vel=0.0000, l_sparse=0.0000, l_probe=0.0000, l_coord=0.0000, spike_rate=0.123, val_total_loss=0.8558, val_l_pred=0.2414, val_l_multi=0.1914, val_l_probe=1.0373, val_pos_err=0.0996, val_vel_err=0.6577, val_spike_rate=0.123, val_rollout_mae=0.3411, val_drift_ratio=2.28, val_gate_passed=0.0, val_dynamic_score=0.3592, combined_score=0.4788
+  GradNormOverall=0.0000, GradNormRecent10=0.0000
+
+Epoch 170 | TrainLoss 1.7475 | ValLoss 0.8558 | SpikeRate 0.123 | Time 684.0s
+  Losses: total_loss=1.7475, l_pred=0.0000, l_multi=0.0000, l_var=0.0000, l_vel=0.0000, l_sparse=0.0000, l_probe=0.0000, l_coord=0.0000, spike_rate=0.123, val_total_loss=0.8558, val_l_pred=0.2414, val_l_multi=0.1914, val_l_probe=1.0373, val_pos_err=0.0996, val_vel_err=0.6577, val_spike_rate=0.123, val_rollout_mae=0.3408, val_drift_ratio=2.27, val_gate_passed=0.0, val_dynamic_score=0.3592, combined_score=0.4783
+  GradNormOverall=0.0000, GradNormRecent10=0.0000
+
+Epoch 171 | TrainLoss 1.7045 | ValLoss 0.8558 | SpikeRate 0.123 | Time 688.0s
+  Losses: total_loss=1.7045, l_pred=0.0000, l_multi=0.0000, l_var=0.0000, l_vel=0.0000, l_sparse=0.0000, l_probe=0.0000, l_coord=0.0000, spike_rate=0.123, val_total_loss=0.8558, val_l_pred=0.2414, val_l_multi=0.1914, val_l_probe=1.0373, val_pos_err=0.0996, val_vel_err=0.6577, val_spike_rate=0.123, val_rollout_mae=0.3400, val_drift_ratio=2.27, val_gate_passed=0.0, val_dynamic_score=0.3588, combined_score=0.4769
+  GradNormOverall=0.0000, GradNormRecent10=0.0000
+
+Epoch 172 | TrainLoss 1.7582 | ValLoss 0.8558 | SpikeRate 0.123 | Time 692.0s
+  Losses: total_loss=1.7582, l_pred=0.0000, l_multi=0.0000, l_var=0.0000, l_vel=0.0000, l_sparse=0.0000, l_probe=0.0000, l_coord=0.0000, spike_rate=0.123, val_total_loss=0.8558, val_l_pred=0.2414, val_l_multi=0.1914, val_l_probe=1.0373, val_pos_err=0.0996, val_vel_err=0.6577, val_spike_rate=0.123, val_rollout_mae=0.3403, val_drift_ratio=2.27, val_gate_passed=0.0, val_dynamic_score=0.3592, combined_score=0.4765
+  GradNormOverall=0.0000, GradNormRecent10=0.0000
+
+Epoch 173 | TrainLoss 1.7313 | ValLoss 0.8558 | SpikeRate 0.123 | Time 696.8s
+  Losses: total_loss=1.7313, l_pred=0.0000, l_multi=0.0000, l_var=0.0000, l_vel=0.0000, l_sparse=0.0000, l_probe=0.0000, l_coord=0.0000, spike_rate=0.123, val_total_loss=0.8558, val_l_pred=0.2414, val_l_multi=0.1914, val_l_probe=1.0373, val_pos_err=0.0996, val_vel_err=0.6577, val_spike_rate=0.123, val_rollout_mae=0.3405, val_drift_ratio=2.27, val_gate_passed=0.0, val_dynamic_score=0.3587, combined_score=0.4784
+  GradNormOverall=0.0000, GradNormRecent10=0.0000
+
+Epoch 174 | TrainLoss 1.7578 | ValLoss 0.8558 | SpikeRate 0.123 | Time 701.5s
+  Losses: total_loss=1.7578, l_pred=0.0000, l_multi=0.0000, l_var=0.0000, l_vel=0.0000, l_sparse=0.0000, l_probe=0.0000, l_coord=0.0000, spike_rate=0.123, val_total_loss=0.8558, val_l_pred=0.2414, val_l_multi=0.1914, val_l_probe=1.0373, val_pos_err=0.0996, val_vel_err=0.6577, val_spike_rate=0.123, val_rollout_mae=0.3404, val_drift_ratio=2.26, val_gate_passed=0.0, val_dynamic_score=0.3596, combined_score=0.4758
+  GradNormOverall=0.0000, GradNormRecent10=0.0000
+
+Epoch 175 | TrainLoss 1.7260 | ValLoss 0.8558 | SpikeRate 0.123 | Time 705.8s
+  Losses: total_loss=1.7260, l_pred=0.0000, l_multi=0.0000, l_var=0.0000, l_vel=0.0000, l_sparse=0.0000, l_probe=0.0000, l_coord=0.0000, spike_rate=0.123, val_total_loss=0.8558, val_l_pred=0.2414, val_l_multi=0.1914, val_l_probe=1.0373, val_pos_err=0.0996, val_vel_err=0.6577, val_spike_rate=0.123, val_rollout_mae=0.3402, val_drift_ratio=2.26, val_gate_passed=0.0, val_dynamic_score=0.3587, combined_score=0.4767
+  GradNormOverall=0.0000, GradNormRecent10=0.0000
+
+Epoch 176 | TrainLoss 1.7624 | ValLoss 0.8558 | SpikeRate 0.123 | Time 710.5s
+  Losses: total_loss=1.7624, l_pred=0.0000, l_multi=0.0000, l_var=0.0000, l_vel=0.0000, l_sparse=0.0000, l_probe=0.0000, l_coord=0.0000, spike_rate=0.123, val_total_loss=0.8558, val_l_pred=0.2414, val_l_multi=0.1914, val_l_probe=1.0373, val_pos_err=0.0996, val_vel_err=0.6577, val_spike_rate=0.123, val_rollout_mae=0.3441, val_drift_ratio=2.25, val_gate_passed=0.0, val_dynamic_score=0.3611, combined_score=0.4837
+  GradNormOverall=0.0000, GradNormRecent10=0.0000
+
+Epoch 177 | TrainLoss 1.7320 | ValLoss 0.8558 | SpikeRate 0.123 | Time 715.0s
+  Losses: total_loss=1.7320, l_pred=0.0000, l_multi=0.0000, l_var=0.0000, l_vel=0.0000, l_sparse=0.0000, l_probe=0.0000, l_coord=0.0000, spike_rate=0.123, val_total_loss=0.8558, val_l_pred=0.2414, val_l_multi=0.1914, val_l_probe=1.0373, val_pos_err=0.0996, val_vel_err=0.6577, val_spike_rate=0.123, val_rollout_mae=0.3443, val_drift_ratio=2.24, val_gate_passed=0.0, val_dynamic_score=0.3624, combined_score=0.4812
+  GradNormOverall=0.0000, GradNormRecent10=0.0000
+
+Epoch 178 | TrainLoss 1.7019 | ValLoss 0.8558 | SpikeRate 0.123 | Time 719.3s
+  Losses: total_loss=1.7019, l_pred=0.0000, l_multi=0.0000, l_var=0.0000, l_vel=0.0000, l_sparse=0.0000, l_probe=0.0000, l_coord=0.0000, spike_rate=0.123, val_total_loss=0.8558, val_l_pred=0.2414, val_l_multi=0.1914, val_l_probe=1.0373, val_pos_err=0.0996, val_vel_err=0.6577, val_spike_rate=0.123, val_rollout_mae=0.3421, val_drift_ratio=2.24, val_gate_passed=0.0, val_dynamic_score=0.3599, combined_score=0.4777
+  GradNormOverall=0.0000, GradNormRecent10=0.0000
+
+Epoch 179 | TrainLoss 1.6909 | ValLoss 0.8558 | SpikeRate 0.123 | Time 723.5s
+  Losses: total_loss=1.6909, l_pred=0.0000, l_multi=0.0000, l_var=0.0000, l_vel=0.0000, l_sparse=0.0000, l_probe=0.0000, l_coord=0.0000, spike_rate=0.123, val_total_loss=0.8558, val_l_pred=0.2414, val_l_multi=0.1914, val_l_probe=1.0373, val_pos_err=0.0996, val_vel_err=0.6577, val_spike_rate=0.123, val_rollout_mae=0.3443, val_drift_ratio=2.26, val_gate_passed=0.0, val_dynamic_score=0.3593, combined_score=0.4848
+  GradNormOverall=0.0000, GradNormRecent10=0.0000
+
+Epoch 180 | TrainLoss 1.7051 | ValLoss 0.8558 | SpikeRate 0.123 | Time 727.7s
+  Losses: total_loss=1.7051, l_pred=0.0000, l_multi=0.0000, l_var=0.0000, l_vel=0.0000, l_sparse=0.0000, l_probe=0.0000, l_coord=0.0000, spike_rate=0.123, val_total_loss=0.8558, val_l_pred=0.2414, val_l_multi=0.1914, val_l_probe=1.0373, val_pos_err=0.0996, val_vel_err=0.6577, val_spike_rate=0.123, val_rollout_mae=0.3420, val_drift_ratio=2.26, val_gate_passed=0.0, val_dynamic_score=0.3581, combined_score=0.4809
+  GradNormOverall=0.0000, GradNormRecent10=0.0000
+
+Epoch 181 | TrainLoss 1.8170 | ValLoss 0.8558 | SpikeRate 0.123 | Time 732.6s
+  Losses: total_loss=1.8170, l_pred=0.0000, l_multi=0.0000, l_var=0.0000, l_vel=0.0000, l_sparse=0.0000, l_probe=0.0000, l_coord=0.0000, spike_rate=0.123, val_total_loss=0.8558, val_l_pred=0.2414, val_l_multi=0.1914, val_l_probe=1.0373, val_pos_err=0.0996, val_vel_err=0.6577, val_spike_rate=0.123, val_rollout_mae=0.3395, val_drift_ratio=2.25, val_gate_passed=0.0, val_dynamic_score=0.3567, combined_score=0.4768
+  GradNormOverall=0.0000, GradNormRecent10=0.0000
+
+Epoch 182 | TrainLoss 1.7042 | ValLoss 0.8558 | SpikeRate 0.123 | Time 736.9s
+  Losses: total_loss=1.7042, l_pred=0.0000, l_multi=0.0000, l_var=0.0000, l_vel=0.0000, l_sparse=0.0000, l_probe=0.0000, l_coord=0.0000, spike_rate=0.123, val_total_loss=0.8558, val_l_pred=0.2414, val_l_multi=0.1914, val_l_probe=1.0373, val_pos_err=0.0996, val_vel_err=0.6577, val_spike_rate=0.123, val_rollout_mae=0.3383, val_drift_ratio=2.26, val_gate_passed=0.0, val_dynamic_score=0.3562, combined_score=0.4753
+  GradNormOverall=0.0000, GradNormRecent10=0.0000
+
+Epoch 183 | TrainLoss 1.7773 | ValLoss 0.8558 | SpikeRate 0.123 | Time 741.2s
+  Losses: total_loss=1.7773, l_pred=0.0000, l_multi=0.0000, l_var=0.0000, l_vel=0.0000, l_sparse=0.0000, l_probe=0.0000, l_coord=0.0000, spike_rate=0.123, val_total_loss=0.8558, val_l_pred=0.2414, val_l_multi=0.1914, val_l_probe=1.0373, val_pos_err=0.0996, val_vel_err=0.6577, val_spike_rate=0.123, val_rollout_mae=0.3380, val_drift_ratio=2.26, val_gate_passed=0.0, val_dynamic_score=0.3575, combined_score=0.4722
+  GradNormOverall=0.0000, GradNormRecent10=0.0000
+

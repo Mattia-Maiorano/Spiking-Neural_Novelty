@@ -176,7 +176,7 @@ def test_train_corrector_epoch_execution():
     )
 
     pred_weight_before = model.predictor.net[0].weight.detach().cpu().clone()
-    corr_weight_before = model.corrector.to_v.weight.detach().cpu().clone()
+    corr_weight_before = model.corrector.force_to_momentum.weight.detach().cpu().clone()
 
     metrics = trainer.train_epoch(epoch=1)
     assert "total_loss" in metrics
@@ -187,6 +187,6 @@ def test_train_corrector_epoch_execution():
     assert torch.equal(pred_weight_before, pred_weight_after), "Predictor weights changed during train_corrector mode!"
 
     # Corrector weights should be updated
-    corr_weight_after = model.corrector.to_v.weight.detach().cpu()
+    corr_weight_after = model.corrector.force_to_momentum.weight.detach().cpu()
     # Weights should differ if optimizer stepped
     assert not torch.equal(corr_weight_before, corr_weight_after) or metrics["l_corr_asymptotic"] == 0.0

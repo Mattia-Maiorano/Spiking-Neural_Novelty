@@ -15,7 +15,7 @@ def test_slow_corrector_initialization_and_shapes():
     B = 4
     q_dim = 32
     p_dim = 96
-    corrector_dim = 64
+    corrector_dim = 128
     cadence = 5
 
     corrector = SlowCorrector(
@@ -25,7 +25,7 @@ def test_slow_corrector_initialization_and_shapes():
         cadence=cadence,
         beta_mem=0.95,
         beta_adapt=0.995,
-        v_th0=1.5,
+        v_th0=1.0,
     )
 
     state = corrector.init_state(B)
@@ -39,9 +39,8 @@ def test_slow_corrector_initialization_and_shapes():
     z_corr, out, new_state = corrector.forward_step(z_prev, z_proposed, state)
 
     assert z_corr.shape == (B, q_dim + p_dim)
-    assert out.delta_v.shape == (B, q_dim)
+    assert out.delta_q.shape == (B, q_dim)
     assert out.delta_p.shape == (B, p_dim)
-    assert out.damp_factor.shape == (B, p_dim)
     assert out.spikes.shape == (B, corrector_dim)
     assert out.intervened is True
     assert new_state.step_count == 1
@@ -68,40 +67,43 @@ def test_slow_corrector_quiescence_on_nominal_trajectory():
     assert out.spikes.sum().item() == 0.0
 
 
-def test_slow_corrector_cadence_and_decay():
-    """Corrector intervenes on cadence (t % Delta == 0) and smoothly decays in between."""
+def test_slow_corrector_cadence_and_jump_system():
+    """Corrector acts as a Jump System: discrete orthogonal jump on cadence, zero interference inter-cadence."""
     B = 2
     cadence = 4
-    decay = 0.8
     corrector = SlowCorrector(
         q_dim=8,
         p_dim=24,
         corrector_dim=16,
         cadence=cadence,
-        inter_step_decay=decay,
     )
 
     state = corrector.init_state(B)
     z = torch.randn(B, 32)
 
     interventions = []
-    delta_vs = []
 
     for t in range(8):
         z_prop = z + 0.05
-        z, out, state = corrector.forward_step(z, z_prop, state)
+        z_corr, out, state = corrector.forward_step(z, z_prop, state)
         interventions.append(out.intervened)
-        delta_vs.append(out.delta_v.abs().mean().item())
+
+        if out.intervened:
+            # On cadence: intervention executed
+            assert out.potential is not None
+        else:
+            # Inter-cadence: Fast Predictor operates in full autonomy without offsets or decay
+            assert torch.all(out.delta_q == 0.0)
+            assert torch.all(out.delta_p == 0.0)
+            assert torch.all(out.damp_factor == 0.0)
+            assert torch.allclose(z_corr, z_prop)
 
     # Interventions should occur exactly at t = 0, 4 (step_count % 4 == 0)
     assert interventions == [True, False, False, False, True, False, False, False]
 
-    # At step 1, delta_v should be decayed from step 0
-    assert delta_vs[1] <= delta_vs[0] + 1e-6
 
-
-def test_non_destructive_continuous_coupling():
-    """Position coordinate q must not jump abruptly and must remain bounded in [-1, 1]."""
+def test_hamiltonian_energy_and_symplectic_coupling():
+    """Position update is derived symplectically from momentum correction, and q remains in [-1, 1]."""
     B = 3
     q_dim = 8
     p_dim = 24
@@ -109,7 +111,7 @@ def test_non_destructive_continuous_coupling():
         q_dim=q_dim,
         p_dim=p_dim,
         corrector_dim=16,
-        max_gain_v=0.05,
+        cadence=1,
     )
 
     state = corrector.init_state(B)
@@ -117,7 +119,7 @@ def test_non_destructive_continuous_coupling():
     p0 = torch.zeros(B, p_dim)
     z_prev = torch.cat([q0, p0], dim=-1)
 
-    # Large proposed jump that would overshoot 1.0
+    # Proposed jump that would overshoot 1.0
     q_prop = torch.full((B, q_dim), 1.2)
     p_prop = torch.zeros(B, p_dim)
     z_prop = torch.cat([q_prop, p_prop], dim=-1)
@@ -128,6 +130,10 @@ def test_non_destructive_continuous_coupling():
     # Clamped within valid bounds [-1, 1]
     assert (q_corr <= 1.0).all()
     assert (q_corr >= -1.0).all()
+    assert out.potential is not None
+    # delta_q is coupled to delta_p
+    assert out.delta_q.shape == (B, q_dim)
+    assert out.delta_p.shape == (B, p_dim)
 
 
 def test_spwm_two_timescale_rollout():
@@ -228,4 +234,120 @@ def test_corrector_quiescence_hinge_loss():
         max=cap,
     )
     assert abs(loss_high.item() - cap) < 1e-6
+
+
+def test_chained_window_rollout_contraction():
+    """Verifies that chained window rollout executes Window A and Window B with detached intermediate state."""
+    model = SPWM(
+        latent_dim=32,
+        q_dim=8,
+        p_dim=24,
+        timescale_dims=(16, 16),
+        enable_corrector=True,
+        corrector_dim=16,
+        corrector_cadence=5,
+    )
+
+    B = 2
+    H = 5
+    z0 = torch.randn(B, 32)
+    target_A = torch.randn(B, H, 32)
+    target_B = torch.randn(B, H, 32)
+
+    optimizer = torch.optim.Adam(model.corrector.parameters(), lr=1e-3)
+
+    with _frozen(model.predictor):
+        # Window A
+        pred_A, spikes_A, corr_state_A = model.predict_rollout(
+            z0, horizon=H, use_corrector=True, return_corrector_state=True
+        )
+        loss_A = nn.functional.mse_loss(pred_A, target_A)
+
+        # Detached state transfer
+        z_init_B = pred_A[:, -1].detach()
+        corr_state_B = corr_state_A.detach()
+        assert not z_init_B.requires_grad
+        assert not corr_state_B.alif_state.v_mem.requires_grad
+
+        # Window B
+        pred_B, spikes_B = model.predict_rollout(
+            z_init_B, horizon=H, use_corrector=True, initial_corrector_state=corr_state_B
+        )
+        loss_B = nn.functional.mse_loss(pred_B, target_B)
+
+        total_loss = loss_A + loss_B
+        optimizer.zero_grad()
+        total_loss.backward()
+
+    # Corrector must have gradients
+    corrector_grads = [p.grad for p in model.corrector.parameters() if p.grad is not None]
+    assert len(corrector_grads) > 0
+    assert any(g.abs().sum() > 0 for g in corrector_grads)
+
+    # Predictor must NOT have gradients
+    assert all(p.grad is None for p in model.predictor.parameters())
+
+
+def test_isometry_loss_penalizes_nullspace_deformation():
+    """Verifies that isometry regularization penalizes arbitrary latent deformations
+    in the 124D null-space of the physical decoder."""
+    from spwm.learning.losses import SPWMLoss
+    from spwm.models.predictor import PhysicalDecoder
+
+    decoder = PhysicalDecoder(latent_dim=128, q_dim=32, p_dim=96, num_objects=1)
+    loss_fn = SPWMLoss()
+
+    B, T, D = 4, 10, 128
+    z_fast = torch.randn(B, T, D)
+
+    # Case 1: Isometric deformation (latent and decoded distances match)
+    z_corr_iso = z_fast.clone()
+    # Apply a shift that changes decoded kinematics
+    z_corr_iso[:, :, :2] += 0.1
+    loss_iso = loss_fn.isometry_loss(z_corr_iso, z_fast, decoder, k_isometry=1.0)
+
+    # Case 2: Null-space deformation (large shift in orthogonal latent space with zero decoded physical difference)
+    # The decoder maps coordinates via pos_head(q) and vel_head(p). Dimensions 4..31 of q are largely in null space of 2D pos_head.
+    z_corr_null = z_fast.clone()
+    z_corr_null[:, :, 10:25] += 2.0  # huge perturbation in latent space
+    loss_null = loss_fn.isometry_loss(z_corr_null, z_fast, decoder, k_isometry=1.0)
+
+    # Null-space deformation must incur substantially higher isometry penalty
+    assert loss_null.item() > loss_iso.item()
+
+
+def test_deep_horizon_rollout_h100():
+    """Verifies autonomous and differentiable rollout up to extended deep horizon H=100 (SPWM-v9)."""
+    model = SPWM(
+        latent_dim=32,
+        q_dim=8,
+        p_dim=24,
+        timescale_dims=(16, 16),
+        enable_corrector=True,
+        corrector_dim=16,
+        corrector_cadence=5,
+    )
+
+    B = 2
+    z0 = torch.randn(B, 32)
+
+    # 1. Autonomous rollout for 100 steps
+    traj_100 = model.predict_future(z0, horizon=100, use_corrector=True)
+    assert traj_100.shape == (B, 100, 32)
+    assert torch.isfinite(traj_100).all()
+
+    # 2. Differentiable rollout with fast trajectory tracking
+    with _frozen(model.predictor):
+        pred_rollout, spikes, fast_rollout = model.predict_rollout(
+            z0, horizon=50, use_corrector=True, return_fast_trajectory=True
+        )
+        assert pred_rollout.shape == (B, 50, 32)
+        assert fast_rollout.shape == (B, 50, 32)
+        assert spikes.shape == (B, 50, 16)
+        loss = pred_rollout.sum()
+        loss.backward()
+
+    corrector_grads = [p.grad for p in model.corrector.parameters() if p.grad is not None]
+    assert len(corrector_grads) > 0
+
 

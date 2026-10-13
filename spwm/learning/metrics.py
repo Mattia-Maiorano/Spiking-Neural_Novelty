@@ -79,3 +79,6 @@ def energy_estimate(total_spikes: int, avg_fan_out: int = 128, energy_per_sop_pj
     total_sops = total_spikes * avg_fan_out
     energy_pj = total_sops * energy_per_sop_pj
     return energy_pj / 1000.0  # nanojoules
+
+    return progression
+

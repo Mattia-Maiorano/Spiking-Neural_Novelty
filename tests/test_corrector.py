@@ -1,5 +1,5 @@
 """
-Unit Tests for SPWM-v8 Slow Neuromorphic Corrector & Two-Timescale Rollouts.
+Unit Tests for SPWM-v0.1.0 Neuromodulatory Gain Field Corrector & Two-Timescale Rollouts.
 """
 
 import pytest
@@ -12,128 +12,166 @@ from spwm.learning.losses import _frozen
 
 
 def test_slow_corrector_initialization_and_shapes():
+    """Verifies that SlowCorrector initializes with correct shapes for v0.1.0 Gain Field."""
     B = 4
     q_dim = 32
     p_dim = 96
     corrector_dim = 128
-    cadence = 5
+    latent_dim = q_dim + p_dim
 
     corrector = SlowCorrector(
         q_dim=q_dim,
         p_dim=p_dim,
         corrector_dim=corrector_dim,
-        cadence=cadence,
         beta_mem=0.95,
-        beta_adapt=0.995,
+        beta_adapt=0.94,
         v_th0=1.0,
+        gamma=0.25,
+        alpha_gain=0.5,
     )
 
     state = corrector.init_state(B)
     assert state.step_count == 0
     assert state.alif_state.v_mem.shape == (B, corrector_dim)
     assert state.alif_state.spikes.shape == (B, corrector_dim)
+    assert state.last_gain_mask.shape == (B, latent_dim)
 
-    z_prev = torch.zeros(B, q_dim + p_dim)
-    z_proposed = torch.zeros(B, q_dim + p_dim)
+    z_prev = torch.zeros(B, latent_dim)
+    z_proposed = torch.zeros(B, latent_dim)
 
     z_corr, out, new_state = corrector.forward_step(z_prev, z_proposed, state)
 
-    assert z_corr.shape == (B, q_dim + p_dim)
-    assert out.delta_q.shape == (B, q_dim)
-    assert out.delta_p.shape == (B, p_dim)
+    assert z_corr.shape == (B, latent_dim)
+    assert out.gain_mask.shape == (B, latent_dim)
     assert out.spikes.shape == (B, corrector_dim)
+    assert out.v_mem.shape == (B, corrector_dim)
     assert out.intervened is True
     assert new_state.step_count == 1
+    assert new_state.last_gain_mask.shape == (B, latent_dim)
 
 
-def test_slow_corrector_quiescence_on_nominal_trajectory():
-    """Under nominal trajectory (near-zero drift), elevated threshold ensures quiescence (zero spikes)."""
-    B = 2
+def test_gain_mask_emission_bounded():
+    """Verifies that the gain mask is strictly bounded within [-1.0, 1.0]."""
+    B = 4
+    q_dim = 16
+    p_dim = 48
+    corrector_dim = 32
+
     corrector = SlowCorrector(
-        q_dim=16,
-        p_dim=48,
-        corrector_dim=32,
-        cadence=3,
-        v_th0=2.0,  # High threshold
+        q_dim=q_dim,
+        p_dim=p_dim,
+        corrector_dim=corrector_dim,
+        alpha_gain=0.5,
     )
 
     state = corrector.init_state(B)
-    z_prev = torch.randn(B, 64) * 0.01
-    z_prop = z_prev + torch.randn(B, 64) * 0.001  # very tiny deviation
 
-    z_corr, out, new_state = corrector.forward_step(z_prev, z_prop, state)
+    # Test across multiple steps with large inputs
+    for _ in range(10):
+        z_prev = torch.randn(B, q_dim + p_dim) * 5.0
+        z_proposed = z_prev + torch.randn(B, q_dim + p_dim) * 2.0
+        z_corr, out, state = corrector.forward_step(z_prev, z_proposed, state)
 
-    # Spikes should be exactly zero under quiescent baseline
-    assert out.spikes.sum().item() == 0.0
+        assert torch.all(out.gain_mask >= -1.0), "gain_mask below -1.0!"
+        assert torch.all(out.gain_mask <= 1.0), "gain_mask above 1.0!"
+        assert not torch.isnan(out.gain_mask).any()
 
 
-def test_slow_corrector_cadence_and_jump_system():
-    """Corrector acts as a Jump System: discrete orthogonal jump on cadence, zero interference inter-cadence."""
+def test_proportional_gain_modulation():
+    """Verifies that proportional modulation satisfies Δz_mod = Δz_fast * (1 + alpha_gain * G_t)."""
     B = 2
-    cadence = 4
+    q_dim = 8
+    p_dim = 24
+    latent_dim = q_dim + p_dim
+    corrector_dim = 16
+    alpha_gain = 0.4
+
     corrector = SlowCorrector(
-        q_dim=8,
-        p_dim=24,
-        corrector_dim=16,
-        cadence=cadence,
+        q_dim=q_dim,
+        p_dim=p_dim,
+        corrector_dim=corrector_dim,
+        alpha_gain=alpha_gain,
     )
 
     state = corrector.init_state(B)
-    z = torch.randn(B, 32)
+    # Stay strictly within boundary [-0.5, 0.5] so clamping doesn't trigger
+    z_prev = torch.zeros(B, latent_dim)
+    delta_z_fast = torch.full((B, latent_dim), 0.05)
+    z_fast_proposed = z_prev + delta_z_fast
 
-    interventions = []
+    z_corr, out, new_state = corrector.forward_step(z_prev, z_fast_proposed, state, is_burn_in=False)
 
-    for t in range(8):
-        z_prop = z + 0.05
-        z_corr, out, state = corrector.forward_step(z, z_prop, state)
-        interventions.append(out.intervened)
+    expected_delta_mod = delta_z_fast * (1.0 + alpha_gain * out.gain_mask)
+    expected_z_corr = z_prev + expected_delta_mod
 
-        if out.intervened:
-            # On cadence: intervention executed
-            assert out.potential is not None
-        else:
-            # Inter-cadence: Fast Predictor operates in full autonomy without offsets or decay
-            assert torch.all(out.delta_q == 0.0)
-            assert torch.all(out.delta_p == 0.0)
-            assert torch.all(out.damp_factor == 0.0)
-            assert torch.allclose(z_corr, z_prop)
-
-    # Interventions should occur exactly at t = 0, 4 (step_count % 4 == 0)
-    assert interventions == [True, False, False, False, True, False, False, False]
+    assert torch.allclose(z_corr, expected_z_corr, atol=1e-5)
 
 
-def test_hamiltonian_energy_and_symplectic_coupling():
-    """Position update is derived symplectically from momentum correction, and q remains in [-1, 1]."""
+def test_burn_in_period():
+    """Verifies that is_burn_in=True ignores the mask without altering the trajectory."""
     B = 3
     q_dim = 8
     p_dim = 24
+    latent_dim = q_dim + p_dim
+    corrector_dim = 16
+
+    corrector = SlowCorrector(
+        q_dim=q_dim,
+        p_dim=p_dim,
+        corrector_dim=corrector_dim,
+        alpha_gain=0.8,
+    )
+
+    state = corrector.init_state(B)
+    z_prev = torch.randn(B, latent_dim) * 0.1
+    z_proposed = z_prev + torch.randn(B, latent_dim) * 0.1
+
+    z_corr, out, new_state = corrector.forward_step(
+        z_prev, z_proposed, state, is_burn_in=True
+    )
+
+    # During burn-in, trajectory is untouched
+    assert torch.allclose(z_corr, z_proposed)
+    assert out.intervened is False
+    # But internal state and gain_mask must still advance
+    assert new_state.step_count == 1
+    assert out.gain_mask.shape == (B, latent_dim)
+    assert not torch.isnan(new_state.alif_state.v_mem).any()
+
+
+def test_euclidean_boundary_clamping():
+    """Verifies Euclidean boundary clamping [-1.0, 1.0] on q and momentum dissipation on collision."""
+    B = 2
+    q_dim = 4
+    p_dim = 12
+    latent_dim = q_dim + p_dim
+
     corrector = SlowCorrector(
         q_dim=q_dim,
         p_dim=p_dim,
         corrector_dim=16,
-        cadence=1,
+        alpha_gain=0.5,
     )
 
     state = corrector.init_state(B)
-    q0 = torch.full((B, q_dim), 0.98)
-    p0 = torch.zeros(B, p_dim)
-    z_prev = torch.cat([q0, p0], dim=-1)
 
-    # Proposed jump that would overshoot 1.0
-    q_prop = torch.full((B, q_dim), 1.2)
-    p_prop = torch.zeros(B, p_dim)
-    z_prop = torch.cat([q_prop, p_prop], dim=-1)
+    # Create proposed state with q exceeding boundaries
+    z_prev = torch.zeros(B, latent_dim)
+    q_overshoot = torch.tensor([[1.5, -1.8, 0.5, -0.2], [2.0, -2.0, 0.0, 0.0]])
+    p_initial = torch.ones(B, p_dim)
+    z_proposed = torch.cat([q_overshoot, p_initial], dim=-1)
 
-    z_corr, out, _ = corrector.forward_step(z_prev, z_prop, state)
+    z_corr, out, _ = corrector.forward_step(z_prev, z_proposed, state, is_burn_in=False)
+
     q_corr = z_corr[:, :q_dim]
+    p_corr = z_corr[:, q_dim:]
 
-    # Clamped within valid bounds [-1, 1]
+    # q must be strictly clamped in [-1.0, 1.0]
     assert (q_corr <= 1.0).all()
     assert (q_corr >= -1.0).all()
-    assert out.potential is not None
-    # delta_q is coupled to delta_p
-    assert out.delta_q.shape == (B, q_dim)
-    assert out.delta_p.shape == (B, p_dim)
+
+    # Hit upper on index 0, hit lower on index 1 -> momentum components corresponding to collisions dissipate
+    assert (p_corr[:, :6] < p_initial[:, :6]).all()
 
 
 def test_spwm_two_timescale_rollout():
@@ -145,7 +183,6 @@ def test_spwm_two_timescale_rollout():
         timescale_dims=(16, 16),
         enable_corrector=True,
         corrector_dim=16,
-        corrector_cadence=5,
     )
 
     z0 = torch.randn(2, 32)
@@ -177,7 +214,6 @@ def test_protected_block_gradient_isolation():
         timescale_dims=(16, 16),
         enable_corrector=True,
         corrector_dim=16,
-        corrector_cadence=3,
     )
 
     z0 = torch.randn(2, 32, requires_grad=False)
@@ -205,37 +241,6 @@ def test_protected_block_gradient_isolation():
         assert p.grad is None, "Fast predictor parameters must remain strictly gradient-isolated!"
 
 
-def test_corrector_quiescence_hinge_loss():
-    """Verifies that the hinge / dead-zone penalty produces zero loss within tolerance
-    margin and clamps to the upper bound above maximum allowed threshold."""
-    margin = 0.15
-    cap = 0.50
-
-    # Case 1: Below margin (e.g. 0.10 spike rate) -> Loss must be exactly 0.0
-    spikes_low = torch.full((2, 10, 16), 0.10)
-    loss_low = torch.clamp(
-        nn.functional.relu(spikes_low.mean() - margin),
-        max=cap,
-    )
-    assert loss_low.item() == 0.0
-
-    # Case 2: In linear region (e.g. 0.30 spike rate) -> Loss = 0.30 - 0.15 = 0.15
-    spikes_mid = torch.full((2, 10, 16), 0.30)
-    loss_mid = torch.clamp(
-        nn.functional.relu(spikes_mid.mean() - margin),
-        max=cap,
-    )
-    assert abs(loss_mid.item() - 0.15) < 1e-6
-
-    # Case 3: In saturated region (e.g. 0.90 spike rate) -> Capped at max 0.50
-    spikes_high = torch.full((2, 10, 16), 0.90)
-    loss_high = torch.clamp(
-        nn.functional.relu(spikes_high.mean() - margin),
-        max=cap,
-    )
-    assert abs(loss_high.item() - cap) < 1e-6
-
-
 def test_chained_window_rollout_contraction():
     """Verifies that chained window rollout executes Window A and Window B with detached intermediate state."""
     model = SPWM(
@@ -245,7 +250,6 @@ def test_chained_window_rollout_contraction():
         timescale_dims=(16, 16),
         enable_corrector=True,
         corrector_dim=16,
-        corrector_cadence=5,
     )
 
     B = 2
@@ -288,36 +292,8 @@ def test_chained_window_rollout_contraction():
     assert all(p.grad is None for p in model.predictor.parameters())
 
 
-def test_isometry_loss_penalizes_nullspace_deformation():
-    """Verifies that isometry regularization penalizes arbitrary latent deformations
-    in the 124D null-space of the physical decoder."""
-    from spwm.learning.losses import SPWMLoss
-    from spwm.models.predictor import PhysicalDecoder
-
-    decoder = PhysicalDecoder(latent_dim=128, q_dim=32, p_dim=96, num_objects=1)
-    loss_fn = SPWMLoss()
-
-    B, T, D = 4, 10, 128
-    z_fast = torch.randn(B, T, D)
-
-    # Case 1: Isometric deformation (latent and decoded distances match)
-    z_corr_iso = z_fast.clone()
-    # Apply a shift that changes decoded kinematics
-    z_corr_iso[:, :, :2] += 0.1
-    loss_iso = loss_fn.isometry_loss(z_corr_iso, z_fast, decoder, k_isometry=1.0)
-
-    # Case 2: Null-space deformation (large shift in orthogonal latent space with zero decoded physical difference)
-    # The decoder maps coordinates via pos_head(q) and vel_head(p). Dimensions 4..31 of q are largely in null space of 2D pos_head.
-    z_corr_null = z_fast.clone()
-    z_corr_null[:, :, 10:25] += 2.0  # huge perturbation in latent space
-    loss_null = loss_fn.isometry_loss(z_corr_null, z_fast, decoder, k_isometry=1.0)
-
-    # Null-space deformation must incur substantially higher isometry penalty
-    assert loss_null.item() > loss_iso.item()
-
-
 def test_deep_horizon_rollout_h100():
-    """Verifies autonomous and differentiable rollout up to extended deep horizon H=100 (SPWM-v9)."""
+    """Verifies autonomous and differentiable rollout up to extended deep horizon H=100 (v0.1.0)."""
     model = SPWM(
         latent_dim=32,
         q_dim=8,
@@ -325,7 +301,6 @@ def test_deep_horizon_rollout_h100():
         timescale_dims=(16, 16),
         enable_corrector=True,
         corrector_dim=16,
-        corrector_cadence=5,
     )
 
     B = 2
@@ -349,5 +324,3 @@ def test_deep_horizon_rollout_h100():
 
     corrector_grads = [p.grad for p in model.corrector.parameters() if p.grad is not None]
     assert len(corrector_grads) > 0
-
-

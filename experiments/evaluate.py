@@ -1,5 +1,5 @@
 """
-Evaluation Entrypoint for SPWM and Baseline Checkpoints.
+Evaluation Entrypoint for SPWM Checkpoints.
 Usage:
     python experiments/evaluate.py --checkpoint results/<run_id>/model.pt --config results/<run_id>/config.yaml
 """
@@ -11,6 +11,7 @@ from pathlib import Path
 from typing import Any, Dict
 import numpy as np
 import torch
+import chronicle
 
 from spwm.utils.reproducibility import set_seed
 from spwm.utils.config import load_config
@@ -25,6 +26,10 @@ def main() -> None:
     parser.add_argument("--checkpoint", type=str, required=True, help="Path to model checkpoint (.pt)")
     parser.add_argument("--config", type=str, required=True, help="Path to config YAML")
     parser.add_argument("--device", type=str, default=None, help="Device (cpu, mps, cuda)")
+    parser.add_argument("--mode", type=str, default=None, help="Evaluation mode (train_predictor, train_corrector)")
+    parser.add_argument("--use_corrector", action="store_true", default=None, help="Force use of corrector in rollouts")
+    parser.add_argument("--drift_injection_prob", type=float, default=None, help="Drift injection probability for test evaluation")
+    parser.add_argument("--mixed_drift", action="store_true", default=None, help="Evaluate with 50/50 mixed nominal and drift trajectories")
     args = parser.parse_args()
 
     config = load_config(args.config)
@@ -45,14 +50,37 @@ def main() -> None:
     figures_dir = out_dir / "figures"
     figures_dir.mkdir(parents=True, exist_ok=True)
 
-    print(f"Loading checkpoint: {ckpt_path} on {device}")
-    model = build_model(config, device=device)
-    model.load_state_dict(torch.load(ckpt_path, map_location=device))
+    # Determine mode: command line arg > config > checkpoint path inference
+    mode = args.mode
+    if mode is None:
+        mode = config.get("training", {}).get("mode", None)
+    if mode is None:
+        mode = "train_corrector" if "corrector" in str(ckpt_path).lower() else "train_predictor"
+
+    use_corrector = args.use_corrector
+    if use_corrector is None:
+        use_corrector = (mode == "train_corrector") or ("corrector" in str(ckpt_path).lower())
+
+    chronicle.log_info(f"Loading checkpoint: {ckpt_path} on {device} (mode: {mode}, use_corrector: {use_corrector})")
+    model = build_model(config, device=device, mode=mode)
+    state_dict = torch.load(ckpt_path, map_location=device)
+    if isinstance(state_dict, dict) and "model_state" in state_dict:
+        state_dict = state_dict["model_state"]
+    model.load_state_dict(state_dict, strict=False)
     model.eval()
 
     # Create test datasets
     data_cfg = config.get("data", {})
     env_cfg = config.get("environment", {})
+
+    drift_prob = args.drift_injection_prob
+    if drift_prob is None:
+        drift_prob = data_cfg.get("drift_injection_prob", 0.0) if use_corrector else 0.0
+
+    mixed_drift = args.mixed_drift
+    if mixed_drift is None:
+        mixed_drift = data_cfg.get("mixed_drift", False)
+
     dataloaders = create_dataloaders(
         total_trajectories=data_cfg.get("total_trajectories", 600),
         train_split=data_cfg.get("train_split", 0.8),
@@ -62,14 +90,25 @@ def main() -> None:
         height=env_cfg.get("height", 32),
         width=env_cfg.get("width", 32),
         num_objects=env_cfg.get("num_objects", 1),
+        event_threshold=env_cfg.get("event_threshold", 0.08),
+        box_size=env_cfg.get("box_size", 1.0),
+        dt=env_cfg.get("dt", 0.05),
+        drift_injection_prob=drift_prob,
+        mixed_drift=mixed_drift,
     )
 
     horizons = config.get("evaluation", {}).get("rollout_horizons", [1, 5, 10, 25])
-    evaluator = RolloutEvaluator(model=model, device=device, horizons=horizons, num_objects=env_cfg.get("num_objects", 1))
+    evaluator = RolloutEvaluator(
+        model=model,
+        device=device,
+        horizons=horizons,
+        num_objects=env_cfg.get("num_objects", 1),
+        use_corrector=use_corrector,
+    )
 
-    print("Evaluating autonomous rollouts on test set...")
+    chronicle.log_info("Evaluating autonomous rollouts on test set...")
     test_results = evaluator.evaluate_dataset(dataloaders["test"])
-    print("Evaluating autonomous rollouts on extrapolation set...")
+    chronicle.log_info("Evaluating autonomous rollouts on extrapolation set...")
     extrap_results = evaluator.evaluate_dataset(dataloaders["extrapolation"])
 
     metrics = {
@@ -92,7 +131,7 @@ def main() -> None:
     metrics_path = out_dir / "test_metrics.json"
     with open(metrics_path, "w", encoding="utf-8") as f:
         json.dump(metrics, f, indent=2)
-    print(f"Saved test metrics to {metrics_path}")
+    chronicle.log_success(f"Saved test metrics to {metrics_path}")
 
     # Generate sample rollout predictions for visualization
     with torch.no_grad():
@@ -100,19 +139,19 @@ def main() -> None:
         sample_events = sample_batch["events"][:8].to(device)
         out = model(sample_events)
         z0 = out.latent_states[:, 5]
-        rollout_preds = model.predict_future(z0, horizon=20).cpu().numpy()
+        rollout_preds = model.predict_future(z0, horizon=20, use_corrector=use_corrector).cpu().numpy()
         true_latents = out.latent_states[:, 6:26].cpu().numpy()
         np.savez(out_dir / "rollout_predictions.npz", predictions=rollout_preds, ground_truth=true_latents)
 
     # Plot degradation curve with distinct model labeling
-    eval_tag = "corrector" if "corrector" in str(ckpt_path).lower() else "predictor"
+    eval_tag = "corrector" if use_corrector else "predictor"
     base_name = config.get("project", {}).get("name", "SPWM")
     model_label = f"{base_name} (+ Corrector)" if eval_tag == "corrector" else f"{base_name} (Predictor)"
     curve_data = {model_label: test_results.latent_mse_per_horizon}
 
     plot_multi_step_degradation(curve_data, figures_dir / f"fig3_rollout_degradation_{eval_tag}.png")
 
-    print(f"Evaluation completed successfully. Saved degradation figures for {eval_tag} mode.")
+    chronicle.log_success(f"Evaluation completed successfully. Saved degradation figures for {eval_tag} mode.")
 
 
 if __name__ == "__main__":

@@ -10,7 +10,7 @@ from spwm.models.surrogate import (
     SigmoidSurrogate,
     SurrogateSpike,
 )
-from spwm.models.neurons import LIFCell, NeuronState, ALIFCell, ALIFState
+from spwm.models.neurons import NeuronState, ALIFCell, ALIFState
 from spwm.models.memory import MultiTimescaleMemory, MultiTimescaleState, compute_tier_dims
 from spwm.models.encoder import EventEncoder
 from spwm.models.latent_dynamics import SpikingLatentDynamics, DynamicsState, DynamicsOutput
@@ -25,7 +25,6 @@ __all__ = [
     "AtanSurrogate",
     "SigmoidSurrogate",
     "SurrogateSpike",
-    "LIFCell",
     "NeuronState",
     "ALIFCell",
     "ALIFState",

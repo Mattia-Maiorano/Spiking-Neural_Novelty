@@ -1,6 +1,6 @@
 """
 Consolidated Scientific Figure Generator.
-Generates Figures 1 through 7 for SPWM-v1 paper and research report.
+Generates Figures 1 through 7 for SPWM paper and research report.
 """
 
 from __future__ import annotations
@@ -10,6 +10,7 @@ from pathlib import Path
 from typing import Dict
 import numpy as np
 import torch
+import chronicle
 
 from spwm.evaluation.plots import (
     plot_architecture_diagram,
@@ -35,11 +36,11 @@ def main() -> None:
     out_dir = Path(args.output_dir)
     out_dir.mkdir(parents=True, exist_ok=True)
 
-    print(f"Generating publication figures to: {out_dir}")
+    chronicle.log_info(f"Generating publication figures to: {out_dir}")
 
     # Figure 1: Architecture
     plot_architecture_diagram(out_dir / "fig1_architecture.png")
-    print("Generated Figure 1: Architecture Diagram")
+    chronicle.log_success("Generated Figure 1: Architecture Diagram")
 
     # Figure 2: Training Curves
     # Search for training_log.csv in results
@@ -49,7 +50,7 @@ def main() -> None:
         df = pd.read_csv(csv_candidates[0])
         history = df.to_dict(orient="records")
         plot_training_curves(history, out_dir / "fig2_training_curves.png")
-        print(f"Generated Figure 2: Training Curves from {csv_candidates[0]}")
+        chronicle.log_success(f"Generated Figure 2: Training Curves from {csv_candidates[0]}")
 
     # Figure 4 & 5: Spike Raster & Fast vs Slow Memory
     # Run a realistic sample trajectory through SPWM
@@ -58,7 +59,7 @@ def main() -> None:
     sim = EventCameraSimulator(height=32, width=32)
     ev_batch = sim.trajectory_to_events(traj)
 
-    model = SPWM(latent_dim=64, timescale_dims=(32, 32), betas=(0.80, 0.98))
+    model = SPWM(latent_dim=64, timescale_dims=(32, 32), betas=(0.90, 0.985))
     model.eval()
     with torch.no_grad():
         out = model(ev_batch.dense_events.unsqueeze(0))
@@ -70,13 +71,13 @@ def main() -> None:
         slow_mem = dyn_out.slow_mems[0].cpu().numpy()
 
     plot_spike_raster(fast_spk, slow_spk, out_dir / "fig4_spike_raster.png")
-    print("Generated Figure 4: Spike Raster & Activity Histogram")
+    chronicle.log_success("Generated Figure 4: Spike Raster & Activity Histogram")
 
     plot_fast_vs_slow_memory(fast_mem, slow_mem, out_dir / "fig5_fast_vs_slow_memory.png")
-    print("Generated Figure 5: Fast vs Slow Memory Dynamics")
+    chronicle.log_success("Generated Figure 5: Fast vs Slow Memory Dynamics")
 
     # Figure 3: Multi-Step Rollout Degradation Curve
-    # Check if baseline metrics exist in results_dir
+    # Check if metrics exist in results_dir
     degradation_curves: Dict[str, Dict[int, float]] = {}
     metrics_files = list(results_dir.glob("**/metrics.json"))
     for mf in metrics_files:
@@ -92,28 +93,26 @@ def main() -> None:
 
     if degradation_curves:
         plot_multi_step_degradation(degradation_curves, out_dir / "fig3_multi_step_degradation.png")
-        print(f"Generated Figure 3: Degradation Curve across {len(degradation_curves)} models")
+        chronicle.log_success(f"Generated Figure 3: Degradation Curve across {len(degradation_curves)} models")
 
-    # Figure 6: Baseline Comparison
-    baseline_metrics = {}
+    # Figure 6: Model Comparison
+    comparison_metrics = {}
     for m, label in [
-        ("spwm_v1", "SPWM-v1"),
-        ("baseline_gru", "GRU World Model"),
-        ("baseline_vanilla_snn", "Vanilla SNN"),
-        ("baseline_mlp", "MLP Dynamics"),
+        ("spwm_v0_1_0_train_predictor", "SPWM Predictor"),
+        ("spwm_v0_1_0_train_corrector", "SPWM (+ Gain Field Corrector)"),
     ]:
         m_path = results_dir / m / "metrics.json"
         if m_path.is_file():
             with open(m_path, "r", encoding="utf-8") as f:
                 d = json.load(f)
-            baseline_metrics[label] = {
+            comparison_metrics[label] = {
                 "one_step_mse": d.get("test", {}).get("teacher_forcing_mse", 0.0),
                 "rollout_mse_h10": d.get("test", {}).get("latent_mse_per_horizon", {}).get("10", 0.0),
                 "spike_rate": d.get("test", {}).get("mean_spike_rate", 0.0),
             }
-    if baseline_metrics:
-        plot_baseline_comparison(baseline_metrics, out_dir / "fig6_baseline_comparison.png")
-        print("Generated Figure 6: Baseline Comparison Bar Charts")
+    if comparison_metrics:
+        plot_baseline_comparison(comparison_metrics, out_dir / "fig6_baseline_comparison.png")
+        chronicle.log_success("Generated Figure 6: Baseline/Model Comparison Bar Charts")
 
     # Figure 7: Ablation Comparison
     ablation_json = results_dir / "ablations" / "ablation_summary.json"
@@ -121,9 +120,9 @@ def main() -> None:
         with open(ablation_json, "r", encoding="utf-8") as f:
             ablation_dict = json.load(f)
         plot_ablation_comparison(ablation_dict, out_dir / "fig7_ablation_comparison.png")
-        print("Generated Figure 7: Ablation Study Comparison")
+        chronicle.log_success("Generated Figure 7: Ablation Study Comparison")
 
-    print(f"All figures generated successfully in {out_dir}")
+    chronicle.log_success(f"All figures generated successfully in {out_dir}")
 
 
 if __name__ == "__main__":

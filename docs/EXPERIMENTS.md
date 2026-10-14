@@ -1,12 +1,15 @@
-# SPWM-v1: Empirical Research Report & Scientific Evaluation
+# SPWM: Empirical Research Report & Evolution (v1 to v0.1.0)
 
-**Project**: Spiking Predictive World Model (v1)  
+**Project**: Spiking Predictive World Model (SPWM-v0.1.0)  
 **Author**: Senior Research Engineer / ML Systems Researcher  
 **Framework**: PyTorch (Independent Neuromorphic Implementation)  
-**Status**: Experimental Validation Complete  
-**Date**: September 2026  
+**Status**: SPWM-v0.1.0 (State of the Art / Gain Field Neuromodulator)  
+**Scope**: Historical v1 Empirical Foundation through v0.1.0 Two-Stage Pipeline  
 
 ---
+
+> [!NOTE]
+> This document details the original foundational empirical findings of **SPWM-v1** (Sections 1–9) and contextualizes the architectural evolutions through iterations v2–v9 culminating in **SPWM-v0.1.0** (Section 11). For step-by-step per-iteration changelogs, see [History.md](file:///Users/Mattia/Desktop/Studies/Temp/History.md). For current architectural specifications, see [Architecture.md](file:///Users/Mattia/Desktop/Studies/Temp/Architecture.md).
 
 ## 1. Scientific Hypothesis
 
@@ -163,11 +166,26 @@ A systematic ablation study was executed across 9 configurations (evaluating aut
 
 ---
 
-## 11. Roadmap Towards V2–V8
+## 11. Architectural Evolution: V1 through SPWM-v0.1.0
 
-- **V2: True Predictive Coding**: Transition from feedforward dynamics to error-driven local state correction: $z_t \leftarrow z_t + K \cdot \epsilon_t$.
-- **V3: Local Learning**: Replace BPTT with forward-only eligibility traces and three-factor Hebbian plasticity (e-prop / local predictive plasticity).
-- **V4: Probabilistic World Model**: Output $(\mu, \sigma^2)$ predicting latent state distributions under stochastic dynamics.
-- **V5: Action-Conditioned Dynamics**: $p(z_{t+1} \mid z_t, a_t)$.
-- **V6: Counterfactual Imagination & Planning**: Imagining branching futures in spiking latent space to evaluate trajectory costs.
-- **V7: Neuromorphic Hardware Deployment**: Exporting trained SPWM dynamics to event-driven silicon (Loihi 2 / Speck / Dynap-SE).
+The journey from the foundational proof-of-concept (v1) to the unified state-of-the-art architecture (**SPWM-v0.1.0**) resolved multiple empirical bottlenecks:
+
+1. **V2–V3 (Predictive Coding & Forward-Only e-prop Plasticity):**
+   - Transformed feedforward latent processing into top-down predictive coding with error routing $\epsilon_t = x_t - \hat{x}_t$.
+   - Introduced eligibility traces with online e-prop plasticity for $\mathcal{O}(1)$ temporal memory scaling.
+
+2. **V4–V6 (Spatial Softmax & Symplectic Phase-Space Decomposition):**
+   - Replaced continuous spiking front-ends with an analytical continuous convolutional encoder equipped with `SpatialSoftmax` bottleneck (16 topological keypoints).
+   - Partitioned the 128D latent space $z = (q, p)$ into canonical coordinates ($q \in [-1, 1]^{32}$) and momentum ($p \in \mathbb{R}^{96}$), resolving positional drift and kinematic blindness.
+
+3. **V7–V9 (Corrector Architectures & Cadence Limitations):**
+   - Implemented secondary slow populations for trajectory recovery under impulsive out-of-distribution drift.
+   - Identified limitations of discrete jump-systems and fixed cadence triggers (spurious discontinuities and non-differentiable trajectory deformation).
+
+4. **SPWM-v0.1.0 (Neuromodulatory Gain Field & Two-Stage Pipeline):**
+   - **Continuous Volume Neuromodulation:** The slow 128-unit ALIF corrector acts as a neuromodulator emitting a bounded gain mask $G_t \in [-1, 1]^{128}$.
+   - **Proportional Transition Scaling:** $\Delta z_{\text{mod}} = \Delta z_{\text{fast}} \cdot (1 + \alpha_{\text{gain}} G_t)$ with hot spots ($>0$) amplifying dynamic maneuvers and cold spots ($<0$) damping drift.
+   - **Euclidean Constraint Enforcement:** Analytical clamping of spatial coordinates $q \in [-1, 1]^{32}$ with coupled momentum dissipation.
+   - **Two-Stage Decoupled Pipeline:**
+     - Stage 1 (`train_predictor`): Optimizes local kinematic acuity on clean nominal trajectories with frozen physical decoder probes.
+     - Stage 2 (`train_corrector`): Freezes the fast predictor and optimizes the gain field corrector on long horizons ($H=25..50$) with stochastic drift injection and burn-in stabilization.

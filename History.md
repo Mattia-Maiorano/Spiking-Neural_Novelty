@@ -1482,3 +1482,94 @@ Qualsiasi deformazione nello spazio latente $Z$ che non produca una variazione p
 ### 3. Configurazione & Risorse SPWM-v9
 - **Configurazione Ufficiale:** [configs/experiments/spwm_v9.yaml](file:///Users/Mattia/Desktop/Studies/Temp/configs/experiments/spwm_v9.yaml)
 - **Suite di Test Dedicata:** [tests/test_corrector.py](file:///Users/Mattia/Desktop/Studies/Temp/tests/test_corrector.py) (10 test specifici passati con successo).
+---
+---
+
+# SPWM-v10 / v0.1.0: Neuromodulatory Gain Field System
+
+### 1. Diagnosi delle Limitazioni del Correttore v9 (Post-Mortem v9)
+
+Le analisi sull'architettura v9 (Hamiltonian Energy Remodeling + Impulsive Jump) hanno rivelato tre problemi strutturali residui:
+
+1. **Complessità del Potenziale Scalare**: la predizione di $\Delta\Phi(q_t)$ tramite una rete energetica separata e la sua differenziazione automatica spaziale ($\nabla_q \Delta\Phi$) introducevano un doppio backprop che rendeva il flusso di addestramento fragile e difficile da debuggare.
+2. **Vincolo di Isometria Artificiale**: $\mathcal{L}_{isometry}$ richiedeva una sintonizzazione manuale del fattore $k$ e produceva un segnale di loss rumoroso che rallentava la convergenza senza eliminare definitivamente l'esplosione del Latent MSE in tutti i regimi di drift.
+3. **Limite Architetturale degli Offset Forza**: la correzione tramite forze additive $(Δq, Δp)$ era ancora concettualmente vincolata alla geometria simplettica, un'astrazione inadeguata per un correttore neuromorfo che opera su rappresentazioni latenti apprese e non su coordinate fisiche reali.
+
+---
+
+### 2. Soluzione: Modulazione Neurotrasmettitoriale (Gain Field System)
+
+Abbandonato il paradigma energetico hamiltoniano. Il correttore v10 adotta un principio ispirato alla trasmissione volumetrica neuromodulatoriale (dopaminergica/colinergica): anzichè "spingere" lo stato con forze additive, modula l'*ampiezza* della transizione rapida tramite un campo di gain.
+
+#### A. Gain Mask $G_t \in [-1, 1]^{D_{latent}}$
+
+La popolazione ALIF lenta produce, ad ogni cadenza $\Delta$, una maschera multidimensionale:
+$$G_t = \tanh(W_g \cdot u_t + b_g), \quad u_t = \tanh(W_v v_t) + W_s S_t$$
+
+Questa maschera viene applicata moltiplicativamente alla transizione rapida:
+$$\Delta z^{mod} = (z_{t+1}^{fast} - z_t) \cdot (1 + \alpha_{gain} \cdot G_t)$$
+$$z_{t+1}^{corr} = z_t + \Delta z^{mod}$$
+
+- $\alpha_{gain} = 0.5$: autorità massima del 50% per ogni dimensione.
+- **Hot spots** ($G_t > 0$): amplificano la transizione locale (modulazione eccitatoriatoria).
+- **Cold spots** ($G_t < 0$): sopprimono la transizione (modulazione inibitoria/stabilizzante).
+- Tra le cadenze ($t \pmod \Delta \ne 0$): $G_t = \mathbf{0}$, il Fast Predictor opera in totale autonomia.
+
+#### B. Eliminazione delle Loss Artificiali
+
+- **$\mathcal{L}_{isometry}$ rimossa**: la gain mask non può mai deformare ortogonalmente lo spazio latente perché la correzione è *proporzionale* alla transizione rapida, non libera.
+- **$\mathcal{L}_{quiescence}$ rimossa**: il bound $\tanh$ sulla gain mask previene nativamente l'eccitazione runaway.
+- **Unica loss**: $\mathcal{L}_{corr} = \lambda_{asymptotic} \cdot (L_{pos} + \beta_v \cdot L_{vel})$, puramente cinematica.
+
+#### C. Burn-in Rollout (Nuovo in v10)
+
+Durante i primi `corrector_burn_in_steps = 15` step del rollout differenziabile, l'ALIF integra internamente ma la gain mask è bypassata (`z_next = z_fast_next`). Questo previene che gradienti non calibrati all'inizio del rollout corrompano l'acuità locale a breve termine.
+
+---
+
+### 3. Specifiche Architetturali (SPWM-v10 / v0.1.0)
+
+#### Componenti `SlowCorrector`
+| Layer | Dimensioni | Funzione |
+|---|---|---|
+| `input_proj` | Linear(256→128) | Proiezione dell'input cadence-aware |
+| `alif` | ALIFCell(128) | Integrazione ALIF lenta |
+| `v_proj` | Linear(128→128, no bias) | Proiezione membrana |
+| `s_proj` | Linear(128→128, no bias) | Proiezione spike |
+| `gain_net` | Linear(128→128) + Tanh | Output gain mask |
+
+#### Iperparametri Corrector (config `spwm_v0_1_0.yaml`)
+| Parametro | Valore |
+|---|---|
+| `corrector_dim` | 128 |
+| `cadence` | 5 |
+| `beta_mem` | 0.95 |
+| `beta_adapt` | 0.94 |
+| `v_th0` | 0.50 |
+| `gamma` | 0.08 |
+| `alpha_gain` | 0.5 |
+| `corrector_burn_in_steps` | 15 |
+| `corrector_horizon` | 50 |
+| `corrector_perturbation_std` | 0.08 |
+
+---
+
+### 4. Pipeline di Training Aggiornata
+
+La pipeline a due fasi rimane invariata nel protocollo ma cambia nella semantica del correttore:
+
+1. **`train_predictor`**: identico alle versioni precedenti. `enable_corrector = False`.
+2. **`train_corrector`**:
+   - Ottimizzatore: AdamW(lr=4e-4, weight_decay=5e-4) esclusivamente sui parametri `SlowCorrector`.
+   - Loss: $\mathcal{L}_{corr} = L_{pos} + 2.0 \cdot L_{vel}$ (con $\lambda_{asymptotic} = 1.0$).
+   - Selezione modello: $\text{Score} = 0.5 \cdot \text{RolloutMAE} + 0.5 \cdot \text{PosErr}(H_{long})$.
+   - Flag `--try-antecedent-predictor`: cerca automaticamente il miglior checkpoint predittore antecedente nella cartella `results/`.
+
+---
+
+### 5. Configurazione & Risorse SPWM-v0.1.0
+
+- **Configurazione Ufficiale:** [configs/experiments/spwm_v0_1_0.yaml](file:///Users/Mattia/Desktop/Studies/Temp/configs/experiments/spwm_v0_1_0.yaml)
+- **Corrector Module:** [spwm/models/corrector.py](file:///Users/Mattia/Desktop/Studies/Temp/spwm/models/corrector.py)
+- **World Model:** [spwm/models/world_model.py](file:///Users/Mattia/Desktop/Studies/Temp/spwm/models/world_model.py) (`SPWM-v10`)
+- **Trainer:** [spwm/learning/trainer.py](file:///Users/Mattia/Desktop/Studies/Temp/spwm/learning/trainer.py) (v10: rimosso supporto isometry/quiescence)

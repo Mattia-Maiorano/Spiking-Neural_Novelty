@@ -128,6 +128,9 @@ def create_dataloaders(
     drift_injection_prob: float = 0.0,
     drift_magnitude: float = 0.05,
     mixed_drift: bool = False,
+    event_threshold: float = 0.08,
+    box_size: float = 1.0,
+    dt: float = 0.05,
     num_workers: int = 0,
     cache_data: bool = True,
 ) -> Dict[str, DataLoader]:
@@ -142,8 +145,8 @@ def create_dataloaders(
     # Extrapolation uses separate trajectory IDs (e.g. 1000 to 1100) with higher velocity bounds
     extrap_ids = list(range(total_trajectories, total_trajectories + 100))
 
-    world = MovingObjectsWorld()
-    event_sim = EventCameraSimulator(height=height, width=width)
+    world = MovingObjectsWorld(box_size=box_size, dt=dt)
+    event_sim = EventCameraSimulator(height=height, width=width, event_threshold=event_threshold)
 
     train_ds = EventWorldDataset(
         trajectory_indices=train_ids,

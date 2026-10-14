@@ -31,6 +31,7 @@ from spwm.learning.trainer import Trainer
 from spwm.evaluation.rollout import RolloutEvaluator
 from spwm.evaluation.plots import plot_ablation_comparison
 from experiments.train import build_model
+import chronicle
 
 
 def run_single_ablation(
@@ -48,7 +49,7 @@ def run_single_ablation(
     ablation_dir = results_dir / cfg["project"]["name"]
     ablation_dir.mkdir(parents=True, exist_ok=True)
 
-    print(f"\n--- Running Ablation: {name} ({epochs} epochs) ---")
+    chronicle.log_info(f"--- Running Ablation: {name} ({epochs} epochs) ---")
     set_seed(cfg.get("project", {}).get("seed", 42))
 
     model = build_model(cfg, device=device)
@@ -86,7 +87,7 @@ def run_single_ablation(
     test_res = evaluator.evaluate_dataset(dataloaders["test"])
     rollout_h10 = test_res.latent_mse_per_horizon.get(10, test_res.teacher_forcing_mse)
 
-    print(f"Result {name}: Rollout MSE (H=10) = {rollout_h10:.4f}")
+    chronicle.log_success(f"Result {name}: Rollout MSE (H=10) = {rollout_h10:.4f}")
     return rollout_h10
 
 
@@ -160,9 +161,9 @@ def main() -> None:
     # Generate Figure 7
     plot_ablation_comparison(ablation_results, results_dir / "fig7_ablation_comparison.png")
 
-    print("\n=== Ablation Matrix Complete ===")
-    print(f"Summary saved to {summary_path}")
-    print(f"Figure saved to {results_dir / 'fig7_ablation_comparison.png'}")
+    chronicle.log_success("=== Ablation Matrix Complete ===")
+    chronicle.log_info(f"Summary saved to {summary_path}")
+    chronicle.log_info(f"Figure saved to {results_dir / 'fig7_ablation_comparison.png'}")
 
 
 if __name__ == "__main__":

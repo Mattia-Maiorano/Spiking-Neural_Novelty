@@ -9,8 +9,8 @@ from spwm.data.event_camera import EventCameraSimulator
 from spwm.data.datasets import EventWorldDataset, collate_event_batches
 from torch.utils.data import DataLoader
 from spwm.models.world_model import SPWM
-from spwm.evaluation.rollout import RolloutEvaluator
-from spwm.evaluation.plots import (
+from spwm.evaluation.evaluator import RolloutEvaluator
+from spwm.evaluation.visualizer import (
     plot_architecture_diagram,
     plot_training_curves,
     plot_multi_step_degradation,
@@ -19,6 +19,7 @@ from spwm.evaluation.plots import (
     plot_baseline_comparison,
     plot_ablation_comparison,
 )
+
 
 
 def test_rollout_evaluator_long_horizon():
@@ -95,7 +96,7 @@ def test_plotting_generation():
 
 def test_multi_step_rollout_loss():
     from spwm.learning.losses import SPWMLoss
-    from spwm.models.predictor import LatentPredictor
+    from spwm.core.predictor import LatentPredictor
 
     B, T, D = 4, 30, 32
     loss_fn = SPWMLoss(lambda_pred=1.0, lambda_multi=0.5, multi_step_horizon=3)

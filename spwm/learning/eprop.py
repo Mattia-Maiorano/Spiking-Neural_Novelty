@@ -8,7 +8,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Optional, Tuple
 import torch
-from spwm.models.neurons import ALIFCell, ALIFState
+from spwm.core.neurons import ALIFCell, ALIFState
 
 
 @dataclass

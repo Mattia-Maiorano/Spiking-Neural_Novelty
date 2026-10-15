@@ -1,17 +1,17 @@
-"""
-Evaluation and plotting utilities for SPWM.
-"""
-
-from spwm.evaluation.rollout import RolloutEvaluator, RolloutEvaluationResult
-from spwm.evaluation.plots import (
+from spwm.evaluation.evaluator import (
+    RolloutEvaluator,
+    RolloutEvaluationResult,
+)
+from spwm.evaluation.visualizer import (
     plot_architecture_diagram,
     plot_training_curves,
-    plot_corrector_ab_impact,
     plot_multi_step_degradation,
     plot_spike_raster,
     plot_fast_vs_slow_memory,
-    plot_baseline_comparison,
+    plot_corrector_ab_impact,
     plot_ablation_comparison,
+    plot_model_comparison,
+    plot_baseline_comparison,
 )
 
 __all__ = [
@@ -19,10 +19,11 @@ __all__ = [
     "RolloutEvaluationResult",
     "plot_architecture_diagram",
     "plot_training_curves",
-    "plot_corrector_ab_impact",
     "plot_multi_step_degradation",
     "plot_spike_raster",
     "plot_fast_vs_slow_memory",
-    "plot_baseline_comparison",
+    "plot_corrector_ab_impact",
     "plot_ablation_comparison",
+    "plot_model_comparison",
+    "plot_baseline_comparison",
 ]

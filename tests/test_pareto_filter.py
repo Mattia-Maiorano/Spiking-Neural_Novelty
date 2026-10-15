@@ -1,6 +1,6 @@
 import pytest
 import numpy as np
-from spwm.evaluation.rollout import RolloutEvaluationResult
+from spwm.evaluation.evaluator import RolloutEvaluationResult
 
 
 def test_pareto_gate_and_rank():

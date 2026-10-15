@@ -1,48 +1,19 @@
-"""
-SPWM neural models: neurons, memory, encoders, dynamics, and predictors.
-"""
-
-from spwm.models.surrogate import (
-    get_surrogate,
-    surrogate_derivative,
-    FastSigmoidSurrogate,
-    AtanSurrogate,
-    SigmoidSurrogate,
-    SurrogateSpike,
+from spwm.models.world_model import (
+    SPWM,
+    SPWMState,
+    SPWMStepOutput,
+    SPWMSequenceOutput,
 )
-from spwm.models.neurons import NeuronState, ALIFCell, ALIFState
-from spwm.models.memory import MultiTimescaleMemory, MultiTimescaleState, compute_tier_dims
-from spwm.models.encoder import EventEncoder
-from spwm.models.latent_dynamics import SpikingLatentDynamics, DynamicsState, DynamicsOutput
-from spwm.models.predictor import LatentPredictor, PhysicalDecoder, PredictorOutput
-from spwm.models.corrector import SlowCorrector, SlowCorrectorState, SlowCorrectorOutput
-from spwm.models.world_model import SPWM, SPWMState, SPWMStepOutput, SPWMSequenceOutput
+from spwm.models.rollout import (
+    rollout_latent,
+    RolloutResult,
+)
 
 __all__ = [
-    "get_surrogate",
-    "surrogate_derivative",
-    "FastSigmoidSurrogate",
-    "AtanSurrogate",
-    "SigmoidSurrogate",
-    "SurrogateSpike",
-    "NeuronState",
-    "ALIFCell",
-    "ALIFState",
-    "MultiTimescaleMemory",
-    "MultiTimescaleState",
-    "compute_tier_dims",
-    "EventEncoder",
-    "SpikingLatentDynamics",
-    "DynamicsState",
-    "DynamicsOutput",
-    "LatentPredictor",
-    "PhysicalDecoder",
-    "PredictorOutput",
-    "SlowCorrector",
-    "SlowCorrectorState",
-    "SlowCorrectorOutput",
     "SPWM",
     "SPWMState",
     "SPWMStepOutput",
     "SPWMSequenceOutput",
+    "rollout_latent",
+    "RolloutResult",
 ]

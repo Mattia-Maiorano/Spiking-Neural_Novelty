@@ -1,6 +1,6 @@
 import torch
 import pytest
-from spwm.models.neurons import ALIFCell, ALIFState
+from spwm.core.neurons import ALIFCell, ALIFState
 from spwm.learning.eprop import (
     ALIFEpropTraces,
     init_eprop_traces,

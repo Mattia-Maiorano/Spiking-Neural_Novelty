@@ -91,7 +91,6 @@ Trains the sensory encoder, ALIF dynamics, and fast latent predictor on clean no
 
 ```bash
 python experiments/train.py \
-    --config configs/experiments/spwm_v0_1_0.yaml \
     --mode train_predictor \
     --epochs 100 \
     --output-dir results/spwm_v0_1_0_train_predictor
@@ -103,7 +102,6 @@ Freezes the predictor and optimizes the neuromodulatory gain field corrector aga
 
 ```bash
 python experiments/train.py \
-    --config configs/experiments/spwm_v0_1_0.yaml \
     --mode train_corrector \
     --predictor-checkpoint results/spwm_v0_1_0_train_predictor/model_predictor.pt \
     --epochs 100 \
@@ -114,21 +112,19 @@ python experiments/train.py \
 
 ## 5. Evaluation & Rollouts
 
-Evaluate autonomous rollout stability across horizons $H \in \{1, 5, 10, 25, 50, 100\}$:
+Evaluate autonomous rollout stability across horizons $H \in \{1, 5, 10, 25, 50, 100\}$ using the run's saved config:
 
 ```bash
 # Evaluate predictor checkpoint nominally
 python experiments/evaluate.py \
     --checkpoint results/spwm_v0_1_0_train_predictor/model_predictor.pt \
-    --config configs/experiments/spwm_v0_1_0.yaml \
-    --mode train_predictor
+    --config results/spwm_v0_1_0_train_predictor/config.yaml
 
 # Evaluate corrector checkpoint with drift injection
 python experiments/evaluate.py \
     --checkpoint results/spwm_v0_1_0_train_corrector/model.pt \
-    --config configs/experiments/spwm_v0_1_0.yaml \
-    --mode train_corrector \
-    --drift_injection_prob 0.20
+    --config results/spwm_v0_1_0_train_corrector/config.yaml \
+    --use-corrector
 ```
 
 ---

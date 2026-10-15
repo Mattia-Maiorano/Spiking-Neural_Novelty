@@ -1,6 +1,6 @@
 import torch
 import pytest
-from spwm.models.memory import MultiTimescaleMemory
+from spwm.core.memory import MultiTimescaleMemory
 
 
 def test_reactive_adapts_and_decays_faster_than_deep_context():

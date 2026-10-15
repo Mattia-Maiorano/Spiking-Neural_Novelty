@@ -6,7 +6,7 @@ import pytest
 import torch
 import torch.nn as nn
 
-from spwm.models.corrector import SlowCorrector, SlowCorrectorState, SlowCorrectorOutput
+from spwm.core.corrector import SlowCorrector, SlowCorrectorState, SlowCorrectorOutput
 from spwm.models.world_model import SPWM
 from spwm.learning.losses import _frozen
 

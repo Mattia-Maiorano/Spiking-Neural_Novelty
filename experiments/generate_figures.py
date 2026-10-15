@@ -12,15 +12,15 @@ import numpy as np
 import torch
 import chronicle
 
-from spwm.evaluation.plots import (
+from spwm.evaluation.visualizer import (
     plot_architecture_diagram,
     plot_training_curves,
     plot_multi_step_degradation,
     plot_spike_raster,
     plot_fast_vs_slow_memory,
-    plot_baseline_comparison,
     plot_ablation_comparison,
 )
+
 from spwm.data.synthetic_world import MovingObjectsWorld
 from spwm.data.event_camera import EventCameraSimulator
 from spwm.models.world_model import SPWM

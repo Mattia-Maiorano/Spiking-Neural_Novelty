@@ -6,35 +6,28 @@ Usage:
 
 from __future__ import annotations
 import argparse
-import json
 from pathlib import Path
-from typing import Any, Dict
-import numpy as np
-import torch
 import chronicle
+import torch
 
-from spwm.utils.reproducibility import set_seed
-from spwm.utils.config import load_config
+from spwm.config.schema import ExperimentConfig
 from spwm.data.datasets import create_dataloaders
-from spwm.evaluation.rollout import RolloutEvaluator
-from spwm.evaluation.plots import plot_multi_step_degradation
-from experiments.train import build_model
+from spwm.evaluation.evaluator import RolloutEvaluator
+from spwm.evaluation.visualizer import plot_multi_step_degradation
+from spwm.models.world_model import SPWM
+from spwm.utils.reproducibility import set_seed
 
 
 def main() -> None:
-    parser = argparse.ArgumentParser(description="Evaluate trained world model.")
+    parser = argparse.ArgumentParser(description="Evaluate trained SPWM model.")
     parser.add_argument("--checkpoint", type=str, required=True, help="Path to model checkpoint (.pt)")
     parser.add_argument("--config", type=str, required=True, help="Path to config YAML")
     parser.add_argument("--device", type=str, default=None, help="Device (cpu, mps, cuda)")
-    parser.add_argument("--mode", type=str, default=None, help="Evaluation mode (train_predictor, train_corrector)")
-    parser.add_argument("--use_corrector", action="store_true", default=None, help="Force use of corrector in rollouts")
-    parser.add_argument("--drift_injection_prob", type=float, default=None, help="Drift injection probability for test evaluation")
-    parser.add_argument("--mixed_drift", action="store_true", default=None, help="Evaluate with 50/50 mixed nominal and drift trajectories")
+    parser.add_argument("--use-corrector", action="store_true", default=None, help="Force use of corrector in rollouts")
     args = parser.parse_args()
 
-    config = load_config(args.config)
-    seed = config.get("project", {}).get("seed", 42)
-    set_seed(seed)
+    cfg = ExperimentConfig.load(args.config)
+    set_seed(cfg.project.seed)
 
     if args.device is not None:
         device = torch.device(args.device)
@@ -50,108 +43,54 @@ def main() -> None:
     figures_dir = out_dir / "figures"
     figures_dir.mkdir(parents=True, exist_ok=True)
 
-    # Determine mode: command line arg > config > checkpoint path inference
-    mode = args.mode
-    if mode is None:
-        mode = config.get("training", {}).get("mode", None)
-    if mode is None:
-        mode = "train_corrector" if "corrector" in str(ckpt_path).lower() else "train_predictor"
-
     use_corrector = args.use_corrector
     if use_corrector is None:
-        use_corrector = (mode == "train_corrector") or ("corrector" in str(ckpt_path).lower())
+        use_corrector = (cfg.training.mode == "train_corrector") or ("corrector" in str(ckpt_path).lower())
 
-    chronicle.log_info(f"Loading checkpoint: {ckpt_path} on {device} (mode: {mode}, use_corrector: {use_corrector})")
-    model = build_model(config, device=device, mode=mode)
+    chronicle.log_info(f"Loading checkpoint: {ckpt_path} on {device} (use_corrector: {use_corrector})")
+    model = SPWM.from_config(cfg, enable_corrector=use_corrector).to(device)
+
     state_dict = torch.load(ckpt_path, map_location=device)
     if isinstance(state_dict, dict) and "model_state" in state_dict:
         state_dict = state_dict["model_state"]
     model.load_state_dict(state_dict, strict=False)
     model.eval()
 
-    # Create test datasets
-    data_cfg = config.get("data", {})
-    env_cfg = config.get("environment", {})
-
-    drift_prob = args.drift_injection_prob
-    if drift_prob is None:
-        drift_prob = data_cfg.get("drift_injection_prob", 0.0) if use_corrector else 0.0
-
-    mixed_drift = args.mixed_drift
-    if mixed_drift is None:
-        mixed_drift = data_cfg.get("mixed_drift", False)
-
+    drift_prob = cfg.data.drift_injection_prob if use_corrector else 0.0
     dataloaders = create_dataloaders(
-        total_trajectories=data_cfg.get("total_trajectories", 600),
-        train_split=data_cfg.get("train_split", 0.8),
-        val_split=data_cfg.get("val_split", 0.1),
-        sequence_length=data_cfg.get("sequence_length", 30),
-        batch_size=32,
-        height=env_cfg.get("height", 32),
-        width=env_cfg.get("width", 32),
-        num_objects=env_cfg.get("num_objects", 1),
-        event_threshold=env_cfg.get("event_threshold", 0.08),
-        box_size=env_cfg.get("box_size", 1.0),
-        dt=env_cfg.get("dt", 0.05),
+        total_trajectories=cfg.data.total_trajectories,
+        train_split=cfg.data.train_split,
+        val_split=cfg.data.val_split,
+        sequence_length=cfg.data.sequence_length,
+        batch_size=cfg.data.batch_size,
+        height=cfg.environment.height,
+        width=cfg.environment.width,
+        num_objects=cfg.environment.num_objects,
+        event_threshold=cfg.environment.event_threshold,
+        box_size=cfg.environment.box_size,
+        dt=cfg.environment.dt,
         drift_injection_prob=drift_prob,
-        mixed_drift=mixed_drift,
+        mixed_drift=cfg.data.mixed_drift,
     )
 
-    horizons = config.get("evaluation", {}).get("rollout_horizons", [1, 5, 10, 25])
     evaluator = RolloutEvaluator(
         model=model,
         device=device,
-        horizons=horizons,
-        num_objects=env_cfg.get("num_objects", 1),
+        horizons=cfg.evaluation.rollout_horizons,
+        num_objects=cfg.environment.num_objects,
         use_corrector=use_corrector,
     )
+    results = evaluator.evaluate_dataset(dataloaders["test"])
 
-    chronicle.log_info("Evaluating autonomous rollouts on test set...")
-    test_results = evaluator.evaluate_dataset(dataloaders["test"])
-    chronicle.log_info("Evaluating autonomous rollouts on extrapolation set...")
-    extrap_results = evaluator.evaluate_dataset(dataloaders["extrapolation"])
+    chronicle.log_success(f"Teacher Forcing MSE: {results.teacher_forcing_mse:.5f}")
+    chronicle.log_success(f"Rollout MAE: {results.rollout_mae:.5f}")
+    chronicle.log_success(f"Drift Ratio: {results.drift_ratio:.2f}x")
 
-    metrics = {
-        "test": {
-            "teacher_forcing_mse": test_results.teacher_forcing_mse,
-            "mean_spike_rate": test_results.mean_spike_rate,
-            "latent_mse_per_horizon": test_results.latent_mse_per_horizon,
-            "position_error_per_horizon": test_results.position_error_per_horizon,
-            "velocity_error_per_horizon": test_results.velocity_error_per_horizon,
-        },
-        "extrapolation": {
-            "teacher_forcing_mse": extrap_results.teacher_forcing_mse,
-            "latent_mse_per_horizon": extrap_results.latent_mse_per_horizon,
-            "position_error_per_horizon": extrap_results.position_error_per_horizon,
-            "velocity_error_per_horizon": extrap_results.velocity_error_per_horizon,
-        },
-    }
-
-    # Save test_metrics.json
-    metrics_path = out_dir / "test_metrics.json"
-    with open(metrics_path, "w", encoding="utf-8") as f:
-        json.dump(metrics, f, indent=2)
-    chronicle.log_success(f"Saved test metrics to {metrics_path}")
-
-    # Generate sample rollout predictions for visualization
-    with torch.no_grad():
-        sample_batch = next(iter(dataloaders["test"]))
-        sample_events = sample_batch["events"][:8].to(device)
-        out = model(sample_events)
-        z0 = out.latent_states[:, 5]
-        rollout_preds = model.predict_future(z0, horizon=20, use_corrector=use_corrector).cpu().numpy()
-        true_latents = out.latent_states[:, 6:26].cpu().numpy()
-        np.savez(out_dir / "rollout_predictions.npz", predictions=rollout_preds, ground_truth=true_latents)
-
-    # Plot degradation curve with distinct model labeling
-    eval_tag = "corrector" if use_corrector else "predictor"
-    base_name = config.get("project", {}).get("name", "SPWM")
-    model_label = f"{base_name} (+ Corrector)" if eval_tag == "corrector" else f"{base_name} (Predictor)"
-    curve_data = {model_label: test_results.latent_mse_per_horizon}
-
-    plot_multi_step_degradation(curve_data, figures_dir / f"fig3_rollout_degradation_{eval_tag}.png")
-
-    chronicle.log_success(f"Evaluation completed successfully. Saved degradation figures for {eval_tag} mode.")
+    plot_multi_step_degradation(
+        horizons=cfg.evaluation.rollout_horizons,
+        pos_errors=results.position_error_per_horizon,
+        save_path=figures_dir / "eval_rollout_degradation.png",
+    )
 
 
 if __name__ == "__main__":

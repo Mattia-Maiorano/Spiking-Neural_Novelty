@@ -1,8 +1,10 @@
-"""
-Learning modules: losses, metrics, diagnostics, e-prop plasticity, and trainer.
-"""
-
-from spwm.learning.losses import SPWMLoss, LossOutput
+from spwm.learning.losses import (
+    SPWMLoss,
+    PredictorLoss,
+    CorrectorRolloutLoss,
+    LossOutput,
+    _frozen,
+)
 from spwm.learning.metrics import (
     one_step_mse,
     multi_step_mse,
@@ -13,18 +15,20 @@ from spwm.learning.metrics import (
     parameter_count,
     energy_estimate,
 )
-from spwm.learning.diagnostics import inspect_gradients, collect_spike_statistics
-from spwm.learning.eprop import (
-    ALIFEpropTraces,
-    init_eprop_traces,
-    step_alif_eprop_traces,
-    compute_eprop_weight_update,
-)
+from spwm.learning.engine import BaseTrainer
 from spwm.learning.trainer import Trainer
+from spwm.learning.phases import (
+    PhaseHandler,
+    PredictorPhaseHandler,
+    CorrectorPhaseHandler,
+)
 
 __all__ = [
     "SPWMLoss",
+    "PredictorLoss",
+    "CorrectorRolloutLoss",
     "LossOutput",
+    "_frozen",
     "one_step_mse",
     "multi_step_mse",
     "position_error",
@@ -33,11 +37,9 @@ __all__ = [
     "active_neuron_fraction",
     "parameter_count",
     "energy_estimate",
-    "inspect_gradients",
-    "collect_spike_statistics",
-    "ALIFEpropTraces",
-    "init_eprop_traces",
-    "step_alif_eprop_traces",
-    "compute_eprop_weight_update",
+    "BaseTrainer",
     "Trainer",
+    "PhaseHandler",
+    "PredictorPhaseHandler",
+    "CorrectorPhaseHandler",
 ]

@@ -5,8 +5,9 @@ Produces clean, publication-ready figures without deprecated baseline comparison
 
 from __future__ import annotations
 from pathlib import Path
-from typing import Dict, List, Optional, Sequence, Union
+from typing import Any, Dict, List, Optional, Sequence, Union
 import numpy as np
+import torch
 import matplotlib
 matplotlib.use("Agg")
 import matplotlib.pyplot as plt
@@ -63,9 +64,11 @@ def plot_training_curves(history: List[Dict[str, float]], save_path: Union[str, 
     fig, axes = plt.subplots(1, 3, figsize=(15, 4.5))
 
     # Loss curve
-    axes[0].plot(epochs, [r.get("total_loss", 0.0) for r in history], label="Train Total Loss", color="#2563EB")
-    axes[0].plot(epochs, [r.get("val_total_loss", 0.0) for r in history], label="Val Total Loss", color="#DC2626", linestyle="--")
-    axes[0].set_title("Total Loss Evolution")
+    train_losses = [r.get("train_loss", 0.0) for r in history]
+    val_losses = [r.get("val_loss", 0.0) for r in history]
+    axes[0].plot(epochs, train_losses, label="Train Loss", color="#2563EB")
+    axes[0].plot(epochs, val_losses, label="Val Loss", color="#DC2626", linestyle="--")
+    axes[0].set_title("Loss Evolution (Train / Val)")
     axes[0].set_xlabel("Epoch")
     axes[0].legend()
 
@@ -76,9 +79,10 @@ def plot_training_curves(history: List[Dict[str, float]], save_path: Union[str, 
     axes[1].set_xlabel("Epoch")
     axes[1].legend()
 
-    # Score
-    axes[2].plot(epochs, [r.get("score", 0.0) for r in history], label="Selection Score", color="#7C3AED")
-    axes[2].set_title("Model Selection Metric")
+    # Velocity Error
+    axes[2].plot(epochs, [r.get("train_vel_err", 0.0) for r in history], label="Train Vel Err", color="#059669")
+    axes[2].plot(epochs, [r.get("val_vel_err", 0.0) for r in history], label="Val Vel Err", color="#D97706", linestyle="--")
+    axes[2].set_title("Kinematic Velocity Error")
     axes[2].set_xlabel("Epoch")
     axes[2].legend()
 
@@ -107,8 +111,12 @@ def plot_multi_step_degradation(
         pos_errors_or_save_path = pos_errors
 
     if isinstance(curves_or_horizons, dict):
-        # Multi-model dictionary passed: curves_or_horizons = {"ModelA": {1: ..., 5: ...}}, pos_errors_or_save_path = save_path
-        target_path = Path(pos_errors_or_save_path)  # type: ignore
+        # Multi-model dictionary passed: curves_or_horizons = {"ModelA": {1: ..., 5: ...}}
+        # Destination path can be passed positionally in pos_errors_or_save_path or as keyword save_path
+        actual_save_path = save_path if save_path is not None else pos_errors_or_save_path
+        if actual_save_path is None:
+            raise ValueError("save_path must be provided when passing a dictionary of curves.")
+        target_path = Path(actual_save_path)
         colors = ["#2563EB", "#DC2626", "#059669", "#D97706", "#7C3AED"]
         all_h = set()
         for idx, (m_name, m_curve) in enumerate(curves_or_horizons.items()):
@@ -274,4 +282,65 @@ def plot_model_comparison(metrics: Dict[str, Dict[str, float]], save_path: Union
 
 
 plot_baseline_comparison = plot_model_comparison
+
+
+def plot_corrector_telemetry(
+    telemetry: Union[Dict[str, List[torch.Tensor]], Any],
+    batch_idx: int = 0,
+    save_path: Optional[Union[str, Path]] = None,
+) -> None:
+    """
+    Plots SlowCorrector diagnostic telemetry across rollout horizons:
+    1. Spike Raster Plot
+    2. Population Mean Membrane Potential & Adaptive Threshold
+    3. Gain Mask Heatmap across latent coordinates
+    """
+    set_paper_style()
+
+    # Handle TelemetryContainer or dict
+    if hasattr(telemetry, "as_stacked_tensors"):
+        stacked = telemetry.as_stacked_tensors()
+        spikes = stacked["spikes"][:, batch_idx, :]
+        v_mem = stacked["v_mem"][:, batch_idx, :]
+        v_th = stacked["v_th"][:, batch_idx, :]
+        gain_mask = stacked["gain_mask"][:, batch_idx, :]
+    elif isinstance(telemetry, dict):
+        spikes = torch.stack(telemetry["spikes"])[:, batch_idx, :]
+        v_mem = torch.stack(telemetry["v_mem"])[:, batch_idx, :]
+        v_th = torch.stack(telemetry["v_th"])[:, batch_idx, :]
+        gain_mask = torch.stack(telemetry["gain_mask"])[:, batch_idx, :]
+    else:
+        raise ValueError("telemetry must be a TelemetryContainer or a dictionary of tensors.")
+
+    fig, axs = plt.subplots(3, 1, figsize=(12, 8), sharex=True)
+
+    # 1. Spike Raster Plot
+    spike_times, spike_neurons = torch.where(spikes > 0)
+    axs[0].scatter(spike_times.numpy(), spike_neurons.numpy(), s=6, c="#1E293B", alpha=0.85)
+    axs[0].set_ylabel("Neuron ID")
+    axs[0].set_title("SlowCorrector Spike Raster")
+    axs[0].set_ylim(-0.5, spikes.shape[1] - 0.5)
+
+    # 2. Membrane Potential & Adaptive Threshold (Mean across population)
+    axs[1].plot(v_mem.mean(dim=1).numpy(), label=r"Mean $V_{\mathrm{mem}}$", color="#2563EB", lw=2.0)
+    axs[1].plot(v_th.mean(dim=1).numpy(), label=r"Mean $V_{\mathrm{th}}$", color="#DC2626", linestyle="--", lw=2.0)
+    axs[1].set_ylabel("Voltage")
+    axs[1].set_title("Population Dynamics (Membrane Potential vs Adaptive Threshold)")
+    axs[1].legend(loc="upper right")
+
+    # 3. Gain Mask Heatmap
+    im = axs[2].imshow(gain_mask.T.numpy(), aspect="auto", cmap="coolwarm", vmin=-1, vmax=1)
+    axs[2].set_ylabel("Latent Dim")
+    axs[2].set_xlabel("Timestep (Horizon)")
+    axs[2].set_title("Gain Mask Output Field")
+    fig.colorbar(im, ax=axs[2], orientation="vertical", pad=0.02)
+
+    plt.tight_layout()
+    if save_path is not None:
+        save_path = Path(save_path)
+        save_path.parent.mkdir(parents=True, exist_ok=True)
+        plt.savefig(save_path, dpi=300)
+        plt.close()
+    else:
+        plt.show()
 

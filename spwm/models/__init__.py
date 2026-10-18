@@ -7,6 +7,7 @@ from spwm.models.world_model import (
 from spwm.models.rollout import (
     rollout_latent,
     RolloutResult,
+    TelemetryContainer,
 )
 
 __all__ = [
@@ -16,4 +17,5 @@ __all__ = [
     "SPWMSequenceOutput",
     "rollout_latent",
     "RolloutResult",
+    "TelemetryContainer",
 ]

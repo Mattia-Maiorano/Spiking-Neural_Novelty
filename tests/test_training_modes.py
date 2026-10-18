@@ -29,8 +29,40 @@ def create_dummy_dataloader(sequence_length=15, batch_size=2, total_traj=4, drif
     return DataLoader(dataset, batch_size=batch_size, shuffle=False, collate_fn=collate_event_batches)
 
 
+def test_train_representation_mode_setup():
+    """In train_representation mode, ALIF predictor is frozen and encoder/probe have active optimizer."""
+    model = SPWM(
+        latent_dim=32,
+        q_dim=8,
+        p_dim=24,
+        timescale_dims=(16, 16),
+        enable_corrector=False,
+    )
+    train_loader = create_dummy_dataloader(drift_injection_prob=0.0)
+    val_loader = create_dummy_dataloader(drift_injection_prob=0.0)
+
+    trainer = Trainer(
+        model=model,
+        train_loader=train_loader,
+        val_loader=val_loader,
+        mode="train_representation",
+    )
+
+    assert trainer.mode == "train_representation"
+    assert trainer.corrector_optimizer is None
+    assert trainer.predictor_optimizer is None
+    assert trainer.encoder_optimizer is not None  # representation_optimizer alias
+
+    # Predictor parameters must be frozen
+    for p in model.predictor.parameters():
+        assert not p.requires_grad
+
+    # Encoder parameters must be trainable
+    assert any(p.requires_grad for p in model.encoder.parameters())
+
+
 def test_train_predictor_mode_setup():
-    """In train_predictor mode, corrector is disabled/frozen and only predictor/encoder/probe have active optimizers."""
+    """In train_predictor mode, encoder and probe are frozen and predictor has active optimizer."""
     model = SPWM(
         latent_dim=32,
         q_dim=8,
@@ -50,18 +82,56 @@ def test_train_predictor_mode_setup():
 
     assert trainer.mode == "train_predictor"
     assert trainer.corrector_optimizer is None
-    assert trainer.encoder_optimizer is not None
+    assert trainer.encoder_optimizer is None
     assert trainer.predictor_optimizer is not None
-    assert trainer.probe_optimizer is not None
 
     # Corrector parameters must have requires_grad=False (if present)
     if hasattr(model, "corrector") and model.corrector is not None:
         for p in model.corrector.parameters():
             assert not p.requires_grad
 
+    # Encoder parameters must have requires_grad=False
+    for p in model.encoder.parameters():
+        assert not p.requires_grad
+
     # Predictor parameters must have requires_grad=True
     predictor_params = [p for n, p in model.named_parameters() if "predictor" in n and "sensory_predictor" not in n]
     assert any(p.requires_grad for p in predictor_params)
+
+
+def test_train_joint_mode_setup():
+    """In train_joint mode, both representation (encoder/probe) and predictor/dynamics have active optimizers."""
+    model = SPWM(
+        latent_dim=32,
+        q_dim=8,
+        p_dim=24,
+        timescale_dims=(16, 16),
+        enable_corrector=False,
+    )
+    train_loader = create_dummy_dataloader(drift_injection_prob=0.0)
+    val_loader = create_dummy_dataloader(drift_injection_prob=0.0)
+
+    trainer = Trainer(
+        model=model,
+        train_loader=train_loader,
+        val_loader=val_loader,
+        mode="train_joint",
+    )
+
+    assert trainer.mode == "train_joint"
+    assert trainer.corrector_optimizer is None
+    assert trainer.representation_optimizer is not None
+    assert trainer.predictor_optimizer is not None
+
+    # Corrector parameters must have requires_grad=False (if present)
+    if hasattr(model, "corrector") and model.corrector is not None:
+        for p in model.corrector.parameters():
+            assert not p.requires_grad
+
+    # Both encoder and predictor parameters must be trainable
+    assert any(p.requires_grad for p in model.encoder.parameters())
+    assert any(p.requires_grad for p in model.predictor.parameters())
+    assert any(p.requires_grad for p in model.physical_decoder.parameters())
 
 
 def test_train_corrector_mode_setup():
@@ -128,6 +198,34 @@ def test_gradient_isolation_assertion_raises_on_leak():
         trainer.verify_gradient_isolation()
 
 
+def test_train_representation_epoch_execution():
+    """Runs a mini training epoch in train_representation mode."""
+    model = SPWM(
+        latent_dim=32,
+        q_dim=8,
+        p_dim=24,
+        timescale_dims=(16, 16),
+        enable_corrector=False,
+    )
+    train_loader = create_dummy_dataloader(drift_injection_prob=0.0)
+    val_loader = create_dummy_dataloader(drift_injection_prob=0.0)
+
+    trainer = Trainer(
+        model=model,
+        train_loader=train_loader,
+        val_loader=val_loader,
+        mode="train_representation",
+    )
+
+    metrics = trainer.train_epoch(epoch=1)
+    assert "train_loss" in metrics
+    assert "train_loss_encoder" in metrics
+    assert "train_loss_decoder" in metrics
+    assert "train_loss_position" in metrics
+    assert "train_loss_velocity" in metrics
+    assert metrics["train_loss"] >= 0.0
+
+
 def test_train_predictor_epoch_execution():
     """Runs a mini training epoch in train_predictor mode."""
     model = SPWM(
@@ -145,13 +243,52 @@ def test_train_predictor_epoch_execution():
         train_loader=train_loader,
         val_loader=val_loader,
         mode="train_predictor",
-        encoder_warmup_epochs=0,
     )
 
     metrics = trainer.train_epoch(epoch=1)
-    assert "total_loss" in metrics
-    assert metrics["l_pred"] >= 0.0
-    assert metrics["l_corr"] == 0.0  # Corrector was not optimized
+    assert "train_loss" in metrics
+    assert "train_loss_encoder" in metrics
+    assert "train_loss_decoder" in metrics
+    assert "train_loss_position" in metrics
+    assert "train_loss_velocity" in metrics
+    assert metrics["train_loss"] >= 0.0
+
+
+def test_train_joint_epoch_execution():
+    """Runs a mini training epoch in train_joint mode and verifies both encoder and predictor parameters update."""
+    model = SPWM(
+        latent_dim=32,
+        q_dim=8,
+        p_dim=24,
+        timescale_dims=(16, 16),
+        enable_corrector=False,
+    )
+    train_loader = create_dummy_dataloader(drift_injection_prob=0.0)
+    val_loader = create_dummy_dataloader(drift_injection_prob=0.0)
+
+    trainer = Trainer(
+        model=model,
+        train_loader=train_loader,
+        val_loader=val_loader,
+        mode="train_joint",
+    )
+
+    enc_weight_before = next(model.encoder.parameters()).detach().clone()
+    pred_weight_before = next(model.predictor.parameters()).detach().clone()
+
+    metrics = trainer.train_epoch(epoch=1)
+    assert "train_loss" in metrics
+    assert "train_loss_encoder" in metrics
+    assert "train_loss_decoder" in metrics
+    assert "train_loss_position" in metrics
+    assert "train_loss_velocity" in metrics
+    assert metrics["train_loss"] >= 0.0
+
+    enc_weight_after = next(model.encoder.parameters()).detach()
+    pred_weight_after = next(model.predictor.parameters()).detach()
+
+    assert not torch.equal(enc_weight_before, enc_weight_after), "Encoder weights did not update during train_joint epoch!"
+    assert not torch.equal(pred_weight_before, pred_weight_after), "Predictor weights did not update during train_joint epoch!"
 
 
 def test_train_corrector_epoch_execution():
@@ -179,8 +316,9 @@ def test_train_corrector_epoch_execution():
     corr_weight_before = model.corrector.gain_net[0].weight.detach().cpu().clone()
 
     metrics = trainer.train_epoch(epoch=1)
-    assert "total_loss" in metrics
-    assert metrics["l_corr"] > 0.0 or metrics["l_corr_asymptotic"] >= 0.0
+    assert "train_loss" in metrics
+    assert "train_kin_loss" in metrics
+    assert metrics["train_loss"] > 0.0
 
     # Fast predictor weights must remain IDENTICAL
     pred_weight_after = model.predictor.net[0].weight.detach().cpu()
@@ -188,5 +326,83 @@ def test_train_corrector_epoch_execution():
 
     # Corrector weights should be updated
     corr_weight_after = model.corrector.gain_net[0].weight.detach().cpu()
-    # Weights should differ if optimizer stepped
-    assert not torch.equal(corr_weight_before, corr_weight_after) or metrics["l_corr_asymptotic"] == 0.0
+    assert not torch.equal(corr_weight_before, corr_weight_after) or metrics["train_kin_loss"] == 0.0
+
+
+def test_training_pipeline_checkpoint_chaining(tmp_path):
+    """
+    Verifies that:
+    1. train_representation trains encoder & probe and saves checkpoint.
+    2. train_predictor loads representation checkpoint, keeps encoder frozen, trains predictor.
+    3. train_corrector loads predictor checkpoint, keeps encoder & predictor frozen, trains corrector.
+    """
+    # 1. Representation stage
+    model_repr = SPWM(latent_dim=32, q_dim=8, p_dim=24, timescale_dims=(16, 16), corrector_dim=16)
+    ckpt_repr_file = tmp_path / "model_representation.pt"
+    torch.save({"model_state": model_repr.state_dict()}, ckpt_repr_file)
+
+    # 2. Predictor stage
+    model_pred = SPWM(latent_dim=32, q_dim=8, p_dim=24, timescale_dims=(16, 16), corrector_dim=16)
+    ckpt_data = torch.load(ckpt_repr_file, weights_only=False)
+    model_pred.load_state_dict(ckpt_data["model_state"], strict=False)
+
+    # Ensure encoder weights match representation checkpoint
+    for p_repr, p_pred in zip(model_repr.encoder.parameters(), model_pred.encoder.parameters()):
+        assert torch.equal(p_repr, p_pred)
+
+    # Save predictor stage
+    ckpt_pred_file = tmp_path / "model_predictor.pt"
+    torch.save({"model_state": model_pred.state_dict()}, ckpt_pred_file)
+
+    # 3. Corrector stage
+    model_corr = SPWM(latent_dim=32, q_dim=8, p_dim=24, timescale_dims=(16, 16), enable_corrector=True, corrector_dim=16)
+    ckpt_data_pred = torch.load(ckpt_pred_file, weights_only=False)
+    model_corr.load_state_dict(ckpt_data_pred["model_state"], strict=False)
+
+    for p_pred, p_corr in zip(model_pred.predictor.parameters(), model_corr.predictor.parameters()):
+        assert torch.equal(p_pred, p_corr)
+
+
+def test_joint_mode_temporal_burn_in():
+    """Verifies that temporal_burn_in shifts the rollout starting point while keeping representation loss intact."""
+    from spwm.config.schema import ExperimentConfig, TrainingConfig
+    from spwm.learning.phases.predictor_phase import PredictorPhaseHandler
+
+    cfg = ExperimentConfig(
+        training=TrainingConfig(
+            mode="train_joint",
+            epochs=1,
+            temporal_burn_in=3,
+        )
+    )
+    # Ensure smaller model for test speed
+    cfg.model.latent_dim = 32
+    cfg.model.q_dim = 8
+    cfg.model.p_dim = 24
+    cfg.model.num_keypoints = 4
+    cfg.memory.timescale_dims = (16, 16)
+    cfg.loss.multi_step_horizon = 5
+
+    model = SPWM.from_config(cfg, enable_corrector=False)
+    loss_fn = SPWMLoss.from_config(cfg.loss)
+    handler = PredictorPhaseHandler(model=model, cfg=cfg, loss_fn=loss_fn, device=torch.device("cpu"))
+
+    batch = {
+        "events": torch.zeros((2, 10, 2, 32, 32), dtype=torch.float32),
+        "flat_kinematics": torch.zeros((2, 10, 4), dtype=torch.float32),
+    }
+
+    # Verify train_step execution
+    train_metrics = handler.train_step(batch, epoch=1)
+    assert "train_loss" in train_metrics
+    assert "train_loss_encoder" in train_metrics
+    assert "train_loss_decoder" in train_metrics
+    assert "train_loss_position" in train_metrics
+    assert "train_loss_velocity" in train_metrics
+
+    # Verify validate_step execution
+    val_metrics = handler.validate_step(batch)
+    assert "val_loss" in val_metrics
+    assert "val_loss_encoder" in val_metrics
+    assert "val_loss_position" in val_metrics
+

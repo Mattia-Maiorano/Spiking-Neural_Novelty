@@ -79,14 +79,15 @@ def main() -> None:
     # Figure 3: Multi-Step Rollout Degradation Curve
     # Check if metrics exist in results_dir
     degradation_curves: Dict[str, Dict[int, float]] = {}
-    metrics_files = list(results_dir.glob("**/metrics.json"))
+    metrics_files = list(results_dir.glob("**/metrics*.json"))
     for mf in metrics_files:
         try:
             with open(mf, "r", encoding="utf-8") as f:
                 data = json.load(f)
             model_name = mf.parent.name
-            if "test" in data and "latent_mse_per_horizon" in data["test"]:
-                curve = {int(k): v for k, v in data["test"]["latent_mse_per_horizon"].items()}
+            eval_data = data.get("test", data.get("evaluation", {}))
+            if "latent_mse_per_horizon" in eval_data:
+                curve = {int(k): v for k, v in eval_data["latent_mse_per_horizon"].items()}
                 degradation_curves[model_name] = curve
         except Exception:
             pass
@@ -101,15 +102,20 @@ def main() -> None:
         ("spwm_v0_1_0_train_predictor", "SPWM Predictor"),
         ("spwm_v0_1_0_train_corrector", "SPWM (+ Gain Field Corrector)"),
     ]:
-        m_path = results_dir / m / "metrics.json"
-        if m_path.is_file():
-            with open(m_path, "r", encoding="utf-8") as f:
-                d = json.load(f)
-            comparison_metrics[label] = {
-                "one_step_mse": d.get("test", {}).get("teacher_forcing_mse", 0.0),
-                "rollout_mse_h10": d.get("test", {}).get("latent_mse_per_horizon", {}).get("10", 0.0),
-                "spike_rate": d.get("test", {}).get("mean_spike_rate", 0.0),
-            }
+        candidates = list((results_dir / m).glob("metrics*.json")) if (results_dir / m).is_dir() else []
+        for m_path in candidates:
+            try:
+                with open(m_path, "r", encoding="utf-8") as f:
+                    d = json.load(f)
+                eval_dict = d.get("test", d.get("evaluation", {}))
+                comparison_metrics[label] = {
+                    "one_step_mse": eval_dict.get("teacher_forcing_mse", 0.0),
+                    "rollout_mse_h10": eval_dict.get("latent_mse_per_horizon", {}).get("10", 0.0),
+                    "spike_rate": eval_dict.get("mean_spike_rate", 0.0),
+                }
+                break
+            except Exception:
+                pass
     if comparison_metrics:
         plot_baseline_comparison(comparison_metrics, out_dir / "fig6_baseline_comparison.png")
         chronicle.log_success("Generated Figure 6: Baseline/Model Comparison Bar Charts")

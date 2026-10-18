@@ -86,7 +86,28 @@ class PhysicalDecoder(nn.Module):
         self.pos_head = nn.Linear(self.q_dim, 2 * num_objects)
         self.vel_head = nn.Linear(self.p_dim, 2 * num_objects)
 
-    def forward(self, z: torch.Tensor) -> torch.Tensor:
+    def warm_up_filter(self, z_prefix: torch.Tensor, initial_state: Optional[torch.Tensor] = None) -> torch.Tensor:
+        """
+        Runs the EMA momentum filter across preceding latent states z_prefix [B, T_pre, D]
+        to compute the warm filter state r [B, p_dim].
+        """
+        if z_prefix.numel() == 0:
+            if initial_state is not None:
+                return initial_state
+            B = z_prefix.shape[0] if z_prefix.dim() >= 1 else 1
+            return torch.zeros(B, self.p_dim, device=z_prefix.device, dtype=z_prefix.dtype)
+
+        p = z_prefix[..., self.q_dim:]
+        if p.dim() == 2:
+            p = p.unsqueeze(1)
+
+        B, T, _ = p.shape
+        r = initial_state if initial_state is not None else torch.zeros(B, self.p_dim, device=p.device, dtype=p.dtype)
+        for t in range(T):
+            r = self.alpha * r + (1.0 - self.alpha) * p[:, t]
+        return r
+
+    def forward(self, z: torch.Tensor, initial_filter_state: Optional[torch.Tensor] = None) -> torch.Tensor:
         if z.shape[-1] != self.latent_dim:
             raise ValueError(f"Input latent dimension ({z.shape[-1]}) does not match expected ({self.latent_dim})")
 
@@ -98,13 +119,17 @@ class PhysicalDecoder(nn.Module):
         if z.dim() == 3:
             B, T, _ = p.shape
             filtered_p = []
-            r = torch.zeros(B, self.p_dim, device=z.device, dtype=z.dtype)
+            r = initial_filter_state if initial_filter_state is not None else torch.zeros(B, self.p_dim, device=z.device, dtype=z.dtype)
             for t in range(T):
                 r = self.alpha * r + (1.0 - self.alpha) * p[:, t]
                 filtered_p.append(r)
             smooth_p = torch.stack(filtered_p, dim=1)
             vel_pred = self.vel_head(smooth_p)
         else:
-            vel_pred = self.vel_head(p)
+            if initial_filter_state is not None:
+                r = self.alpha * initial_filter_state + (1.0 - self.alpha) * p
+                vel_pred = self.vel_head(r)
+            else:
+                vel_pred = self.vel_head(p)
 
         return torch.cat([pos_pred, vel_pred], dim=-1)

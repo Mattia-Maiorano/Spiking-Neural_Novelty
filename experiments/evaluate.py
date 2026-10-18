@@ -73,24 +73,51 @@ def main() -> None:
         mixed_drift=cfg.data.mixed_drift,
     )
 
+    eval_horizons = sorted(list(set(list(cfg.evaluation.rollout_horizons) + [100])))
+    has_corrector = getattr(model, "corrector", None) is not None
+
     evaluator = RolloutEvaluator(
         model=model,
         device=device,
-        horizons=cfg.evaluation.rollout_horizons,
+        horizons=eval_horizons,
         num_objects=cfg.environment.num_objects,
         use_corrector=use_corrector,
+        temporal_burn_in=cfg.training.temporal_burn_in,
     )
     results = evaluator.evaluate_dataset(dataloaders["test"])
 
     chronicle.log_success(f"Teacher Forcing MSE: {results.teacher_forcing_mse:.5f}")
-    chronicle.log_success(f"Rollout MAE: {results.rollout_mae:.5f}")
+    chronicle.log_success(f"Rollout MAE (use_corrector={use_corrector}): {results.rollout_mae:.5f}")
     chronicle.log_success(f"Drift Ratio: {results.drift_ratio:.2f}x")
 
-    plot_multi_step_degradation(
-        horizons=cfg.evaluation.rollout_horizons,
-        pos_errors=results.position_error_per_horizon,
-        save_path=figures_dir / "eval_rollout_degradation.png",
-    )
+    results_no_corr = None
+    if has_corrector and use_corrector:
+        evaluator_no_corr = RolloutEvaluator(
+            model=model,
+            device=device,
+            horizons=eval_horizons,
+            num_objects=cfg.environment.num_objects,
+            use_corrector=False,
+            temporal_burn_in=cfg.training.temporal_burn_in,
+        )
+        results_no_corr = evaluator_no_corr.evaluate_dataset(dataloaders["test"])
+        chronicle.log_success(f"Rollout MAE (without corrector): {results_no_corr.rollout_mae:.5f}")
+        chronicle.log_success(f"Drift Ratio (without corrector): {results_no_corr.drift_ratio:.2f}x")
+
+    if results_no_corr is not None:
+        plot_multi_step_degradation(
+            {
+                "With Corrector": results.position_error_per_horizon,
+                "Without Corrector": results_no_corr.position_error_per_horizon,
+            },
+            save_path=figures_dir / "eval_rollout_degradation.png",
+        )
+    else:
+        plot_multi_step_degradation(
+            horizons=eval_horizons,
+            pos_errors=results.position_error_per_horizon,
+            save_path=figures_dir / "eval_rollout_degradation.png",
+        )
 
 
 if __name__ == "__main__":

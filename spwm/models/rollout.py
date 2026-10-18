@@ -6,12 +6,42 @@ state advancing, and physical decoding across training, validation, and evaluati
 
 from __future__ import annotations
 import contextlib
-from dataclasses import dataclass
-from typing import Optional
+from dataclasses import dataclass, field
+from typing import Dict, List, Optional, Union
 import torch
 import torch.nn as nn
 
 from spwm.core.corrector import SlowCorrectorState
+
+
+@dataclass
+class TelemetryContainer:
+    """Container for logging fine-grained ALIF and corrector states across rollout horizons."""
+    spikes: List[torch.Tensor] = field(default_factory=list)      # (B, corrector_dim)
+    v_mem: List[torch.Tensor] = field(default_factory=list)       # (B, corrector_dim)
+    v_th: List[torch.Tensor] = field(default_factory=list)        # (B, corrector_dim)
+    gain_mask: List[torch.Tensor] = field(default_factory=list)   # (B, latent_dim)
+
+    def append(
+        self,
+        spikes: torch.Tensor,
+        v_mem: torch.Tensor,
+        v_th: torch.Tensor,
+        gain_mask: torch.Tensor,
+    ) -> None:
+        self.spikes.append(spikes.detach().cpu())
+        self.v_mem.append(v_mem.detach().cpu())
+        self.v_th.append(v_th.detach().cpu())
+        self.gain_mask.append(gain_mask.detach().cpu())
+
+    def as_stacked_tensors(self) -> Dict[str, torch.Tensor]:
+        """Stacks recorded timesteps into [H, B, D] tensors."""
+        return {
+            "spikes": torch.stack(self.spikes, dim=0) if self.spikes else torch.empty(0),
+            "v_mem": torch.stack(self.v_mem, dim=0) if self.v_mem else torch.empty(0),
+            "v_th": torch.stack(self.v_th, dim=0) if self.v_th else torch.empty(0),
+            "gain_mask": torch.stack(self.gain_mask, dim=0) if self.gain_mask else torch.empty(0),
+        }
 
 
 @dataclass
@@ -22,6 +52,7 @@ class RolloutResult:
     spikes: Optional[torch.Tensor] = None            # [B, H, corrector_dim]
     corrector_state: Optional[SlowCorrectorState] = None
     decoded_kinematics: Optional[torch.Tensor] = None # [B, H, 4 * num_objects]
+    telemetry: Optional[Union[TelemetryContainer, Dict[str, List[torch.Tensor]]]] = None
 
     @property
     def positions(self) -> Optional[torch.Tensor]:
@@ -46,6 +77,8 @@ def rollout_latent(
     with_grad: bool = False,
     initial_corrector_state: Optional[SlowCorrectorState] = None,
     decode_kinematics: bool = True,
+    initial_decoder_state: Optional[torch.Tensor] = None,
+    telemetry: Optional[Union[TelemetryContainer, Dict[str, List[torch.Tensor]]]] = None,
 ) -> RolloutResult:
     """
     Executes an autonomous multi-step rollout in latent space starting from z_init.
@@ -91,6 +124,24 @@ def rollout_latent(
                     is_burn_in=is_burn_in,
                 )
                 spikes_list.append(corr_out.spikes)
+
+                if telemetry is not None:
+                    # Adaptive threshold: V_th,t = V_th0 + gamma * A_t
+                    alif = corrector.alif
+                    v_th_val = alif.v_th0 + alif.gamma * corr_state.alif_state.a_adapt
+
+                    if isinstance(telemetry, TelemetryContainer):
+                        telemetry.append(
+                            spikes=corr_out.spikes,
+                            v_mem=corr_out.v_mem,
+                            v_th=v_th_val,
+                            gain_mask=corr_out.gain_mask,
+                        )
+                    elif isinstance(telemetry, dict):
+                        telemetry.setdefault("spikes", []).append(corr_out.spikes.detach().cpu())
+                        telemetry.setdefault("v_mem", []).append(corr_out.v_mem.detach().cpu())
+                        telemetry.setdefault("v_th", []).append(v_th_val.detach().cpu())
+                        telemetry.setdefault("gain_mask", []).append(corr_out.gain_mask.detach().cpu())
             else:
                 z_next = z_fast_next
 
@@ -103,7 +154,7 @@ def rollout_latent(
 
         decoded = None
         if decode_kinematics and hasattr(model, "physical_decoder") and model.physical_decoder is not None:
-            decoded = model.physical_decoder(trajectory)
+            decoded = model.physical_decoder(trajectory, initial_filter_state=initial_decoder_state)
 
         return RolloutResult(
             trajectory=trajectory,
@@ -111,4 +162,5 @@ def rollout_latent(
             spikes=spikes,
             corrector_state=corr_state,
             decoded_kinematics=decoded,
+            telemetry=telemetry,
         )

@@ -38,9 +38,16 @@ def test_trainer_adaptive_curriculum_multi_step_transition():
 
     loss_fn = SPWMLoss(
         multi_step_horizon=3,
-        lambda_multi=0.5,
-        lambda_sparse=0.0025,
+        lambda_position=1.0,
+        lambda_velocity=1.0,
     )
+    curriculum_thresholds = {
+        "phase_1_horizon": 3,
+        "phase_2_horizon": 6,
+        "phase_2_threshold": 0.20,
+        "phase_3_horizon": 10,
+        "phase_3_threshold": 0.12,
+    }
 
     trainer = Trainer(
         model=model,
@@ -48,14 +55,8 @@ def test_trainer_adaptive_curriculum_multi_step_transition():
         val_loader=loader,
         loss_fn=loss_fn,
         curriculum_multi_step=True,
-        curriculum_thresholds={
-            "phase_1_horizon": 3,
-            "phase_2_horizon": 6,
-            "phase_2_threshold": 0.20,
-            "phase_3_horizon": 10,
-            "phase_3_threshold": 0.12,
-        },
     )
+    trainer.curriculum_thresholds = curriculum_thresholds
 
     assert trainer.loss_fn.multi_step_horizon == 3
 

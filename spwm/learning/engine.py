@@ -68,7 +68,7 @@ class BaseTrainer:
             self.loss_fn = loss_fn.to(self.device)
 
         self.mode = cfg.training.mode.lower()
-        if self.mode == "train_predictor":
+        if self.mode in ("train_representation", "train_predictor", "train_joint"):
             self.handler: PhaseHandler = PredictorPhaseHandler(
                 model=self.model, cfg=self.cfg, loss_fn=self.loss_fn, device=self.device
             )
@@ -77,7 +77,9 @@ class BaseTrainer:
                 model=self.model, cfg=self.cfg, loss_fn=self.loss_fn, device=self.device
             )
         else:
-            raise ValueError(f"Unsupported training mode '{self.mode}'. Allowed: 'train_predictor', 'train_corrector'")
+            raise ValueError(
+                f"Unsupported training mode '{self.mode}'. Allowed: 'train_representation', 'train_predictor', 'train_joint', 'train_corrector'"
+            )
 
         self.start_epoch = start_epoch
         self.best_score = best_score
@@ -87,6 +89,10 @@ class BaseTrainer:
     @property
     def predictor_optimizer(self):
         return getattr(self.handler, "predictor_optimizer", None)
+
+    @property
+    def representation_optimizer(self):
+        return getattr(self.handler, "representation_optimizer", None)
 
     @property
     def encoder_optimizer(self):
@@ -255,3 +261,39 @@ class BaseTrainer:
             writer = csv.DictWriter(f, fieldnames=fieldnames, extrasaction="ignore")
             writer.writeheader()
             writer.writerows(self.history)
+
+        # Generate and save fixed-granularity metrics resume
+        try:
+            from spwm.evaluation.metrics_resume import save_metrics_resume, get_canonical_metrics_filename
+            version_str = self.cfg.project.name if hasattr(self.cfg, "project") and hasattr(self.cfg.project, "name") else "v0_1_0"
+            metrics_file = self.save_dir / f"metrics_{version_str}.json"
+            total_params = sum(p.numel() for p in self.model.parameters())
+            # Differentiate model name by training mode if available
+            base_model_name = self.cfg.project.name if hasattr(self.cfg, "project") else "SPWM"
+            model_display_name = f"{base_model_name}_{self.mode}" if hasattr(self, "mode") and self.mode else base_model_name
+            save_metrics_resume(
+                target_path=metrics_file,
+                history=self.history,
+                evaluation_result=None,
+                parameters=total_params,
+                num_segments=10,
+                model_name=model_display_name,
+                version=version_str,
+            )
+            # Also save canonical metrics_v*.json avoiding duplicate 'v' prefixes
+            canonical_name = get_canonical_metrics_filename(version_str)
+            canonical_path = self.save_dir / canonical_name
+            if canonical_path != metrics_file:
+                save_metrics_resume(
+                    target_path=canonical_path,
+                    history=self.history,
+                    evaluation_result=None,
+                    parameters=total_params,
+                    num_segments=10,
+                    model_name=model_display_name,
+                    version=version_str,
+                )
+            chronicle.log_success(f"Saved metrics resume to: {metrics_file.name}")
+        except Exception as e:
+            chronicle.log_warning(f"Failed to generate metrics resume in trainer: {e}")
+

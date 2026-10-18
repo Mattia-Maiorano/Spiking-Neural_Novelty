@@ -25,6 +25,8 @@ class RolloutEvaluationResult:
     velocity_error_per_horizon: Dict[int, float]
     teacher_forcing_mse: float
     mean_spike_rate: float
+    position_mse_per_horizon: Optional[Dict[int, float]] = None
+    velocity_mse_per_horizon: Optional[Dict[int, float]] = None
 
     @property
     def drift_ratio(self) -> float:
@@ -81,13 +83,6 @@ class RolloutEvaluationResult:
     def dynamic_score(self) -> float:
         return self.compute_dynamic_score()
 
-    def is_gate_passed(self, max_drift_ratio: float = 5.0, max_long_err: float = 2.0) -> bool:
-        ratio = self.drift_ratio
-        max_k = 25 if 25 in self.position_error_per_horizon else max(self.position_error_per_horizon.keys(), default=1)
-        h_max_val = self.position_error_per_horizon.get(max_k, float("inf"))
-        return bool((ratio <= max_drift_ratio) and (h_max_val < max_long_err) and np.isfinite(ratio) and (ratio > 0))
-
-
 class RolloutEvaluator:
     """
     Evaluates autonomous rollouts and long-horizon degradation curves.
@@ -101,6 +96,7 @@ class RolloutEvaluator:
         horizons: Sequence[int] = (1, 5, 10, 25, 50, 100),
         num_objects: int = 1,
         use_corrector: bool = True,
+        temporal_burn_in: int = 5,
     ) -> None:
         if device is None:
             if torch.backends.mps.is_available():
@@ -117,12 +113,15 @@ class RolloutEvaluator:
         self.horizons = list(horizons)
         self.num_objects = num_objects
         self.use_corrector = use_corrector
+        self.temporal_burn_in = temporal_burn_in
 
     @torch.no_grad()
     def evaluate_dataset(self, data_loader: DataLoader, max_batches: Optional[int] = None) -> RolloutEvaluationResult:
         latent_errors: Dict[int, List[float]] = {h: [] for h in self.horizons}
         pos_errors: Dict[int, List[float]] = {h: [] for h in self.horizons}
         vel_errors: Dict[int, List[float]] = {h: [] for h in self.horizons}
+        pos_mses: Dict[int, List[float]] = {h: [] for h in self.horizons}
+        vel_mses: Dict[int, List[float]] = {h: [] for h in self.horizons}
         tf_errors: List[float] = []
         spike_rates: List[float] = []
 
@@ -143,51 +142,73 @@ class RolloutEvaluator:
             if hasattr(out, "mean_spike_rate"):
                 spike_rates.append(float(out.mean_spike_rate.item()))
 
-            t_warmup = min(10, max(1, t // 4))
-            if t_warmup < t - 1:
-                z_warmup = latent_states[:, t_warmup]
-                max_eval_h = min(max(self.horizons), t - t_warmup - 1)
+            burn_in = min(self.temporal_burn_in, max(0, t - 2))
+            t_start = burn_in
+            z_start = latent_states[:, t_start]
+            max_eval_h = min(max(self.horizons), t - 1 - t_start)
 
-                if max_eval_h > 0:
-                    rollout_res = rollout_latent(
-                        model=self.model,
-                        z_init=z_warmup,
-                        horizon=max_eval_h,
-                        use_corrector=self.use_corrector,
-                        with_grad=False,
-                        decode_kinematics=True,
-                    )
+            if max_eval_h > 0:
+                decoder_state = None
+                if hasattr(self.model, "physical_decoder") and self.model.physical_decoder is not None:
+                    z_prefix = latent_states[:, : t_start + 1]
+                    decoder_state = self.model.physical_decoder.warm_up_filter(z_prefix)
 
-                    for h in self.horizons:
-                        if h <= max_eval_h and (t_warmup + 1 + h) <= t:
-                            pred_h = rollout_res.trajectory[:, :h]
-                            target_h = latent_states[:, t_warmup + 1 : t_warmup + 1 + h]
-                            h_mse = float(torch.mean((pred_h - target_h) ** 2).item())
-                            latent_errors[h].append(h_mse)
+                rollout_res = rollout_latent(
+                    model=self.model,
+                    z_init=z_start,
+                    horizon=max_eval_h,
+                    use_corrector=self.use_corrector,
+                    with_grad=False,
+                    decode_kinematics=True,
+                    initial_decoder_state=decoder_state,
+                )
 
-                            if rollout_res.decoded_kinematics is not None:
-                                decoded_h = rollout_res.decoded_kinematics[:, :h]
-                                kin_target_h = true_kin[:, t_warmup + 1 : t_warmup + 1 + h]
-                                pos_err = position_error(decoded_h, kin_target_h, self.num_objects)
-                                vel_err = velocity_error(decoded_h, kin_target_h, self.num_objects)
-                                pos_errors[h].append(pos_err)
-                                vel_errors[h].append(vel_err)
+                for h in self.horizons:
+                    if h <= max_eval_h:
+                        pred_h = rollout_res.trajectory[:, :h]
+                        target_h = latent_states[:, t_start + 1 : t_start + 1 + h]
+                        h_mse = float(torch.mean((pred_h - target_h) ** 2).item())
+                        latent_errors[h].append(h_mse)
+
+                        if rollout_res.decoded_kinematics is not None:
+                            decoded_h = rollout_res.decoded_kinematics[:, :h]
+                            kin_target_h = true_kin[:, t_start + 1 : t_start + 1 + h]
+                            pos_err = position_error(decoded_h, kin_target_h, self.num_objects)
+                            vel_err = velocity_error(decoded_h, kin_target_h, self.num_objects)
+                            pos_errors[h].append(pos_err)
+                            vel_errors[h].append(vel_err)
+
+                            pred_pos = decoded_h[..., : 2 * self.num_objects]
+                            true_pos = kin_target_h[..., : 2 * self.num_objects]
+                            pos_mse = float(torch.mean((pred_pos - true_pos) ** 2).item())
+                            pos_mses[h].append(pos_mse)
+
+                            pred_vel = decoded_h[..., 2 * self.num_objects : 4 * self.num_objects]
+                            true_vel = kin_target_h[..., 2 * self.num_objects : 4 * self.num_objects]
+                            vel_mse = float(torch.mean((pred_vel - true_vel) ** 2).item())
+                            vel_mses[h].append(vel_mse)
 
             batch_count += 1
             if max_batches is not None and batch_count >= max_batches:
                 break
 
-        avg_latent_mse = {h: float(np.mean(latent_errors[h])) if latent_errors[h] else 0.0 for h in self.horizons}
-        avg_pos_err = {h: float(np.mean(pos_errors[h])) if pos_errors[h] else 0.0 for h in self.horizons}
-        avg_vel_err = {h: float(np.mean(vel_errors[h])) if vel_errors[h] else 0.0 for h in self.horizons}
+        # Only retain horizons that were actually evaluated in the data sequence
+        evaluated_horizons = [h for h in self.horizons if latent_errors[h]]
+        avg_latent_mse = {h: float(np.mean(latent_errors[h])) for h in evaluated_horizons}
+        avg_pos_err = {h: float(np.mean(pos_errors[h])) for h in evaluated_horizons}
+        avg_vel_err = {h: float(np.mean(vel_errors[h])) for h in evaluated_horizons}
+        avg_pos_mse = {h: float(np.mean(pos_mses[h])) for h in evaluated_horizons}
+        avg_vel_mse = {h: float(np.mean(vel_mses[h])) for h in evaluated_horizons}
         avg_tf = float(np.mean(tf_errors)) if tf_errors else 0.0
         avg_spk = float(np.mean(spike_rates)) if spike_rates else 0.0
 
         return RolloutEvaluationResult(
-            horizons=self.horizons,
+            horizons=evaluated_horizons if evaluated_horizons else self.horizons,
             latent_mse_per_horizon=avg_latent_mse,
             position_error_per_horizon=avg_pos_err,
             velocity_error_per_horizon=avg_vel_err,
             teacher_forcing_mse=avg_tf,
             mean_spike_rate=avg_spk,
+            position_mse_per_horizon=avg_pos_mse,
+            velocity_mse_per_horizon=avg_vel_mse,
         )

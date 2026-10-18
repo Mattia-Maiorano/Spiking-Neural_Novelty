@@ -324,3 +324,50 @@ def test_deep_horizon_rollout_h100():
 
     corrector_grads = [p.grad for p in model.corrector.parameters() if p.grad is not None]
     assert len(corrector_grads) > 0
+
+
+def test_corrector_rollout_loss_gaussian_comb():
+    """Verifies that CorrectorRolloutLoss applies Gaussian comb weighting with elevated weights on 1, 2, 3 and 22, 23, 24."""
+    from spwm.learning.losses import CorrectorRolloutLoss
+
+    loss_fn = CorrectorRolloutLoss(beta_v=2.0, comb_sigma=3.5)
+
+    B = 2
+    H = 30
+    num_objects = 1
+    # Kinematics: [B, H, 4 * num_objects] -> pos (2), vel (2)
+    pred_kin = torch.zeros(B, H, 4)
+    target_kin = torch.zeros(B, H, 4)
+
+    # Place unit error at specific timesteps
+    # Step indices in rollout are 1-based: steps = [1, 2, ..., 30]
+    # Step 25 is index 24 (dist_to_0 = 0)
+    # Step 1 is index 0 (dist_to_0 = 1)
+    # Step 2 is index 1 (dist_to_0 = 2)
+    # Step 3 is index 2 (dist_to_0 = 3)
+    # Step 12 is index 11 (dist_to_0 = 12)
+    out = loss_fn(pred_kin, target_kin, burn_in_steps=0, num_objects=num_objects)
+    assert out["total_loss"].item() == 0.0
+
+    # Test that time weights maintain high relevance around boundaries and suppress mid-range
+    steps = torch.arange(1, 1 + H, dtype=torch.float32)
+    rem = steps % 25.0
+    dist_to_0 = torch.minimum(rem, 25.0 - rem)
+    raw_weights = torch.exp(-0.5 * (dist_to_0 / 3.5) ** 2)
+
+    # Boundary steps 1, 2, 3 (indices 0, 1, 2)
+    assert raw_weights[0] > 0.90  # step 1 (dist 1)
+    assert raw_weights[1] > 0.80  # step 2 (dist 2)
+    assert raw_weights[2] > 0.65  # step 3 (dist 3)
+
+    # Multiple of 25 (step 25, index 24)
+    assert raw_weights[24] == 1.0  # step 25 (dist 0)
+
+    # Neighbors 24, 23, 22 (indices 23, 22, 21)
+    assert raw_weights[23] > 0.90  # step 24 (dist 1)
+    assert raw_weights[22] > 0.80  # step 23 (dist 2)
+    assert raw_weights[21] > 0.65  # step 22 (dist 3)
+
+    # Mid range step 12, 13 (indices 11, 12)
+    assert raw_weights[11] < 0.01
+    assert raw_weights[12] < 0.01

@@ -42,6 +42,9 @@ def test_rollout_evaluator_long_horizon():
         assert h in res.latent_mse_per_horizon
         assert res.latent_mse_per_horizon[h] >= 0.0
     assert res.teacher_forcing_mse >= 0.0
+    assert res.dynamic_score >= 0.0
+    assert res.rollout_mae >= 0.0
+
 
 
 def test_plotting_generation():
@@ -54,8 +57,8 @@ def test_plotting_generation():
 
         # 2. Training curves
         mock_history = [
-            {"epoch": 1, "total_loss": 1.0, "val_total_loss": 0.9, "l_pred": 0.5, "val_l_pred": 0.45, "val_pos_err": 0.3, "val_vel_err": 0.4, "val_spike_rate": 0.05},
-            {"epoch": 2, "total_loss": 0.8, "val_total_loss": 0.75, "l_pred": 0.4, "val_l_pred": 0.38, "val_pos_err": 0.25, "val_vel_err": 0.35, "val_spike_rate": 0.04},
+            {"epoch": 1, "train_loss": 1.0, "val_loss": 0.9, "train_pos_err": 0.3, "train_vel_err": 0.4, "val_pos_err": 0.3, "val_vel_err": 0.4},
+            {"epoch": 2, "train_loss": 0.8, "val_loss": 0.75, "train_pos_err": 0.25, "train_vel_err": 0.35, "val_pos_err": 0.25, "val_vel_err": 0.35},
         ]
         plot_training_curves(mock_history, tmp_path / "fig2.png")
         assert (tmp_path / "fig2.png").is_file()
@@ -67,6 +70,8 @@ def test_plotting_generation():
         }
         plot_multi_step_degradation(mock_curves, tmp_path / "fig3.png")
         assert (tmp_path / "fig3.png").is_file()
+        plot_multi_step_degradation(mock_curves, save_path=tmp_path / "fig3_kw.png")
+        assert (tmp_path / "fig3_kw.png").is_file()
 
         # 4. Spike raster
         fast_spk = (np.random.rand(20, 16) > 0.9).astype(np.float32)
@@ -94,48 +99,138 @@ def test_plotting_generation():
         assert (tmp_path / "fig7.png").is_file()
 
 
-def test_multi_step_rollout_loss():
+def test_simplified_loss_forward():
     from spwm.learning.losses import SPWMLoss
-    from spwm.core.predictor import LatentPredictor
 
-    B, T, D = 4, 30, 32
-    loss_fn = SPWMLoss(lambda_pred=1.0, lambda_multi=0.5, multi_step_horizon=3)
-    predictor = LatentPredictor(latent_dim=D, hidden_dim=64, residual=True)
+    loss_fn = SPWMLoss(lambda_encoder=1.0, lambda_decoder=1.0, lambda_position=1.0, lambda_velocity=1.0)
+    B, T, D = 4, 10, 4
 
-    latents = torch.randn(B, T, D)
-    l_multi = loss_fn.multi_step_rollout_loss(latents, predictor)
+    # Test train_representation mode
+    keypoints = torch.randn(B, T, 8, requires_grad=True)
+    decoded = torch.randn(B, T, D, requires_grad=True)
+    gt = torch.randn(B, T, D)
 
-    assert l_multi.item() >= 0.0
-    # Test gradient backprop through autoregressive unroll
-    l_multi.backward()
-    for p in predictor.parameters():
-        if p.requires_grad:
-            assert p.grad is not None
+    repr_loss = loss_fn(
+        keypoints=keypoints,
+        decoded_kinematics=decoded,
+        target_kinematics=gt,
+        mode="train_representation",
+    )
+    assert "total_loss" in repr_loss
+    assert "loss_encoder" in repr_loss
+    assert "loss_decoder" in repr_loss
+    assert "loss_position" in repr_loss
+    assert "loss_velocity" in repr_loss
+    assert repr_loss["total_loss"].item() > 0.0
+    assert repr_loss["loss_position"].item() == 0.0
+    repr_loss["total_loss"].backward()
+    assert keypoints.grad is not None
+    assert decoded.grad is not None
+
+    # Test train_predictor mode
+    pos = torch.randn(B, T, 2, requires_grad=True)
+    vel = torch.randn(B, T, 2, requires_grad=True)
+    pred_loss = loss_fn(
+        rollout_positions=pos,
+        rollout_velocities=vel,
+        target_kinematics=gt,
+        mode="train_predictor",
+    )
+    assert "total_loss" in pred_loss
+    assert "loss_encoder" in pred_loss
+    assert "loss_decoder" in pred_loss
+    assert "loss_position" in pred_loss
+    assert "loss_velocity" in pred_loss
+    assert pred_loss["total_loss"].item() > 0.0
+    assert pred_loss["loss_encoder"].item() == 0.0
+    pred_loss["total_loss"].backward()
+    assert pos.grad is not None
+    assert vel.grad is not None
+
+    # Test train_joint mode
+    kp_j = torch.randn(B, T, 8, requires_grad=True)
+    dec_j = torch.randn(B, T, D, requires_grad=True)
+    pos_j = torch.randn(B, T, 2, requires_grad=True)
+    vel_j = torch.randn(B, T, 2, requires_grad=True)
+    joint_loss = loss_fn(
+        keypoints=kp_j,
+        decoded_kinematics=dec_j,
+        rollout_positions=pos_j,
+        rollout_velocities=vel_j,
+        target_kinematics=gt,
+        mode="train_joint",
+    )
+    assert "total_loss" in joint_loss
+    assert joint_loss["loss_encoder"].item() > 0.0
+    assert joint_loss["loss_decoder"].item() > 0.0
+    assert joint_loss["loss_position"].item() > 0.0
+    assert joint_loss["loss_velocity"].item() > 0.0
+    joint_loss["total_loss"].backward()
+    assert kp_j.grad is not None
+    assert dec_j.grad is not None
+    assert pos_j.grad is not None
+    assert vel_j.grad is not None
 
 
-def test_kinematic_loss_rebalancing_and_normalization():
-    from spwm.learning.losses import SPWMLoss
-    import torch.nn.functional as F
 
-    loss_fn = SPWMLoss(beta_v=2.5, sigma_q=0.5, sigma_v=0.8, use_empirical_variance=False)
-    B, T = 4, 20
-    # Decoded & true kinematics: [B, T, 4] -> [q_x, q_y, v_x, v_y]
-    true_kin = torch.randn(B, T, 4)
-    pred_kin = true_kin + 0.1 * torch.randn(B, T, 4)
+def test_generate_metrics_resume():
+    import json
+    from spwm.evaluation.metrics_resume import generate_metrics_resume, save_metrics_resume
 
-    l_kin = loss_fn.kinematic_loss(pred_kin, true_kin, num_objects=1)
+    mock_history = [
+        {"epoch": i + 1, "train_loss": 1.0 - 0.01 * i, "val_loss": 1.2 - 0.005 * i, "score": 1.2 - 0.005 * i, "train_pos_err": 0.5 - 0.002 * i}
+        for i in range(50)
+    ]
 
-    # Calculate expected value manually:
-    pos_err = F.mse_loss(pred_kin[..., :2], true_kin[..., :2]) / (0.5 ** 2)
-    vel_err = F.mse_loss(pred_kin[..., 2:4], true_kin[..., 2:4]) / (0.8 ** 2)
-    expected_kin = pos_err + 2.5 * vel_err
+    with tempfile.TemporaryDirectory() as tmpdir:
+        json_path = Path(tmpdir) / "metrics_test.json"
+        from spwm.evaluation.evaluator import RolloutEvaluationResult
+        mock_eval = RolloutEvaluationResult(
+            horizons=[1, 5, 10],
+            latent_mse_per_horizon={1: 0.1, 5: 0.2, 10: 0.3},
+            position_error_per_horizon={1: 0.05, 5: 0.1, 10: 0.15},
+            velocity_error_per_horizon={1: 0.02, 5: 0.04, 10: 0.06},
+            teacher_forcing_mse=0.01,
+            mean_spike_rate=0.08,
+        )
+        save_metrics_resume(
+            target_path=json_path,
+            history=mock_history,
+            evaluation_result=mock_eval,
+            parameters=123456,
+            num_segments=10,
+            model_name="test_model",
+            version="v0_1_0",
+            evaluation_result_no_corrector=mock_eval,
+        )
+        assert json_path.is_file()
+        with open(json_path, "r", encoding="utf-8") as f:
+            data = json.load(f)
 
-    assert torch.isclose(l_kin, expected_kin, rtol=1e-5)
+        assert data["version"] == "v0_1_0"
+        assert data["total_epochs"] == 50
+        assert data["parameters"] == 123456
+        assert "evaluation" in data
+        assert "evaluation_no_corrector" in data
+        assert "rollout_score" in data["evaluation"]
+        assert "dynamic_score" in data["evaluation"]
+        assert "rollout_score" in data["evaluation_no_corrector"]
+        assert "gate_passed" in data["evaluation"]
+        assert len(data["training_progression"]["sampled_segments"]) == 10
+        assert data["training_progression"]["sampled_segments"][0]["epoch"] == 1
+        assert data["training_progression"]["sampled_segments"][-1]["epoch"] == 50
+        assert "train_loss" in data["training_progression"]["trends"]
+        assert "val_loss" in data["training_progression"]["trends"]
 
-    # Test empirical variance mode
-    loss_fn_emp = SPWMLoss(beta_v=2.0, use_empirical_variance=True)
-    l_kin_emp = loss_fn_emp.kinematic_loss(pred_kin, true_kin, num_objects=1)
-    assert l_kin_emp.item() > 0.0
+
+def test_get_canonical_metrics_filename():
+    from spwm.evaluation.metrics_resume import get_canonical_metrics_filename
+    assert get_canonical_metrics_filename("spwm_v0_1_0") == "metrics_v0_1_0.json"
+    assert get_canonical_metrics_filename("v0_1_0") == "metrics_v0_1_0.json"
+    assert get_canonical_metrics_filename("0_1_0") == "metrics_v0_1_0.json"
+    assert get_canonical_metrics_filename("spwm_v8_3") == "metrics_v8_3.json"
+
+
 
 
 

@@ -41,10 +41,10 @@ def make_test_cfg(mode: str) -> ExperimentConfig:
     )
 
 
-def test_predictor_phase_handler_isolation():
-    cfg = make_test_cfg("train_predictor")
+def test_representation_phase_handler_isolation():
+    cfg = make_test_cfg("train_representation")
     model = SPWM.from_config(cfg)
-    loss_fn = SPWMLoss.from_config(cfg.loss, q_dim=8, p_dim=24)
+    loss_fn = SPWMLoss.from_config(cfg.loss)
     handler = PredictorPhaseHandler(model=model, cfg=cfg, loss_fn=loss_fn, device=torch.device("cpu"))
 
     # Corrector must be frozen
@@ -52,9 +52,57 @@ def test_predictor_phase_handler_isolation():
     for p in model.corrector.parameters():
         assert not p.requires_grad
 
-    # Predictor and encoder must be active
-    assert any(p.requires_grad for p in model.predictor.parameters())
+    # Predictor must be frozen in train_representation
+    for p in model.predictor.parameters():
+        assert not p.requires_grad
+    for p in model.dynamics.parameters():
+        assert not p.requires_grad
+
+    # Encoder and physical decoder must be active
     assert any(p.requires_grad for p in model.encoder.parameters())
+    assert any(p.requires_grad for p in model.physical_decoder.parameters())
+
+
+def test_predictor_phase_handler_isolation():
+    cfg = make_test_cfg("train_predictor")
+    model = SPWM.from_config(cfg)
+    loss_fn = SPWMLoss.from_config(cfg.loss)
+    handler = PredictorPhaseHandler(model=model, cfg=cfg, loss_fn=loss_fn, device=torch.device("cpu"))
+
+    # Corrector must be frozen
+    assert model.corrector is not None
+    for p in model.corrector.parameters():
+        assert not p.requires_grad
+
+    # SpatialSoftmax encoder and physical decoder must be frozen
+    for p in model.encoder.parameters():
+        assert not p.requires_grad
+    for p in model.physical_decoder.parameters():
+        assert not p.requires_grad
+
+    # Predictor and dynamics must be active
+    assert any(p.requires_grad for p in model.predictor.parameters())
+    assert any(p.requires_grad for p in model.dynamics.parameters())
+
+
+def test_joint_phase_handler_setup():
+    cfg = make_test_cfg("train_joint")
+    model = SPWM.from_config(cfg)
+    loss_fn = SPWMLoss.from_config(cfg.loss)
+    handler = PredictorPhaseHandler(model=model, cfg=cfg, loss_fn=loss_fn, device=torch.device("cpu"))
+
+    # Corrector must be frozen
+    assert model.corrector is not None
+    for p in model.corrector.parameters():
+        assert not p.requires_grad
+
+    # SpatialSoftmax encoder, physical decoder, predictor, and dynamics must all be active
+    assert any(p.requires_grad for p in model.encoder.parameters())
+    assert any(p.requires_grad for p in model.physical_decoder.parameters())
+    assert any(p.requires_grad for p in model.predictor.parameters())
+    assert any(p.requires_grad for p in model.dynamics.parameters())
+    assert handler.representation_optimizer is not None
+    assert handler.predictor_optimizer is not None
 
 
 def test_corrector_phase_handler_isolation():

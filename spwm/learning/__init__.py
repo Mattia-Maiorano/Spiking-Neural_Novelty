@@ -2,7 +2,6 @@ from spwm.learning.losses import (
     SPWMLoss,
     PredictorLoss,
     CorrectorRolloutLoss,
-    LossOutput,
     _frozen,
 )
 from spwm.learning.metrics import (
@@ -27,7 +26,6 @@ __all__ = [
     "SPWMLoss",
     "PredictorLoss",
     "CorrectorRolloutLoss",
-    "LossOutput",
     "_frozen",
     "one_step_mse",
     "multi_step_mse",

@@ -112,7 +112,6 @@ class Trainer(BaseTrainer):
                     corrector_burn_in_steps=corrector_burn_in_steps,
                     perturb_corrector_states=perturb_corrector_states,
                     corrector_perturbation_std=corrector_perturbation_std,
-                    encoder_warmup_epochs=encoder_warmup_epochs,
                 ),
                 loss=LossConfig(),
                 evaluation=EvaluationConfig(

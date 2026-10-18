@@ -266,7 +266,7 @@ class SPWM(nn.Module):
 
         with torch.no_grad():
             sensory_x, new_enc_states = self.encoder.step(event_frame, state.encoder_states)
-            sensory_keypoints = getattr(self.encoder, "last_keypoints", None)
+            sensory_keypoints = self.encoder.last_keypoints
 
             z_prev = state.dynamics_state.z_prev
             predicted_x = self.sensory_predictor(z_prev)

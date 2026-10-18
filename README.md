@@ -83,30 +83,44 @@ pytest
 
 ---
 
-## 4. Two-Stage Training Pipeline
+## 4. Three-Stage Training Pipeline
 
-### Stage 1: Train Predictor (Nominal Physics)
+### Stage 1: Train Representation (Vision Bottleneck & Readout Probes)
 
-Trains the sensory encoder, ALIF dynamics, and fast latent predictor on clean nominal event streams:
+Trains the `SpatialSoftmax` event encoder and `physical_decoder` kinematic probes from scratch on single-frame / kinematic supervision:
+
+```bash
+python experiments/train.py \
+    --mode train_representation \
+    --epochs 100 \
+    --output-dir results/spwm_v0_1_0_train_representation
+```
+
+### Stage 2: Train Predictor (Frozen Representation + Nominal Physics)
+
+Loads the pre-trained representation checkpoint, freezes the encoder and probe, and trains the ALIF recurrent predictor / dynamics on multi-step rollouts:
 
 ```bash
 python experiments/train.py \
     --mode train_predictor \
+    --representation-checkpoint results/spwm_v0_1_0_train_representation/model.pt \
     --epochs 100 \
     --output-dir results/spwm_v0_1_0_train_predictor
 ```
+*(Note: `--representation-checkpoint` automatically defaults to `results/{project_name}_train_representation/model.pt` if omitted).*
 
-### Stage 2: Train Corrector (Drift Suppression & Burn-in)
+### Stage 3: Train Corrector (Frozen Representation + Frozen Predictor)
 
-Freezes the predictor and optimizes the neuromodulatory gain field corrector against impulsive drift perturbations:
+Freezes both the encoder and predictor, loading the predictor checkpoint and optimizing the neuromodulatory gain field corrector under drift perturbations:
 
 ```bash
 python experiments/train.py \
     --mode train_corrector \
-    --predictor-checkpoint results/spwm_v0_1_0_train_predictor/model_predictor.pt \
+    --predictor-checkpoint results/spwm_v0_1_0_train_predictor/model.pt \
     --epochs 100 \
     --output-dir results/spwm_v0_1_0_train_corrector
 ```
+*(Note: `--predictor-checkpoint` automatically defaults to `results/{project_name}_train_predictor/model.pt` if omitted).*
 
 ---
 

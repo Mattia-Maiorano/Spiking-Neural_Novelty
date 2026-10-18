@@ -22,6 +22,8 @@ def test_experiment_config_instantiates_cleanly():
     assert cfg.memory.num_timescales == 2
     assert cfg.memory.timescale_dims == (128, 128)
     assert cfg.training.mode in ("train_predictor", "train_corrector")
+    assert cfg.loss.comb_sigma == 3.5
+    assert cfg.loss.beta_v == 2.0
 
 
 def test_unknown_key_raises_value_error():

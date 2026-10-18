@@ -9,14 +9,14 @@ environment:
   dt: 0.05
   event_threshold: 0.08
 data:
-  total_trajectories: 600
+  total_trajectories: 4000
   train_split: 0.8
   val_split: 0.1
-  sequence_length: 150
+  sequence_length: 31
   batch_size: 32
   drift_injection_prob: 0.2
   drift_magnitude: 0.05
-  mixed_drift: false
+  mixed_drift: true
   standard_velocity_range: !!python/tuple
   - -1.0
   - 1.0
@@ -58,43 +58,37 @@ memory:
   - 0.985
 corrector:
   enabled: true
-  dim: 128
-  beta_mem: 0.2
-  beta_adapt: 0.05
+  dim: 512
+  beta_mem: 0.995
+  beta_adapt: 0.98
   v_th0: 0.5
   gamma: 0.08
-  alpha_gain: 1.0
+  alpha_gain: 0.4
 training:
   mode: train_corrector
-  epochs: 100
+  epochs: 300
+  batch_size: 32
+  weight_decay: 0.0005
+  grad_clip_norm: 0.8
   learning_rate: 0.0002
   probe_lr: 0.0005
   probe_weight_decay: 0.01
-  weight_decay: 0.0005
-  batch_size: 32
-  grad_clip_norm: 0.8
-  encoder_warmup_epochs: 60
-  corrector_lr: 0.0005
+  temporal_burn_in: 5
+  representation_checkpoint: null
+  corrector_lr: 0.0004
   corrector_horizon: 25
-  corrector_burn_in_steps: 0
-  perturb_corrector_states: false
+  corrector_burn_in_steps: 5
+  perturb_corrector_states: true
   corrector_perturbation_std: 0.08
-  predictor_checkpoint: results/spwm_v9/model.pt
+  predictor_checkpoint: results/spwm_v0_1_0_train_joint/model.pt
 loss:
-  lambda_pred: 1.0
-  lambda_multi: 0.5
-  lambda_var: 0.1
-  lambda_sparse: 0.5
-  lambda_vel: 0.5
-  lambda_probe: 2.0
-  lambda_coord: 0.15
+  lambda_encoder: 1.0
+  lambda_decoder: 1.0
+  lambda_position: 1.0
+  lambda_velocity: 2.0
+  multi_step_horizon: 5
   beta_v: 2.0
-  sigma_q: 1.0
-  sigma_v: 1.0
-  use_empirical_variance: false
-  multi_step_horizon: 3
-  target_variance: 1.0
-  target_spike_rate: 0.1
+  comb_sigma: 3.5
 evaluation:
   rollout_horizons: !!python/tuple
   - 1

@@ -52,17 +52,20 @@ class CorrectorPhaseHandler(PhaseHandler):
         with torch.no_grad():
             enc_latents = self.model(events, accumulate_local_updates=False).latent_states
 
-        t_warmup = min(10, max(1, t // 4))
-        z_start = enc_latents[:, t_warmup].detach()
+        z_start = enc_latents[:, 0].detach()
 
         if self.cfg.training.perturb_corrector_states:
             perturb_std = self.cfg.training.corrector_perturbation_std
             z_start = z_start + torch.randn_like(z_start) * perturb_std
 
-        horizon = min(self.cfg.training.corrector_horizon, t - t_warmup - 1)
+        horizon = min(self.cfg.training.corrector_horizon, t - 1)
         burn_in = min(self.cfg.training.corrector_burn_in_steps, max(0, horizon - 1))
 
         # Execute differentiable rollout via single unified rollout engine
+        decoder_state = None
+        if hasattr(self.model, "physical_decoder") and self.model.physical_decoder is not None:
+            z_prefix = enc_latents[:, :1]
+            decoder_state = self.model.physical_decoder.warm_up_filter(z_prefix)
 
         rollout_res = rollout_latent(
             model=self.model,
@@ -72,9 +75,10 @@ class CorrectorPhaseHandler(PhaseHandler):
             burn_in_steps=burn_in,
             with_grad=True,
             decode_kinematics=True,
+            initial_decoder_state=decoder_state,
         )
 
-        target_kin = flat_kin[:, t_warmup + 1 : t_warmup + 1 + horizon]
+        target_kin = flat_kin[:, 1 : 1 + horizon]
         corr_loss_dict = self.loss_fn.compute_corrector_rollout_loss(
             decoded_rollout=rollout_res.decoded_kinematics,
             target_kinematics=target_kin,
@@ -94,13 +98,10 @@ class CorrectorPhaseHandler(PhaseHandler):
             vel_err = velocity_error(rollout_res.decoded_kinematics, target_kin, num_objects=self.cfg.environment.num_objects)
 
         return {
-            "total_loss": float(corr_loss_dict["total_loss"].item()),
-            "loss_corr": float(corr_loss_dict["loss_corr"].item()),
-            "l_corr": float(corr_loss_dict["l_corr"].item()),
-            "l_corr_asymptotic": float(corr_loss_dict["l_corr_asymptotic"].item()),
-            "l_kin": float(corr_loss_dict["l_kin"].item()),
-            "l_pos": float(corr_loss_dict["l_pos"].item()),
-            "l_vel": float(corr_loss_dict["l_vel"].item()),
+            "train_loss": float(corr_loss_dict["total_loss"].item()),
+            "train_kin_loss": float(corr_loss_dict["l_kin"].item()),
+            "train_pos_loss": float(corr_loss_dict["l_pos"].item()),
+            "train_vel_loss": float(corr_loss_dict["l_vel"].item()),
             "train_pos_err": pos_err,
             "train_vel_err": vel_err,
         }
@@ -114,12 +115,15 @@ class CorrectorPhaseHandler(PhaseHandler):
         b, t, _, _, _ = events.shape
 
         enc_latents = self.model(events, accumulate_local_updates=False).latent_states
-        t_warmup = min(10, max(1, t // 4))
-        z_start = enc_latents[:, t_warmup]
+        z_start = enc_latents[:, 0]
 
-        horizon = min(max(self.cfg.evaluation.rollout_horizons), t - t_warmup - 1)
+        horizon = min(max(self.cfg.evaluation.rollout_horizons), t - 1)
         burn_in = min(self.cfg.training.corrector_burn_in_steps, max(0, horizon - 1))
 
+        decoder_state = None
+        if hasattr(self.model, "physical_decoder") and self.model.physical_decoder is not None:
+            z_prefix = enc_latents[:, :1]
+            decoder_state = self.model.physical_decoder.warm_up_filter(z_prefix)
 
         rollout_res = rollout_latent(
             model=self.model,
@@ -129,9 +133,10 @@ class CorrectorPhaseHandler(PhaseHandler):
             burn_in_steps=burn_in,
             with_grad=False,
             decode_kinematics=True,
+            initial_decoder_state=decoder_state,
         )
 
-        target_kin = flat_kin[:, t_warmup + 1 : t_warmup + 1 + horizon]
+        target_kin = flat_kin[:, 1 : 1 + horizon]
         corr_loss_dict = self.loss_fn.compute_corrector_rollout_loss(
             decoded_rollout=rollout_res.decoded_kinematics,
             target_kinematics=target_kin,
@@ -139,27 +144,28 @@ class CorrectorPhaseHandler(PhaseHandler):
             num_objects=self.cfg.environment.num_objects,
         )
 
-        # Compute multi-horizon position errors
+        # Compute multi-horizon position & velocity errors
         h1_pos = position_error(rollout_res.decoded_kinematics[:, :1], target_kin[:, :1], num_objects=self.cfg.environment.num_objects)
         h25_len = min(25, horizon)
         h25_pos = position_error(rollout_res.decoded_kinematics[:, :h25_len], target_kin[:, :h25_len], num_objects=self.cfg.environment.num_objects)
+        h25_vel = velocity_error(rollout_res.decoded_kinematics[:, :h25_len], target_kin[:, :h25_len], num_objects=self.cfg.environment.num_objects)
         drift = float(h25_pos / max(h1_pos, 1e-6))
 
         return {
-            "val_total_loss": float(corr_loss_dict["total_loss"].item()),
-            "val_loss_corr": float(corr_loss_dict["loss_corr"].item()),
-            "val_l_kin": float(corr_loss_dict["l_kin"].item()),
-            "val_l_pos": float(corr_loss_dict["l_pos"].item()),
-            "val_l_vel": float(corr_loss_dict["l_vel"].item()),
+            "val_loss": float(corr_loss_dict["total_loss"].item()),
+            "val_kin_loss": float(corr_loss_dict["l_kin"].item()),
+            "val_pos_loss": float(corr_loss_dict["l_pos"].item()),
+            "val_vel_loss": float(corr_loss_dict["l_vel"].item()),
             "val_pos_err_h1": h1_pos,
             "val_pos_err_h25": h25_pos,
             "val_drift_ratio": drift,
             "val_pos_err": h25_pos,
+            "val_vel_err": h25_vel,
         }
 
     def get_selection_score(self, val_metrics: Dict[str, float]) -> float:
         # Best model selected directly by the %25-weighted position and velocity rollout loss
-        return val_metrics.get("val_total_loss", float("inf"))
+        return val_metrics.get("val_loss", float("inf"))
 
     def log_epoch(
         self,
@@ -186,22 +192,24 @@ class CorrectorPhaseHandler(PhaseHandler):
         chronicle.log_detail("🔒 Predictor Core", "FROZEN (eval mode).", indent_level=1)
 
         # Log metrics read directly from loss dictionary, NEVER assuming formulas!
-        l_kin = train_metrics.get("l_kin", 0.0)
-        l_pos = train_metrics.get("l_pos", 0.0)
-        l_vel = train_metrics.get("l_vel", 0.0)
-        l_total = train_metrics.get("total_loss", 0.0)
+        train_loss = train_metrics.get("train_loss", 0.0)
+        train_kin_loss = train_metrics.get("train_kin_loss", 0.0)
+        train_pos_loss = train_metrics.get("train_pos_loss", 0.0)
+        train_vel_loss = train_metrics.get("train_vel_loss", 0.0)
         chronicle.log_detail(
             "🧠 Gain Field Corrector",
-            f"L_total: {l_total:.5f} | L_kin: {l_kin:.5f} | L_pos: {l_pos:.5f} | L_vel: {l_vel:.5f}",
+            f"Train Loss: {train_loss:.5f} | Kin: {train_kin_loss:.5f} | Pos: {train_pos_loss:.5f} | Vel: {train_vel_loss:.5f}",
             indent_level=1,
         )
 
+        val_loss = val_metrics.get("val_loss", 0.0)
+        val_kin_loss = val_metrics.get("val_kin_loss", 0.0)
         h1 = val_metrics.get("val_pos_err_h1", 0.0)
         h25 = val_metrics.get("val_pos_err_h25", 0.0)
         drift = val_metrics.get("val_drift_ratio", 0.0)
         chronicle.log_detail(
             "📈 Autonomous Rollout",
-            f"Val L_kin: {val_metrics.get('val_l_kin', 0.0):.5f} | H1 Pos: {h1:.4f} | H25 Pos: {h25:.4f} | Drift: {drift:.2f}x",
+            f"Val Loss: {val_loss:.5f} | Val Kin: {val_kin_loss:.5f} | H1 Pos: {h1:.4f} | H25 Pos: {h25:.4f} | Drift: {drift:.2f}x",
             indent_level=1,
         )
         curr_score = self.get_selection_score(val_metrics)

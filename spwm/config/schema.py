@@ -88,14 +88,14 @@ class DataConfig:
     Configures nominal trajectory generation as well as drift injection probabilities
     and magnitude parameters for robustness benchmarking.
     """
-    total_trajectories: int = 600           #: Total number of synthetic trajectories generated in the dataset.
+    total_trajectories: int = 4000           #: Total number of synthetic trajectories generated in the dataset.
     train_split: float = 0.8                #: Fraction of trajectories dedicated to training (must satisfy train+val < 1.0).
     val_split: float = 0.1                  #: Fraction of trajectories dedicated to validation (remaining is test).
-    sequence_length: int = 150              #: Number of consecutive temporal steps per generated trajectory.
+    sequence_length: int = 31              #: Number of consecutive temporal steps per generated trajectory.
     batch_size: int = 32                    #: Dataloader batch size during training and validation.
     drift_injection_prob: float = 0.20      #: Probability per timestep of injecting an unannounced velocity drift/perturbation.
     drift_magnitude: float = 0.05           #: Instantaneous impulse magnitude added to velocity vectors upon drift injection.
-    mixed_drift: bool = False               #: Whether to combine discrete velocity shocks with continuous Brownian random walk drift.
+    mixed_drift: bool = True               #: Whether to combine discrete velocity shocks with continuous Brownian random walk drift.
     standard_velocity_range: Tuple[float, float] = (-1.0, 1.0)        #: Initial object velocity range (min, max) for nominal regimes.
     extrapolation_velocity_range: Tuple[float, float] = (-2.0, 2.0)   #: Velocity range for out-of-distribution extrapolation evaluation.
     num_workers: int = 0                    #: Number of subprocesses used by PyTorch DataLoaders.
@@ -180,45 +180,100 @@ class CorrectorConfig:
     used to emit bounded multiplicative gain masks in [-1, 1].
     """
     enabled: bool = True       #: Master switch enabling the slow neuromodulatory gain field corrector network.
-    dim: int = 128             #: Hidden dimension of the ALIF corrector population.
-    beta_mem: float = 0.20     #: Membrane decay factor for corrector neurons (fast responsive integration).
-    beta_adapt: float = 0.05   #: Threshold adaptation decay factor for slow accumulation of persistent drift evidence.
+    dim: int = 512             #: Hidden dimension of the ALIF corrector population.
+    beta_mem: float = 0.995     #: Membrane decay factor for corrector neurons (fast responsive integration).
+    beta_adapt: float = 0.98   #: Threshold adaptation decay factor for slow accumulation of persistent drift evidence.
     v_th0: float = 0.50        #: Baseline firing threshold for corrector ALIF neurons.
     gamma: float = 0.08        #: Adaptation strength incrementing threshold upon spike emission.
-    alpha_gain: float = 1.0    #: Maximum gain modulation authority scaling Δz_fast: Δz = Δz_fast * (1 + alpha_gain * mask).
+    alpha_gain: float = 0.4    #: Maximum gain modulation authority scaling Δz_fast: Δz = Δz_fast * (1 + alpha_gain * mask).
 
 
 @dataclass
 class TrainingConfig:
     """
     Training regime, optimization hyperparameters, phases, and unroll horizons.
-    Supports decoupled two-phase training ("train_predictor" for nominal fast physics,
-    and "train_corrector" for the slow gain field modulator under drift perturbations).
+    Supports decoupled three-stage curriculum training:
+      1. 'train_representation': Train SpatialSoftmax encoder and physical decoder probe;
+         ALIF recurrent predictor / dynamics is frozen.
+      2. 'train_predictor': Train ALIF recurrent predictor / dynamics on multi-step rollouts;
+         SpatialSoftmax encoder and physical decoder are frozen.
+      3. 'train_corrector': Train neuromodulatory gain-field corrector on drift-perturbed sequences;
+         predictor and encoder are frozen.
+
+    Train & Validation Loss Formulas:
+    ---------------------------------
+    - 'train_representation':
+        Train Loss:
+            train_loss = lambda_encoder * train_loss_encoder + lambda_decoder * train_loss_decoder
+            where:
+                train_loss_encoder = MSE(keypoints, target_positions)
+                train_loss_decoder = MSE(decoded_kinematics, target_kinematics)
+        Val Loss:
+            val_loss = lambda_encoder * val_loss_encoder + lambda_decoder * val_loss_decoder
+        Model Selection:
+            min(val_loss) -> model.pt
+
+    - 'train_predictor':
+        Train Loss (evaluated over rollout horizon H = multi_step_horizon):
+            train_loss = lambda_position * train_loss_position + lambda_velocity * train_loss_velocity
+            where:
+                train_loss_position = MSE(rollout_positions[:, :H], target_positions[:, :H])
+                train_loss_velocity = MSE(rollout_velocities[:, :H], target_velocities[:, :H])
+        Val Loss:
+            val_loss = lambda_position * val_loss_position + lambda_velocity * val_loss_velocity
+        Model Selection:
+            min(val_loss) -> model.pt
+
+    - 'train_corrector':
+        Train Loss (evaluated over horizon H = corrector_horizon with Gaussian comb temporal weighting w_t):
+            train_loss = train_kin_loss = train_pos_loss + beta_v * train_vel_loss
+            where:
+                w_t = normalized Gaussian comb weights centered at multiples of 25 timesteps:
+                      w_t ∝ exp(-0.5 * (min(t % 25, 25 - t % 25) / comb_sigma)^2)
+                train_pos_loss = mean(w_t * (rollout_positions - target_positions)^2)
+                train_vel_loss = mean(w_t * (rollout_velocities - target_velocities)^2)
+        Val Loss:
+            val_loss = val_kin_loss (comb-weighted kinematic error over active rollout horizon)
+        Model Selection:
+            min(val_loss) -> model.pt
     """
-    mode: str = "train_predictor"                  #: Training stage: "train_predictor" or "train_corrector".
-    epochs: int = 100                              #: Total number of training epochs to execute.
-    learning_rate: float = 0.0002                  #: Base AdamW learning rate for the main model weights.
-    probe_lr: float = 0.0005                       #: Learning rate for downstream kinematic readout linear probes.
-    probe_weight_decay: float = 0.01               #: L2 regularization penalty applied to linear probes.
-    weight_decay: float = 0.0005                   #: L2 regularization penalty applied to main model parameters.
+    # -------------------------------------------------------------------------
+    # 1. General Training Parameters (Shared Across Phases)
+    # -------------------------------------------------------------------------
+    mode: str = "train_predictor"                  #: Active training stage: "train_representation", "train_predictor", "train_joint", or "train_corrector".
+    epochs: int = 100                              #: Total number of training epochs to execute for the active phase.
     batch_size: int = 32                           #: Mini-batch size per optimization step.
-    grad_clip_norm: float = 0.8                    #: Maximum L2 gradient norm threshold for gradient clipping.
-    encoder_warmup_epochs: int = 60                #: Epochs during which spatial encoder is warmed up before locking dynamics.
-    corrector_lr: float = 0.0005                   #: Learning rate specifically for the corrector module in Stage 2.
-    corrector_horizon: int = 25                    #: Temporal unroll horizon H over which asymptotic rollout loss is computed.
-    corrector_burn_in_steps: int = 0               #: Steps at start of rollout where corrector integrates state but gain is bypassed.
-    perturb_corrector_states: bool = False          #: Whether to inject noise into corrector inputs to regularize robustness.
-    corrector_perturbation_std: float = 0.08       #: Standard deviation of Gaussian perturbation injected into corrector states.
-    predictor_checkpoint: Optional[str] = None     #: Path to pre-trained predictor checkpoint .pt loaded when in train_corrector mode.
+    weight_decay: float = 0.0005                   #: Base L2 weight decay penalty applied to Adam optimizer across active submodules.
+    grad_clip_norm: float = 0.8                    #: Maximum L2 gradient norm threshold for torch.nn.utils.clip_grad_norm_.
+
+    # -------------------------------------------------------------------------
+    # 2. Predictor & Representation Training Parameters ('train_predictor' / 'train_representation' / 'train_joint')
+    # -------------------------------------------------------------------------
+    learning_rate: float = 0.0002                  #: Base Adam learning rate for model weights (encoder/decoder in representation, predictor in predictor/joint phase).
+    probe_lr: float = 0.0005                       #: Dedicated learning rate for downstream kinematic readout linear probes (when separately parameterized).
+    probe_weight_decay: float = 0.01               #: L2 regularization penalty applied to linear probes.
+    temporal_burn_in: int = 5                      #: Initial latent steps for recurrent dynamics warm-up before launching predictor rollout in train_joint / train_predictor.
+    representation_checkpoint: Optional[str] = None  #: Path to pre-trained representation checkpoint .pt for 'train_predictor' mode. If None, auto-checks default location.
+
+    # -------------------------------------------------------------------------
+    # 3. Corrector-Only Training Parameters ('train_corrector')
+    # -------------------------------------------------------------------------
+    corrector_lr: float = 0.0004                   #: Dedicated learning rate for neuromodulatory gain-field corrector parameters in 'train_corrector'.
+    corrector_horizon: int = 25                    #: Temporal unroll horizon H over which corrector rollout comb loss is computed.
+    corrector_burn_in_steps: int = 5               #: Initial unroll steps where corrector integrates history but gain modulation is bypassed.
+    perturb_corrector_states: bool = True          #: Whether to inject Gaussian noise into corrector inputs to regularize robustness under drift.
+    corrector_perturbation_std: float = 0.08       #: Standard deviation sigma of Gaussian perturbation injected into corrector states.
+    predictor_checkpoint: Optional[str] = None     #: Path to pre-trained predictor checkpoint .pt required when running in 'train_corrector' mode.
 
     # Deprecated / obsolete fields:
+    # encoder_warmup_epochs: int = 60                #: [Deprecated - Legacy warmup epochs for encoder before locking dynamics in legacy joint trainer, superseded by decoupled phases]
     # learning_algorithm: str = "online_eprop"       #: [Deprecated - Last used in v4.3/v5, superseded by modular phase handlers & fixed online eprop]
     # curriculum_multi_step: bool = False            #: [Deprecated - Last used in v7.3 curriculum experiments, removed in v8+ decoupled training]
     # smooth_horizon_sampling: bool = False          #: [Deprecated - Last used in v7.3, rejected due to training instability]
     # k_max: int = 50                                #: [Deprecated - Last used in v7.3 curriculum horizon bounds]
 
     def __post_init__(self):
-        valid_modes = ("train_predictor", "train_corrector")
+        valid_modes = ("train_representation", "train_predictor", "train_joint", "train_corrector")
         if self.mode not in valid_modes:
             raise ValueError(f"Invalid training mode '{self.mode}'. Allowed modes: {valid_modes}")
 
@@ -226,26 +281,44 @@ class TrainingConfig:
 @dataclass
 class LossConfig:
     """
-    Multi-objective loss function balance weights, normalization scales, and regularizers.
-    Balances 1-step prediction error, multi-step autoregressive rollout, kinematic probe tracking,
-    metabolic spike sparsity, variance preservation, and asymptotic corrector rollout error.
+    Loss function scaling weights, horizons, and balancing coefficients for SPWM.
+    Governs loss_encoder, loss_decoder, loss_position, loss_velocity, and corrector comb loss.
+
+    Weight Scopes & Formulations:
+    -----------------------------
+    1. Scope: 'train_representation'
+       - lambda_encoder: Multiplier on SpatialSoftmax keypoint distribution MSE loss:
+           L_encoder = MSE(keypoints, target_positions)
+       - lambda_decoder: Multiplier on kinematic probe reconstruction MSE loss from immediate latent:
+           L_decoder = MSE(decoded_kinematics, target_kinematics)
+       Total Train/Val Loss:
+           L_total = lambda_encoder * L_encoder + lambda_decoder * L_decoder
+
+    2. Scope: 'train_predictor'
+       - lambda_position: Multiplier on position MSE error across multi-step autonomous rollout:
+           L_position = MSE(rollout_positions[:, :H], target_positions[:, :H])
+       - lambda_velocity: Multiplier on velocity MSE error across multi-step autonomous rollout:
+           L_velocity = MSE(rollout_velocities[:, :H], target_velocities[:, :H])
+       - multi_step_horizon (H): Number of future autonomous rollout steps used for computing L_position and L_velocity.
+       Total Train/Val Loss:
+           L_total = lambda_position * L_position + lambda_velocity * L_velocity
+
+    3. Scope: 'train_corrector'
+       - beta_v: Relative weighting coefficient for velocity error in the comb rollout loss:
+           L_kin = L_pos + beta_v * L_vel
+       - comb_sigma: Gaussian kernel bandwidth for periodic comb temporal weighting centered at multiples of 25 timesteps:
+           w_t ∝ exp(-0.5 * (min(t % 25, 25 - t % 25) / comb_sigma)^2)
+       Total Train/Val Loss:
+           L_total = L_kin
     """
-    lambda_pred: float = 1.0                  #: Weight of next-step latent state prediction error loss.
-    lambda_multi: float = 0.5                 #: Weight of multi-step rollout autoregressive prediction loss.
-    lambda_var: float = 0.1                   #: Weight of variance regularization loss (preventing latent representation collapse).
-    lambda_sparse: float = 0.5                #: Weight of metabolic spike sparsity penalty.
-    lambda_vel: float = 0.5                   #: Weight of velocity consistency loss between q derivative and momentum p.
-    lambda_probe: float = 2.0                 #: Weight of supervised kinematic probe loss (position and velocity).
-    lambda_coord: float = 0.15                #: Weight of coordinate preservation loss on keypoint encoder representations.
-    beta_v: float = 2.0                       #: Weight balancing velocity error relative to position error in kinematic losses.
-    sigma_q: float = 1.0                      #: Normalization scaling standard deviation for coordinate positions.
-    sigma_v: float = 1.0                      #: Normalization scaling standard deviation for velocities.
-    use_empirical_variance: bool = False      #: Whether to estimate normalization scales empirically from the training batch.
-    multi_step_horizon: int = 3               #: Default rollout horizon for multi-step loss in predictor training.
-    target_variance: float = 1.0              #: Target variance for latent dimension variance regularization.
-    target_spike_rate: float = 0.10           #: Desired biological target spike rate per neuron (e.g. 10% active spikes).
-    # lambda_corrector_asymptotic: float = 1.0  #: [Deprecated - Redundant 1.0 multiplier on corrector rollout loss]
-    # curriculum_thresholds: Optional[Dict[str, Any]] = None  #: [Deprecated - Last used in v7.3 curriculum progression, replaced by fixed horizons]
+    lambda_encoder: float = 1.0     #: Weight of SpatialSoftmax keypoint MSE loss in 'train_representation'. Formula: L_encoder = MSE(keypoints, xy_gt).
+    lambda_decoder: float = 1.0     #: Weight of physical decoder probe MSE loss in 'train_representation'. Formula: L_decoder = MSE(decoded_kin, kin_gt).
+    lambda_position: float = 1.0    #: Weight of position MSE loss in 'train_predictor'. Formula: L_pos = MSE(pred_pos[:, :H], true_pos[:, :H]).
+    lambda_velocity: float = 2.0    #: Weight of velocity MSE loss in 'train_predictor'. Formula: L_vel = MSE(pred_vel[:, :H], true_vel[:, :H]).
+    multi_step_horizon: int = 5     #: Multi-step autonomous rollout horizon H in 'train_predictor'.
+    beta_v: float = 2.0             #: Velocity loss scaling factor in 'train_corrector' comb loss. Formula: L_kin = L_pos + beta_v * L_vel.
+    comb_sigma: float = 3.5         #: Gaussian bandwidth parameter for smooth comb temporal weighting in 'train_corrector'.
+
 
 
 @dataclass
@@ -285,8 +358,16 @@ class ExperimentConfig:
         path = Path(path)
         if not path.is_file():
             raise FileNotFoundError(f"Configuration file not found at: {path}")
+
+        class _SafeLoaderWithTuple(yaml.SafeLoader):
+            pass
+        _SafeLoaderWithTuple.add_constructor(
+            "tag:yaml.org,2002:python/tuple",
+            lambda loader, node: tuple(loader.construct_sequence(node)),
+        )
+
         with open(path, "r", encoding="utf-8") as f:
-            raw = yaml.safe_load(f)
+            raw = yaml.load(f, Loader=_SafeLoaderWithTuple)
         if not isinstance(raw, dict):
             raise ValueError(f"YAML content at {path} must be a dictionary, got {type(raw).__name__}")
         return cls.from_dict(raw)

@@ -32,8 +32,11 @@ def test_slow_corrector_initialization_and_shapes():
 
     state = corrector.init_state(B)
     assert state.step_count == 0
-    assert state.alif_state.v_mem.shape == (B, corrector_dim)
-    assert state.alif_state.spikes.shape == (B, corrector_dim)
+    if state.alif_state is not None:
+        assert state.alif_state.v_mem.shape == (B, corrector_dim)
+        assert state.alif_state.spikes.shape == (B, corrector_dim)
+    else:
+        assert state.gru_state.shape == (B, corrector_dim)
     assert state.last_gain_mask.shape == (B, latent_dim)
 
     z_prev = torch.zeros(B, latent_dim)
@@ -136,7 +139,10 @@ def test_burn_in_period():
     # But internal state and gain_mask must still advance
     assert new_state.step_count == 1
     assert out.gain_mask.shape == (B, latent_dim)
-    assert not torch.isnan(new_state.alif_state.v_mem).any()
+    if new_state.alif_state is not None:
+        assert not torch.isnan(new_state.alif_state.v_mem).any()
+    elif new_state.gru_state is not None:
+        assert not torch.isnan(new_state.gru_state).any()
 
 
 def test_euclidean_boundary_clamping():
@@ -271,7 +277,10 @@ def test_chained_window_rollout_contraction():
         z_init_B = pred_A[:, -1].detach()
         corr_state_B = corr_state_A.detach()
         assert not z_init_B.requires_grad
-        assert not corr_state_B.alif_state.v_mem.requires_grad
+        if corr_state_B.alif_state is not None:
+            assert not corr_state_B.alif_state.v_mem.requires_grad
+        elif corr_state_B.gru_state is not None:
+            assert not corr_state_B.gru_state.requires_grad
 
         # Window B
         pred_B, spikes_B = model.predict_rollout(

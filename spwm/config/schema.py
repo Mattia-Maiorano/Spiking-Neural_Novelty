@@ -174,18 +174,17 @@ class MemoryConfig:
 @dataclass
 class CorrectorConfig:
     """
-    Slow Neuromodulatory Gain Field Corrector hyperparameters and adaptation dynamics.
-    Configures the macro module parameters (authority alpha_gain, population dimension)
-    along with its internal slow ALIF biophysics (beta_mem, beta_adapt, v_th0, gamma)
-    used to emit bounded multiplicative gain masks in [-1, 1].
+    Slow Corrector hyperparameters and dynamics.
+    Supports 'gru' (control experiment), 'mlp' (residual MLP control), and 'alif' (neuromorphic gain field).
     """
-    enabled: bool = True       #: Master switch enabling the slow neuromodulatory gain field corrector network.
-    dim: int = 512             #: Hidden dimension of the ALIF corrector population.
-    beta_mem: float = 0.995     #: Membrane decay factor for corrector neurons (fast responsive integration).
-    beta_adapt: float = 0.98   #: Threshold adaptation decay factor for slow accumulation of persistent drift evidence.
-    v_th0: float = 0.50        #: Baseline firing threshold for corrector ALIF neurons.
-    gamma: float = 0.08        #: Adaptation strength incrementing threshold upon spike emission.
-    alpha_gain: float = 0.4    #: Maximum gain modulation authority scaling Δz_fast: Δz = Δz_fast * (1 + alpha_gain * mask).
+    enabled: bool = True       #: Master switch enabling the corrector network.
+    type: str = "gru"          #: Corrector architecture type: 'gru', 'mlp', or 'alif'.
+    dim: int = 512             #: Hidden dimension of the corrector network.
+    beta_mem: float = 0.995    #: Membrane decay factor for ALIF neurons.
+    beta_adapt: float = 0.98   #: Threshold adaptation decay factor for ALIF neurons.
+    v_th0: float = 0.50        #: Baseline firing threshold for ALIF neurons.
+    gamma: float = 0.08        #: Adaptation strength for ALIF neurons.
+    alpha_gain: float = 0.4    #: Maximum gain modulation authority scaling.
 
 
 @dataclass

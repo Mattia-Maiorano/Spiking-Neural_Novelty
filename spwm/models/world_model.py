@@ -83,6 +83,7 @@ class SPWM(nn.Module):
         p_dim: Optional[int] = None,
         ema_decay: float = 0.9,
         enable_corrector: bool = True,
+        corrector_type: str = "gru",
         corrector_dim: int = 128,
         corrector_beta_mem: float = 0.20,
         corrector_beta_adapt: float = 0.05,
@@ -158,12 +159,13 @@ class SPWM(nn.Module):
             residual=True,
         )
 
-        # 5. Slow Neuromodulatory Corrector (Gain Field System)
+        # 5. Slow Neuromodulatory Corrector (Gain Field System / GRU Control)
         self.enable_corrector = enable_corrector
         if enable_corrector:
             self.corrector: Optional[SlowCorrector] = SlowCorrector(
                 q_dim=q_dim,
                 p_dim=p_dim,
+                corrector_type=corrector_type,
                 corrector_dim=corrector_dim,
                 beta_mem=corrector_beta_mem,
                 beta_adapt=corrector_beta_adapt,
@@ -216,6 +218,7 @@ class SPWM(nn.Module):
             p_dim=cfg.model.p_dim,
             ema_decay=cfg.model.ema_decay,
             enable_corrector=corr_enabled,
+            corrector_type=cfg.corrector.type,
             corrector_dim=cfg.corrector.dim,
             corrector_beta_mem=cfg.corrector.beta_mem,
             corrector_beta_adapt=cfg.corrector.beta_adapt,

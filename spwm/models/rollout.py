@@ -126,9 +126,12 @@ def rollout_latent(
                 spikes_list.append(corr_out.spikes)
 
                 if telemetry is not None:
-                    # Adaptive threshold: V_th,t = V_th0 + gamma * A_t
-                    alif = corrector.alif
-                    v_th_val = alif.v_th0 + alif.gamma * corr_state.alif_state.a_adapt
+                    # Adaptive threshold: V_th,t = V_th0 + gamma * A_t (if ALIF-based)
+                    if hasattr(corrector, "alif") and corr_state.alif_state is not None:
+                        alif = corrector.alif
+                        v_th_val = alif.v_th0 + alif.gamma * corr_state.alif_state.a_adapt
+                    else:
+                        v_th_val = torch.zeros_like(corr_out.v_mem)
 
                     if isinstance(telemetry, TelemetryContainer):
                         telemetry.append(

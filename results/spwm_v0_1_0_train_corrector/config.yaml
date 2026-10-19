@@ -58,6 +58,7 @@ memory:
   - 0.985
 corrector:
   enabled: true
+  type: gru
   dim: 512
   beta_mem: 0.995
   beta_adapt: 0.98
@@ -66,7 +67,7 @@ corrector:
   alpha_gain: 0.4
 training:
   mode: train_corrector
-  epochs: 300
+  epochs: 228
   batch_size: 32
   weight_decay: 0.0005
   grad_clip_norm: 0.8

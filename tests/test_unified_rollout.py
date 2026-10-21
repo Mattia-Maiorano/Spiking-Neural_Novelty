@@ -87,5 +87,7 @@ def test_rollout_burn_in_bypasses_corrector():
     z_init = torch.randn(B, latent_dim)
     res = rollout_latent(model, z_init, horizon=H, use_corrector=True, burn_in_steps=burn_in, with_grad=False)
 
-    # During burn-in, trajectory must exactly match fast_trajectory
+    # During burn-in, trajectory must exactly match fast_trajectory and gain masks must be zero
     assert torch.allclose(res.trajectory[:, :burn_in], res.fast_trajectory[:, :burn_in])
+    assert res.gain_masks is not None
+    assert torch.all(res.gain_masks[:, :burn_in] == 0.0)

@@ -65,6 +65,7 @@ class SlowCorrector(nn.Module):
         surrogate_name: str = "atan",
         surrogate_alpha: float = 2.0,
         alpha_gain: float = 1.0,
+        feed_temporal_phase: bool = False,
     ) -> None:
         super().__init__()
         if q_dim <= 0:
@@ -83,8 +84,9 @@ class SlowCorrector(nn.Module):
         self.corrector_dim = corrector_dim
         self.alpha_gain = alpha_gain
         self.expansion_factor = p_dim // q_dim
+        self.feed_temporal_phase = feed_temporal_phase
 
-        input_feature_dim = 2 * self.latent_dim
+        input_feature_dim = 2 * self.latent_dim + (1 if self.feed_temporal_phase else 0)
 
         if self.corrector_type == "gru":
             self.gru_cell = nn.GRUCell(input_feature_dim, corrector_dim)
@@ -177,6 +179,7 @@ class SlowCorrector(nn.Module):
         state: Optional[SlowCorrectorState] = None,
         step_idx: Optional[int] = None,
         is_burn_in: bool = False,
+        horizon: Optional[int] = None,
     ) -> Tuple[torch.Tensor, SlowCorrectorOutput, SlowCorrectorState]:
         B = z_prev.shape[0]
         device = z_prev.device
@@ -185,7 +188,14 @@ class SlowCorrector(nn.Module):
             state = self.init_state(B, device=device)
 
         delta_z_fast = z_fast_proposed - z_prev
-        corr_in = torch.cat([z_fast_proposed, delta_z_fast], dim=-1)
+        if self.feed_temporal_phase:
+            t_val = (step_idx + 1) if step_idx is not None else (state.step_count + 1)
+            H_val = horizon if horizon is not None else 25
+            tau_val = float(t_val) / float(max(1, H_val))
+            tau = torch.full((B, 1), fill_value=tau_val, device=device, dtype=z_prev.dtype)
+            corr_in = torch.cat([z_fast_proposed, delta_z_fast, tau], dim=-1)
+        else:
+            corr_in = torch.cat([z_fast_proposed, delta_z_fast], dim=-1)
 
         if self.corrector_type == "gru":
             prev_h = state.gru_state if state.gru_state is not None else torch.zeros(B, self.corrector_dim, device=device)
@@ -198,6 +208,7 @@ class SlowCorrector(nn.Module):
 
             if is_burn_in:
                 z_t_corr = z_fast_proposed
+                gain_mask = torch.zeros_like(delta_z_corr)
                 intervened = False
             else:
                 z_t_corr = z_fast_proposed + delta_z_corr
@@ -219,6 +230,7 @@ class SlowCorrector(nn.Module):
 
             if is_burn_in:
                 z_t_corr = z_fast_proposed
+                gain_mask = torch.zeros_like(delta_z_corr)
                 intervened = False
             else:
                 z_t_corr = z_fast_proposed + delta_z_corr
@@ -241,6 +253,7 @@ class SlowCorrector(nn.Module):
 
             if is_burn_in:
                 z_t_corr = z_fast_proposed
+                gain_mask = torch.zeros_like(gain_mask)
                 intervened = False
             else:
                 delta_z_mod = delta_z_fast * (1.0 + self.alpha_gain * gain_mask)
@@ -278,3 +291,15 @@ class SlowCorrector(nn.Module):
         )
 
         return z_t_corr, output, new_state
+
+    def _load_from_state_dict(self, state_dict, prefix, local_metadata, strict, missing_keys, unexpected_keys, error_msgs):
+        if self.corrector_type == "gru":
+            weight_key = prefix + "gru_cell.weight_ih"
+            if weight_key in state_dict:
+                ckpt_in_dim = state_dict[weight_key].shape[1]
+                expected_in_dim = 2 * self.latent_dim + (1 if self.feed_temporal_phase else 0)
+                if ckpt_in_dim != expected_in_dim:
+                    self.feed_temporal_phase = (ckpt_in_dim == 2 * self.latent_dim + 1)
+                    device = state_dict[weight_key].device
+                    self.gru_cell = nn.GRUCell(ckpt_in_dim, self.corrector_dim).to(device)
+        super()._load_from_state_dict(state_dict, prefix, local_metadata, strict, missing_keys, unexpected_keys, error_msgs)

@@ -64,10 +64,11 @@ corrector:
   beta_adapt: 0.98
   v_th0: 0.5
   gamma: 0.08
-  alpha_gain: 0.4
+  alpha_gain: 0.1
+  feed_temporal_phase: true
 training:
   mode: train_corrector
-  epochs: 228
+  epochs: 300
   batch_size: 32
   weight_decay: 0.0005
   grad_clip_norm: 0.8
@@ -79,7 +80,7 @@ training:
   corrector_lr: 0.0004
   corrector_horizon: 25
   corrector_burn_in_steps: 5
-  perturb_corrector_states: true
+  perturb_corrector_states: false
   corrector_perturbation_std: 0.08
   predictor_checkpoint: results/spwm_v0_1_0_train_joint/model.pt
 loss:
@@ -90,6 +91,7 @@ loss:
   multi_step_horizon: 5
   beta_v: 2.0
   comb_sigma: 3.5
+  lambda_corrector_reg: 0.01
 evaluation:
   rollout_horizons: !!python/tuple
   - 1

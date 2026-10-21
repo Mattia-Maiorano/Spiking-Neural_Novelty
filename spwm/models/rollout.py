@@ -50,6 +50,7 @@ class RolloutResult:
     trajectory: torch.Tensor                         # [B, H, latent_dim]
     fast_trajectory: torch.Tensor                    # [B, H, latent_dim] (unmodulated proposal)
     spikes: Optional[torch.Tensor] = None            # [B, H, corrector_dim]
+    gain_masks: Optional[torch.Tensor] = None        # [B, H, latent_dim]
     corrector_state: Optional[SlowCorrectorState] = None
     decoded_kinematics: Optional[torch.Tensor] = None # [B, H, 4 * num_objects]
     telemetry: Optional[Union[TelemetryContainer, Dict[str, List[torch.Tensor]]]] = None
@@ -92,6 +93,7 @@ def rollout_latent(
         predictions = []
         fast_predictions = []
         spikes_list = []
+        gain_masks_list = []
         curr_z = z_init
 
         corrector = getattr(model, "corrector", None)
@@ -122,8 +124,10 @@ def rollout_latent(
                     state=corr_state,
                     step_idx=t,
                     is_burn_in=is_burn_in,
+                    horizon=horizon,
                 )
                 spikes_list.append(corr_out.spikes)
+                gain_masks_list.append(corr_out.gain_mask)
 
                 if telemetry is not None:
                     # Adaptive threshold: V_th,t = V_th0 + gamma * A_t (if ALIF-based)
@@ -154,6 +158,7 @@ def rollout_latent(
         trajectory = torch.stack(predictions, dim=1)
         fast_trajectory = torch.stack(fast_predictions, dim=1)
         spikes = torch.stack(spikes_list, dim=1) if spikes_list else None
+        gain_masks = torch.stack(gain_masks_list, dim=1) if gain_masks_list else None
 
         decoded = None
         if decode_kinematics and hasattr(model, "physical_decoder") and model.physical_decoder is not None:
@@ -163,6 +168,7 @@ def rollout_latent(
             trajectory=trajectory,
             fast_trajectory=fast_trajectory,
             spikes=spikes,
+            gain_masks=gain_masks,
             corrector_state=corr_state,
             decoded_kinematics=decoded,
             telemetry=telemetry,

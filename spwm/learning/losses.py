@@ -197,10 +197,11 @@ class CorrectorRolloutLoss(nn.Module):
     Single source of truth used identically in training and validation.
     """
 
-    def __init__(self, beta_v: float = 2.0, comb_sigma: float = 3.5) -> None:
+    def __init__(self, beta_v: float = 2.0, comb_sigma: float = 3.5, lambda_reg: float = 0.01) -> None:
         super().__init__()
         self.beta_v = beta_v
         self.comb_sigma = comb_sigma
+        self.lambda_reg = lambda_reg
 
     def forward(
         self,
@@ -208,6 +209,7 @@ class CorrectorRolloutLoss(nn.Module):
         target_kinematics: torch.Tensor,
         burn_in_steps: int = 0,
         num_objects: int = 1,
+        gain_masks: Optional[torch.Tensor] = None,
     ) -> Dict[str, torch.Tensor]:
         device = decoded_rollout.device
         pred_pos_active = decoded_rollout[:, burn_in_steps:, : 2 * num_objects]
@@ -234,16 +236,22 @@ class CorrectorRolloutLoss(nn.Module):
             l_vel = torch.tensor(0.0, device=device)
 
         l_kin = l_pos + self.beta_v * l_vel
-        loss_corr = l_kin
+        l_reg = torch.tensor(0.0, device=device)
+        if gain_masks is not None and self.lambda_reg > 0:
+            active_gains = gain_masks[:, burn_in_steps:] if burn_in_steps < gain_masks.shape[1] else gain_masks
+            l_reg = (active_gains ** 2).sum(dim=-1).mean()
+
+        total_loss = l_kin + self.lambda_reg * l_reg
 
         return {
-            "total_loss": loss_corr,
-            "loss_corr": loss_corr,
-            "l_corr": loss_corr,
+            "total_loss": total_loss,
+            "loss_corr": total_loss,
+            "l_corr": total_loss,
             "l_corr_asymptotic": l_kin,
             "l_kin": l_kin,
             "l_pos": l_pos,
             "l_vel": l_vel,
+            "l_reg": l_reg,
         }
 
     compute_corrector_rollout_loss = forward
@@ -260,10 +268,11 @@ class SPWMLoss(nn.Module):
         lambda_encoder: float = 1.0,
         lambda_decoder: float = 1.0,
         lambda_position: float = 1.0,
-        lambda_velocity: float = 1.0,
+        lambda_velocity: float = 2.0,
         multi_step_horizon: int = 5,
         beta_v: float = 2.0,
         comb_sigma: float = 3.5,
+        lambda_corrector_reg: float = 0.01,
         **kwargs: Any,
     ) -> None:
         super().__init__()
@@ -274,6 +283,7 @@ class SPWMLoss(nn.Module):
         self.multi_step_horizon = multi_step_horizon
         self.beta_v = beta_v
         self.comb_sigma = comb_sigma
+        self.lambda_corrector_reg = lambda_corrector_reg
 
         self.predictor_loss = PredictorLoss(
             lambda_encoder=lambda_encoder,
@@ -286,6 +296,7 @@ class SPWMLoss(nn.Module):
         self.corrector_loss = CorrectorRolloutLoss(
             beta_v=beta_v,
             comb_sigma=comb_sigma,
+            lambda_reg=lambda_corrector_reg,
         )
 
     @classmethod
@@ -298,6 +309,7 @@ class SPWMLoss(nn.Module):
             multi_step_horizon=cfg.multi_step_horizon,
             beta_v=cfg.beta_v,
             comb_sigma=cfg.comb_sigma,
+            lambda_corrector_reg=getattr(cfg, "lambda_corrector_reg", 0.01),
             **kwargs,
         )
 

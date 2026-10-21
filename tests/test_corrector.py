@@ -133,10 +133,11 @@ def test_burn_in_period():
         z_prev, z_proposed, state, is_burn_in=True
     )
 
-    # During burn-in, trajectory is untouched
+    # During burn-in, trajectory is untouched and gain mask is strictly dormant (zeros)
     assert torch.allclose(z_corr, z_proposed)
     assert out.intervened is False
-    # But internal state and gain_mask must still advance
+    assert (out.gain_mask == 0.0).all()
+    # But internal state and step count must still advance
     assert new_state.step_count == 1
     assert out.gain_mask.shape == (B, latent_dim)
     if new_state.alif_state is not None:
@@ -380,3 +381,55 @@ def test_corrector_rollout_loss_gaussian_comb():
     # Mid range step 12, 13 (indices 11, 12)
     assert raw_weights[11] < 0.01
     assert raw_weights[12] < 0.01
+
+
+def test_feed_temporal_phase_input():
+    """Diagnostic 1: Verifies that SlowCorrector accepts and incorporates tau_t = t/H."""
+    B = 2
+    q_dim = 8
+    p_dim = 24
+    latent_dim = q_dim + p_dim
+    corrector_dim = 16
+
+    corrector = SlowCorrector(
+        q_dim=q_dim,
+        p_dim=p_dim,
+        corrector_dim=corrector_dim,
+        feed_temporal_phase=True,
+    )
+    assert corrector.gru_cell.weight_ih.shape[1] == 2 * latent_dim + 1
+
+    state = corrector.init_state(B)
+    z_prev = torch.zeros(B, latent_dim)
+    z_proposed = torch.randn(B, latent_dim) * 0.1
+
+    z_corr, out, new_state = corrector.forward_step(
+        z_prev=z_prev,
+        z_fast_proposed=z_proposed,
+        state=state,
+        step_idx=0,
+        horizon=25,
+    )
+    assert z_corr.shape == (B, latent_dim)
+    assert out.gain_mask.shape == (B, latent_dim)
+    assert new_state.step_count == 1
+
+
+def test_corrector_activity_regularization():
+    """Diagnostic 4: Verifies activity regularization penalty on corrector gain L2 norm."""
+    from spwm.learning.losses import CorrectorRolloutLoss
+    loss_fn = CorrectorRolloutLoss(lambda_reg=0.01)
+
+    B, H = 2, 10
+    num_objects = 1
+    kin_dim = 4 * num_objects
+    pred_kin = torch.zeros(B, H, kin_dim)
+    target_kin = torch.zeros(B, H, kin_dim)
+
+    # Unit gains across all steps
+    gains = torch.ones(B, H, 128)
+    expected_l_reg = 128.0  # ||1||_2^2 for 128 dimensions = 128
+
+    out = loss_fn(pred_kin, target_kin, burn_in_steps=0, gain_masks=gains)
+    assert torch.isclose(out["l_reg"], torch.tensor(expected_l_reg))
+    assert torch.isclose(out["total_loss"], torch.tensor(0.01 * expected_l_reg))

@@ -84,6 +84,7 @@ class CorrectorPhaseHandler(PhaseHandler):
             target_kinematics=target_kin,
             burn_in_steps=burn_in,
             num_objects=self.cfg.environment.num_objects,
+            gain_masks=rollout_res.gain_masks,
         )
 
         self.corrector_optimizer.zero_grad()
@@ -102,6 +103,7 @@ class CorrectorPhaseHandler(PhaseHandler):
             "train_kin_loss": float(corr_loss_dict["l_kin"].item()),
             "train_pos_loss": float(corr_loss_dict["l_pos"].item()),
             "train_vel_loss": float(corr_loss_dict["l_vel"].item()),
+            "train_reg_loss": float(corr_loss_dict.get("l_reg", torch.tensor(0.0)).item()),
             "train_pos_err": pos_err,
             "train_vel_err": vel_err,
         }
@@ -142,6 +144,7 @@ class CorrectorPhaseHandler(PhaseHandler):
             target_kinematics=target_kin,
             burn_in_steps=burn_in,
             num_objects=self.cfg.environment.num_objects,
+            gain_masks=rollout_res.gain_masks,
         )
 
         # Compute multi-horizon position & velocity errors
@@ -156,6 +159,7 @@ class CorrectorPhaseHandler(PhaseHandler):
             "val_kin_loss": float(corr_loss_dict["l_kin"].item()),
             "val_pos_loss": float(corr_loss_dict["l_pos"].item()),
             "val_vel_loss": float(corr_loss_dict["l_vel"].item()),
+            "val_reg_loss": float(corr_loss_dict.get("l_reg", torch.tensor(0.0)).item()),
             "val_pos_err_h1": h1_pos,
             "val_pos_err_h25": h25_pos,
             "val_drift_ratio": drift,

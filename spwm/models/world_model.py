@@ -90,6 +90,7 @@ class SPWM(nn.Module):
         corrector_v_th0: float = 0.50,
         corrector_gamma: float = 0.08,
         corrector_alpha_gain: float = 1.0,
+        corrector_feed_temporal_phase: bool = False,
     ) -> None:
         super().__init__()
         if q_dim is None and p_dim is None:
@@ -174,6 +175,7 @@ class SPWM(nn.Module):
                 surrogate_name=surrogate_name,
                 surrogate_alpha=surrogate_alpha,
                 alpha_gain=corrector_alpha_gain,
+                feed_temporal_phase=corrector_feed_temporal_phase,
             )
         else:
             self.corrector = None
@@ -225,6 +227,7 @@ class SPWM(nn.Module):
             corrector_v_th0=cfg.corrector.v_th0,
             corrector_gamma=cfg.corrector.gamma,
             corrector_alpha_gain=cfg.corrector.alpha_gain,
+            corrector_feed_temporal_phase=getattr(cfg.corrector, "feed_temporal_phase", False),
         )
 
     def init_buffer(self) -> None:

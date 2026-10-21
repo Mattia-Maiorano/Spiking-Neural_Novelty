@@ -184,7 +184,8 @@ class CorrectorConfig:
     beta_adapt: float = 0.98   #: Threshold adaptation decay factor for ALIF neurons.
     v_th0: float = 0.50        #: Baseline firing threshold for ALIF neurons.
     gamma: float = 0.08        #: Adaptation strength for ALIF neurons.
-    alpha_gain: float = 0.4    #: Maximum gain modulation authority scaling.
+    alpha_gain: float = 0.1    #: Maximum gain modulation authority scaling.
+    feed_temporal_phase: bool = True  #: Concatenate normalized temporal phase tau_t = t/H to corrector input [z_fast, delta_z_fast, tau_t].
 
 
 @dataclass
@@ -260,7 +261,7 @@ class TrainingConfig:
     corrector_lr: float = 0.0004                   #: Dedicated learning rate for neuromodulatory gain-field corrector parameters in 'train_corrector'.
     corrector_horizon: int = 25                    #: Temporal unroll horizon H over which corrector rollout comb loss is computed.
     corrector_burn_in_steps: int = 5               #: Initial unroll steps where corrector integrates history but gain modulation is bypassed.
-    perturb_corrector_states: bool = True          #: Whether to inject Gaussian noise into corrector inputs to regularize robustness under drift.
+    perturb_corrector_states: bool = False         #: Whether to inject Gaussian noise into corrector inputs to regularize robustness under drift.
     corrector_perturbation_std: float = 0.08       #: Standard deviation sigma of Gaussian perturbation injected into corrector states.
     predictor_checkpoint: Optional[str] = None     #: Path to pre-trained predictor checkpoint .pt required when running in 'train_corrector' mode.
 
@@ -317,6 +318,7 @@ class LossConfig:
     multi_step_horizon: int = 5     #: Multi-step autonomous rollout horizon H in 'train_predictor'.
     beta_v: float = 2.0             #: Velocity loss scaling factor in 'train_corrector' comb loss. Formula: L_kin = L_pos + beta_v * L_vel.
     comb_sigma: float = 3.5         #: Gaussian bandwidth parameter for smooth comb temporal weighting in 'train_corrector'.
+    lambda_corrector_reg: float = 0.01 #: Activity regularization penalty weight lambda_reg on corrector gain L2 norm: L_total = L_rollout + lambda_reg * mean(||g_t||_2^2).
 
 
 

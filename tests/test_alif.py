@@ -1,12 +1,6 @@
 import torch
 import pytest
 from spwm.core.neurons import ALIFCell, ALIFState
-from spwm.learning.eprop import (
-    ALIFEpropTraces,
-    init_eprop_traces,
-    step_alif_eprop_traces,
-    compute_eprop_weight_update,
-)
 
 
 def test_alif_cell_membrane_adaptation_and_reset():
@@ -89,30 +83,15 @@ def test_alif_threshold_stability_under_sustained_input():
     assert torch.all(state.a_adapt < 10.0)
 
 
-def test_alif_eprop_dual_eligibility_traces():
-    """Verify that e-prop dual traces (trace_v and trace_a) update and produce valid weight updates."""
+def test_alif_surrogate_derivative_computation():
+    """Verify analytical surrogate derivative computation on ALIFState."""
     cell = ALIFCell(size=2, beta_mem=0.80, beta_adapt=0.90, v_th0=1.0, gamma=0.18)
-    in_dim = 3
     B = 2
-
     state = cell.init_state(batch_size=B)
-    traces = init_eprop_traces(batch_size=B, out_dim=cell.size, in_dim=in_dim)
-
-    x_pre = torch.rand(B, in_dim)
-    syn_input = torch.rand(B, cell.size)
-
-    # Step forward
+    syn_input = torch.rand(B, cell.size, requires_grad=True)
     spk, new_state = cell(syn_input, state=state)
-    e_trace, new_traces = step_alif_eprop_traces(cell, new_state, x_pre, traces=traces)
-
-    assert e_trace.shape == (B, cell.size, in_dim)
-    assert not torch.isnan(e_trace).any()
-    assert not torch.isinf(e_trace).any()
-
-    # Compute weight update with learning signal L
-    learning_signal = torch.randn(B, cell.size)
-    delta_w = compute_eprop_weight_update(learning_signal, e_trace)
-
-    assert delta_w.shape == (cell.size, in_dim)
-    assert not torch.isnan(delta_w).any()
-    assert not torch.isinf(delta_w).any()
+    psi = cell.compute_surrogate_derivative(new_state)
+    assert psi.shape == (B, cell.size)
+    assert torch.all(psi > 0.0)
+    spk.sum().backward()
+    assert syn_input.grad is not None

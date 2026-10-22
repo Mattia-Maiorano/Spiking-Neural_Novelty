@@ -1,0 +1,233 @@
+{
+  "version": "spwm_v0_2_0",
+  "model_name": "spwm_v0_2_0_train_m1",
+  "total_epochs": 45,
+  "parameters": 548324,
+  "evaluation": {
+    "teacher_forcing_mse": 0.028325516157425366,
+    "mean_spike_rate": 0.09833713105091682,
+    "rollout_mae": 0.26234638347075534,
+    "rollout_score": 0.3985291277502201,
+    "dynamic_score": 0.3985291277502201,
+    "gate_passed": true,
+    "drift_ratio": 2.765221741733759,
+    "horizons": [
+      1,
+      5,
+      10
+    ],
+    "latent_mse_per_horizon": {
+      "1": 0.03739869651886133,
+      "5": 0.0735153965651989,
+      "10": 0.12778603801360497
+    },
+    "position_error_per_horizon": {
+      "1": 0.1374347943526048,
+      "5": 0.26956667464513046,
+      "10": 0.3800376814145308
+    },
+    "velocity_error_per_horizon": {
+      "1": 0.4021879480435298,
+      "5": 0.4264242511529189,
+      "10": 0.5017106189177587
+    },
+    "position_mse_per_horizon": {
+      "1": 0.023238711847135655,
+      "5": 0.054816631886821524,
+      "10": 0.09855903971653718
+    },
+    "velocity_mse_per_horizon": {
+      "1": 0.10682767801559888,
+      "5": 0.12523344445687074,
+      "10": 0.17128034509145296
+    }
+  },
+  "training_progression": {
+    "total_epochs": 45,
+    "num_segments": 10,
+    "best_checkpoint": {
+      "epoch": 25,
+      "score": 0.181756
+    },
+    "trends": {
+      "train_loss": {
+        "initial": 0.952364,
+        "final": 0.198699,
+        "best": 0.188228,
+        "best_epoch": 22,
+        "change": -0.753664,
+        "pct_change": "-79.14%"
+      },
+      "val_loss": {
+        "initial": 0.514504,
+        "final": 0.198119,
+        "best": 0.181756,
+        "best_epoch": 25,
+        "change": -0.316384,
+        "pct_change": "-61.49%"
+      },
+      "train_pos_err": {
+        "initial": 0.693661,
+        "final": 0.652123,
+        "best": 0.652123,
+        "best_epoch": 45,
+        "change": -0.041539,
+        "pct_change": "-5.99%"
+      },
+      "val_pos_err": {
+        "initial": 0.665405,
+        "final": 0.656962,
+        "best": 0.656962,
+        "best_epoch": 45,
+        "change": -0.008443,
+        "pct_change": "-1.27%"
+      },
+      "train_vel_err": {
+        "initial": 0.782143,
+        "final": 0.765997,
+        "best": 0.765235,
+        "best_epoch": 36,
+        "change": -0.016147,
+        "pct_change": "-2.06%"
+      },
+      "val_vel_err": {
+        "initial": 0.781455,
+        "final": 0.782362,
+        "best": 0.776977,
+        "best_epoch": 27,
+        "change": 0.000907,
+        "pct_change": "+0.12%"
+      },
+      "score": {
+        "initial": 0.514504,
+        "final": 0.198119,
+        "best": 0.181756,
+        "best_epoch": 25,
+        "change": -0.316384,
+        "pct_change": "-61.49%"
+      }
+    },
+    "sampled_segments": [
+      {
+        "segment": 1,
+        "epoch": 1,
+        "progress_pct": "0.0%",
+        "train_loss": 0.952364,
+        "val_loss": 0.514504,
+        "train_pos_err": 0.693661,
+        "val_pos_err": 0.665405,
+        "train_vel_err": 0.782143,
+        "val_vel_err": 0.781455,
+        "score": 0.514504
+      },
+      {
+        "segment": 2,
+        "epoch": 6,
+        "progress_pct": "11.1%",
+        "train_loss": 0.246428,
+        "val_loss": 0.231103,
+        "train_pos_err": 0.653583,
+        "val_pos_err": 0.657633,
+        "train_vel_err": 0.766515,
+        "val_vel_err": 0.785103,
+        "score": 0.231103
+      },
+      {
+        "segment": 3,
+        "epoch": 11,
+        "progress_pct": "22.2%",
+        "train_loss": 0.200175,
+        "val_loss": 0.197881,
+        "train_pos_err": 0.652639,
+        "val_pos_err": 0.659755,
+        "train_vel_err": 0.766849,
+        "val_vel_err": 0.780325,
+        "score": 0.197881
+      },
+      {
+        "segment": 4,
+        "epoch": 16,
+        "progress_pct": "33.3%",
+        "train_loss": 0.191515,
+        "val_loss": 0.188775,
+        "train_pos_err": 0.653694,
+        "val_pos_err": 0.657006,
+        "train_vel_err": 0.766774,
+        "val_vel_err": 0.781542,
+        "score": 0.188775
+      },
+      {
+        "segment": 5,
+        "epoch": 21,
+        "progress_pct": "44.4%",
+        "train_loss": 0.189144,
+        "val_loss": 0.184514,
+        "train_pos_err": 0.65314,
+        "val_pos_err": 0.657421,
+        "train_vel_err": 0.76628,
+        "val_vel_err": 0.779716,
+        "score": 0.184514
+      },
+      {
+        "segment": 6,
+        "epoch": 25,
+        "progress_pct": "55.6%",
+        "train_loss": 0.189926,
+        "val_loss": 0.181756,
+        "train_pos_err": 0.652941,
+        "val_pos_err": 0.657193,
+        "train_vel_err": 0.766315,
+        "val_vel_err": 0.783365,
+        "score": 0.181756
+      },
+      {
+        "segment": 7,
+        "epoch": 30,
+        "progress_pct": "66.7%",
+        "train_loss": 0.192342,
+        "val_loss": 0.190129,
+        "train_pos_err": 0.652431,
+        "val_pos_err": 0.660332,
+        "train_vel_err": 0.766363,
+        "val_vel_err": 0.78117,
+        "score": 0.190129
+      },
+      {
+        "segment": 8,
+        "epoch": 35,
+        "progress_pct": "77.8%",
+        "train_loss": 0.195661,
+        "val_loss": 0.200435,
+        "train_pos_err": 0.652144,
+        "val_pos_err": 0.660646,
+        "train_vel_err": 0.766283,
+        "val_vel_err": 0.785011,
+        "score": 0.200435
+      },
+      {
+        "segment": 9,
+        "epoch": 40,
+        "progress_pct": "88.9%",
+        "train_loss": 0.197805,
+        "val_loss": 0.198707,
+        "train_pos_err": 0.652437,
+        "val_pos_err": 0.657024,
+        "train_vel_err": 0.766268,
+        "val_vel_err": 0.78303,
+        "score": 0.198707
+      },
+      {
+        "segment": 10,
+        "epoch": 45,
+        "progress_pct": "100.0%",
+        "train_loss": 0.198699,
+        "val_loss": 0.198119,
+        "train_pos_err": 0.652123,
+        "val_pos_err": 0.656962,
+        "train_vel_err": 0.765997,
+        "val_vel_err": 0.782362,
+        "score": 0.198119
+      }
+    ]
+  }
+}

@@ -14,7 +14,6 @@ from spwm.config.schema import (
     ModelConfig,
     LatentNeuronConfig,
     MemoryConfig,
-    CorrectorConfig,
     TrainingConfig,
     LossConfig,
     EvaluationConfig,
@@ -22,106 +21,73 @@ from spwm.config.schema import (
 from spwm.data.datasets import EventWorldDataset, collate_event_batches
 from spwm.learning.engine import BaseTrainer
 from spwm.learning.losses import SPWMLoss
-from spwm.learning.phases import PredictorPhaseHandler, CorrectorPhaseHandler
+from spwm.learning.phases import PredictorPhaseHandler
 from spwm.models.world_model import SPWM
 
 
-def make_test_cfg(mode: str) -> ExperimentConfig:
+def make_test_cfg(mode: str, phase_horizon: int = 5) -> ExperimentConfig:
     return ExperimentConfig(
         project=ProjectConfig(name="test_proj"),
         environment=EnvironmentConfig(num_objects=1),
-        data=DataConfig(sequence_length=15, batch_size=2, total_trajectories=4),
+        data=DataConfig(sequence_length=25, batch_size=2, total_trajectories=4),
         model=ModelConfig(latent_dim=32, q_dim=8, p_dim=24, num_keypoints=4),
         neuron=LatentNeuronConfig(),
         memory=MemoryConfig(timescale_dims=(16, 16)),
-        corrector=CorrectorConfig(enabled=True, dim=16),
-        training=TrainingConfig(mode=mode, epochs=2, corrector_horizon=5, corrector_burn_in_steps=0),
+        training=TrainingConfig(
+            mode=mode,
+            epochs=2,
+            phase_horizon=phase_horizon,
+            max_rollout_horizon=20,
+        ),
         loss=LossConfig(),
         evaluation=EvaluationConfig(rollout_horizons=(1, 5)),
     )
 
 
-def test_representation_phase_handler_isolation():
-    cfg = make_test_cfg("train_representation")
+def test_m1_phase_handler_isolation():
+    cfg = make_test_cfg("train_m1", phase_horizon=5)
     model = SPWM.from_config(cfg)
     loss_fn = SPWMLoss.from_config(cfg.loss)
     handler = PredictorPhaseHandler(model=model, cfg=cfg, loss_fn=loss_fn, device=torch.device("cpu"))
 
-    # Corrector must be frozen
-    assert model.corrector is not None
-    for p in model.corrector.parameters():
-        assert not p.requires_grad
-
-    # Predictor must be frozen in train_representation
-    for p in model.predictor.parameters():
-        assert not p.requires_grad
-    for p in model.dynamics.parameters():
-        assert not p.requires_grad
-
-    # Encoder and physical decoder must be active
+    # M1 active, M2 and M3 frozen
+    assert any(p.requires_grad for p in model.m1.parameters())
+    assert all(not p.requires_grad for p in model.m2.parameters())
+    assert all(not p.requires_grad for p in model.m3.parameters())
     assert any(p.requires_grad for p in model.encoder.parameters())
+    assert any(p.requires_grad for p in model.dynamics.parameters())
+    assert any(p.requires_grad for p in model.sensory_predictor.parameters())
     assert any(p.requires_grad for p in model.physical_decoder.parameters())
 
 
-def test_predictor_phase_handler_isolation():
-    cfg = make_test_cfg("train_predictor")
+def test_m2_phase_handler_isolation():
+    cfg = make_test_cfg("train_m2", phase_horizon=5)
     model = SPWM.from_config(cfg)
     loss_fn = SPWMLoss.from_config(cfg.loss)
     handler = PredictorPhaseHandler(model=model, cfg=cfg, loss_fn=loss_fn, device=torch.device("cpu"))
 
-    # Corrector must be frozen
-    assert model.corrector is not None
-    for p in model.corrector.parameters():
-        assert not p.requires_grad
-
-    # SpatialSoftmax encoder and physical decoder must be frozen
-    for p in model.encoder.parameters():
-        assert not p.requires_grad
-    for p in model.physical_decoder.parameters():
-        assert not p.requires_grad
-
-    # Predictor and dynamics must be active
-    assert any(p.requires_grad for p in model.predictor.parameters())
-    assert any(p.requires_grad for p in model.dynamics.parameters())
+    # M2 active, M1 and M3 frozen
+    assert any(p.requires_grad for p in model.m2.parameters())
+    assert all(not p.requires_grad for p in model.m1.parameters())
+    assert all(not p.requires_grad for p in model.m3.parameters())
+    assert all(not p.requires_grad for p in model.encoder.parameters())
 
 
-def test_joint_phase_handler_setup():
-    cfg = make_test_cfg("train_joint")
+def test_m3_phase_handler_joint_setup():
+    cfg = make_test_cfg("train_m3", phase_horizon=5)
     model = SPWM.from_config(cfg)
     loss_fn = SPWMLoss.from_config(cfg.loss)
     handler = PredictorPhaseHandler(model=model, cfg=cfg, loss_fn=loss_fn, device=torch.device("cpu"))
 
-    # Corrector must be frozen
-    assert model.corrector is not None
-    for p in model.corrector.parameters():
-        assert not p.requires_grad
-
-    # SpatialSoftmax encoder, physical decoder, predictor, and dynamics must all be active
-    assert any(p.requires_grad for p in model.encoder.parameters())
-    assert any(p.requires_grad for p in model.physical_decoder.parameters())
-    assert any(p.requires_grad for p in model.predictor.parameters())
-    assert any(p.requires_grad for p in model.dynamics.parameters())
-    assert handler.representation_optimizer is not None
-    assert handler.predictor_optimizer is not None
-
-
-def test_corrector_phase_handler_isolation():
-    cfg = make_test_cfg("train_corrector")
-    model = SPWM.from_config(cfg)
-    loss_fn = SPWMLoss.from_config(cfg.loss, q_dim=8, p_dim=24)
-    handler = CorrectorPhaseHandler(model=model, cfg=cfg, loss_fn=loss_fn, device=torch.device("cpu"))
-
-    # Corrector must be trainable
-    assert all(p.requires_grad for p in model.corrector.parameters())
-
-    # All other modules must be strictly frozen
-    for name, param in model.named_parameters():
-        if "corrector" not in name:
-            assert not param.requires_grad, f"{name} should be frozen"
+    # BOTH M2 and M3 active, M1 frozen
+    assert any(p.requires_grad for p in model.m2.parameters())
+    assert any(p.requires_grad for p in model.m3.parameters())
+    assert all(not p.requires_grad for p in model.m1.parameters())
+    assert all(not p.requires_grad for p in model.encoder.parameters())
 
 
 def test_base_trainer_epoch_loop_and_checkpoint(tmp_path):
-    cfg = make_test_cfg("train_predictor")
+    cfg = make_test_cfg("train_m1", phase_horizon=5)
     model = SPWM.from_config(cfg)
 
     dataset = EventWorldDataset(

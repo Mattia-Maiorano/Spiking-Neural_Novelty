@@ -1,61 +1,43 @@
-from spwm.core.neurons import (
+"""Compatibility facade for `spwm.core` -> `spwm.models`."""
+
+from spwm.models import (
     ALIFCell,
     ALIFState,
-    NeuronState,
-    SurrogateSpike,
-    AtanSurrogate,
-    FastSigmoidSurrogate,
-    SigmoidSurrogate,
-    get_surrogate,
-    surrogate_derivative,
-)
-from spwm.core.memory import (
+    CascadedTemporalRelay,
+    DynamicsOutput,
+    DynamicsState,
+    EventEncoder,
+    LatentPredictor,
     MultiTimescaleMemory,
     MultiTimescaleState,
-    compute_tier_dims,
-)
-from spwm.core.encoder import (
-    EventEncoder,
-    SpatialSoftmax,
-)
-from spwm.core.predictor import (
-    LatentPredictor,
     PhysicalDecoder,
     PredictorOutput,
-)
-from spwm.core.corrector import (
-    SlowCorrector,
-    SlowCorrectorState,
-    SlowCorrectorOutput,
-)
-from spwm.core.dynamics import (
+    SpatialSoftmax,
     SpikingLatentDynamics,
-    DynamicsState,
-    DynamicsOutput,
+    SurrogateSpike,
+    surrogate_spike,
+)
+from spwm.models.predictors import (
+    compute_convergence_funnel_target,
+    extrapolate_latent,
 )
 
 __all__ = [
     "ALIFCell",
     "ALIFState",
-    "NeuronState",
     "SurrogateSpike",
-    "AtanSurrogate",
-    "FastSigmoidSurrogate",
-    "SigmoidSurrogate",
-    "get_surrogate",
-    "surrogate_derivative",
+    "surrogate_spike",
     "MultiTimescaleMemory",
     "MultiTimescaleState",
-    "compute_tier_dims",
     "EventEncoder",
     "SpatialSoftmax",
-    "LatentPredictor",
-    "PhysicalDecoder",
-    "PredictorOutput",
-    "SlowCorrector",
-    "SlowCorrectorState",
-    "SlowCorrectorOutput",
     "SpikingLatentDynamics",
     "DynamicsState",
     "DynamicsOutput",
+    "LatentPredictor",
+    "CascadedTemporalRelay",
+    "PhysicalDecoder",
+    "PredictorOutput",
+    "extrapolate_latent",
+    "compute_convergence_funnel_target",
 ]

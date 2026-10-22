@@ -12,7 +12,7 @@ import torch
 import torch.nn as nn
 from torch.utils.data import DataLoader
 
-from spwm.learning.metrics import position_error, velocity_error
+from spwm.training.metrics import position_error, velocity_error
 from spwm.models.rollout import rollout_latent
 
 
@@ -83,6 +83,31 @@ class RolloutEvaluationResult:
     def dynamic_score(self) -> float:
         return self.compute_dynamic_score()
 
+def get_phase_eval_horizons(
+    mode: str,
+    phase_horizon: int = 10,
+    config_horizons: Sequence[int] = (1, 5, 10, 25, 50, 100),
+) -> List[int]:
+    """Return the canonical evaluation horizons for a given training phase mode.
+
+    - `train_m1`: M1 runs isolated for the first `phase_horizon` steps (`0 -> H`, e.g., `[1, 5, 10]`).
+    - `train_m2`: Frozen M1 computes `0 -> H` and M2 computes `H -> 2H`; combined evaluation
+      runs up to `2 * H` (e.g., `[1, 5, 10, 15, 20]`).
+    - `train_m3` / `train_cascade`: Full relay (`0 -> H` M1, `H -> 2H` M2, `2H -> 3H` M3, `3H -> 4H` M2, ...)
+      evaluated up to the horizons specified in `schema.py` (`config_horizons`).
+    """
+    m = mode.lower()
+    H = phase_horizon
+    if m == "train_m1":
+        h_set = {h for h in config_horizons if h <= H} | {1, max(1, H // 2), H}
+        return sorted(h for h in h_set if 1 <= h <= H)
+    if m == "train_m2":
+        max_m2 = 2 * H
+        h_set = {h for h in config_horizons if h <= max_m2} | {1, max(1, H // 2), H, H + max(1, H // 2), max_m2}
+        return sorted(h for h in h_set if 1 <= h <= max_m2)
+    return sorted(set(config_horizons))
+
+
 class RolloutEvaluator:
     """
     Evaluates autonomous rollouts and long-horizon degradation curves.
@@ -97,6 +122,7 @@ class RolloutEvaluator:
         num_objects: int = 1,
         use_corrector: bool = True,
         temporal_burn_in: int = 5,
+        fixed_predictor: Optional[nn.Module] = None,
     ) -> None:
         if device is None:
             if torch.backends.mps.is_available():
@@ -114,6 +140,7 @@ class RolloutEvaluator:
         self.num_objects = num_objects
         self.use_corrector = use_corrector
         self.temporal_burn_in = temporal_burn_in
+        self.fixed_predictor = fixed_predictor
 
     @torch.no_grad()
     def evaluate_dataset(self, data_loader: DataLoader, max_batches: Optional[int] = None) -> RolloutEvaluationResult:
@@ -131,7 +158,7 @@ class RolloutEvaluator:
             true_kin = batch["flat_kinematics"].to(self.device)
             b, t, _, _, _ = events.shape
 
-            out = self.model(events, accumulate_local_updates=False)
+            out = self.model(events)
             latent_states = out.latent_states
 
             pred_latents = out.predicted_latents[:, :-1]
@@ -157,10 +184,10 @@ class RolloutEvaluator:
                     model=self.model,
                     z_init=z_start,
                     horizon=max_eval_h,
-                    use_corrector=self.use_corrector,
                     with_grad=False,
                     decode_kinematics=True,
                     initial_decoder_state=decoder_state,
+                    fixed_predictor=self.fixed_predictor,
                 )
 
                 for h in self.horizons:

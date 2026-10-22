@@ -14,16 +14,20 @@ from spwm.config.schema import (
 
 def test_experiment_config_instantiates_cleanly():
     cfg = ExperimentConfig()
-    assert cfg.project.name == "spwm_v0_1_0"
+    assert cfg.project.name == "spwm_v0_2_0"
     assert cfg.model.latent_dim == 128
     assert cfg.model.q_dim == 32
     assert cfg.model.p_dim == 96
     assert cfg.model.num_keypoints == 16
     assert cfg.memory.num_timescales == 2
     assert cfg.memory.timescale_dims == (128, 128)
-    assert cfg.training.mode in ("train_predictor", "train_corrector")
-    assert cfg.loss.comb_sigma == 3.5
-    assert cfg.loss.beta_v == 2.0
+    assert cfg.training.mode == "train_m1"
+    assert cfg.training.phase_horizon == 10
+    assert cfg.training.early_stopping_patience == 20
+    assert cfg.training.max_rollout_horizon == 30
+    assert cfg.loss.lambda_encoder == 1.0
+    assert cfg.loss.lambda_decoder == 1.0
+    assert not hasattr(cfg.training, "m2_num_phases")
 
 
 def test_unknown_key_raises_value_error():
@@ -56,6 +60,10 @@ def test_timescale_dims_length_mismatch_raises():
         MemoryConfig(num_timescales=3, timescale_dims=(64, 64), betas=(0.9, 0.985))
 
 
-def test_invalid_training_mode_raises():
+def test_invalid_and_pruned_training_modes_raise():
     with pytest.raises(ValueError, match="Invalid training mode"):
         TrainingConfig(mode="bogus_mode")
+    # All old modalities are completely pruned and raise ValueError
+    for pruned_mode in ["train_representation", "train_predictor", "train_joint", "train_corrector"]:
+        with pytest.raises(ValueError, match="Invalid training mode"):
+            TrainingConfig(mode=pruned_mode)

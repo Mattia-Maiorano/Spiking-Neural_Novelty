@@ -1,11 +1,10 @@
-from spwm.config.schema import (
+from spwm.contracts.config import (
     ProjectConfig,
     EnvironmentConfig,
     DataConfig,
     ModelConfig,
     LatentNeuronConfig,
     MemoryConfig,
-    CorrectorConfig,
     TrainingConfig,
     LossConfig,
     EvaluationConfig,
@@ -17,8 +16,8 @@ __all__ = [
     "EnvironmentConfig",
     "DataConfig",
     "ModelConfig",
+    "LatentNeuronConfig",
     "MemoryConfig",
-    "CorrectorConfig",
     "TrainingConfig",
     "LossConfig",
     "EvaluationConfig",

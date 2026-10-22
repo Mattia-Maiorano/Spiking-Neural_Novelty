@@ -1,24 +1,26 @@
 """
-Automated Ablation Study Runner for SPWM.
-Executes systematic architectural and learning ablations.
+Automated Ablation Study Runner for SPWM (v0.2.0).
+Executes systematic architectural and learning ablations using immutable ExperimentConfig overrides.
+
 Usage:
     python experiments/ablation.py --base-config configs/experiments/spwm_v0_1_0.yaml --epochs 10
 """
 
 from __future__ import annotations
+
 import argparse
-import copy
+from dataclasses import replace
 from pathlib import Path
 from typing import Any, Dict
 import chronicle
 import torch
 
-from spwm.config.schema import ExperimentConfig
+from spwm.contracts.config import ExperimentConfig
 from spwm.data.datasets import create_dataloaders
 from spwm.evaluation.evaluator import RolloutEvaluator
 from spwm.evaluation.visualizer import plot_ablation_comparison
-from spwm.learning.engine import BaseTrainer
 from spwm.models.world_model import SPWM
+from spwm.training.engine import BaseTrainer
 from spwm.utils.reproducibility import set_seed
 
 
@@ -30,18 +32,20 @@ def run_single_ablation(
     epochs: int,
     results_dir: Path,
 ) -> float:
-    cfg.project.name = f"ablation_{name.lower().replace(' ', '_')}"
-    cfg.training.epochs = epochs
-    ablation_dir = results_dir / cfg.project.name
+    run_cfg = cfg.with_overrides(
+        name=f"ablation_{name.lower().replace(' ', '_')}",
+        epochs=epochs,
+    )
+    ablation_dir = results_dir / run_cfg.project.name
     ablation_dir.mkdir(parents=True, exist_ok=True)
 
     chronicle.log_info(f"--- Running Ablation: {name} ({epochs} epochs) ---")
-    set_seed(cfg.project.seed)
+    set_seed(run_cfg.project.seed)
 
-    model = SPWM.from_config(cfg).to(device)
+    model = SPWM.from_config(run_cfg).to(device)
     engine = BaseTrainer(
         model=model,
-        cfg=cfg,
+        cfg=run_cfg,
         train_loader=dataloaders["train"],
         val_loader=dataloaders["val"],
         device=device,
@@ -53,7 +57,7 @@ def run_single_ablation(
         model=model,
         device=device,
         horizons=[1, 5, 10],
-        num_objects=cfg.environment.num_objects,
+        num_objects=run_cfg.environment.num_objects,
     )
     test_res = evaluator.evaluate_dataset(dataloaders["test"])
     rollout_h10 = test_res.latent_mse_per_horizon.get(10, test_res.teacher_forcing_mse)
@@ -70,10 +74,7 @@ def main() -> None:
     parser.add_argument("--results-dir", type=str, default="results/ablations", help="Results directory")
     args = parser.parse_args()
 
-    if args.base_config is not None:
-        base_cfg = ExperimentConfig.load(args.base_config)
-    else:
-        base_cfg = ExperimentConfig()
+    base_cfg = ExperimentConfig.load(args.base_config) if args.base_config is not None else ExperimentConfig()
     results_dir = Path(args.results_dir)
     results_dir.mkdir(parents=True, exist_ok=True)
 
@@ -99,16 +100,15 @@ def main() -> None:
     )
 
     ablation_matrix = {
-        "Full SPWM (Nominal)": copy.deepcopy(base_cfg),
-        "Ablation A: Fast Only": copy.deepcopy(base_cfg),
-        "Ablation B: No Multi-step": copy.deepcopy(base_cfg),
-        "Ablation C: No Sparsity": copy.deepcopy(base_cfg),
+        "Full SPWM (Nominal)": base_cfg,
+        "Ablation A: Fast Memory Only": replace(
+            base_cfg, memory=replace(base_cfg.memory, betas=(0.90, 0.90))
+        ),
+        "Ablation B: Short Relay Horizon": base_cfg.with_overrides(phase_horizon=5),
+        "Ablation C: No Keypoint Supervision": replace(
+            base_cfg, loss=replace(base_cfg.loss, lambda_encoder=0.0)
+        ),
     }
-
-    # Configure overrides
-    ablation_matrix["Ablation A: Fast Only"].memory.betas = (0.90, 0.90)
-    ablation_matrix["Ablation B: No Multi-step"].loss.lambda_multi = 0.0
-    ablation_matrix["Ablation C: No Sparsity"].loss.lambda_sparse = 0.0
 
     scores = {}
     for name, cfg in ablation_matrix.items():

@@ -1,18 +1,20 @@
 """
-Evaluation Entrypoint for SPWM Checkpoints.
+Evaluation Entrypoint for SPWM Checkpoints (v0.2.0).
+
 Usage:
     python experiments/evaluate.py --checkpoint results/<run_id>/model.pt --config results/<run_id>/config.yaml
 """
 
 from __future__ import annotations
+
 import argparse
 from pathlib import Path
 import chronicle
 import torch
 
-from spwm.config.schema import ExperimentConfig
+from spwm.contracts.config import ExperimentConfig
 from spwm.data.datasets import create_dataloaders
-from spwm.evaluation.evaluator import RolloutEvaluator
+from spwm.evaluation.evaluator import RolloutEvaluator, get_phase_eval_horizons
 from spwm.evaluation.visualizer import plot_multi_step_degradation
 from spwm.models.world_model import SPWM
 from spwm.utils.reproducibility import set_seed
@@ -23,7 +25,6 @@ def main() -> None:
     parser.add_argument("--checkpoint", type=str, required=True, help="Path to model checkpoint (.pt)")
     parser.add_argument("--config", type=str, required=True, help="Path to config YAML")
     parser.add_argument("--device", type=str, default=None, help="Device (cpu, mps, cuda)")
-    parser.add_argument("--use-corrector", action="store_true", default=None, help="Force use of corrector in rollouts")
     args = parser.parse_args()
 
     cfg = ExperimentConfig.load(args.config)
@@ -39,29 +40,34 @@ def main() -> None:
         device = torch.device("cpu")
 
     ckpt_path = Path(args.checkpoint)
+    if ckpt_path.is_dir():
+        ckpt_path = ckpt_path / "model.pt"
     out_dir = ckpt_path.parent
     figures_dir = out_dir / "figures"
     figures_dir.mkdir(parents=True, exist_ok=True)
 
-    use_corrector = args.use_corrector
-    if use_corrector is None:
-        use_corrector = (cfg.training.mode == "train_corrector") or ("corrector" in str(ckpt_path).lower())
+    chronicle.log_info(f"Loading checkpoint strictly: {ckpt_path} on {device}")
+    model = SPWM.from_config(cfg).to(device)
 
-    chronicle.log_info(f"Loading checkpoint: {ckpt_path} on {device} (use_corrector: {use_corrector})")
-    model = SPWM.from_config(cfg, enable_corrector=use_corrector).to(device)
-
-    state_dict = torch.load(ckpt_path, map_location=device)
+    state_dict = torch.load(ckpt_path, map_location=device, weights_only=False)
     if isinstance(state_dict, dict) and "model_state" in state_dict:
         state_dict = state_dict["model_state"]
-    model.load_state_dict(state_dict, strict=False)
+    model.load_state_dict(state_dict, strict=True)
     model.eval()
 
-    drift_prob = cfg.data.drift_injection_prob if use_corrector else 0.0
+    eval_horizons = get_phase_eval_horizons(
+        mode=cfg.training.mode,
+        phase_horizon=cfg.training.phase_horizon,
+        config_horizons=cfg.evaluation.rollout_horizons,
+    )
+    fixed_predictor = model.m1 if cfg.training.mode == "train_m1" else None
+    eval_seq_len = max(cfg.data.sequence_length, cfg.training.temporal_burn_in + max(eval_horizons) + 1)
+
     dataloaders = create_dataloaders(
         total_trajectories=cfg.data.total_trajectories,
         train_split=cfg.data.train_split,
         val_split=cfg.data.val_split,
-        sequence_length=cfg.data.sequence_length,
+        sequence_length=eval_seq_len,
         batch_size=cfg.data.batch_size,
         height=cfg.environment.height,
         width=cfg.environment.width,
@@ -69,55 +75,30 @@ def main() -> None:
         event_threshold=cfg.environment.event_threshold,
         box_size=cfg.environment.box_size,
         dt=cfg.environment.dt,
-        drift_injection_prob=drift_prob,
+        drift_injection_prob=0.0,
         mixed_drift=cfg.data.mixed_drift,
     )
-
-    eval_horizons = sorted(list(set(list(cfg.evaluation.rollout_horizons) + [100])))
-    has_corrector = getattr(model, "corrector", None) is not None
 
     evaluator = RolloutEvaluator(
         model=model,
         device=device,
         horizons=eval_horizons,
         num_objects=cfg.environment.num_objects,
-        use_corrector=use_corrector,
         temporal_burn_in=cfg.training.temporal_burn_in,
+        fixed_predictor=fixed_predictor,
     )
     results = evaluator.evaluate_dataset(dataloaders["test"])
 
+    chronicle.log_success(f"Evaluated Horizons: {results.horizons}")
     chronicle.log_success(f"Teacher Forcing MSE: {results.teacher_forcing_mse:.5f}")
-    chronicle.log_success(f"Rollout MAE (use_corrector={use_corrector}): {results.rollout_mae:.5f}")
+    chronicle.log_success(f"Rollout MAE: {results.rollout_mae:.5f}")
     chronicle.log_success(f"Drift Ratio: {results.drift_ratio:.2f}x")
 
-    results_no_corr = None
-    if has_corrector and use_corrector:
-        evaluator_no_corr = RolloutEvaluator(
-            model=model,
-            device=device,
-            horizons=eval_horizons,
-            num_objects=cfg.environment.num_objects,
-            use_corrector=False,
-            temporal_burn_in=cfg.training.temporal_burn_in,
-        )
-        results_no_corr = evaluator_no_corr.evaluate_dataset(dataloaders["test"])
-        chronicle.log_success(f"Rollout MAE (without corrector): {results_no_corr.rollout_mae:.5f}")
-        chronicle.log_success(f"Drift Ratio (without corrector): {results_no_corr.drift_ratio:.2f}x")
-
-    if results_no_corr is not None:
-        plot_multi_step_degradation(
-            {
-                "With Corrector": results.position_error_per_horizon,
-                "Without Corrector": results_no_corr.position_error_per_horizon,
-            },
-            save_path=figures_dir / "eval_rollout_degradation.png",
-        )
-    else:
-        plot_multi_step_degradation(
-            horizons=eval_horizons,
-            pos_errors=results.position_error_per_horizon,
-            save_path=figures_dir / "eval_rollout_degradation.png",
-        )
+    plot_multi_step_degradation(
+        horizons=results.horizons,
+        pos_errors=results.position_error_per_horizon,
+        save_path=figures_dir / "eval_rollout_degradation.png",
+    )
 
 
 if __name__ == "__main__":

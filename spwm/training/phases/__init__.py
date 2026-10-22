@@ -1,0 +1,128 @@
+"""
+Isolated Training Phase Strategies (Layer 2 — Training).
+
+Exposes:
+- `M1PhaseStrategy` (`spwm/training/phases/m1_nominal.py`)
+- `M2PhaseStrategy` (`spwm/training/phases/m2_recovery.py`)
+- `M3PhaseStrategy` (`spwm/training/phases/m3_sustained.py`)
+- `build_phase_strategy` factory
+- `PredictorPhaseHandler` dispatcher for unified lifecycle compatibility
+"""
+
+from __future__ import annotations
+
+from typing import Any, Dict, Optional
+import chronicle
+import torch
+import torch.nn as nn
+
+from spwm.contracts.config import ExperimentConfig
+from spwm.contracts.protocols import PhaseStrategy
+from spwm.training.phases.m1_nominal import M1PhaseStrategy
+from spwm.training.phases.m2_recovery import M2PhaseStrategy
+from spwm.training.phases.m3_sustained import M3PhaseStrategy
+
+PhaseHandler = PhaseStrategy
+
+
+def build_phase_strategy(
+    model: nn.Module,
+    cfg: ExperimentConfig,
+    loss_fn: nn.Module,
+    device: torch.device,
+) -> PhaseStrategy:
+    """Instantiate the isolated PhaseStrategy corresponding to `cfg.training.mode`."""
+    mode = cfg.training.mode.lower()
+    if mode in ("train_m1", "train_cascade"):
+        return M1PhaseStrategy(model=model, cfg=cfg, loss_fn=loss_fn, device=device)
+    if mode == "train_m2":
+        return M2PhaseStrategy(model=model, cfg=cfg, loss_fn=loss_fn, device=device)
+    if mode == "train_m3":
+        return M3PhaseStrategy(model=model, cfg=cfg, loss_fn=loss_fn, device=device)
+    raise ValueError(
+        f"Unsupported training mode '{mode}'. Supported modes: 'train_m1', 'train_m2', 'train_m3', 'train_cascade'"
+    )
+
+
+class PredictorPhaseHandler(PhaseStrategy):
+    """Thin dispatcher that delegates to M1PhaseStrategy, M2PhaseStrategy, or M3PhaseStrategy."""
+
+    def setup(self) -> None:
+        self.strategy: PhaseStrategy = build_phase_strategy(
+            model=self.model,
+            cfg=self.cfg,
+            loss_fn=self.loss_fn,
+            device=self.device,
+        )
+        self.predictor_optimizer = self.strategy.predictor_optimizer
+        self.representation_optimizer = None
+
+    @property
+    def encoder_optimizer(self) -> Optional[torch.optim.Optimizer]:
+        return self.representation_optimizer
+
+    @property
+    def probe_optimizer(self) -> Optional[torch.optim.Optimizer]:
+        return self.representation_optimizer
+
+    def verify_gradient_isolation(self) -> None:
+        self.strategy.verify_gradient_isolation()
+
+    def train_step(self, batch: Dict[str, torch.Tensor], epoch: int) -> Dict[str, float]:
+        return self.strategy.train_step(batch, epoch=epoch)
+
+    def validate_step(self, batch: Dict[str, torch.Tensor]) -> Dict[str, float]:
+        return self.strategy.validate_step(batch)
+
+    def log_epoch(
+        self,
+        epoch: int,
+        end_epoch: int,
+        train_metrics: Dict[str, float],
+        val_metrics: Dict[str, float],
+        epoch_duration: float,
+        total_elapsed: float,
+        is_best: bool,
+        best_epoch: Optional[int],
+        best_score: float,
+    ) -> None:
+        best_tag = " * [BEST]" if is_best else ""
+        mode = self.cfg.training.mode.upper()
+        header = (
+            f"Epoch [{epoch:03d}/{end_epoch:03d}] [{mode}]{best_tag}  "
+            f"Time: {epoch_duration:5.1f}s | Total: {total_elapsed / 60:4.1f}m | "
+            f"Remaining: {epoch_duration * (end_epoch - epoch) / 60:4.1f}m"
+        )
+        chronicle.log_section_header(header)
+        chronicle.log_detail(
+            "⚡ Training Losses",
+            f"Train Loss: {train_metrics.get('train_loss', 0.0):.5f} | "
+            f"Pos L2: {train_metrics.get('train_pos_err', 0.0):.5f} | "
+            f"Vel L2: {train_metrics.get('train_vel_err', 0.0):.5f}",
+            indent_level=1,
+        )
+        chronicle.log_detail(
+            "📊 Validation Losses",
+            f"Val Loss: {val_metrics.get('val_loss', 0.0):.5f} | "
+            f"Pos L2: {val_metrics.get('val_pos_err', 0.0):.5f} | "
+            f"Vel L2: {val_metrics.get('val_vel_err', 0.0):.5f}",
+            indent_level=1,
+        )
+        curr_score = self.get_selection_score(val_metrics)
+        chronicle.log_detail(
+            "🎯 Model Selection",
+            f"Current: {curr_score:.5f} | Best: {best_score:.5f} @ Ep {best_epoch}",
+            indent_level=1,
+        )
+        chronicle.log_newline()
+
+
+__all__ = [
+    "PhaseStrategy",
+    "PhaseHandler",
+    "M1PhaseStrategy",
+    "M2PhaseStrategy",
+    "M3PhaseStrategy",
+    "build_phase_strategy",
+    "PredictorPhaseHandler",
+]

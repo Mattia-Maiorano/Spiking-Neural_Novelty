@@ -1,35 +1,30 @@
 """
-Consolidated Scientific Figure Generator.
-Generates Figures 1 through 7 for SPWM paper and research report.
+Consolidated Scientific Figure Generator for SPWM (v0.2.0).
+Generates Figures 1 through 7 for SPWM paper and research report,
+combining Phase 1 (M1: 0-10), Phase 2 (M2: 0-20), and Phase 3 (M3: 0-100) runs.
 """
 
 from __future__ import annotations
+
 import argparse
 import json
 from pathlib import Path
-from typing import Dict
-import numpy as np
-import torch
+from typing import Any, Dict, List
 import chronicle
-
 from spwm.evaluation.visualizer import (
-    plot_architecture_diagram,
-    plot_training_curves,
-    plot_multi_step_degradation,
-    plot_spike_raster,
-    plot_fast_vs_slow_memory,
     plot_ablation_comparison,
+    plot_architecture_diagram,
+    plot_baseline_comparison,
+    plot_multi_step_degradation,
+    plot_training_curves,
 )
-
-from spwm.data.synthetic_world import MovingObjectsWorld
-from spwm.data.event_camera import EventCameraSimulator
-from spwm.models.world_model import SPWM
 
 
 def main() -> None:
     parser = argparse.ArgumentParser(description="Generate all scientific figures.")
     parser.add_argument("--results-dir", type=str, default="results", help="Directory containing experiment results")
     parser.add_argument("--output-dir", type=str, default="results/figures", help="Target directory for figures")
+    parser.add_argument("--version", type=str, default="spwm_v0_2_0", help="Target model version prefix")
     args = parser.parse_args()
 
     results_dir = Path(args.results_dir)
@@ -42,67 +37,71 @@ def main() -> None:
     plot_architecture_diagram(out_dir / "fig1_architecture.png")
     chronicle.log_success("Generated Figure 1: Architecture Diagram")
 
-    # Figure 2: Training Curves
-    # Search for training_log.csv in results
-    csv_candidates = list(results_dir.glob("**/training_log.csv"))
-    if csv_candidates:
-        import pandas as pd
-        df = pd.read_csv(csv_candidates[0])
-        history = df.to_dict(orient="records")
-        plot_training_curves(history, out_dir / "fig2_training_curves.png")
-        chronicle.log_success(f"Generated Figure 2: Training Curves from {csv_candidates[0]}")
+    # Figure 2: Combined Training Curves across M1 -> M2 -> M3
+    combined_history: List[Dict[str, Any]] = []
+    epoch_offset = 0
+    for phase_suffix in ("train_m1", "train_m2", "train_m3"):
+        phase_log = results_dir / f"{args.version}_{phase_suffix}" / "training_log.json"
+        if phase_log.is_file():
+            with open(phase_log, "r", encoding="utf-8") as f:
+                records = json.load(f)
+            for idx, rec in enumerate(records):
+                entry = dict(rec)
+                entry["epoch"] = epoch_offset + idx + 1
+                entry["phase"] = phase_suffix
+                combined_history.append(entry)
+            epoch_offset += len(records)
 
-    # Figure 4 & 5: Spike Raster & Fast vs Slow Memory
-    # Run a realistic sample trajectory through SPWM
-    world = MovingObjectsWorld()
-    traj = world.generate_trajectory(trajectory_id=99, length=40, num_objects=1)
-    sim = EventCameraSimulator(height=32, width=32)
-    ev_batch = sim.trajectory_to_events(traj)
+    if combined_history:
+        plot_training_curves(combined_history, out_dir / "fig2_training_curves.png")
+        chronicle.log_success(
+            f"Generated Figure 2: Combined M1+M2+M3 Training Curves ({len(combined_history)} total epochs)"
+        )
+    else:
+        csv_candidates = list(results_dir.glob("**/training_log.csv"))
+        if csv_candidates:
+            import pandas as pd
 
-    model = SPWM(latent_dim=64, timescale_dims=(32, 32), betas=(0.90, 0.985))
-    model.eval()
-    with torch.no_grad():
-        out = model(ev_batch.dense_events.unsqueeze(0))
-        fast_spk = out.fast_spikes[0].cpu().numpy()
-        slow_spk = out.slow_spikes[0].cpu().numpy()
-        # Extract internal membrane potential traces
-        dyn_out, _ = model.dynamics(model.encoder(ev_batch.dense_events.unsqueeze(0))[0])
-        fast_mem = dyn_out.fast_mems[0].cpu().numpy()
-        slow_mem = dyn_out.slow_mems[0].cpu().numpy()
+            df = pd.read_csv(csv_candidates[0])
+            history = df.to_dict(orient="records")
+            plot_training_curves(history, out_dir / "fig2_training_curves.png")
+            chronicle.log_success(f"Generated Figure 2: Training Curves from {csv_candidates[0]}")
 
-    plot_spike_raster(fast_spk, slow_spk, out_dir / "fig4_spike_raster.png")
-    chronicle.log_success("Generated Figure 4: Spike Raster & Activity Histogram")
+    # Figure 3: Multi-Step Rollout Degradation Curve (Combined M1 [0-10], M2 [0-20], M3 [0-100])
+    phase_degradation_curves: Dict[str, Dict[int, float]] = {}
+    for m, label in [
+        (f"{args.version}_train_m1", "Phase 1: M1 Isolated (0-10)"),
+        (f"{args.version}_train_m2", "Phase 2: M1+M2 Recovery (0-20)"),
+        (f"{args.version}_train_m3", "Phase 3: M1+M2+M3 Full Relay (0-100)"),
+    ]:
+        m_dir = results_dir / m
+        candidates = sorted(m_dir.glob("metrics*.json")) if m_dir.is_dir() else []
+        for mf in candidates:
+            try:
+                with open(mf, "r", encoding="utf-8") as f:
+                    data = json.load(f)
+                eval_data = data.get("test", data.get("evaluation", {}))
+                if "position_error_per_horizon" in eval_data:
+                    curve = {int(k): float(v) for k, v in eval_data["position_error_per_horizon"].items()}
+                    phase_degradation_curves[label] = curve
+                    break
+            except Exception as exc:
+                chronicle.log_warning(f"Skipping malformed metrics file {mf}: {exc}")
 
-    plot_fast_vs_slow_memory(fast_mem, slow_mem, out_dir / "fig5_fast_vs_slow_memory.png")
-    chronicle.log_success("Generated Figure 5: Fast vs Slow Memory Dynamics")
+    if phase_degradation_curves:
+        plot_multi_step_degradation(phase_degradation_curves, out_dir / "fig3_multi_step_degradation.png")
+        chronicle.log_success(
+            f"Generated Figure 3: Combined Degradation Curve across {len(phase_degradation_curves)} phases"
+        )
 
-    # Figure 3: Multi-Step Rollout Degradation Curve
-    # Check if metrics exist in results_dir
-    degradation_curves: Dict[str, Dict[int, float]] = {}
-    metrics_files = list(results_dir.glob("**/metrics*.json"))
-    for mf in metrics_files:
-        try:
-            with open(mf, "r", encoding="utf-8") as f:
-                data = json.load(f)
-            model_name = mf.parent.name
-            eval_data = data.get("test", data.get("evaluation", {}))
-            if "latent_mse_per_horizon" in eval_data:
-                curve = {int(k): v for k, v in eval_data["latent_mse_per_horizon"].items()}
-                degradation_curves[model_name] = curve
-        except Exception:
-            pass
-
-    if degradation_curves:
-        plot_multi_step_degradation(degradation_curves, out_dir / "fig3_multi_step_degradation.png")
-        chronicle.log_success(f"Generated Figure 3: Degradation Curve across {len(degradation_curves)} models")
-
-    # Figure 6: Model Comparison
+    # Figure 6: Phase Comparison across M1, M2, M3
     comparison_metrics = {}
     for m, label in [
-        ("spwm_v0_1_0_train_predictor", "SPWM Predictor"),
-        ("spwm_v0_1_0_train_corrector", "SPWM (+ Gain Field Corrector)"),
+        (f"{args.version}_train_m1", "Phase 1 (M1 Nominal)"),
+        (f"{args.version}_train_m2", "Phase 2 (M2 Recovery)"),
+        (f"{args.version}_train_m3", "Phase 3 (M3 Sustained Relay)"),
     ]:
-        candidates = list((results_dir / m).glob("metrics*.json")) if (results_dir / m).is_dir() else []
+        candidates = sorted((results_dir / m).glob("metrics*.json")) if (results_dir / m).is_dir() else []
         for m_path in candidates:
             try:
                 with open(m_path, "r", encoding="utf-8") as f:
@@ -114,11 +113,11 @@ def main() -> None:
                     "spike_rate": eval_dict.get("mean_spike_rate", 0.0),
                 }
                 break
-            except Exception:
-                pass
+            except Exception as exc:
+                chronicle.log_warning(f"Could not parse comparison metrics {m_path}: {exc}")
     if comparison_metrics:
         plot_baseline_comparison(comparison_metrics, out_dir / "fig6_baseline_comparison.png")
-        chronicle.log_success("Generated Figure 6: Baseline/Model Comparison Bar Charts")
+        chronicle.log_success("Generated Figure 6: Phase Comparison Bar Charts")
 
     # Figure 7: Ablation Comparison
     ablation_json = results_dir / "ablations" / "ablation_summary.json"

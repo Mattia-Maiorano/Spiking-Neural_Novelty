@@ -60,7 +60,8 @@ def test_tiny_overfit_and_gradient_flow():
             true_kin = batch["flat_kinematics"]
 
             optimizer.zero_grad()
-            out = model(events, accumulate_local_updates=False)
+            with torch.no_grad():
+                out = model(events)
 
             # Predictive and kinematic probe losses
             z_in = out.latent_states[:, :-1]

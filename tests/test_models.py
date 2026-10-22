@@ -49,13 +49,13 @@ def test_spwm_step_vs_sequence_equivalence():
 
     with torch.no_grad():
         # Sequence forward
-        seq_out = model(x, accumulate_local_updates=False)
+        seq_out = model(x)
 
         # Step by step
         state = model.init_state(B)
         step_latents = []
         for t in range(T):
-            step_out, state = model.step(x[:, t], state, accumulate_local_updates=False)
+            step_out, state = model.step(x[:, t], state)
             step_latents.append(step_out.latent)
 
         step_latents = torch.stack(step_latents, dim=1)

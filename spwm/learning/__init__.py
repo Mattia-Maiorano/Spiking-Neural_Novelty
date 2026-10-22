@@ -1,32 +1,40 @@
-from spwm.learning.losses import (
-    SPWMLoss,
-    PredictorLoss,
-    CorrectorRolloutLoss,
-    _frozen,
-)
-from spwm.learning.metrics import (
-    one_step_mse,
-    multi_step_mse,
-    position_error,
-    velocity_error,
-    spike_rate,
-    active_neuron_fraction,
-    parameter_count,
-    energy_estimate,
-)
-from spwm.learning.engine import BaseTrainer
-from spwm.learning.trainer import Trainer
-from spwm.learning.phases import (
+"""Compatibility facade for `spwm.learning` -> `spwm.training`."""
+
+from spwm.training import (
+    BaseTrainer,
+    ConvergenceFunnelLoss,
+    M1PhaseStrategy,
+    M2PhaseStrategy,
+    M3PhaseStrategy,
     PhaseHandler,
+    PhaseStrategy,
+    PredictorLoss,
     PredictorPhaseHandler,
-    CorrectorPhaseHandler,
+    SPWMLoss,
+    Trainer,
+    _frozen,
+    active_neuron_fraction,
+    build_phase_strategy,
+    compute_convergence_funnel_target,
+    energy_estimate,
+    extrapolate_latent,
+    load_m1_checkpoint,
+    load_m2_checkpoint,
+    multi_step_mse,
+    one_step_mse,
+    parameter_count,
+    position_error,
+    spike_rate,
+    velocity_error,
 )
 
 __all__ = [
     "SPWMLoss",
     "PredictorLoss",
-    "CorrectorRolloutLoss",
+    "ConvergenceFunnelLoss",
     "_frozen",
+    "extrapolate_latent",
+    "compute_convergence_funnel_target",
     "one_step_mse",
     "multi_step_mse",
     "position_error",
@@ -37,7 +45,13 @@ __all__ = [
     "energy_estimate",
     "BaseTrainer",
     "Trainer",
+    "load_m1_checkpoint",
+    "load_m2_checkpoint",
+    "PhaseStrategy",
     "PhaseHandler",
+    "M1PhaseStrategy",
+    "M2PhaseStrategy",
+    "M3PhaseStrategy",
+    "build_phase_strategy",
     "PredictorPhaseHandler",
-    "CorrectorPhaseHandler",
 ]

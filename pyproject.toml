@@ -4,8 +4,8 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "spwm"
-version = "0.1.0"
-description = "SPWM-v0.1.0: Spiking Predictive World Model with Neuromodulatory Gain Field"
+version = "0.2.0"
+description = "SPWM-v0.2.0: Spiking Predictive World Model with Cascaded Temporal Relay and 4-Layer Strict Contract Architecture"
 authors = [
     { name = "Antigravity Research", email = "research@spwm.local" }
 ]

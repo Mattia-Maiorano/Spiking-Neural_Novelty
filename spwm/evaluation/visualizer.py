@@ -30,17 +30,17 @@ def set_paper_style():
 
 def plot_architecture_diagram(save_path: Union[str, Path]) -> None:
     set_paper_style()
-    fig, ax = plt.subplots(figsize=(10, 6))
+    fig, ax = plt.subplots(figsize=(12, 6))
     ax.axis("off")
 
     boxes = [
-        ("Event Stream\n[B, T, 2, H, W]", (0.1, 0.5), "#E2E8F0"),
-        ("Spiking Sensory\nEncoder (SpatialSoftmax)", (0.3, 0.5), "#CBD5E1"),
-        ("Multi-Timescale Memory\n[Reactive | Deep Context]", (0.55, 0.5), "#93C5FD"),
-        ("Latent State z_t\n(Recurrent Dynamics)", (0.8, 0.5), "#60A5FA"),
-        ("Fast Predictor\nΔz(z_t)", (0.8, 0.8), "#34D399"),
-        ("Slow Corrector\nGain Mask Field", (0.55, 0.8), "#A78BFA"),
-        ("Physical Probe\n(x, y, vx, vy)", (0.8, 0.2), "#FBBF24"),
+        ("Event Stream\n[B, T, 2, H, W]", (0.08, 0.5), "#E2E8F0"),
+        ("Spiking Sensory\nEncoder", (0.25, 0.5), "#CBD5E1"),
+        ("Latent State z_t\n[B, D]", (0.42, 0.5), "#93C5FD"),
+        ("M1: Nominal Predictor\n(t=0 -> H, clean manifold)", (0.72, 0.8), "#34D399"),
+        ("M2: Recovery Funnel\n(Cyclic H -> 2H, Funnel Target)", (0.72, 0.5), "#FBBF24"),
+        ("M3: Sustained Predictor\n(Max Rollout Relay with M2)", (0.72, 0.2), "#A78BFA"),
+        ("Physical Decoder\n(x, y, vx, vy)", (0.95, 0.5), "#F472B6"),
     ]
 
     for text, (x, y), color in boxes:
@@ -48,14 +48,93 @@ def plot_architecture_diagram(save_path: Union[str, Path]) -> None:
             x, y, text,
             ha="center", va="center",
             bbox=dict(boxstyle="round,pad=0.6", facecolor=color, edgecolor="#475569", lw=1.5),
-            fontsize=10, weight="bold",
+            fontsize=9.5, weight="bold",
         )
+
+    # Connecting arrows
+    ax.annotate("", xy=(0.17, 0.5), xytext=(0.33, 0.5), arrowprops=dict(arrowstyle="<-", lw=1.5, color="#475569"))
+    ax.annotate("", xy=(0.34, 0.5), xytext=(0.50, 0.5), arrowprops=dict(arrowstyle="<-", lw=1.5, color="#475569"))
+    ax.annotate("", xy=(0.50, 0.5), xytext=(0.60, 0.8), arrowprops=dict(arrowstyle="->", lw=1.5, color="#059669"))
+    ax.annotate("", xy=(0.50, 0.5), xytext=(0.60, 0.5), arrowprops=dict(arrowstyle="->", lw=1.5, color="#D97706"))
+    ax.annotate("", xy=(0.50, 0.5), xytext=(0.60, 0.2), arrowprops=dict(arrowstyle="->", lw=1.5, color="#7C3AED"))
 
     save_path = Path(save_path)
     save_path.parent.mkdir(parents=True, exist_ok=True)
     plt.tight_layout()
     plt.savefig(save_path, dpi=300)
     plt.close()
+
+
+def plot_relay_rollout(
+    pred_traj: Union[np.ndarray, torch.Tensor],
+    gt_traj: Union[np.ndarray, torch.Tensor],
+    phase_horizon: int = 10,
+    save_path: Optional[Union[str, Path]] = None,
+    channel_idx: int = 0,
+) -> None:
+    """
+    Plots autonomous rollout across the Cascaded Temporal Relay (M1, M2, M3).
+    Bands denote active model windows:
+      - [0, H): M1 (Nominal Predictor)
+      - [H + 2k*H, H + (2k+1)*H): M2 (Recovery Funnel)
+      - [H + (2k+1)*H, H + (2k+2)*H): M3 (Sustained Autoregression)
+    """
+    set_paper_style()
+    if isinstance(pred_traj, torch.Tensor):
+        pred_traj = pred_traj.detach().cpu().numpy()
+    if isinstance(gt_traj, torch.Tensor):
+        gt_traj = gt_traj.detach().cpu().numpy()
+
+    if pred_traj.ndim == 3:
+        pred_traj = pred_traj[0]
+    if gt_traj.ndim == 3:
+        gt_traj = gt_traj[0]
+
+    T = min(len(pred_traj), len(gt_traj))
+    H = phase_horizon
+    timesteps = np.arange(T)
+
+    fig, ax = plt.subplots(figsize=(12, 5))
+
+    # Plot trajectories
+    ax.plot(timesteps, gt_traj[:T, channel_idx], label="Ground Truth", color="#1E293B", lw=2.2, linestyle="--")
+    ax.plot(timesteps, pred_traj[:T, channel_idx], label="Relay Prediction", color="#2563EB", lw=2.0)
+
+    # Color background bands by active model
+    # M1: [0, H)
+    if H > 0:
+        ax.axvspan(0, min(H, T), alpha=0.15, color="#10B981", label="M1 Window (Nominal)")
+    
+    # Cyclic M2 and M3
+    m2_labeled = False
+    m3_labeled = False
+    t_curr = H
+    cycle = 0
+    while t_curr < T:
+        t_next = min(t_curr + H, T)
+        if cycle % 2 == 0:
+            ax.axvspan(t_curr, t_next, alpha=0.15, color="#F59E0B", label="M2 Window (Funnel)" if not m2_labeled else None)
+            m2_labeled = True
+        else:
+            ax.axvspan(t_curr, t_next, alpha=0.15, color="#8B5CF6", label="M3 Window (Sustained)" if not m3_labeled else None)
+            m3_labeled = True
+        ax.axvline(t_curr, color="#94A3B8", linestyle=":", lw=1.2)
+        t_curr = t_next
+        cycle += 1
+
+    ax.set_title(f"Cascaded Temporal Relay Autonomous Rollout (Phase Horizon H={H})")
+    ax.set_xlabel("Rollout Step (t)")
+    ax.set_ylabel(f"Coordinate Value (Channel {channel_idx})")
+    ax.legend(loc="upper left", frameon=True)
+
+    if save_path is not None:
+        save_path = Path(save_path)
+        save_path.parent.mkdir(parents=True, exist_ok=True)
+        plt.tight_layout()
+        plt.savefig(save_path, dpi=300)
+        plt.close()
+    else:
+        plt.show()
 
 
 def plot_training_curves(history: List[Dict[str, float]], save_path: Union[str, Path]) -> None:
@@ -204,29 +283,6 @@ def plot_fast_vs_slow_memory(
     plt.close()
 
 
-def plot_corrector_ab_impact(
-    fast_trajectory: np.ndarray,
-    corrected_trajectory: np.ndarray,
-    ground_truth: np.ndarray,
-    save_path: Union[str, Path],
-) -> None:
-    set_paper_style()
-    fig, ax = plt.subplots(figsize=(7, 7))
-
-    ax.plot(ground_truth[:, 0], ground_truth[:, 1], "k-", label="Ground Truth", lw=2.5)
-    ax.plot(fast_trajectory[:, 0], fast_trajectory[:, 1], "r--", label="Uncorrected (Fast)", lw=1.8)
-    ax.plot(corrected_trajectory[:, 0], corrected_trajectory[:, 1], "b-", label="Gain-Modulated (SPWM)", lw=2.0)
-
-    ax.set_title("A/B Trajectory Stabilization: Fast vs Corrected")
-    ax.set_xlabel("X Position")
-    ax.set_ylabel("Y Position")
-    ax.legend()
-
-    save_path = Path(save_path)
-    save_path.parent.mkdir(parents=True, exist_ok=True)
-    plt.tight_layout()
-    plt.savefig(save_path, dpi=300)
-    plt.close()
 
 
 def plot_ablation_comparison(results: Dict[str, float], save_path: Union[str, Path]) -> None:
@@ -284,63 +340,4 @@ def plot_model_comparison(metrics: Dict[str, Dict[str, float]], save_path: Union
 plot_baseline_comparison = plot_model_comparison
 
 
-def plot_corrector_telemetry(
-    telemetry: Union[Dict[str, List[torch.Tensor]], Any],
-    batch_idx: int = 0,
-    save_path: Optional[Union[str, Path]] = None,
-) -> None:
-    """
-    Plots SlowCorrector diagnostic telemetry across rollout horizons:
-    1. Spike Raster Plot
-    2. Population Mean Membrane Potential & Adaptive Threshold
-    3. Gain Mask Heatmap across latent coordinates
-    """
-    set_paper_style()
-
-    # Handle TelemetryContainer or dict
-    if hasattr(telemetry, "as_stacked_tensors"):
-        stacked = telemetry.as_stacked_tensors()
-        spikes = stacked["spikes"][:, batch_idx, :]
-        v_mem = stacked["v_mem"][:, batch_idx, :]
-        v_th = stacked["v_th"][:, batch_idx, :]
-        gain_mask = stacked["gain_mask"][:, batch_idx, :]
-    elif isinstance(telemetry, dict):
-        spikes = torch.stack(telemetry["spikes"])[:, batch_idx, :]
-        v_mem = torch.stack(telemetry["v_mem"])[:, batch_idx, :]
-        v_th = torch.stack(telemetry["v_th"])[:, batch_idx, :]
-        gain_mask = torch.stack(telemetry["gain_mask"])[:, batch_idx, :]
-    else:
-        raise ValueError("telemetry must be a TelemetryContainer or a dictionary of tensors.")
-
-    fig, axs = plt.subplots(3, 1, figsize=(12, 8), sharex=True)
-
-    # 1. Spike Raster Plot
-    spike_times, spike_neurons = torch.where(spikes > 0)
-    axs[0].scatter(spike_times.numpy(), spike_neurons.numpy(), s=6, c="#1E293B", alpha=0.85)
-    axs[0].set_ylabel("Neuron ID")
-    axs[0].set_title("SlowCorrector Spike Raster")
-    axs[0].set_ylim(-0.5, spikes.shape[1] - 0.5)
-
-    # 2. Membrane Potential & Adaptive Threshold (Mean across population)
-    axs[1].plot(v_mem.mean(dim=1).numpy(), label=r"Mean $V_{\mathrm{mem}}$", color="#2563EB", lw=2.0)
-    axs[1].plot(v_th.mean(dim=1).numpy(), label=r"Mean $V_{\mathrm{th}}$", color="#DC2626", linestyle="--", lw=2.0)
-    axs[1].set_ylabel("Voltage")
-    axs[1].set_title("Population Dynamics (Membrane Potential vs Adaptive Threshold)")
-    axs[1].legend(loc="upper right")
-
-    # 3. Gain Mask Heatmap
-    im = axs[2].imshow(gain_mask.T.numpy(), aspect="auto", cmap="coolwarm", vmin=-1, vmax=1)
-    axs[2].set_ylabel("Latent Dim")
-    axs[2].set_xlabel("Timestep (Horizon)")
-    axs[2].set_title("Gain Mask Output Field")
-    fig.colorbar(im, ax=axs[2], orientation="vertical", pad=0.02)
-
-    plt.tight_layout()
-    if save_path is not None:
-        save_path = Path(save_path)
-        save_path.parent.mkdir(parents=True, exist_ok=True)
-        plt.savefig(save_path, dpi=300)
-        plt.close()
-    else:
-        plt.show()
 

@@ -105,6 +105,12 @@ class PhysicalDecoderProtocol(Protocol):
     p_dim: int
     num_objects: int
 
+    def decode_pos(self, q: torch.Tensor) -> torch.Tensor:
+        ...
+
+    def decode_vel(self, p: torch.Tensor) -> torch.Tensor:
+        ...
+
     def warm_up_filter(
         self,
         z_prefix: torch.Tensor,
@@ -147,6 +153,13 @@ class WorldModelProtocol(Protocol):
 
     @property
     def m3(self) -> nn.Module:
+        ...
+
+    def forward_representation(
+        self,
+        event_sequence: torch.Tensor,
+        initial_state: Optional[SPWMState] = None,
+    ) -> Tuple[torch.Tensor, torch.Tensor]:
         ...
 
     def __call__(

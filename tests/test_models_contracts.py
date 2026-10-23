@@ -109,6 +109,13 @@ def test_physical_decoder_multi_object_contract():
     kin = decoder(z_seq)
     assert kin.shape == (4, 10, 8)  # 4 * 2 objects
 
+    q_sub = z_seq[..., :16]
+    p_sub = z_seq[..., 16:]
+    pos_sub = decoder.decode_pos(q_sub)
+    vel_sub = decoder.decode_vel(p_sub)
+    assert pos_sub.shape == (4, 10, 4)
+    assert vel_sub.shape == (4, 10, 4)
+
     with pytest.raises(ValueError, match="dim 2: expected 64, got 32"):
         decoder(torch.randn(4, 10, 32))
 
@@ -116,7 +123,7 @@ def test_physical_decoder_multi_object_contract():
 def test_spwm_pure_model_no_dead_buffers_and_differentiable_forward():
     """
     SPWM must conform to WorldModelProtocol, contain zero dead Hebbian buffers,
-    and preserve autograd graph during forward() when grad is enabled.
+    and preserve autograd graph during forward() and forward_representation() when grad is enabled.
     """
     cfg = ExperimentConfig(
         environment=EnvironmentConfig(height=32, width=32, num_objects=1),
@@ -130,6 +137,10 @@ def test_spwm_pure_model_no_dead_buffers_and_differentiable_forward():
     assert not hasattr(model, "corrector")
 
     events = torch.randn(2, 6, 2, 32, 32)
+    rep_latents, rep_errors = model.forward_representation(events)
+    assert rep_latents.shape == (2, 6, 32)
+    assert rep_errors.shape == (2, 6, 32)
+
     out = model(events)
     assert out.latent_states.shape == (2, 6, 32)
     assert out.keypoints is not None
@@ -144,3 +155,4 @@ def test_spwm_pure_model_no_dead_buffers_and_differentiable_forward():
     assert any(p.grad is not None and p.grad.abs().sum() > 0 for p in model.encoder.parameters())
     assert any(p.grad is not None and p.grad.abs().sum() > 0 for p in model.dynamics.parameters())
     assert any(p.grad is not None and p.grad.abs().sum() > 0 for p in model.physical_decoder.parameters())
+

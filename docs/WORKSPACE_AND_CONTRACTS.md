@@ -1,6 +1,6 @@
 # Workspace Topology & Layer 0 Contracts (`spwm/contracts/`)
 
-This guide provides a file-by-file breakdown of the **4-Layer Strict Contract Architecture** in SPWM-v0.2.0, the immutable configuration and tensor validation contracts in `spwm/contracts/`, and the context-window boundary rules designed for AI-assisted and small-LLM engineering.
+This guide provides a file-by-file breakdown of the **4-Layer Strict Contract Architecture** in SPWM-v0.3.0, the immutable configuration and tensor validation contracts in `spwm/contracts/`, and the context-window boundary rules designed for AI-assisted and small-LLM engineering.
 
 ---
 
@@ -12,7 +12,7 @@ Every Python module inside `spwm/` belongs to one of four strictly ordered layer
 | :--- | :--- | :--- | :--- |
 | **Layer 0** | [`spwm/contracts/`](file:///Users/Mattia/Desktop/Studies/Temp/spwm/contracts/__init__.py) | Pure immutable dataclasses, state containers, tensor shape validators, and `Protocol` / `ABC` interfaces. | **None** (Zero `spwm.*` imports) |
 | **Layer 1** | [`spwm/models/`](file:///Users/Mattia/Desktop/Studies/Temp/spwm/models/__init__.py), [`spwm/data/`](file:///Users/Mattia/Desktop/Studies/Temp/spwm/data/__init__.py) | Pure neural network components, unified latent rollout engine, and synthetic event-camera physics datasets. | `spwm.contracts` (and intra-layer `spwm.models` / `spwm.data`) |
-| **Layer 2** | [`spwm/training/`](file:///Users/Mattia/Desktop/Studies/Temp/spwm/training/__init__.py) | Composable loss formulations, isolated $<150$-line training phase strategies (`m1_nominal`, `m2_recovery`, `m3_sustained`), metrics, and `BaseTrainer` / `Trainer`. | `spwm.contracts`, `spwm.models`, `spwm.data`, `spwm.utils` |
+| **Layer 2** | [`spwm/training/`](file:///Users/Mattia/Desktop/Studies/Temp/spwm/training/__init__.py) | Composable loss formulations, isolated $<150$-line training phase strategies (`representation`, `m1_nominal`, `m2_recovery`, `m3_sustained`), metrics, and `BaseTrainer` / `Trainer`. | `spwm.contracts`, `spwm.models`, `spwm.data`, `spwm.utils` |
 | **Layer 3** | [`spwm/evaluation/`](file:///Users/Mattia/Desktop/Studies/Temp/spwm/evaluation/__init__.py) | Multi-horizon rollout benchmarks (`RolloutEvaluator`), segmented telemetry resumes (`metrics_resume.py`), and publication plotting (`visualizer.py`). | `spwm.contracts`, `spwm.models`, `spwm.data`, `spwm.training`, `spwm.utils` |
 
 > **Compatibility Facades**: `spwm/config/`, `spwm/core/`, and `spwm/learning/` are thin, zero-logic re-export packages maintained so external scripts importing legacy paths resolve directly to the canonical Layer 0, Layer 1, and Layer 2 implementations.
@@ -23,18 +23,18 @@ Every Python module inside `spwm/` belongs to one of four strictly ordered layer
 
 ### 2.1 [`spwm/contracts/config.py`](file:///Users/Mattia/Desktop/Studies/Temp/spwm/contracts/config.py) — Immutable Single Source of Truth (SSOT)
 All configuration schemas are `@dataclass(frozen=True)` classes:
-- [`ProjectConfig`](file:///Users/Mattia/Desktop/Studies/Temp/spwm/contracts/config.py): `name` (`"spwm_v0_2_0"`), `seed` (`42`).
+- [`ProjectConfig`](file:///Users/Mattia/Desktop/Studies/Temp/spwm/contracts/config.py): `name` (`"spwm_v0_3_0"`), `seed` (`42`).
 - [`EnvironmentConfig`](file:///Users/Mattia/Desktop/Studies/Temp/spwm/contracts/config.py): `num_objects`, `height`, `width`, `box_size`, `dt`, `event_threshold`. Validates in `__post_init__` that `height` and `width` are positive multiples of $4$ (matching the two stride-2 convolutions in `EventEncoder`).
 - [`DataConfig`](file:///Users/Mattia/Desktop/Studies/Temp/spwm/contracts/config.py): `total_trajectories`, `train_split`, `val_split`, `sequence_length`, `batch_size`, `standard_velocity_range`, `extrapolation_velocity_range`.
 - [`ModelConfig`](file:///Users/Mattia/Desktop/Studies/Temp/spwm/contracts/config.py): `in_channels`, `encoder_conv_channels`, `encoder_dim`, `latent_dim`, `q_dim`, `p_dim`, `num_keypoints`, `predictor_hidden_dim`, `ema_decay`, `decoder_ema_alpha`. Validates symplectic phase-space invariants (`q_dim + p_dim == latent_dim`, `q_dim == 2 * num_keypoints`, and `latent_dim % q_dim == 0`).
 - [`LatentNeuronConfig`](file:///Users/Mattia/Desktop/Studies/Temp/spwm/contracts/config.py): `beta_mem`, `threshold`, `gamma`, `surrogate`, `surrogate_alpha`.
 - [`MemoryConfig`](file:///Users/Mattia/Desktop/Studies/Temp/spwm/contracts/config.py): `num_timescales`, `timescale_dims`, `betas`. Validates `len(timescale_dims) == num_timescales == len(betas)` and $0 < \beta_k < 1$.
-- [`TrainingConfig`](file:///Users/Mattia/Desktop/Studies/Temp/spwm/contracts/config.py): `mode` (`"train_m1"`, `"train_m2"`, `"train_m3"`), `epochs`, `learning_rate`, `weight_decay`, `grad_clip_norm`, `probe_lr`, `probe_weight_decay`, `phase_horizon`, `m2_num_phases`, `max_rollout_horizon`, `temporal_burn_in`, `representation_checkpoint`, `m1_checkpoint`, `m2_checkpoint`.
-- [`LossConfig`](file:///Users/Mattia/Desktop/Studies/Temp/spwm/contracts/config.py): `lambda_position` (weight for coordinate $q$ subspace latent MSE), `lambda_velocity` (weight for momentum/velocity $p$ subspace latent MSE), `lambda_latent` (overall latent trajectory multiplier), `lambda_encoder`, `lambda_decoder`, `lambda_sensory`, `multi_step_horizon`.
+- [`TrainingConfig`](file:///Users/Mattia/Desktop/Studies/Temp/spwm/contracts/config.py): `mode` (`"train_representation"`, `"train_m1"`, `"train_m2"`, `"train_m3"`), `epochs`, `learning_rate`, `weight_decay`, `grad_clip_norm`, `probe_lr`, `probe_weight_decay`, `phase_horizon`, `m2_num_phases`, `max_rollout_horizon`, `temporal_burn_in`, `representation_checkpoint`, `m1_checkpoint`, `m2_checkpoint`.
+- [`LossConfig`](file:///Users/Mattia/Desktop/Studies/Temp/spwm/contracts/config.py): `lambda_position`, `lambda_velocity`, `lambda_latent`, `lambda_encoder`, `lambda_decoder`, `lambda_sensory`, `lambda_kinematic`, `lambda_derivative`, `lambda_smoothness`.
 
 - [`EvaluationConfig`](file:///Users/Mattia/Desktop/Studies/Temp/spwm/contracts/config.py): `rollout_horizons`.
 - [`ExperimentConfig`](file:///Users/Mattia/Desktop/Studies/Temp/spwm/contracts/config.py): Root composite schema.
-  - Cross-validates `data.sequence_length` against the active training phase (`train_m1` requires $T \ge H + 2$; `train_m2` with 2 phases requires $T \ge 3H + 2$; `train_m3` requires $T \ge \min(H_{\max}, H + 1) + 1$).
+  - Cross-validates `data.sequence_length` against the active training phase (`train_representation` requires $T \ge 2$; `train_m1` requires $T \ge H + 1$; `train_m2` with 2 phases requires $T \ge 2H + 1$; `train_m3` requires $T \ge \max(2H+1, H_{\max}+1)$).
   - Provides `cfg.with_overrides(**kwargs)` to create a new frozen configuration with updated fields and full re-validation.
   - Rejects unknown dictionary keys in `ExperimentConfig.from_dict()` with an immediate `ValueError`.
 
@@ -57,11 +57,16 @@ Defines `@runtime_checkable` protocols (`EncoderProtocol`, `DynamicsProtocol`, `
 
 ## 3. Small-LLM Context Boundary Rules (`< 3 Files` Rule)
 
-When modifying any component of SPWM-v0.2.0, follow this table to keep context windows minimal and prevent cross-module regressions:
+When modifying any component of SPWM-v0.3.0, follow this table to keep context windows minimal and prevent cross-module regressions:
 
 | Modification Task | Files to Load into Context ($\le 3$ Files) | Verification Command |
 | :--- | :--- | :--- |
+| **Modify Phase 0 (`train_representation`) logic** | 1. [`spwm/contracts/protocols.py`](file:///Users/Mattia/Desktop/Studies/Temp/spwm/contracts/protocols.py)<br>2. [`spwm/training/phases/representation.py`](file:///Users/Mattia/Desktop/Studies/Temp/spwm/training/phases/representation.py)<br>3. [`tests/test_training_phases.py`](file:///Users/Mattia/Desktop/Studies/Temp/tests/test_training_phases.py) | `.venv/bin/pytest tests/test_training_phases.py` |
 | **Modify Phase 1 (`train_m1`) training logic** | 1. [`spwm/contracts/protocols.py`](file:///Users/Mattia/Desktop/Studies/Temp/spwm/contracts/protocols.py)<br>2. [`spwm/training/phases/m1_nominal.py`](file:///Users/Mattia/Desktop/Studies/Temp/spwm/training/phases/m1_nominal.py)<br>3. [`tests/test_training_phases.py`](file:///Users/Mattia/Desktop/Studies/Temp/tests/test_training_phases.py) | `.venv/bin/pytest tests/test_training_phases.py` |
+| **Modify Phase 2 (`train_m2`) Convergence Funnel** | 1. [`spwm/training/losses.py`](file:///Users/Mattia/Desktop/Studies/Temp/spwm/training/losses.py)<br>2. [`spwm/training/phases/m2_recovery.py`](file:///Users/Mattia/Desktop/Studies/Temp/spwm/training/phases/m2_recovery.py)<br>3. [`tests/test_training_phases.py`](file:///Users/Mattia/Desktop/Studies/Temp/tests/test_training_phases.py) | `.venv/bin/pytest tests/test_training_phases.py tests/test_relay.py` |
+| **Modify Phase 3 (`train_m3`) sustained rollout** | 1. [`spwm/models/rollout.py`](file:///Users/Mattia/Desktop/Studies/Temp/spwm/models/rollout.py)<br>2. [`spwm/training/phases/m3_sustained.py`](file:///Users/Mattia/Desktop/Studies/Temp/spwm/training/phases/m3_sustained.py)<br>3. [`tests/test_training_phases.py`](file:///Users/Mattia/Desktop/Studies/Temp/tests/test_training_phases.py) | `.venv/bin/pytest tests/test_training_phases.py tests/test_relay.py` |
+| **Modify `EventEncoder` / `SpatialSoftmax`** | 1. [`spwm/contracts/tensors.py`](file:///Users/Mattia/Desktop/Studies/Temp/spwm/contracts/tensors.py)<br>2. [`spwm/models/encoder.py`](file:///Users/Mattia/Desktop/Studies/Temp/spwm/models/encoder.py)<br>3. [`tests/test_models_contracts.py`](file:///Users/Mattia/Desktop/Studies/Temp/tests/test_models_contracts.py) | `.venv/bin/pytest tests/test_models_contracts.py` |
+| **Modify `SpikingLatentDynamics` / `ALIFCell`** | 1. [`spwm/contracts/states.py`](file:///Users/Mattia/Desktop/Studies/Temp/spwm/contracts/states.py)<br>2. [`spwm/models/dynamics.py`](file:///Users/Mattia/Desktop/Studies/Temp/spwm/models/dynamics.py)<br>3. [`tests/test_models_contracts.py`](file:///Users/Mattia/Desktop/Studies/Temp/tests/test_models_contracts.py) | `.venv/bin/pytest tests/test_models_contracts.py tests/test_alif.py` |
 | **Modify Phase 2 (`train_m2`) Convergence Funnel** | 1. [`spwm/training/losses.py`](file:///Users/Mattia/Desktop/Studies/Temp/spwm/training/losses.py)<br>2. [`spwm/training/phases/m2_recovery.py`](file:///Users/Mattia/Desktop/Studies/Temp/spwm/training/phases/m2_recovery.py)<br>3. [`tests/test_training_phases.py`](file:///Users/Mattia/Desktop/Studies/Temp/tests/test_training_phases.py) | `.venv/bin/pytest tests/test_training_phases.py tests/test_relay.py` |
 | **Modify Phase 3 (`train_m3`) sustained rollout** | 1. [`spwm/models/rollout.py`](file:///Users/Mattia/Desktop/Studies/Temp/spwm/models/rollout.py)<br>2. [`spwm/training/phases/m3_sustained.py`](file:///Users/Mattia/Desktop/Studies/Temp/spwm/training/phases/m3_sustained.py)<br>3. [`tests/test_training_phases.py`](file:///Users/Mattia/Desktop/Studies/Temp/tests/test_training_phases.py) | `.venv/bin/pytest tests/test_training_phases.py tests/test_relay.py` |
 | **Modify `EventEncoder` / `SpatialSoftmax`** | 1. [`spwm/contracts/tensors.py`](file:///Users/Mattia/Desktop/Studies/Temp/spwm/contracts/tensors.py)<br>2. [`spwm/models/encoder.py`](file:///Users/Mattia/Desktop/Studies/Temp/spwm/models/encoder.py)<br>3. [`tests/test_models_contracts.py`](file:///Users/Mattia/Desktop/Studies/Temp/tests/test_models_contracts.py) | `.venv/bin/pytest tests/test_models_contracts.py` |

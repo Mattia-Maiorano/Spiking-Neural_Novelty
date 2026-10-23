@@ -8,6 +8,7 @@ and the BaseTrainer / Trainer orchestration engine.
 from spwm.training.engine import (
     BaseTrainer,
     Trainer,
+    load_representation_checkpoint,
     load_m1_checkpoint,
     load_m2_checkpoint,
 )
@@ -30,6 +31,7 @@ from spwm.training.metrics import (
     velocity_error,
 )
 from spwm.training.phases import (
+    RepresentationPhaseStrategy,
     M1PhaseStrategy,
     M2PhaseStrategy,
     M3PhaseStrategy,
@@ -43,6 +45,7 @@ from spwm.training.rollout import RolloutResult, TelemetryContainer, rollout_lat
 __all__ = [
     "BaseTrainer",
     "Trainer",
+    "load_representation_checkpoint",
     "load_m1_checkpoint",
     "load_m2_checkpoint",
     "_frozen",
@@ -61,6 +64,7 @@ __all__ = [
     "energy_estimate",
     "PhaseStrategy",
     "PhaseHandler",
+    "RepresentationPhaseStrategy",
     "M1PhaseStrategy",
     "M2PhaseStrategy",
     "M3PhaseStrategy",

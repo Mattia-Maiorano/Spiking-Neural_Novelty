@@ -159,6 +159,14 @@ class PhysicalDecoder(nn.Module):
         self.pos_head = nn.Linear(self.q_dim, 2 * num_objects)
         self.vel_head = nn.Linear(self.p_dim, 2 * num_objects)
 
+    def decode_pos(self, q: torch.Tensor) -> torch.Tensor:
+        """Decodes position kinematics from coordinate subspace q."""
+        return self.pos_head(q)
+
+    def decode_vel(self, p: torch.Tensor) -> torch.Tensor:
+        """Decodes velocity kinematics from momentum subspace p."""
+        return self.vel_head(p)
+
     def warm_up_filter(self, z_prefix: torch.Tensor, initial_state: Optional[torch.Tensor] = None) -> torch.Tensor:
         """
         Runs the EMA momentum filter across preceding latent states z_prefix [B, T_pre, D]

@@ -1,6 +1,6 @@
-# SPWM-v0.2.0 Master Architectural Specification
+# SPWM-v0.3.0 Master Architectural Specification
 
-This document serves as the authoritative technical reference for **SPWM-v0.2.0 (Spiking Predictive World Model)** following its migration to the **4-Layer Strict Contract Architecture**. It is divided into three comprehensive sections:
+This document serves as the authoritative technical reference for **SPWM-v0.3.0 (Spiking Predictive World Model)** following the migration to **Strict Phase Decoupling (Phase 0 Representation & Phase 1 Nominal Dynamics)** and the **4-Layer Strict Contract Architecture**. It is divided into three comprehensive sections:
 1. **The Workspace**: 4-layer directory topology, dependency invariants, file-level responsibilities, and CI/AST enforcement guards.
 2. **Models' Architecture**: End-to-end forward pass, tensor dimensionality contracts, and the mathematical and computational roles of `EventEncoder`, `SpikingLatentDynamics`, `CascadedTemporalRelay`, and `PhysicalDecoder`.
 3. **Loss Computation & Training Flow**: Granular breakdown of the isolated `m1`/`m2`/`m3` phase strategies, Convergence Funnel mathematics, exact loss formulations, and strict checkpoint scoping rules.
@@ -193,13 +193,14 @@ All tensor shapes are verified at runtime via [`assert_tensor_contract`](file://
 
 ## 3. Loss Computation, Training Flow & Strict Checkpoint Scoping
 
-### 3.1 Three-Phase Isolated Training Curriculum
+### 3.1 Four-Phase Isolated Training Curriculum
 
-To eliminate competing gradients and prevent BPTT instability across long rollouts, training is decomposed into three strictly isolated phases implemented in [`spwm/training/phases/`](file:///Users/Mattia/Desktop/Studies/Temp/spwm/training/phases/__init__.py):
+To completely decouple representation learning from autoregressive MLP dynamics, eliminate competing gradients, and prevent BPTT instability across long rollouts, training is decomposed into four strictly isolated phases implemented in [`spwm/training/phases/`](file:///Users/Mattia/Desktop/Studies/Temp/spwm/training/phases/__init__.py):
 
 | Phase Mode | Strategy Class | Trainable Modules (`requires_grad=True`) | Frozen Modules (`requires_grad=False`) | Active Rollout Window |
 | :--- | :--- | :--- | :--- | :--- |
-| **`train_m1`** | [`M1PhaseStrategy`](file:///Users/Mattia/Desktop/Studies/Temp/spwm/training/phases/m1_nominal.py) | `encoder` (conv + `proj`), `dynamics`, `sensory_predictor`, `physical_decoder`, `predictor.m1` | `predictor.m2`, `predictor.m3` | $t \in [0, H-1]$ (1 phase) |
+| **`train_representation`** | [`RepresentationPhaseStrategy`](file:///Users/Mattia/Desktop/Studies/Temp/spwm/training/phases/representation.py) | `encoder`, `dynamics`, `sensory_predictor`, `physical_decoder` | `predictor.m1`, `predictor.m2`, `predictor.m3` | $t \in [0, T_{\text{obs}}]$ (Pure State Estimation) |
+| **`train_m1`** | [`M1PhaseStrategy`](file:///Users/Mattia/Desktop/Studies/Temp/spwm/training/phases/m1_nominal.py) | `predictor.m1` | `encoder`, `dynamics`, `sensory_predictor`, `physical_decoder`, `predictor.m2`, `predictor.m3` | $t \in [0, H-1]$ (1 phase on Pristine Latents) |
 | **`train_m2`** | [`M2PhaseStrategy`](file:///Users/Mattia/Desktop/Studies/Temp/spwm/training/phases/m2_recovery.py) | `predictor.m2` | `encoder`, `dynamics`, `sensory_predictor`, `physical_decoder`, `predictor.m1`, `predictor.m3` | Cycle 1: $[H, 2H-1]$; Cycle 2: $[3H, 4H-1]$ |
 | **`train_m3`** | [`M3PhaseStrategy`](file:///Users/Mattia/Desktop/Studies/Temp/spwm/training/phases/m3_sustained.py) | `predictor.m2`, `predictor.m3` | `encoder`, `dynamics`, `sensory_predictor`, `physical_decoder`, `predictor.m1` | $t \in [H, H_{\max}-1]$ ($M_2 \leftrightarrow M_3$) |
 
@@ -207,12 +208,23 @@ Every strategy enforces its parameter mask via `verify_gradient_isolation()`, ra
 
 ### 3.2 Exact Mathematical Loss Formulations
 
+#### Phase 0 (`train_representation`) Objective
+In [`RepresentationPhaseStrategy`](file:///Users/Mattia/Desktop/Studies/Temp/spwm/training/phases/representation.py), the spiking network is trained strictly as a continuous state estimator over sensory input streams $t \in [0, T_{\text{obs}}]$ via `forward_representation`. No autoregressive mental rollouts or MLP forward dynamics are instantiated. The objective is the weighted sum of four strict losses:
+1. **Kinematic Supervision**: Grounding coordinates $\mathbf{q}_t$ and momentum $\mathbf{p}_t$ in ground-truth physics:
+   $$\mathcal{L}_{\text{kinematic}} = \frac{1}{BT}\sum_{t=0}^{T-1} \left\|\text{decode\_pos}(\mathbf{q}_t) - \mathbf{y}_{\text{pos}, t}^*\right\|_2^2 + \left\|\text{decode\_vel}(\mathbf{p}_t) - \mathbf{y}_{\text{vel}, t}^*\right\|_2^2$$
+2. **Strict Phase-Space Derivative Constraint**: Factorizing velocity without artificial clamp or tanh saturation:
+   $$\mathcal{L}_{\text{derivative}} = \frac{1}{B(T-1)}\sum_{t=0}^{T-2} \left\|(\mathbf{q}_{t+1} - \mathbf{q}_t) - dt \cdot \mathbf{p}_t\right\|_2^2$$
+3. **ALIF Momentum Smoothness**: Suppressing high-frequency spiking noise in the ALIF output readout:
+   $$\mathcal{L}_{\text{smoothness}} = \frac{1}{B(T-1)}\sum_{t=0}^{T-2} \left\|\mathbf{p}_{t+1} - \mathbf{p}_t\right\|_2^2$$
+4. **Sensory Prediction Reconstruction**: Top-down predictive coding from `sensory_predictor`:
+   $$\mathcal{L}_{\text{sensory}} = \frac{1}{BT}\sum_{t=0}^{T-1} \left\|\boldsymbol{\epsilon}_t\right\|_2^2 \quad \text{where } \boldsymbol{\epsilon}_t = \mathbf{x}_t - \hat{\mathbf{x}}_t$$
+
+$$\mathcal{L}_{\text{Phase 0}} = \lambda_{\text{kinematic}}\mathcal{L}_{\text{kinematic}} + \lambda_{\text{derivative}}\mathcal{L}_{\text{derivative}} + \lambda_{\text{smoothness}}\mathcal{L}_{\text{smoothness}} + \lambda_{\text{sensory}}\mathcal{L}_{\text{sensory}} \quad (\lambda_i = 1.0)$$
+
 #### Phase 1 (`train_m1`) Objective
-In [`M1PhaseStrategy`](file:///Users/Mattia/Desktop/Studies/Temp/spwm/training/phases/m1_nominal.py), a full sequence forward pass $\mathcal{O} = \text{SPWM}(\mathbf{E}_{0:T-1})$ produces on-manifold latents $\mathbf{z}_{0:T-1}^*$, keypoints $\mathbf{k}_{0:T-1}$, immediate kinematic readouts $\hat{\mathbf{y}}_{0:T-1}^{\text{imm}}$, and sensory prediction error neurons $\boldsymbol{\epsilon}_{0:T-1} = \mathbf{x}_{0:T-1} - \hat{\mathbf{x}}_{0:T-1}$. Starting from $\mathbf{z}_0^* = \text{stop\_grad}(\mathbf{z}_0)$, $M_1$ rolls out autoregressively for $H$ steps via `rollout_latent(..., fixed_predictor=model.m1)` to produce $\hat{\mathbf{z}}_{1:H}^{(M_1)}$. The total Phase 1 loss is:
+In [`M1PhaseStrategy`](file:///Users/Mattia/Desktop/Studies/Temp/spwm/training/phases/m1_nominal.py), all representation modules (`encoder`, `dynamics`, `sensory_predictor`, `physical_decoder`) are **strictly frozen** (`requires_grad = False`). Pristine ground-truth latents $\mathbf{z}_{0:T}^*$ are generated via `forward_representation` and detached from the graph: $\mathbf{z}_{\text{target}} = \text{stop\_grad}(\mathbf{z}^*)$. Starting from $\hat{\mathbf{z}}_0 = \mathbf{z}_{\text{target}, 0}$, $M_1$ rolls out autoregressively $\hat{\mathbf{z}}_{t+1} = \hat{\mathbf{z}}_t + M_1(\hat{\mathbf{z}}_t)$ over $H$ steps. M1 learns purely in latent space:
 
-$$\mathcal{L}_{M_1} = \underbrace{\frac{1}{BH}\sum_{t=1}^{H} \left\|\hat{\mathbf{z}}_{t}^{(M_1)} - \text{stop\_grad}(\mathbf{z}_t^*)\right\|_2^2}_{\mathcal{L}_{\text{latent}}} + \lambda_{\text{enc}} \underbrace{\frac{1}{BTK}\sum_{t=0}^{T-1}\sum_{k=1}^{K} \left\|\mathbf{k}_{t, k} - \mathbf{x}_{\text{pos}, t}^*\right\|_2^2}_{\mathcal{L}_{\text{encoder}}} + \lambda_{\text{dec}} \underbrace{\frac{1}{BT}\sum_{t=0}^{T-1} \left\|\hat{\mathbf{y}}_t^{\text{imm}} - \mathbf{y}_t^*\right\|_2^2}_{\mathcal{L}_{\text{decoder}}} + \lambda_{\text{sensory}} \underbrace{\frac{1}{BT}\sum_{t=0}^{T-1} \left\|\hat{\mathbf{x}}_t - \mathbf{x}_t\right\|_2^2}_{\mathcal{L}_{\text{sensory}}}$$
-
-Because `dynamics` and `sensory_predictor` have `requires_grad=True` alongside `encoder`, `physical_decoder`, and `predictor.m1`, $\mathcal{L}_{\text{sensory}}$ trains `sensory_predictor` to reconstruct bottom-up sensory representations $\mathbf{x}_t$ from $\mathbf{z}_{t-1}$, while $\mathcal{L}_{\text{decoder}}$ and $\mathcal{L}_{\text{sensory}}$ backpropagate through `SpikingLatentDynamics` and optimize recurrent ALIF parameters, and $\mathcal{L}_{\text{latent}}$ trains $M_1$ nominal prediction.
+$$\mathcal{L}_{M_1} = \frac{1}{BH}\sum_{t=1}^{H} \left\|\hat{\mathbf{z}}_t - \mathbf{z}_{\text{target}, t}\right\|_2^2$$
 
 #### Phase 2 (`train_m2`) Convergence Funnel Objective
 At step $t_{\text{anchor}} = H$, the frozen $M_1$ rollout terminates at a "dirty" off-manifold state $\hat{\mathbf{z}}_H$ with terminal velocity proxy $\Delta \hat{\mathbf{z}}_H = \hat{\mathbf{z}}_H - \hat{\mathbf{z}}_{H-1}$. Directly forcing $M_2$ to jump from $\hat{\mathbf{z}}_H$ to the clean ground-truth manifold $\mathbf{z}_{H+1}^*$ in a single step causes high-jerk gradient shock. Instead, [`compute_convergence_funnel_target`](file:///Users/Mattia/Desktop/Studies/Temp/spwm/models/predictors.py) defines a linear inertia extrapolation:
@@ -240,10 +252,11 @@ Backpropagating $\mathcal{L}_{M_3}$ jointly updates $M_2$ and $M_3$ so their han
 ### 3.3 Strict Checkpoint Scoping Rules
 
 All checkpoint operations in [`spwm/training/engine.py`](file:///Users/Mattia/Desktop/Studies/Temp/spwm/training/engine.py) enforce `strict=True`:
-1. **`load_m1_checkpoint(model, ckpt_path)`**: Extracts and loads `encoder`, `sensory_predictor`, `dynamics`, `predictor.m1`, and `physical_decoder` sub-dictionaries, each with `strict=True`.
-2. **`model.relay.init_m3_from_m1()`**: Copies `m1.state_dict()` into `m3` with `strict=True`.
-3. **`load_m2_checkpoint(model, ckpt_path)`**: Extracts and loads `predictor.m2` with `strict=True`.
-4. **`BaseTrainer.load_checkpoint(ckpt_path)`**: Loads the full `SPWM` model state dict with `strict=True`, raising `RuntimeError` immediately if any key is missing, unexpected, or shape-mismatched.
+1. **`load_representation_checkpoint(model, ckpt_path)`**: Extracts and loads `encoder`, `sensory_predictor`, `dynamics`, and `physical_decoder` sub-dictionaries from Phase 0, each with `strict=True`.
+2. **`load_m1_checkpoint(model, ckpt_path)`**: Extracts and loads `encoder`, `sensory_predictor`, `dynamics`, `predictor.m1`, and `physical_decoder` sub-dictionaries, each with `strict=True`.
+3. **`model.relay.init_m3_from_m1()`**: Copies `m1.state_dict()` into `m3` with `strict=True`.
+4. **`load_m2_checkpoint(model, ckpt_path)`**: Extracts and loads `predictor.m2` with `strict=True`.
+5. **`BaseTrainer.load_checkpoint(ckpt_path)`**: Loads the full `SPWM` model state dict with `strict=True`, raising `RuntimeError` immediately if any key is missing, unexpected, or shape-mismatched.
 
 ---
 

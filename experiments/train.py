@@ -55,7 +55,7 @@ def parse_args() -> argparse.Namespace:
         "--mode",
         type=str,
         default=None,
-        choices=["train_m1", "train_m2", "train_m3", "train_cascade"],
+        choices=["train_representation", "train_m1", "train_m2", "train_m3", "train_cascade"],
         help="Override training mode",
     )
     parser.add_argument("--device", type=str, default=None, help="Device (cpu, cuda, mps)")
@@ -68,6 +68,12 @@ def parse_args() -> argparse.Namespace:
         help="Override early stopping patience (epochs without validation improvement before switching/stopping)",
     )
     parser.add_argument("--output-dir", type=str, default=None, help="Override output directory")
+    parser.add_argument(
+        "--representation-checkpoint",
+        type=str,
+        default=None,
+        help="Representation checkpoint (model.pt) for Phase 1/2/3 training",
+    )
     parser.add_argument("--m1-checkpoint", type=str, default=None, help="M1 nominal checkpoint (model.pt) for M2 or M3 phase")
     parser.add_argument("--m2-checkpoint", type=str, default=None, help="M2 recovery checkpoint (model.pt) for M3 phase")
     parser.add_argument("--phase-horizon", type=int, default=None, help="Dynamic phase duration horizon (default 10)")
@@ -246,6 +252,8 @@ def main() -> None:
         overrides["epochs"] = args.epochs
     if args.patience is not None:
         overrides["early_stopping_patience"] = args.patience
+    if args.representation_checkpoint is not None:
+        overrides["representation_checkpoint"] = args.representation_checkpoint
     if args.m1_checkpoint is not None:
         overrides["m1_checkpoint"] = args.m1_checkpoint
     if args.m2_checkpoint is not None:
@@ -322,7 +330,7 @@ def main() -> None:
     cfg.save(save_dir / "config.yaml")
 
     if mode == "train_cascade":
-        for phase_mode in ("train_m1", "train_m2", "train_m3"):
+        for phase_mode in ("train_representation", "train_m1", "train_m2", "train_m3"):
             phase_dir = results_root / f"{cfg.project.name}_{phase_mode}"
             phase_log_path = phase_dir / "training_log.json"
             phase_hist = []

@@ -14,7 +14,7 @@ from spwm.config.schema import (
 
 def test_experiment_config_instantiates_cleanly():
     cfg = ExperimentConfig()
-    assert cfg.project.name in ("spwm_v0_2_0", "spwm_v0_2_1", "spwm_v0_2_2")
+    assert cfg.project.name in ("spwm_v0_2_0", "spwm_v0_2_1", "spwm_v0_2_2", "spwm_v0_3_0")
     assert cfg.model.latent_dim == 128
     assert cfg.model.q_dim == 32
     assert cfg.model.p_dim == 96
@@ -72,7 +72,10 @@ def test_timescale_dims_length_mismatch_raises():
 def test_invalid_and_pruned_training_modes_raise():
     with pytest.raises(ValueError, match="Invalid training mode"):
         TrainingConfig(mode="bogus_mode")
-    # All old modalities are completely pruned and raise ValueError
-    for pruned_mode in ["train_representation", "train_predictor", "train_joint", "train_corrector"]:
+    # Verify train_representation is a valid mode
+    cfg_rep = TrainingConfig(mode="train_representation")
+    assert cfg_rep.mode == "train_representation"
+    # Legacy modalities remain pruned and raise ValueError
+    for pruned_mode in ["train_predictor", "train_joint", "train_corrector"]:
         with pytest.raises(ValueError, match="Invalid training mode"):
             TrainingConfig(mode=pruned_mode)

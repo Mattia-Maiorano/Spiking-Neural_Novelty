@@ -239,6 +239,50 @@ class SPWM(nn.Module):
         )
         return output, new_state
 
+    def forward_representation(
+        self,
+        event_sequence: torch.Tensor,
+        initial_state: Optional[SPWMState] = None,
+    ) -> Tuple[torch.Tensor, torch.Tensor]:
+        """
+        Sensory-driven state estimation without predictor rollouts (Phase 0).
+        Computes z_t = (q_t, p_t) directly from sensory input streams.
+        Returns:
+            latent_states: [B, T, latent_dim]
+            error_neurons: [B, T, encoder_dim]
+        """
+        assert_tensor_contract(
+            event_sequence,
+            (None, None, self.in_channels, self.height, self.width),
+            "SPWM.forward_representation.event_sequence",
+        )
+        B, T, _, _, _ = event_sequence.shape
+        device = event_sequence.device
+        state = initial_state if initial_state is not None else self.init_state(B, device=device)
+
+        latent_steps = []
+        error_neuron_steps = []
+
+        for t in range(T):
+            event_frame = event_sequence[:, t]
+            sensory_x, sensory_keypoints = self.encoder.encode_step(event_frame)
+            z_prev = state.dynamics_state.z_prev
+            predicted_x = self.sensory_predictor(z_prev)
+            epsilon_t = sensory_x - predicted_x
+
+            z_t, new_dyn_state = self.dynamics.step(
+                sensory_input=epsilon_t,
+                state=state.dynamics_state,
+                sensory_keypoints=sensory_keypoints,
+            )
+            state = SPWMState(encoder_states=None, dynamics_state=new_dyn_state)
+            latent_steps.append(z_t)
+            error_neuron_steps.append(epsilon_t)
+
+        latents = torch.stack(latent_steps, dim=1)
+        error_neurons = torch.stack(error_neuron_steps, dim=1)
+        return latents, error_neurons
+
     def forward(
         self,
         event_sequence: torch.Tensor,

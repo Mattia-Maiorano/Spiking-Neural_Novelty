@@ -1,12 +1,12 @@
 # Loss Formulations, Isolated Phase Strategies & Checkpoint Scoping (`spwm/training/`)
 
-This document details the mathematical formulations, gradient isolation guarantees, and checkpoint scoping rules implemented in Layer 2 ([`spwm/training/`](file:///Users/Mattia/Desktop/Studies/Temp/spwm/training/__init__.py)).
+This document details the mathematical formulations, gradient isolation guarantees, and checkpoint scoping rules implemented in Layer 2 ([`spwm/training/`](file:///Users/Mattia/Desktop/Studies/Temp/spwm/training/__init__.py)) for **SPWM-v0.3.0**.
 
 ---
 
 ## 1. Isolated Phase Strategy Architecture (`spwm/training/phases/`)
 
-Instead of a monolithic conditional handler, SPWM-v0.2.0 isolates each phase of the Cascaded Temporal Relay curriculum into a dedicated `< 150`-line strategy class inheriting from [`PhaseStrategy`](file:///Users/Mattia/Desktop/Studies/Temp/spwm/contracts/protocols.py):
+Instead of a monolithic conditional handler, SPWM-v0.3.0 completely decouples representation learning from autoregressive MLP dynamics, isolating each phase into a dedicated `< 150`-line strategy class inheriting from [`PhaseStrategy`](file:///Users/Mattia/Desktop/Studies/Temp/spwm/contracts/protocols.py):
 
 ```mermaid
 classDiagram
@@ -22,6 +22,13 @@ classDiagram
         +train_step(batch, epoch)* Dict[str, float]
         +validate_step(batch)* Dict[str, float]
         +get_selection_score(val_metrics) float
+    }
+
+    class RepresentationPhaseStrategy {
+        +setup() None
+        +verify_gradient_isolation() None
+        +train_step(batch, epoch) Dict[str, float]
+        +validate_step(batch) Dict[str, float]
     }
 
     class M1PhaseStrategy {
@@ -45,6 +52,7 @@ classDiagram
         +validate_step(batch) Dict[str, float]
     }
 
+    PhaseStrategy <|-- RepresentationPhaseStrategy
     PhaseStrategy <|-- M1PhaseStrategy
     PhaseStrategy <|-- M2PhaseStrategy
     PhaseStrategy <|-- M3PhaseStrategy
@@ -52,26 +60,42 @@ classDiagram
 
 ---
 
-## 2. Granular Breakdown of `m1`, `m2`, and `m3` Training Strategies
+## 2. Granular Breakdown of Training Strategies
+
+### 2.0 Phase 0: `RepresentationPhaseStrategy` ([`spwm/training/phases/representation.py`](file:///Users/Mattia/Desktop/Studies/Temp/spwm/training/phases/representation.py))
+- **Purpose**: Train the Spiking Network to act as a grounded, continuous state estimator on sensory input streams $t \in [0, T_{\text{obs}}]$. Zero autoregressive mental rollouts are permitted in this phase.
+- **Parameter Mask**:
+  - **Active (`requires_grad=True`)**: `model.encoder`, `model.dynamics` (`SpikingLatentDynamics`), `model.sensory_predictor`, `model.physical_decoder`.
+  - **Frozen / Inactive (`requires_grad=False`)**: `model.m1`, `model.m2`, `model.m3` (must not receive gradients or be instantiated in the forward pass of Phase 0).
+- **Optimizer Groups**:
+  - `model.encoder`, `model.dynamics`, `model.sensory_predictor`: `lr = cfg.training.learning_rate`, `weight_decay = cfg.training.weight_decay`.
+  - `model.physical_decoder`: `lr = cfg.training.probe_lr`, `weight_decay = cfg.training.probe_weight_decay`.
+- **Forward Pass**:
+  Executes `model.forward_representation(events)` over $t \in [0, T_{\text{obs}}]$ computing $\mathbf{z}_t = (\mathbf{q}_t, \mathbf{p}_t)$ directly from sensory input streams.
+- **Strict Loss Constraints**:
+  1. **$\mathcal{L}_{\text{kinematic}}$**: Supervised loss against ground-truth physics:
+     $$\mathcal{L}_{\text{kinematic}} = \text{MSE}(\text{decode\_pos}(\mathbf{q}_t), \mathbf{y}_{\text{pos}, t}^*) + \text{MSE}(\text{decode\_vel}(\mathbf{p}_t), \mathbf{y}_{\text{vel}, t}^*)$$
+  2. **$\mathcal{L}_{\text{derivative}}$**: Strict phase-space factorization constraint (raw derivative mapping without `clamp` or `tanh`):
+     $$\mathcal{L}_{\text{derivative}} = \text{MSE}((\mathbf{q}_{t+1} - \mathbf{q}_t), dt \cdot \mathbf{p}_t)$$
+  3. **$\mathcal{L}_{\text{smoothness}}$**: High-frequency noise suppression on ALIF outputs:
+     $$\mathcal{L}_{\text{smoothness}} = \text{MSE}(\mathbf{p}_{t+1}, \mathbf{p}_t)$$
+  4. **$\mathcal{L}_{\text{sensory}}$**: Existing top-down sensory reconstruction loss from `sensory_predictor`:
+     $$\mathcal{L}_{\text{sensory}} = \text{MSE}(\boldsymbol{\epsilon}_t, \mathbf{0})$$
+  $$\mathcal{L}_{\text{Phase 0}} = \lambda_1 \mathcal{L}_{\text{kinematic}} + \lambda_2 \mathcal{L}_{\text{derivative}} + \lambda_3 \mathcal{L}_{\text{smoothness}} + \lambda_4 \mathcal{L}_{\text{sensory}} \quad (\lambda_i = 1.0)$$
 
 ### 2.1 Phase 1: `M1PhaseStrategy` ([`spwm/training/phases/m1_nominal.py`](file:///Users/Mattia/Desktop/Studies/Temp/spwm/training/phases/m1_nominal.py))
-- **Purpose**: Establish a grounded symplectic latent representation $\mathbf{z}_t = [\mathbf{q}_t, \mathbf{p}_t]$, optimize top-down sensory prediction and recurrent spiking dynamics, and train the nominal physics predictor $M_1$ over short horizons $t \in [0, H-1]$.
-- **Parameter Mask**:
-  - **Active (`requires_grad=True`)**: `model.m1`, `model.encoder` (both `conv` and `proj`), `model.dynamics`, `model.sensory_predictor`, `model.physical_decoder`.
-  - **Frozen (`requires_grad=False`)**: `model.m2`, `model.m3`.
-- **Optimizer Groups**:
-  - Group 1 (`model.m1`): `lr = cfg.training.learning_rate`, `weight_decay = cfg.training.weight_decay`.
-  - Group 2 (`model.encoder`): `lr = cfg.training.learning_rate`, `weight_decay = cfg.training.weight_decay`.
-  - Group 3 (`model.dynamics`): `lr = cfg.training.learning_rate`, `weight_decay = cfg.training.weight_decay`.
-  - Group 4 (`model.sensory_predictor`): `lr = cfg.training.learning_rate`, `weight_decay = cfg.training.weight_decay`.
-  - Group 5 (`model.physical_decoder`): `lr = cfg.training.probe_lr`, `weight_decay = cfg.training.probe_weight_decay`.
-- **Step Execution**:
-  1. Runs `seq_out = self.model(events)` in the active grad context, generating latents $\mathbf{z}_{0:T-1}^*$, keypoints $\mathbf{k}_{0:T-1}$, immediate kinematic readouts $\hat{\mathbf{y}}_{0:T-1}^{\text{imm}}$, and top-down sensory prediction errors $\boldsymbol{\epsilon}_{0:T-1} = \mathbf{x}_{0:T-1} - \hat{\mathbf{x}}_{0:T-1}$.
-  2. Detaches $\mathbf{z}_0 = \text{stop\_grad}(\mathbf{z}_0^*)$ and target latents $\mathbf{z}_{1:H}^* = \text{stop\_grad}(\mathbf{z}_{1:H})$.
-  3. Executes `rollout_latent(model, z_init=z_0, horizon=H, with_grad=True, fixed_predictor=model.m1)` to obtain $\hat{\mathbf{z}}_{1:H}^{(M_1)}$.
-  4. Minimizes $\mathcal{L}_{M_1} = \lambda_{\text{latent}}\mathcal{L}_{\text{latent}} + \lambda_{\text{enc}}\mathcal{L}_{\text{encoder}} + \lambda_{\text{dec}}\mathcal{L}_{\text{decoder}} + \lambda_{\text{sensory}}\mathcal{L}_{\text{sensory}}$, where:
-     $$\mathcal{L}_{\text{latent}} = \lambda_{\text{position}} \cdot \text{MSE}(\hat{\mathbf{q}}, \mathbf{q}^*) + \lambda_{\text{velocity}} \cdot \text{MSE}(\hat{\mathbf{p}}, \mathbf{p}^*)$$
-     updating $M_1$, `encoder`, `dynamics`, `sensory_predictor`, and `physical_decoder`.
+- **Purpose**: Train the nominal physics MLP strictly on pristine, Markovian phase-space vectors generated by the frozen representation.
+- **State Pre-condition**:
+  - `encoder`, `dynamics`, `sensory_predictor`, and `physical_decoder` **MUST BE FROZEN** (`requires_grad = False`).
+  - `m2` and `m3` are frozen (`requires_grad = False`).
+  - Optimizer updates **only `m1`**.
+- **Forward Pass**:
+  1. Generates ground-truth latent trajectory $\mathbf{z}_{0:T}^*$ using frozen Phase 0 modules (`model.forward_representation`).
+  2. Detaches $\mathbf{z}^*$: $\mathbf{z}_{\text{target}} = \text{stop\_grad}(\mathbf{z}^*)$.
+  3. Runs $M_1$ autoregressively: $\hat{\mathbf{z}}_{t+1} = \hat{\mathbf{z}}_t + M_1(\hat{\mathbf{z}}_t)$.
+- **Loss Constraint**:
+  $$\mathcal{L}_{M_1} = \text{MSE}(\hat{\mathbf{z}}_{t+1}, \mathbf{z}_{\text{target}, t+1})$$
+  No kinematic or sensory loss is applied to Phase 1; $M_1$ learns purely in the latent space.
 
 ### 2.2 Phase 2: `M2PhaseStrategy` ([`spwm/training/phases/m2_recovery.py`](file:///Users/Mattia/Desktop/Studies/Temp/spwm/training/phases/m2_recovery.py))
 - **Purpose**: Train the recovery predictor $M_2$ to pull drifted off-manifold latent states back onto the true physical manifold without velocity discontinuities.

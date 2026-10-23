@@ -60,7 +60,7 @@ def _strict_dict_to_dataclass(cls: Type[T], data: Dict[str, Any], context: str =
 @dataclass(frozen=True)
 class ProjectConfig:
     """Project-level identity, tracking tags, and pseudo-random reproducibility configuration."""
-    name: str = "spwm_v0_2_2"  #: Unique identifier/tag for the project and run artifacts.
+    name: str = "spwm_v0_3_0"  #: Unique identifier/tag for the project and run artifacts.
     seed: int = 42             #: Global pseudo-random seed for PyTorch, NumPy, and synthetic data generation.
 
 
@@ -214,7 +214,7 @@ class TrainingConfig:
     m2_checkpoint: Optional[str] = None            #: Path to pre-trained M2 checkpoint (`model.pt`) for Phase 3.
 
     def __post_init__(self) -> None:
-        valid_modes = ("train_m1", "train_m2", "train_m3", "train_cascade")
+        valid_modes = ("train_representation", "train_m1", "train_m2", "train_m3", "train_cascade")
         if self.mode not in valid_modes:
             raise ValueError(f"Invalid training mode '{self.mode}'. Allowed modes: {valid_modes}")
         if self.phase_horizon <= 0:
@@ -231,18 +231,21 @@ class TrainingConfig:
 class LossConfig:
     """
     Loss function scaling weights, horizons, and balancing coefficients for SPWM.
-    Coordinates the objective across M1, M2, and M3:
+    Coordinates the objective across Phase 0, M1, M2, and M3:
       - Coordinate (q) subspace error weight: lambda_position
       - Momentum/velocity (p) subspace error weight: lambda_velocity
       - Overall latent trajectory scale: lambda_latent
-      - Representation components (active in M1): lambda_encoder, lambda_decoder, lambda_sensory
+      - Phase 0 Grounded Representation: lambda_kinematic, lambda_derivative, lambda_smoothness, lambda_sensory
     """
-    lambda_encoder: float = 1.0     #: Weight of SpatialSoftmax keypoint MSE loss in 'train_m1'.
-    lambda_decoder: float = 2.0     #: Weight of PhysicalDecoder probe MSE loss in 'train_m1'.
+    lambda_encoder: float = 1.0     #: Weight of SpatialSoftmax keypoint MSE loss.
+    lambda_decoder: float = 1.0     #: Weight of PhysicalDecoder probe MSE loss.
     lambda_latent: float = 1.0      #: Weight of overall latent trajectory MSE loss.
-    lambda_sensory: float = 1.0     #: Weight of top-down sensory prediction MSE loss in 'train_m1'.
-    lambda_position: float = 1.5    #: Weight of coordinate/position (q) subspace MSE in latent rollout losses.
+    lambda_sensory: float = 1.0     #: Weight of top-down sensory prediction MSE loss.
+    lambda_position: float = 1.0    #: Weight of coordinate/position (q) subspace MSE in latent rollout losses.
     lambda_velocity: float = 1.0    #: Weight of momentum/velocity (p) subspace MSE in latent rollout losses.
+    lambda_kinematic: float = 1.0   #: Weight of physical decoder kinematic MSE loss in Phase 0.
+    lambda_derivative: float = 1.0  #: Weight of strict phase-space derivative constraint (q_{t+1}-q_t - dt*p_t) MSE.
+    lambda_smoothness: float = 1.0  #: Weight of ALIF momentum smoothness MSE loss in Phase 0.
 
 
 
@@ -278,7 +281,14 @@ class ExperimentConfig:
         seq_len = self.data.sequence_length
         mode = self.training.mode
 
-        if mode == "train_m1":
+        if mode in ("train_representation"):
+            min_len = 2
+            if seq_len < min_len:
+                raise ValueError(
+                    f"DataConfig.sequence_length ({seq_len}) is too short for {mode} "
+                    f"(requires >= {min_len})."
+                )
+        elif mode == "train_m1":
             min_len = H + 1
             if seq_len < min_len:
                 raise ValueError(

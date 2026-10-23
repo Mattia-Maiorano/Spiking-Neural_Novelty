@@ -166,20 +166,38 @@ def make_relay_test_cfg(
     )
 
 
+def test_strict_isolation_phase_0_train_representation():
+    """Phase 0: Train representation (encoder, dynamics, sensory_predictor, physical_decoder). M1, M2, M3 frozen."""
+    cfg = make_relay_test_cfg("train_representation", phase_horizon=8)
+    model = SPWM.from_config(cfg)
+    loss_fn = SPWMLoss.from_config(cfg.loss)
+    handler = PredictorPhaseHandler(model=model, cfg=cfg, loss_fn=loss_fn, device=torch.device("cpu"))
+
+    # Active representation modules
+    assert any(p.requires_grad for p in model.encoder.parameters())
+    assert any(p.requires_grad for p in model.dynamics.parameters())
+    assert any(p.requires_grad for p in model.sensory_predictor.parameters())
+    assert any(p.requires_grad for p in model.physical_decoder.parameters())
+    # M1, M2 and M3 parameters must be strictly frozen
+    assert all(not p.requires_grad for p in model.m1.parameters())
+    assert all(not p.requires_grad for p in model.m2.parameters())
+    assert all(not p.requires_grad for p in model.m3.parameters())
+
+
 def test_strict_isolation_phase_1_train_m1():
-    """Phase 1: Train M1 strictly confined to one phase. M2 and M3 must be frozen."""
+    """Phase 1: Train M1 strictly confined to one phase. Representation, M2 and M3 must be frozen."""
     cfg = make_relay_test_cfg("train_m1", phase_horizon=8)
     model = SPWM.from_config(cfg)
     loss_fn = SPWMLoss.from_config(cfg.loss)
     handler = PredictorPhaseHandler(model=model, cfg=cfg, loss_fn=loss_fn, device=torch.device("cpu"))
 
-    # M1, encoder, dynamics, sensory_predictor, physical_decoder parameters must require grad
+    # Only M1 parameters must require grad
     assert any(p.requires_grad for p in model.m1.parameters())
-    assert any(p.requires_grad for p in model.encoder.parameters())
-    assert any(p.requires_grad for p in model.dynamics.parameters())
-    assert any(p.requires_grad for p in model.sensory_predictor.parameters())
-    assert any(p.requires_grad for p in model.physical_decoder.parameters())
-    # M2 and M3 parameters must be strictly frozen
+    # Representation and M2, M3 must be strictly frozen
+    assert all(not p.requires_grad for p in model.encoder.parameters())
+    assert all(not p.requires_grad for p in model.dynamics.parameters())
+    assert all(not p.requires_grad for p in model.sensory_predictor.parameters())
+    assert all(not p.requires_grad for p in model.physical_decoder.parameters())
     assert all(not p.requires_grad for p in model.m2.parameters())
     assert all(not p.requires_grad for p in model.m3.parameters())
 

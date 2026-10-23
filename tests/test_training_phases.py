@@ -36,6 +36,7 @@ from spwm.training.losses import (
     extrapolate_latent,
 )
 from spwm.training.phases import (
+    RepresentationPhaseStrategy,
     M1PhaseStrategy,
     M2PhaseStrategy,
     M3PhaseStrategy,
@@ -83,7 +84,7 @@ def _make_small_config(mode: str = "train_m1") -> ExperimentConfig:
 def test_phase_strategy_files_under_150_lines() -> None:
     """Each concrete phase strategy file must remain < 150 lines for small-LLM context isolation."""
     phases_dir = Path(__file__).resolve().parent.parent / "spwm" / "training" / "phases"
-    for fname in ("m1_nominal.py", "m2_recovery.py", "m3_sustained.py"):
+    for fname in ("representation.py", "m1_nominal.py", "m2_recovery.py", "m3_sustained.py"):
         fpath = phases_dir / fname
         assert fpath.exists(), f"Missing phase strategy file: {fpath}"
         line_count = len(fpath.read_text(encoding="utf-8").splitlines())
@@ -119,32 +120,57 @@ def test_convergence_funnel_exact_boundary_math() -> None:
 
 
 def test_m1_m2_m3_isolated_phase_strategies() -> None:
-    """Verify M1PhaseStrategy, M2PhaseStrategy, and M3PhaseStrategy satisfy PhaseStrategy and isolate gradients."""
+    """Verify RepresentationPhaseStrategy, M1PhaseStrategy, M2PhaseStrategy, and M3PhaseStrategy satisfy PhaseStrategy and isolate gradients."""
     B, T = 2, 20
     events = torch.rand(B, T, 2, 16, 16)
     flat_kin = torch.randn(B, T, 4)
     batch = {"events": events, "flat_kinematics": flat_kin}
     device = torch.device("cpu")
 
-    # 1. M1 Phase Strategy (also verifies encoder.proj receives non-zero gradient!)
+    # 0. Phase 0: Representation Phase Strategy (trains encoder, dynamics, sensory_predictor, physical_decoder)
+    cfg_rep = _make_small_config("train_representation")
+    model_rep = SPWM.from_config(cfg_rep)
+    loss_fn = SPWMLoss.from_config(cfg_rep.loss)
+    rep_strategy = RepresentationPhaseStrategy(model_rep, cfg_rep, loss_fn, device)
+    assert isinstance(rep_strategy, PhaseStrategy)
+    rep_strategy.verify_gradient_isolation()
+    metrics_rep = rep_strategy.train_step(batch, epoch=1)
+    assert "train_loss" in metrics_rep and "train_loss_kinematic" in metrics_rep
+    assert "train_loss_derivative" in metrics_rep and "train_loss_smoothness" in metrics_rep
+    assert "train_loss_sensory" in metrics_rep
+    assert any(
+        p.grad is not None and p.grad.abs().sum() > 0 for p in model_rep.encoder.proj.parameters()
+    ), "encoder.proj must receive non-zero gradients during train_representation!"
+    assert any(
+        p.grad is not None and p.grad.abs().sum() > 0 for p in model_rep.dynamics.parameters()
+    ), "dynamics must receive non-zero gradients during train_representation!"
+    assert any(
+        p.grad is not None and p.grad.abs().sum() > 0 for p in model_rep.sensory_predictor.parameters()
+    ), "sensory_predictor must receive non-zero gradients during train_representation!"
+    assert any(
+        p.grad is not None and p.grad.abs().sum() > 0 for p in model_rep.physical_decoder.parameters()
+    ), "physical_decoder must receive non-zero gradients during train_representation!"
+    # M1, M2, M3 must be frozen
+    assert all(p.grad is None for p in model_rep.m1.parameters())
+    assert all(p.grad is None for p in model_rep.m2.parameters())
+    assert all(p.grad is None for p in model_rep.m3.parameters())
+
+    # 1. Phase 1: M1 Phase Strategy (strictly trains M1 on detached latent targets)
     cfg_m1 = _make_small_config("train_m1")
     model_m1 = SPWM.from_config(cfg_m1)
-    loss_fn = SPWMLoss.from_config(cfg_m1.loss)
     m1_strategy = M1PhaseStrategy(model_m1, cfg_m1, loss_fn, device)
     assert isinstance(m1_strategy, PhaseStrategy)
     m1_strategy.verify_gradient_isolation()
     metrics_m1 = m1_strategy.train_step(batch, epoch=1)
-    assert "train_loss" in metrics_m1 and "train_loss_encoder" in metrics_m1
-    assert "train_loss_sensory" in metrics_m1
+    assert "train_loss" in metrics_m1 and "train_loss_m1" in metrics_m1
     assert any(
-        p.grad is not None and p.grad.abs().sum() > 0 for p in model_m1.encoder.proj.parameters()
-    ), "encoder.proj must receive non-zero gradients during train_m1!"
-    assert any(
-        p.grad is not None and p.grad.abs().sum() > 0 for p in model_m1.dynamics.parameters()
-    ), "dynamics must receive non-zero gradients during train_m1!"
-    assert any(
-        p.grad is not None and p.grad.abs().sum() > 0 for p in model_m1.sensory_predictor.parameters()
-    ), "sensory_predictor must receive non-zero gradients during train_m1!"
+        p.grad is not None and p.grad.abs().sum() > 0 for p in model_m1.m1.parameters()
+    ), "m1 must receive non-zero gradients during train_m1!"
+    # Representation modules must be frozen in Phase 1
+    assert all(p.grad is None for p in model_m1.encoder.parameters())
+    assert all(p.grad is None for p in model_m1.dynamics.parameters())
+    assert all(p.grad is None for p in model_m1.sensory_predictor.parameters())
+    assert all(p.grad is None for p in model_m1.physical_decoder.parameters())
 
     # 2. M2 Phase Strategy
     cfg_m2 = _make_small_config("train_m2")
@@ -163,6 +189,7 @@ def test_m1_m2_m3_isolated_phase_strategies() -> None:
     m3_strategy.verify_gradient_isolation()
     metrics_m3 = m3_strategy.train_step(batch, epoch=1)
     assert "train_loss" in metrics_m3 and "train_loss_position" in metrics_m3
+
 
 
 def test_scoped_strict_checkpoint_loading(tmp_path: Path) -> None:
@@ -227,10 +254,10 @@ def test_train_cascade_and_auto_enforced_model_pt(tmp_path):
     history = trainer.fit(epochs=2, patience=1)
     assert len(history) >= 3
     phases_seen = {rec["phase"] for rec in history}
-    assert phases_seen == {"train_m1", "train_m2", "train_m3"}
+    assert phases_seen == {"train_representation", "train_m1", "train_m2", "train_m3"}
 
     # Verify model.pt was created for each phase
-    for pm in ("train_m1", "train_m2", "train_m3"):
+    for pm in ("train_representation", "train_m1", "train_m2", "train_m3"):
         p_pt = resolve_version_checkpoint(trainer.cfg.project.name, pm, results_root=tmp_path)
         assert p_pt.name == "model.pt"
         assert p_pt.is_file()

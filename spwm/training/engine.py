@@ -48,6 +48,32 @@ def _extract_submodel_state(full_state: Dict[str, torch.Tensor], prefix: str) ->
     return sub_state
 
 
+def load_representation_checkpoint(
+    model: nn.Module,
+    ckpt_path: Union[str, Path],
+    device: Optional[Union[str, torch.device]] = None,
+) -> None:
+    """Strictly load Phase 0 (`train_representation`) trained components into `model`.
+
+    Loads `encoder`, `sensory_predictor`, `dynamics`, and `physical_decoder`
+    each with `strict=True`.
+    """
+    path = Path(ckpt_path)
+    if not path.is_file():
+        raise FileNotFoundError(f"Representation checkpoint not found at: {path}")
+    raw = torch.load(path, map_location=device or "cpu", weights_only=False)
+    state_dict = raw["model_state"] if isinstance(raw, dict) and "model_state" in raw else raw
+
+    model.encoder.load_state_dict(_extract_submodel_state(state_dict, "encoder"), strict=True)
+    model.sensory_predictor.load_state_dict(
+        _extract_submodel_state(state_dict, "sensory_predictor"), strict=True
+    )
+    model.dynamics.load_state_dict(_extract_submodel_state(state_dict, "dynamics"), strict=True)
+    model.physical_decoder.load_state_dict(
+        _extract_submodel_state(state_dict, "physical_decoder"), strict=True
+    )
+
+
 def load_m1_checkpoint(
     model: nn.Module,
     ckpt_path: Union[str, Path],
@@ -151,16 +177,28 @@ def enforce_phase_prerequisites(
     mode = cfg.training.mode.lower()
     loaded: Dict[str, Path] = {}
 
-    if mode == "train_m1" and cfg.training.representation_checkpoint:
-        rep_path = resolve_version_checkpoint(
-            cfg.project.name,
-            "train_m1",
-            explicit_path=cfg.training.representation_checkpoint,
-            results_root=results_root,
-        )
-        load_m1_checkpoint(model, rep_path, device=device)
-        loaded["m1"] = rep_path
-        chronicle.log_success(f"Strictly loaded representation model.pt: {rep_path}")
+    if mode == "train_m1":
+        if cfg.training.representation_checkpoint:
+            rep_path = resolve_version_checkpoint(
+                cfg.project.name,
+                "train_representation",
+                explicit_path=cfg.training.representation_checkpoint,
+                results_root=results_root,
+            )
+            load_representation_checkpoint(model, rep_path, device=device)
+            loaded["representation"] = rep_path
+            chronicle.log_success(f"Strictly loaded representation model.pt: {rep_path}")
+        else:
+            try:
+                rep_path = resolve_version_checkpoint(
+                    cfg.project.name,
+                    "train_representation",
+                    results_root=results_root,
+                )
+                load_representation_checkpoint(model, rep_path, device=device)
+                loaded["representation"] = rep_path
+            except FileNotFoundError as err:
+                chronicle.log_info(f"Phase prerequisite notice for {mode}: {err}")
 
     elif mode == "train_m2":
         m1_path = resolve_version_checkpoint(
@@ -384,12 +422,13 @@ class BaseTrainer:
         if self.mode != "train_cascade":
             return self._fit_single_phase(epochs=epochs, patience=patience)
 
-        # Automated Sequential Cascade: train_m1 -> train_m2 -> train_m3
+        # Automated Sequential Cascade: train_representation -> train_m1 -> train_m2 -> train_m3
         # Transitions to the next phase after `early_stopping_patience` (default 20) epochs without val improvement,
         # strictly loading the best validation `model.pt` from each preceding phase.
-        cascade_phases = ("train_m1", "train_m2", "train_m3")
+        cascade_phases = ("train_representation", "train_m1", "train_m2", "train_m3")
         combined_history: List[Dict[str, float]] = []
         base_root = self.save_dir.parent if self.save_dir.name.endswith("_train_cascade") else self.results_root
+        rep_best_ckpt: Optional[Path] = None
         m1_best_ckpt: Optional[Path] = None
         m2_best_ckpt: Optional[Path] = None
 
@@ -399,11 +438,12 @@ class BaseTrainer:
 
             phase_cfg = self.cfg.with_overrides(
                 mode=phase_mode,
+                representation_checkpoint=str(rep_best_ckpt) if rep_best_ckpt is not None else self.cfg.training.representation_checkpoint,
                 m1_checkpoint=str(m1_best_ckpt) if m1_best_ckpt is not None else self.cfg.training.m1_checkpoint,
                 m2_checkpoint=str(m2_best_ckpt) if m2_best_ckpt is not None else self.cfg.training.m2_checkpoint,
             )
 
-            if phase_mode in ("train_m2", "train_m3"):
+            if phase_mode in ("train_m1", "train_m2", "train_m3"):
                 enforce_phase_prerequisites(
                     self.model, phase_cfg, device=self.device, results_root=base_root
                 )
@@ -430,7 +470,9 @@ class BaseTrainer:
             best_state = best_ckpt_data["model_state"] if isinstance(best_ckpt_data, dict) and "model_state" in best_ckpt_data else best_ckpt_data
             self.model.load_state_dict(best_state, strict=True)
 
-            if phase_mode == "train_m1":
+            if phase_mode == "train_representation":
+                rep_best_ckpt = best_pt
+            elif phase_mode == "train_m1":
                 m1_best_ckpt = best_pt
             elif phase_mode == "train_m2":
                 m2_best_ckpt = best_pt

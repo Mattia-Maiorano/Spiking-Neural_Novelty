@@ -18,6 +18,7 @@ import torch.nn as nn
 
 from spwm.contracts.config import ExperimentConfig
 from spwm.contracts.protocols import PhaseStrategy
+from spwm.training.phases.representation import RepresentationPhaseStrategy
 from spwm.training.phases.m1_nominal import M1PhaseStrategy
 from spwm.training.phases.m2_recovery import M2PhaseStrategy
 from spwm.training.phases.m3_sustained import M3PhaseStrategy
@@ -33,6 +34,8 @@ def build_phase_strategy(
 ) -> PhaseStrategy:
     """Instantiate the isolated PhaseStrategy corresponding to `cfg.training.mode`."""
     mode = cfg.training.mode.lower()
+    if mode in ("train_representation", "train_phase0", "representation"):
+        return RepresentationPhaseStrategy(model=model, cfg=cfg, loss_fn=loss_fn, device=device)
     if mode in ("train_m1", "train_cascade"):
         return M1PhaseStrategy(model=model, cfg=cfg, loss_fn=loss_fn, device=device)
     if mode == "train_m2":
@@ -40,7 +43,7 @@ def build_phase_strategy(
     if mode == "train_m3":
         return M3PhaseStrategy(model=model, cfg=cfg, loss_fn=loss_fn, device=device)
     raise ValueError(
-        f"Unsupported training mode '{mode}'. Supported modes: 'train_m1', 'train_m2', 'train_m3', 'train_cascade'"
+        f"Unsupported training mode '{mode}'. Supported modes: 'train_representation', 'train_m1', 'train_m2', 'train_m3', 'train_cascade'"
     )
 
 
@@ -129,6 +132,7 @@ class PredictorPhaseHandler(PhaseStrategy):
 __all__ = [
     "PhaseStrategy",
     "PhaseHandler",
+    "RepresentationPhaseStrategy",
     "M1PhaseStrategy",
     "M2PhaseStrategy",
     "M3PhaseStrategy",

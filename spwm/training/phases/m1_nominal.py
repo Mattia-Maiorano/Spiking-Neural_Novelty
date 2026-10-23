@@ -1,119 +1,85 @@
-"""Phase 1 Training Strategy: M1 Nominal Physics & Representation (`train_m1`)."""
+"""Phase 1 Training Strategy: M1 Nominal Physics (`train_m1`)."""
 from __future__ import annotations
-from typing import Dict, Tuple
+from typing import Dict, Optional, Tuple
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
 
 from spwm.contracts.protocols import PhaseStrategy
-from spwm.models.rollout import rollout_latent
-from spwm.training.losses import decompose_latent_loss
 from spwm.training.metrics import position_error, velocity_error
 
 
 class M1PhaseStrategy(PhaseStrategy):
-    """Isolated strategy for Phase 1 (`train_m1`): Representation + M1 nominal physics."""
+    """Isolated strategy for Phase 1 (`train_m1`): M1 Nominal Physics on Pristine Latents."""
 
     def setup(self) -> None:
         for p in self.model.parameters():
             p.requires_grad = False
-        train_mods = (
-
-            self.model.m1, self.model.encoder, self.model.dynamics,
-            self.model.sensory_predictor, self.model.physical_decoder,
-        )
-        for mod in train_mods:
-            for p in mod.parameters():
-                p.requires_grad = True
+        for p in self.model.m1.parameters():
+            p.requires_grad = True
 
         lr, wd = self.cfg.training.learning_rate, self.cfg.training.weight_decay
-        p_lr, p_wd = self.cfg.training.probe_lr, self.cfg.training.probe_weight_decay
-        self.predictor_optimizer = torch.optim.Adam([
-            {"params": list(self.model.m1.parameters()), "lr": lr, "weight_decay": wd},
-            {"params": list(self.model.encoder.parameters()), "lr": lr, "weight_decay": wd},
-            {"params": list(self.model.dynamics.parameters()), "lr": lr, "weight_decay": wd},
-            {"params": list(self.model.sensory_predictor.parameters()), "lr": lr, "weight_decay": wd},
-            {"params": list(self.model.physical_decoder.parameters()), "lr": p_lr, "weight_decay": p_wd},
-        ])
+        self.predictor_optimizer = torch.optim.Adam(
+            self.model.m1.parameters(), lr=lr, weight_decay=wd
+        )
 
     def verify_gradient_isolation(self) -> None:
-        authorized = ("m1", "encoder", "dynamics", "sensory_predictor", "physical_decoder")
+        authorized = ("m1",)
         for name, p in self.model.named_parameters():
             if not any(k in name for k in authorized) and p.requires_grad:
                 raise AssertionError(f"Gradient leak! Parameter '{name}' has requires_grad=True in train_m1 mode.")
 
     def _compute_m1_objectives(
-        self, events: torch.Tensor, flat_kin: torch.Tensor
+        self, events: torch.Tensor, flat_kin: Optional[torch.Tensor] = None
     ) -> Tuple[torch.Tensor, Dict[str, float]]:
         H_req = self.cfg.training.phase_horizon + 1
         if events.shape[1] > H_req:
-            events, flat_kin = events[:, :H_req], flat_kin[:, :H_req]
+            events = events[:, :H_req]
+            if flat_kin is not None:
+                flat_kin = flat_kin[:, :H_req]
 
-        seq_out = self.model(events)
-        enc_latents, keypoints = seq_out.latent_states, seq_out.keypoints
-        if keypoints is None or seq_out.decoded_kinematics is None:
-            raise RuntimeError("SPWM forward pass must produce keypoints and decoded_kinematics.")
+        # Generate ground-truth latent trajectory z^*_{0:T} using frozen Phase 0 modules
+        with torch.no_grad():
+            z_star, _ = self.model.forward_representation(events)
+            z_target = z_star.detach()
 
-        horizon = min(self.cfg.training.phase_horizon, enc_latents.shape[1] - 1)
-        z_start = enc_latents[:, 0].detach()
+        horizon = min(self.cfg.training.phase_horizon, z_target.shape[1] - 1)
+        z_start = z_target[:, 0]
 
-        decoder_state = self.model.physical_decoder.warm_up_filter(enc_latents[:, :1].detach())
+        # Run m1 autoregressively: \hat{z}_{t+1} = \hat{z}_t + m1(\hat{z}_t)
+        predictions = []
+        curr_z = z_start
+        for _ in range(horizon):
+            pred_out = self.model.m1(curr_z)
+            curr_z = pred_out.predicted_latent
+            predictions.append(curr_z)
 
-        rollout_res = rollout_latent(
-            model=self.model,
-            z_init=z_start,
-            horizon=horizon,
-            with_grad=torch.is_grad_enabled(),
-            decode_kinematics=True,
-            initial_decoder_state=decoder_state,
-            fixed_predictor=self.model.m1,
-        )
-        m1_traj = rollout_res.trajectory
-        decoded_kin = rollout_res.decoded_kinematics
-        target_latents = enc_latents[:, 1 : 1 + horizon].detach()
-        target_kin = flat_kin[:, 1 : 1 + horizon]
+        m1_traj = torch.stack(predictions, dim=1)
+        target_latents = z_target[:, 1 : 1 + horizon]
 
-        num_obj = self.cfg.environment.num_objects
-        k_num = keypoints.shape[-1] // 2
-        kp_reshaped = keypoints.view(*keypoints.shape[:-1], k_num, 2)
-        if num_obj > 1:
-            all_obj_xy = flat_kin[..., : 2 * num_obj].view(*flat_kin.shape[:-1], num_obj, 2)
-            dists = torch.sum((kp_reshaped.unsqueeze(-2) - all_obj_xy.unsqueeze(-3)) ** 2, dim=-1)
-            loss_encoder = dists.min(dim=-1).values.mean()
-        else:
-            gt_xy = flat_kin[..., :2]
-            loss_encoder = F.mse_loss(kp_reshaped, gt_xy.unsqueeze(-2).expand_as(kp_reshaped))
+        # Loss Function Constraint: L_m1 = MSE(\hat{z}_{t+1}, z_target_{t+1})
+        loss_m1 = F.mse_loss(m1_traj, target_latents)
+        total_loss = self.cfg.loss.lambda_latent * loss_m1
 
-        immediate_decoded = seq_out.decoded_kinematics
-        loss_decoder = F.mse_loss(immediate_decoded, flat_kin[..., : immediate_decoded.shape[-1]])
-
-        decomp = decompose_latent_loss(
-            predicted_latent=m1_traj, target_latent=target_latents, q_dim=self.model.q_dim,
-            lambda_position=self.cfg.loss.lambda_position, lambda_velocity=self.cfg.loss.lambda_velocity,
-        )
-        latent_loss = decomp["loss_latent"]
-        loss_pos_latent, loss_vel_latent = decomp["loss_pos_latent"], decomp["loss_vel_latent"]
-        loss_sensory = F.mse_loss(seq_out.error_neurons, torch.zeros_like(seq_out.error_neurons))
+        q_dim = self.model.q_dim
+        loss_pos_latent = F.mse_loss(m1_traj[..., :q_dim], target_latents[..., :q_dim])
+        loss_vel_latent = F.mse_loss(m1_traj[..., q_dim:], target_latents[..., q_dim:])
 
         pos_err, vel_err = 0.0, 0.0
-        if decoded_kin is not None:
-            pos_err = position_error(decoded_kin, target_kin, num_objects=num_obj)
-            vel_err = velocity_error(decoded_kin, target_kin, num_objects=num_obj)
+        if flat_kin is not None and hasattr(self.model, "physical_decoder"):
+            with torch.no_grad():
+                decoded_kin = self.model.physical_decoder(m1_traj)
+                target_kin = flat_kin[:, 1 : 1 + horizon]
+                num_obj = self.cfg.environment.num_objects
+                pos_err = position_error(decoded_kin, target_kin, num_objects=num_obj)
+                vel_err = velocity_error(decoded_kin, target_kin, num_objects=num_obj)
 
-        total_loss = (
-            self.cfg.loss.lambda_latent * latent_loss
-            + self.cfg.loss.lambda_encoder * loss_encoder
-            + self.cfg.loss.lambda_decoder * loss_decoder
-            + self.cfg.loss.lambda_sensory * loss_sensory
-        )
         metrics = {
             "loss": float(total_loss.item()),
-            "loss_encoder": float(loss_encoder.item()),
-            "loss_decoder": float(loss_decoder.item()),
-            "loss_sensory": float(loss_sensory.item()),
+            "loss_m1": float(loss_m1.item()),
+            "loss_latent": float(loss_m1.item()),
             "loss_position": float(loss_pos_latent.item()),
             "loss_velocity": float(loss_vel_latent.item()),
-            "loss_latent": float(latent_loss.item()),
             "pos_err": pos_err,
             "vel_err": vel_err,
         }
@@ -121,18 +87,14 @@ class M1PhaseStrategy(PhaseStrategy):
 
     def train_step(self, batch: Dict[str, torch.Tensor], epoch: int) -> Dict[str, float]:
         self.model.eval()
-        train_mods = (
-            self.model.m1, self.model.encoder, self.model.dynamics,
-            self.model.sensory_predictor, self.model.physical_decoder,
-        )
-        for mod in train_mods:
-            mod.train()
+        self.model.m1.train()
         assert self.predictor_optimizer is not None
         self.predictor_optimizer.zero_grad()
 
-
         events = batch["events"].to(self.device)
-        flat_kin = batch["flat_kinematics"].to(self.device)
+        flat_kin = batch.get("flat_kinematics")
+        if flat_kin is not None:
+            flat_kin = flat_kin.to(self.device)
         total_loss, m = self._compute_m1_objectives(events, flat_kin)
         total_loss.backward()
         trainable = [p for p in self.model.parameters() if p.requires_grad]
@@ -144,6 +106,8 @@ class M1PhaseStrategy(PhaseStrategy):
     def validate_step(self, batch: Dict[str, torch.Tensor]) -> Dict[str, float]:
         self.model.eval()
         events = batch["events"].to(self.device)
-        flat_kin = batch["flat_kinematics"].to(self.device)
+        flat_kin = batch.get("flat_kinematics")
+        if flat_kin is not None:
+            flat_kin = flat_kin.to(self.device)
         _, m = self._compute_m1_objectives(events, flat_kin)
         return {f"val_{k}": v for k, v in m.items()}

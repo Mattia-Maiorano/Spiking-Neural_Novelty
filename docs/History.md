@@ -1683,3 +1683,42 @@ Per sanare il disallineamento emerso in v0.2.1:
 3. **Rollout MAE Minimo dell'Architettura Relay:**
    Il Rollout MAE su orizzonti valutati ha conseguito il nuovo minimo storico assoluto a **$0.1169$** (con uno score dinamico globale di **$0.2180$**), fornendo una base nominale pulita e affidabile su cui innestare la Fase 2 (M2 Recovery Predictor).
 
+---
+---
+
+# SPWM-v0.3.0: Strict Architectural Decoupling (Phase 0 Representation & Phase 1 Nominal Dynamics)
+
+### 1. Motivazione Architetturale e Decoupling Fondativo
+Nelle iterazioni precedenti (v0.2.x), la rappresentazione sensoriale e la dinamica nominale $M_1$ venivano co-ottimizzate congiuntamente, costringendo l'encoder a compensare gli errori dell'MLP e viceversa. Inoltre, in `SpikingLatentDynamics`, l'aggiornamento della coordinata di posizione $q$ incorporava accoppiamenti rigidi artificiali (`tanh`, `clamp`), distorcendo la linearità della derivata cinematica.
+
+In **SPWM-v0.3.0**, la pipeline di training viene rigorosamente disaccoppiata in 4 fasi isolate, introducendo una specifica dichiarativa matematica per **Phase 0 (Representation Pre-training)** e ridefinendo **Phase 1 (M1 Training)**:
+
+1. **Rimozione dei Vincoli Artificiali su $q$ in `SpikingLatentDynamics`:**
+   Rimossi completamente `clamp` e `tanh` dal mapping di aggiornamento della coordinata:
+   $$\Delta q_t = W_{\text{vel}}(\text{ema\_spikes}_t), \quad q_{t+1} = q_t + \Delta q_t$$
+   La relazione cinematica naturale viene ora appresa e vincolata puramente tramite la loss differenziale $\mathcal{L}_{\text{derivative}}$ in Fase 0.
+
+2. **Phase 0 Specification (Representation Pre-Training, `training/phases/representation.py`):**
+   - **Obiettivo:** Addestrare la rete spiking a fungere da perfetto stimatore di stato ancorato alla fisica, senza rollout mentali autoregressivi.
+   - **Moduli Attivi:** `encoder`, `dynamics` (`SpikingLatentDynamics`), `sensory_predictor`, `physical_decoder`.
+   - **Moduli Inattivi / Congelati:** $M_1, M_2, M_3$ (nessun gradiente, non istanziati/toccati nel forward pass di Fase 0).
+   - **Vincolo Orizzonte:** Strettamente $t \in [0, T_{\text{obs}}]$. Calcolo diretto di $z_t = (q_t, p_t)$ dallo stream sensoriale tramite `forward_representation(event_sequence)`.
+   - **Loss Function Rigorosa a 4 Componenti:**
+     $$\mathcal{L}_{\text{kinematic}} = \text{MSE}(\text{decode\_pos}(q_t), \text{pos\_true}_t) + \text{MSE}(\text{decode\_vel}(p_t), \text{vel\_true}_t)$$
+     $$\mathcal{L}_{\text{derivative}} = \text{MSE}((q_{t+1} - q_t), (dt \cdot p_t))$$
+     $$\mathcal{L}_{\text{smoothness}} = \text{MSE}(p_{t+1}, p_t)$$
+     $$\mathcal{L}_{\text{sensory}} = \text{MSE}(\epsilon_t, \mathbf{0})$$
+     $$\mathcal{L}_{\text{Phase0}} = \lambda_1 \mathcal{L}_{\text{kinematic}} + \lambda_2 \mathcal{L}_{\text{derivative}} + \lambda_3 \mathcal{L}_{\text{smoothness}} + \lambda_4 \mathcal{L}_{\text{sensory}} \quad (\lambda_i = 1.0)$$
+
+3. **Phase 1 Specification (M1 Training, `training/phases/m1_nominal.py`):**
+   - **Stato Pre-condizione:** `encoder`, `dynamics`, `sensory_predictor`, `physical_decoder` sono rigorosamente congelati (`requires_grad = False`).
+   - L'ottimizzatore aggiorna unicamente i parametri di $M_1$.
+   - **Forward Pass:** Generazione della traiettoria latente ground-truth $z^*_{0:T}$ mediante i moduli congelati di Fase 0, detach per isolamento computazionale: $z_{\text{target}} = z^*.\text{detach}()$.
+   - Rollout autoregressivo di $M_1$: $\hat{z}_{t+1} = \hat{z}_t + M_1(\hat{z}_t)$.
+   - **Funzione di Costo:** $\mathcal{L}_{M_1} = \text{MSE}(\hat{z}_{t+1}, z_{\text{target}, t+1})$. Nessuna componente cinematica o sensoriale applicata a Fase 1: $M_1$ apprende puramente nella geometria markoviana dello spazio latente.
+
+4. **Integrazione nel Cascaded Relay & Protocolli:**
+   - Aggiornato `train_cascade` per includere `train_representation` all'inizio della sequenza: `train_representation` $\to$ `train_m1` $\to$ `train_m2` $\to$ `train_m3`.
+   - Aggiunto `load_representation_checkpoint` con verifica scoped dei moduli della rappresentazione.
+   - Tutti i file di strategia (`representation.py`, `m1_nominal.py`) soddisfano l'invariante di progetto $<150$ righe.
+

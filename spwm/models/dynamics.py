@@ -113,8 +113,8 @@ class SpikingLatentDynamics(nn.Module):
             assert_tensor_contract(sensory_keypoints, (B, self.q_dim), "SpikingLatentDynamics.sensory_keypoints")
             q_next = sensory_keypoints
         else:
-            delta_q = torch.tanh(self.W_vel(ema_spikes))
-            q_next = torch.clamp(q_prev + delta_q, -1.0, 1.0)
+            delta_q = self.W_vel(ema_spikes)
+            q_next = q_prev + delta_q
 
         z_next = torch.cat([q_next, p_next], dim=1)
         new_state = DynamicsState(memory_state=new_mem_state, z_prev=z_next, ema_spikes=ema_spikes)

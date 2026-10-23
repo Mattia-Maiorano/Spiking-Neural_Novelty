@@ -27,6 +27,8 @@ class RolloutEvaluationResult:
     mean_spike_rate: float
     position_mse_per_horizon: Optional[Dict[int, float]] = None
     velocity_mse_per_horizon: Optional[Dict[int, float]] = None
+    q_mse_per_horizon: Optional[Dict[int, float]] = None
+    p_mse_per_horizon: Optional[Dict[int, float]] = None
 
     @property
     def drift_ratio(self) -> float:
@@ -145,12 +147,16 @@ class RolloutEvaluator:
     @torch.no_grad()
     def evaluate_dataset(self, data_loader: DataLoader, max_batches: Optional[int] = None) -> RolloutEvaluationResult:
         latent_errors: Dict[int, List[float]] = {h: [] for h in self.horizons}
+        q_errors: Dict[int, List[float]] = {h: [] for h in self.horizons}
+        p_errors: Dict[int, List[float]] = {h: [] for h in self.horizons}
         pos_errors: Dict[int, List[float]] = {h: [] for h in self.horizons}
         vel_errors: Dict[int, List[float]] = {h: [] for h in self.horizons}
         pos_mses: Dict[int, List[float]] = {h: [] for h in self.horizons}
         vel_mses: Dict[int, List[float]] = {h: [] for h in self.horizons}
         tf_errors: List[float] = []
         spike_rates: List[float] = []
+
+        q_dim = getattr(self.model, "q_dim", None)
 
         batch_count = 0
         for batch in data_loader:
@@ -197,6 +203,14 @@ class RolloutEvaluator:
                         h_mse = float(torch.mean((pred_h - target_h) ** 2).item())
                         latent_errors[h].append(h_mse)
 
+                        if q_dim is not None and q_dim < pred_h.shape[-1]:
+                            q_pred_h = pred_h[..., :q_dim]
+                            q_target_h = target_h[..., :q_dim]
+                            p_pred_h = pred_h[..., q_dim:]
+                            p_target_h = target_h[..., q_dim:]
+                            q_errors[h].append(float(torch.mean((q_pred_h - q_target_h) ** 2).item()))
+                            p_errors[h].append(float(torch.mean((p_pred_h - p_target_h) ** 2).item()))
+
                         if rollout_res.decoded_kinematics is not None:
                             decoded_h = rollout_res.decoded_kinematics[:, :h]
                             kin_target_h = true_kin[:, t_start + 1 : t_start + 1 + h]
@@ -222,6 +236,8 @@ class RolloutEvaluator:
         # Only retain horizons that were actually evaluated in the data sequence
         evaluated_horizons = [h for h in self.horizons if latent_errors[h]]
         avg_latent_mse = {h: float(np.mean(latent_errors[h])) for h in evaluated_horizons}
+        avg_q_mse = {h: float(np.mean(q_errors[h])) for h in evaluated_horizons if q_errors[h]} if q_dim is not None else None
+        avg_p_mse = {h: float(np.mean(p_errors[h])) for h in evaluated_horizons if p_errors[h]} if q_dim is not None else None
         avg_pos_err = {h: float(np.mean(pos_errors[h])) for h in evaluated_horizons}
         avg_vel_err = {h: float(np.mean(vel_errors[h])) for h in evaluated_horizons}
         avg_pos_mse = {h: float(np.mean(pos_mses[h])) for h in evaluated_horizons}
@@ -238,4 +254,6 @@ class RolloutEvaluator:
             mean_spike_rate=avg_spk,
             position_mse_per_horizon=avg_pos_mse,
             velocity_mse_per_horizon=avg_vel_mse,
+            q_mse_per_horizon=avg_q_mse,
+            p_mse_per_horizon=avg_p_mse,
         )

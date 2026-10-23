@@ -26,7 +26,9 @@ from spwm.evaluation.metrics_resume import (
     save_metrics_resume,
 )
 from spwm.evaluation.visualizer import (
+    plot_latent_rollout_degradation,
     plot_multi_step_degradation,
+    plot_physical_rollout_degradation,
     plot_relay_rollout,
     plot_training_curves,
 )
@@ -118,6 +120,12 @@ def process_folder(
                     velocity_mse_per_horizon={
                         int(k): float(v) for k, v in existing_eval.get("velocity_mse_per_horizon", {}).items()
                     } if "velocity_mse_per_horizon" in existing_eval else None,
+                    q_mse_per_horizon={
+                        int(k): float(v) for k, v in existing_eval.get("q_mse_per_horizon", {}).items()
+                    } if "q_mse_per_horizon" in existing_eval else None,
+                    p_mse_per_horizon={
+                        int(k): float(v) for k, v in existing_eval.get("p_mse_per_horizon", {}).items()
+                    } if "p_mse_per_horizon" in existing_eval else None,
                 )
             else:
                 chronicle.log_info(
@@ -172,7 +180,28 @@ def process_folder(
                 plot_multi_step_degradation(
                     horizons=eval_result.horizons,
                     pos_errors=eval_result.position_error_per_horizon,
+                    vel_errors=eval_result.velocity_error_per_horizon,
+                    latent_errors=eval_result.latent_mse_per_horizon,
                     save_path=figures_dir / "rollout_degradation.png",
+                )
+                pos_span = 2.0 * float(cfg.environment.box_size)
+                vel_span = float(cfg.data.standard_velocity_range[1] - cfg.data.standard_velocity_range[0])
+                plot_physical_rollout_degradation(
+                    horizons=eval_result.horizons,
+                    pos_errors=eval_result.position_error_per_horizon,
+                    vel_errors=eval_result.velocity_error_per_horizon,
+                    save_path=figures_dir / "physical_rollout_degradation.png",
+                    relative=True,
+                    pos_span=pos_span,
+                    vel_span=vel_span,
+                )
+                plot_latent_rollout_degradation(
+                    horizons=eval_result.horizons,
+                    latent_errors=eval_result.latent_mse_per_horizon,
+                    q_errors=eval_result.q_mse_per_horizon,
+                    p_errors=eval_result.p_mse_per_horizon,
+                    save_path=figures_dir / "latent_rollout_degradation.png",
+                    relative=True,
                 )
                 sample_batch = next(iter(dataloaders["test"]))
                 events = sample_batch["events"].to(device)
@@ -205,6 +234,8 @@ def process_folder(
 
     version_tag = cfg.project.name if cfg is not None else "v0_2_0"
     model_name = folder.name
+    pos_span = (2.0 * float(cfg.environment.box_size)) if cfg is not None else None
+    vel_span = float(cfg.data.standard_velocity_range[1] - cfg.data.standard_velocity_range[0]) if cfg is not None else None
 
     out_file1 = folder / f"metrics_{version_tag}.json"
     save_metrics_resume(
@@ -215,6 +246,8 @@ def process_folder(
         num_segments=num_segments,
         model_name=model_name,
         version=version_tag,
+        pos_span=pos_span,
+        vel_span=vel_span,
     )
 
     canonical_name = get_canonical_metrics_filename(version_tag)
@@ -228,6 +261,8 @@ def process_folder(
             num_segments=num_segments,
             model_name=model_name,
             version=version_tag,
+            pos_span=pos_span,
+            vel_span=vel_span,
         )
 
     chronicle.log_success(f"Generated {out_file1.name} (and {out_file2.name}) for {folder.name}")

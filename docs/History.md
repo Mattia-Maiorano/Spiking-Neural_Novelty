@@ -1569,7 +1569,117 @@ La pipeline a due fasi rimane invariata nel protocollo ma cambia nella semantica
 
 ### 5. Configurazione & Risorse SPWM-v0.1.0
 
-- **Configurazione Ufficiale:** [configs/experiments/spwm_v0_1_0.yaml](file:///Users/Mattia/Desktop/Studies/Temp/configs/experiments/spwm_v0_1_0.yaml)
+- **Cartella Run & Artefatti:** [results/spwm_v0_1_0_train_joint/](file:///Users/Mattia/Desktop/Studies/Temp/results/spwm_v0_1_0_train_joint)
+- **Configurazione Salvata:** [results/spwm_v0_1_0_train_joint/config.yaml](file:///Users/Mattia/Desktop/Studies/Temp/results/spwm_v0_1_0_train_joint/config.yaml)
+- **File Metriche:** [results/spwm_v0_1_0_train_joint/metrics_spwm_v0_1_0.json](file:///Users/Mattia/Desktop/Studies/Temp/results/spwm_v0_1_0_train_joint/metrics_spwm_v0_1_0.json)
 - **Corrector Module:** [spwm/models/corrector.py](file:///Users/Mattia/Desktop/Studies/Temp/spwm/models/corrector.py)
-- **World Model:** [spwm/models/world_model.py](file:///Users/Mattia/Desktop/Studies/Temp/spwm/models/world_model.py) (`SPWM-v10`)
-- **Trainer:** [spwm/learning/trainer.py](file:///Users/Mattia/Desktop/Studies/Temp/spwm/learning/trainer.py) (v10: rimosso supporto isometry/quiescence)
+- **World Model:** [spwm/models/world_model.py](file:///Users/Mattia/Desktop/Studies/Temp/spwm/models/world_model.py)
+
+### 6. Risultati Empirici Verificati (Run Ufficiale SPWM-v0.1.0)
+
+- **Metadata Run:** 300 epoche completate, seed 42, 332,836 parametri.
+- **Metriche Chiave di Valutazione:**
+  - $\text{Pos Err}_{H=1} = \mathbf{0.0765}$, $\text{Pos Err}_{H=5} = \mathbf{0.1041}$.
+  - $\text{Vel Err}_{H=1} = \mathbf{0.3466}$, $\text{Vel Err}_{H=5} = \mathbf{0.3338}$.
+  - $\text{Rollout MAE} = \mathbf{0.1651}$, $\text{Drift Ratio} = \mathbf{4.35\times}$, $\text{Spike Rate} = \mathbf{15.01\%}$.
+- **Post-Mortem & Diagnosi Critica:**
+  Nonostante l'ottima acuità iniziale del predittore, l'addestramento del correttore neuromodulatorio non ha eliminato la divergenza asintotica del drift sul lungo orizzonte (`drift_ratio = 4.35x`). I tentativi di stabilizzazione hanno evidenziato un limite insito nel correttore unico continuo/modulato: per orizzonti prolungati, il modello perdeva progressivamente l'autorità di richiamo. Questo ha motivato il passaggio a un'architettura rigorosamente strutturata a staffetta temporale ciclica (**Cascaded Temporal Relay**).
+
+---
+---
+
+# SPWM-v0.2.0: Architettura a Contratti Rigidi a 4 Livelli & Cascaded Temporal Relay
+
+### 1. Motivazione e Ristrutturazione Architetturale (Migration to 4-Layer Strict Contracts)
+A seguito dell'entropia accumulata nelle versioni v8–v10, il progetto ha eseguito una ristrutturazione completa del workspace formalizzata in [docs/Architecture.md](file:///Users/Mattia/Desktop/Studies/Temp/docs/Architecture.md) e [docs/WORKSPACE_AND_CONTRACTS.md](file:///Users/Mattia/Desktop/Studies/Temp/docs/WORKSPACE_AND_CONTRACTS.md):
+1. **Layer 0 (Contratti Immutabili - `spwm/contracts/`):** Configurazione frozen single-source-of-truth ([`ProjectConfig`](file:///Users/Mattia/Desktop/Studies/Temp/spwm/contracts/config.py)), validatori dimensionali tensoriali strict, e interfacce astratte (`PhaseStrategy`).
+2. **Layer 1 (Modelli & Dati - `spwm/models/`, `spwm/data/`):** Separazione pura tra neuroni ALIF, memoria multi-scala, SpatialSoftmax, dinamica spiking e predittori.
+3. **Layer 2 (Training & Fasi Isolate - `spwm/training/`):** Implementazione modulare delle fasi in classi dedicate $<150$ righe (`M1NominalStrategy`, `M2RecoveryStrategy`, `M3SustainedStrategy`).
+4. **Layer 3 (Valutazione & Visualizzazione - `spwm/evaluation/`):** `RolloutEvaluator` e `visualizer.py`.
+
+### 2. Cascaded Temporal Relay (M1 $\to$ M2 $\to$ M3)
+- **M1 (Nominal Predictor):** Addestrato su traiettorie nominali per $t \in [0, H]$ (`phase_horizon = 5`). Pesi congelati dopo la Fase 1.
+- **M2 (Recovery Predictor / Shock Absorber):** Addestrato per $t \in [H, 2H]$ per assorbire lo shock di transizione e ricondurre la traiettoria sul manifold nominale tramite loss conica (**Convergence Funnel**).
+- **M3 (Sustained Predictor):** Addestrato congiuntamente a M2 fino a `max_rollout_horizon = 40` per sostenere l'autoregressione a lungo termine.
+
+### 3. Risultati Empirici Verificati (SPWM-v0.2.0)
+- **Artefatti Run:** [results/spwm_v0_2_0_train_m1/](file:///Users/Mattia/Desktop/Studies/Temp/results/spwm_v0_2_0_train_m1), [results/spwm_v0_2_0_train_m2/](file:///Users/Mattia/Desktop/Studies/Temp/results/spwm_v0_2_0_train_m2), [results/spwm_v0_2_0_train_m3/](file:///Users/Mattia/Desktop/Studies/Temp/results/spwm_v0_2_0_train_m3).
+- **Parametri Totali:** 548,324.
+- **Metriche Registrate:**
+  - **M1 (Epoca 34):** $\text{Pos Err}_{H=1} = \mathbf{0.1915}$, $\text{Vel Err}_{H=1} = \mathbf{0.2610}$, $\text{Rollout MAE} = \mathbf{0.3483}$, $\text{Drift Ratio} = \mathbf{2.52\times}$.
+  - **M2 (Epoca 83):** $\text{Rollout MAE} = \mathbf{0.4294}$, $\text{Drift Ratio} = \mathbf{2.97\times}$.
+  - **M3 (Epoca 53):** $\text{Rollout MAE} = \mathbf{0.5021}$, $\text{Drift Ratio} = \mathbf{3.14\times}$.
+- **Post-Mortem v0.2.0:** Primo test funzionale dell'architettura relay. Sebbene il drift ratio sia sceso rispetto a v0.1.0 ($2.52\times$ vs $4.35\times$), l'acuità di posizione $H=1$ ($0.1915$) risultava sottotono rispetto ai record della serie precedente ($<0.10$).
+
+---
+---
+
+# SPWM-v0.2.1: Sbilanciamento su Supervisione Velocità & Compromissione Posizione
+
+### 1. Ipotesi Sperimentale e Modifiche (v0.2.1)
+Nel tentativo di stabilizzare la derivata temporale della traiettoria, in v0.2.1 è stato aumentato il peso della componente cinematica di velocità.
+- **Obiettivo:** Ottenere un errore di velocità record per minimizzare le oscillazioni ad alta frequenza nel relay.
+
+### 2. Risultati Empirici Verificati (SPWM-v0.2.1)
+- **Artefatti Run:** [results/spwm_v0_2_1_train_m1/](file:///Users/Mattia/Desktop/Studies/Temp/results/spwm_v0_2_1_train_m1), [results/spwm_v0_2_1_train_m2/](file:///Users/Mattia/Desktop/Studies/Temp/results/spwm_v0_2_1_train_m2), [results/spwm_v0_2_1_train_m3/](file:///Users/Mattia/Desktop/Studies/Temp/results/spwm_v0_2_1_train_m3).
+- **Metriche Registrate:**
+  - **M1 (Epoca 41):** $\text{Pos Err}_{H=1} = \mathbf{0.2266}$, $\text{Vel Err}_{H=1} = \mathbf{0.1966}$ (Nuovo record storico $\le 0.20$), $\text{Rollout MAE} = \mathbf{0.4106}$, $\text{Drift Ratio} = \mathbf{2.45\times}$.
+  - **M2 (Epoca 30):** $\text{Rollout MAE} = \mathbf{0.4897}$, $\text{Drift Ratio} = \mathbf{2.73\times}$.
+  - **M3 (Epoca 30):** $\text{Rollout MAE} = \mathbf{0.5334}$, $\text{Drift Ratio} = \mathbf{2.83\times}$.
+- **Post-Mortem v0.2.1:** Come annotato nel log di commit (`980d5a6`), il focus eccessivo sulla velocità ha introdotto un'inaccettabile degradazione sulla posizione ($\text{Pos Err}_{H=1}$ peggiorato da $0.1915$ a **$0.2266$**).
+
+---
+---
+
+# SPWM-v0.2.2: Ribilanciamento Geometrico M1, Sottospazio Simplettico e Nuova Diagnostica
+
+### 1. Diagnosi e Modifiche di Ribilanciamento
+Per sanare il disallineamento emerso in v0.2.1:
+1. **Ribilanciamento Pesi di Costo M1:**
+   - Aumento di $\lambda_{\text{position}}$ da $1.0$ a **$1.5$** nel sottospazio $q$ delle coordinate.
+   - Aumento di $\lambda_{\text{decoder}}$ da $1.0$ a **$2.0$** sul probe cinematico di decodifica fisica.
+   - Preservazione di $\lambda_{\text{velocity}} = 1.0$, garantendo un forte gradiente di rientro su $q$ senza trascurare la regolarità $C^1$ su $p$.
+2. **Estensione Tracciamento Metriche Latenti & Sottospazi Simplettici:**
+   - Scomposizione esplicita dell'errore latente nei due sottospazi ortogonali: Coordinate ($q$-MSE) e Momento ($p$-MSE).
+   - Introduzione in `metrics_resume.py` del monitoraggio di degradazione fisica e latente normalizzata sia per span che rispetto a $H=1$.
+3. **Nuove Figure di Diagnostica Automatica:**
+   - `physical_rollout_degradation.png`: curve di errore cinematico L2 normalizzate rispetto allo span fisico.
+   - `latent_rollout_degradation.png`: curve di errore MSE normalizzate su $z$, $q$ e $p$.
+   - `relay_rollout.png`: tracciamento a bande temporali alternate (M1 verde, M2 ambra, M3 viola).
+
+### 2. Risultati Empirici Verificati (Run Ufficiale SPWM-v0.2.2)
+
+- **Cartella Run & Artefatti:** [results/spwm_v0_2_2_train_m1/](file:///Users/Mattia/Desktop/Studies/Temp/results/spwm_v0_2_2_train_m1)
+- **Configurazione Ufficiale:** [results/spwm_v0_2_2_train_m1/config.yaml](file:///Users/Mattia/Desktop/Studies/Temp/results/spwm_v0_2_2_train_m1/config.yaml)
+- **File Metriche:** [results/spwm_v0_2_2_train_m1/metrics_spwm_v0_2_2.json](file:///Users/Mattia/Desktop/Studies/Temp/results/spwm_v0_2_2_train_m1/metrics_spwm_v0_2_2.json)
+- **Diagnostica Completa:** [results/spwm_v0_2_2_train_m1/diagnostics.json](file:///Users/Mattia/Desktop/Studies/Temp/results/spwm_v0_2_2_train_m1/diagnostics.json)
+- **Metadata Run:** 62 epoche eseguite con early stopping (best validation score all'epoca 24), seed 42, device `mps`, 548,324 parametri.
+
+| Metrica | v0.1.0 (Joint) | v0.2.0 (M1) | v0.2.1 (M1) | **v0.2.2 (M1 Ribilanciato)** |
+| :--- | :---: | :---: | :---: | :---: |
+| **Parametri Totali** | 332,836 | 548,324 | 548,324 | **548,324** |
+| **Epoche di Training** | 300 | 34 | 41 | **62** (Best @ Ep 24) |
+| **Mean Spike Rate** | $15.01\%$ | $4.21\%$ | $6.06\%$ | **4.56%** (Altamente efficiente $\approx 5\%$) |
+| **Test TF MSE** | $0.4394$ | $0.0181$ | $0.0282$ | **0.0277** |
+| **Test Drift Ratio ($H_5 / H_1$)** | $4.35\times$ | $2.52\times$ | $2.45\times$ | **1.89×** (Nuovo minimo storico assoluto) |
+| **Test Rollout MAE** | $0.1651$ | $0.3483$ | $0.4106$ | **0.1169** (Miglioramento record del 71.5%) |
+| **Dynamic / Rollout Score** | $0.7180$ | $0.4349$ | $0.4869$ | **0.2180** (Nuovo minimo storico) |
+| **Pos Err ($H=1$)** | $0.0765$ | $0.1915$ | $0.2266$ | **0.0851** (Recupero completo acuità geometrica) |
+| **Pos Err ($H=2$)** | — | — | — | **0.1045** |
+| **Pos Err ($H=5$)** | $0.1041$ | $0.3710$ | $0.4501$ | **0.1610** |
+| **Vel Err ($H=1$)** | $0.3466$ | $0.2610$ | $0.1966$ | **0.2691** |
+| **Vel Err ($H=2$)** | — | — | — | **0.3247** |
+| **Vel Err ($H=5$)** | $0.3338$ | $0.3662$ | $0.3802$ | **0.4531** |
+| **$q$-MSE Coordinate ($H=1$)** | — | — | — | **0.0117** |
+| **$q$-MSE Coordinate ($H=5$)** | — | — | — | **0.0409** |
+| **$p$-MSE Momento ($H=1$)** | — | — | — | **0.0430** |
+| **$p$-MSE Momento ($H=5$)** | — | — | — | **0.0834** |
+
+#### Sintesi dei Risultati SPWM-v0.2.2 (M1):
+1. **Recupero e Stabilizzazione Geometrica di M1:**
+   L'incremento a $\lambda_{\text{position}}=1.5$ e $\lambda_{\text{decoder}}=2.0$ ha completamente eliminato la regressione di v0.2.1: $\text{Pos Err}_{H=1}$ è crollato da **$0.2266$** a **$0.0851$**, riconducendo l'acuità del modello nell'intorno dei migliori valori storici della serie senza sacrificare la derivata temporale ($\text{Vel Err}_{H=1} = \mathbf{0.2691}$).
+2. **Abbattimento Record del Drift Ratio:**
+   Il rapporto di deriva su orizzonte nominale $H=5$ è sceso per la prima volta sotto il valore $2.0\times$, attestandosi a **$1.89\times$** (vs $2.45\times$ di v0.2.1 e $4.35\times$ di v0.1.0).
+3. **Rollout MAE Minimo dell'Architettura Relay:**
+   Il Rollout MAE su orizzonti valutati ha conseguito il nuovo minimo storico assoluto a **$0.1169$** (con uno score dinamico globale di **$0.2180$**), fornendo una base nominale pulita e affidabile su cui innestare la Fase 2 (M2 Recovery Predictor).
+

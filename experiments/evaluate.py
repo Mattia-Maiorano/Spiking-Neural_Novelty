@@ -15,7 +15,11 @@ import torch
 from spwm.contracts.config import ExperimentConfig
 from spwm.data.datasets import create_dataloaders
 from spwm.evaluation.evaluator import RolloutEvaluator, get_phase_eval_horizons
-from spwm.evaluation.visualizer import plot_multi_step_degradation
+from spwm.evaluation.visualizer import (
+    plot_latent_rollout_degradation,
+    plot_multi_step_degradation,
+    plot_physical_rollout_degradation,
+)
 from spwm.models.world_model import SPWM
 from spwm.utils.reproducibility import set_seed
 
@@ -97,7 +101,28 @@ def main() -> None:
     plot_multi_step_degradation(
         horizons=results.horizons,
         pos_errors=results.position_error_per_horizon,
+        vel_errors=results.velocity_error_per_horizon,
+        latent_errors=results.latent_mse_per_horizon,
         save_path=figures_dir / "eval_rollout_degradation.png",
+    )
+    pos_span = 2.0 * float(cfg.environment.box_size)
+    vel_span = float(cfg.data.standard_velocity_range[1] - cfg.data.standard_velocity_range[0])
+    plot_physical_rollout_degradation(
+        horizons=results.horizons,
+        pos_errors=results.position_error_per_horizon,
+        vel_errors=results.velocity_error_per_horizon,
+        save_path=figures_dir / "eval_physical_rollout_degradation.png",
+        relative=True,
+        pos_span=pos_span,
+        vel_span=vel_span,
+    )
+    plot_latent_rollout_degradation(
+        horizons=results.horizons,
+        latent_errors=results.latent_mse_per_horizon,
+        q_errors=results.q_mse_per_horizon,
+        p_errors=results.p_mse_per_horizon,
+        save_path=figures_dir / "eval_latent_rollout_degradation.png",
+        relative=True,
     )
 
 

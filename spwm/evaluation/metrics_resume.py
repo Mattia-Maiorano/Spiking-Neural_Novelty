@@ -35,6 +35,8 @@ def generate_metrics_resume(
     model_name: Optional[str] = None,
     version: Optional[str] = None,
     evaluation_result_no_corrector: Optional[RolloutEvaluationResult] = None,
+    pos_span: Optional[float] = None,
+    vel_span: Optional[float] = None,
 ) -> Dict[str, Any]:
     """
     Generate a fixed-granularity data table resume mimicking the figure plots.
@@ -47,6 +49,8 @@ def generate_metrics_resume(
         model_name: Identifier of the experiment/model.
         version: Version string for the metrics resume.
         evaluation_result_no_corrector: Optional RolloutEvaluationResult evaluated without corrector.
+        pos_span: Optional total physical position coordinate span for relative normalization.
+        vel_span: Optional total physical velocity span for relative normalization.
     """
     total_epochs = len(history) if history else 0
     resume: Dict[str, Any] = {
@@ -74,6 +78,74 @@ def generate_metrics_resume(
             d["position_mse_per_horizon"] = {str(k): float(v) for k, v in eval_res.position_mse_per_horizon.items()}
         if eval_res.velocity_mse_per_horizon is not None:
             d["velocity_mse_per_horizon"] = {str(k): float(v) for k, v in eval_res.velocity_mse_per_horizon.items()}
+        if eval_res.q_mse_per_horizon is not None:
+            d["q_mse_per_horizon"] = {str(k): float(v) for k, v in eval_res.q_mse_per_horizon.items()}
+        if eval_res.p_mse_per_horizon is not None:
+            d["p_mse_per_horizon"] = {str(k): float(v) for k, v in eval_res.p_mse_per_horizon.items()}
+
+        # Physical rollout degradation (normalized / relative degradation matching visualizer curves)
+        h_vals = sorted(list(eval_res.horizons))
+        if h_vals:
+            # Physical degradation
+            pos_span_denom = pos_span if (pos_span is not None and pos_span > 0) else None
+            vel_span_denom = vel_span if (vel_span is not None and vel_span > 0) else None
+
+            pos_h1 = eval_res.position_error_per_horizon.get(h_vals[0], 1.0)
+            pos_h1_denom = pos_h1 if (pos_h1 > 0) else 1.0
+            vel_h1 = eval_res.velocity_error_per_horizon.get(h_vals[0], 1.0)
+            vel_h1_denom = vel_h1 if (vel_h1 > 0) else 1.0
+
+            pos_norm_denom = pos_span_denom if pos_span_denom is not None else pos_h1_denom
+            vel_norm_denom = vel_span_denom if vel_span_denom is not None else vel_h1_denom
+
+            d["physical_rollout_degradation"] = {
+                "position_relative": {
+                    str(h): float(eval_res.position_error_per_horizon.get(h, 0.0) / pos_h1_denom)
+                    for h in h_vals
+                },
+                "velocity_relative": {
+                    str(h): float(eval_res.velocity_error_per_horizon.get(h, 0.0) / vel_h1_denom)
+                    for h in h_vals
+                },
+                "position_normalized": {
+                    str(h): float(eval_res.position_error_per_horizon.get(h, 0.0) / pos_norm_denom)
+                    for h in h_vals
+                },
+                "velocity_normalized": {
+                    str(h): float(eval_res.velocity_error_per_horizon.get(h, 0.0) / vel_norm_denom)
+                    for h in h_vals
+                },
+            }
+
+            # Latent rollout degradation
+            lat_h1 = eval_res.latent_mse_per_horizon.get(h_vals[0], 1.0)
+            lat_h1_denom = lat_h1 if (lat_h1 > 0) else 1.0
+
+            latent_deg: Dict[str, Any] = {
+                "latent_relative": {
+                    str(h): float(eval_res.latent_mse_per_horizon.get(h, 0.0) / lat_h1_denom)
+                    for h in h_vals
+                }
+            }
+
+            if eval_res.q_mse_per_horizon is not None:
+                q_h1 = eval_res.q_mse_per_horizon.get(h_vals[0], 1.0)
+                q_h1_denom = q_h1 if (q_h1 > 0) else 1.0
+                latent_deg["q_relative"] = {
+                    str(h): float(eval_res.q_mse_per_horizon.get(h, 0.0) / q_h1_denom)
+                    for h in h_vals
+                }
+
+            if eval_res.p_mse_per_horizon is not None:
+                p_h1 = eval_res.p_mse_per_horizon.get(h_vals[0], 1.0)
+                p_h1_denom = p_h1 if (p_h1 > 0) else 1.0
+                latent_deg["p_relative"] = {
+                    str(h): float(eval_res.p_mse_per_horizon.get(h, 0.0) / p_h1_denom)
+                    for h in h_vals
+                }
+
+            d["latent_rollout_degradation"] = latent_deg
+
         return d
 
     if evaluation_result is not None:
@@ -177,6 +249,8 @@ def save_metrics_resume(
     model_name: Optional[str] = None,
     version: Optional[str] = None,
     evaluation_result_no_corrector: Optional[RolloutEvaluationResult] = None,
+    pos_span: Optional[float] = None,
+    vel_span: Optional[float] = None,
 ) -> Path:
     """Convenience helper to build and dump metrics resume JSON."""
     target_path = Path(target_path)
@@ -188,6 +262,8 @@ def save_metrics_resume(
         model_name=model_name,
         version=version,
         evaluation_result_no_corrector=evaluation_result_no_corrector,
+        pos_span=pos_span,
+        vel_span=vel_span,
     )
     target_path.parent.mkdir(parents=True, exist_ok=True)
     with open(target_path, "w", encoding="utf-8") as f:

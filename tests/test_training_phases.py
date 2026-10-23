@@ -5,6 +5,11 @@ and Scoped Strict Checkpoint Loading.
 
 from __future__ import annotations
 
+from torch.utils.data import DataLoader
+
+from spwm.data.datasets import collate_event_batches, EventWorldDataset
+from spwm.training import Trainer
+
 from pathlib import Path
 import pytest
 import torch
@@ -35,6 +40,16 @@ from spwm.training.phases import (
     M2PhaseStrategy,
     M3PhaseStrategy,
 )
+
+def create_dummy_dataloader(sequence_length=35, batch_size=2, total_traj=4):
+    dataset = EventWorldDataset(
+        trajectory_indices=list(range(total_traj)),
+        sequence_length=sequence_length,
+        drift_injection_prob=0.0,
+        drift_magnitude=0.0,
+        cache_data=True,
+    )
+    return DataLoader(dataset, batch_size=batch_size, shuffle=False, collate_fn=collate_event_batches)
 
 
 def _make_small_config(mode: str = "train_m1") -> ExperimentConfig:
@@ -184,3 +199,38 @@ def test_scoped_strict_checkpoint_loading(tmp_path: Path) -> None:
 
     with pytest.raises(RuntimeError):
         trainer_src.load_checkpoint(bad_ckpt)
+
+def test_train_cascade_and_auto_enforced_model_pt(tmp_path):
+    """Verifies train_cascade runs M1 -> M2 -> M3 using best model.pt and early stopping patience."""
+    from spwm.training.engine import enforce_phase_prerequisites, resolve_version_checkpoint
+
+    model = SPWM(latent_dim=32, q_dim=8, p_dim=24, timescale_dims=(16, 16), phase_horizon=4)
+    loader = create_dummy_dataloader(sequence_length=20)
+
+    # Missing prerequisite model.pt must raise FileNotFoundError
+    with pytest.raises(FileNotFoundError, match="model.pt"):
+        resolve_version_checkpoint("spwm_v_test", "train_m1", results_root=tmp_path)
+
+    cascade_dir = tmp_path / "spwm_v_test_train_cascade"
+    trainer = Trainer(
+        model=model,
+        train_loader=loader,
+        val_loader=loader,
+        mode="train_cascade",
+        phase_horizon=4,
+        max_rollout_horizon=12,
+        early_stopping_patience=2,
+        save_dir=cascade_dir,
+        results_root=tmp_path,
+    )
+    trainer.cfg = trainer.cfg.with_overrides()  # keep project name
+    history = trainer.fit(epochs=2, patience=1)
+    assert len(history) >= 3
+    phases_seen = {rec["phase"] for rec in history}
+    assert phases_seen == {"train_m1", "train_m2", "train_m3"}
+
+    # Verify model.pt was created for each phase
+    for pm in ("train_m1", "train_m2", "train_m3"):
+        p_pt = resolve_version_checkpoint(trainer.cfg.project.name, pm, results_root=tmp_path)
+        assert p_pt.name == "model.pt"
+        assert p_pt.is_file()

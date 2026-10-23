@@ -79,9 +79,6 @@ def test_config_with_overrides_revalidates_invariants():
     assert updated.training.epochs == 50
     assert updated.training.phase_horizon == 8
     assert updated.training.early_stopping_patience == 15
-    assert updated.training.m1_horizon == 8
-    assert updated.training.m2_horizon == 8
-    assert updated.training.m3_horizon == 8
 
     # Invalid override must fail immediately during with_overrides
     with pytest.raises(ValueError, match="Invalid training mode"):

@@ -178,20 +178,19 @@ def plot_multi_step_degradation(
     save_path: Optional[Union[str, Path]] = None,
     horizons: Optional[Sequence[int]] = None,
     pos_errors: Optional[Dict[int, float]] = None,
+    vel_errors: Optional[Dict[int, float]] = None,
+    latent_errors: Optional[Dict[int, float]] = None,
     label: str = "SPWM",
 ) -> None:
     set_paper_style()
     fig, ax = plt.subplots(figsize=(8, 5))
 
-    # Resolve keyword args if horizons and pos_errors were passed by name
     if horizons is not None:
         curves_or_horizons = horizons
     if pos_errors is not None:
         pos_errors_or_save_path = pos_errors
 
     if isinstance(curves_or_horizons, dict):
-        # Multi-model dictionary passed: curves_or_horizons = {"ModelA": {1: ..., 5: ...}}
-        # Destination path can be passed positionally in pos_errors_or_save_path or as keyword save_path
         actual_save_path = save_path if save_path is not None else pos_errors_or_save_path
         if actual_save_path is None:
             raise ValueError("save_path must be provided when passing a dictionary of curves.")
@@ -205,20 +204,23 @@ def plot_multi_step_degradation(
             ax.plot(h_vals, errs, marker="o", color=colors[idx % len(colors)], label=m_name)
         ax.set_xticks(sorted(list(all_h)))
     elif curves_or_horizons is not None and pos_errors_or_save_path is not None:
-        # horizons and pos_errors passed
         if save_path is None:
             raise ValueError("save_path must be provided when passing horizons and pos_errors.")
         target_path = Path(save_path)
         h_vals = sorted(list(curves_or_horizons))
         errs = [pos_errors_or_save_path.get(h, 0.0) for h in h_vals]  # type: ignore
-        ax.plot(h_vals, errs, marker="o", color="#2563EB", label=label)
+        ax.plot(h_vals, errs, marker="o", color="#2563EB", label=f"{label} (Position)")
+        if vel_errors is not None:
+            ax.plot(h_vals, [vel_errors.get(h, 0.0) for h in h_vals], marker="s", linestyle="--", color="#DC2626", label=f"{label} (Velocity)")
+        if latent_errors is not None:
+            ax.plot(h_vals, [latent_errors.get(h, 0.0) for h in h_vals], marker="^", linestyle="-.", color="#059669", label=f"{label} (Latent)")
         ax.set_xticks(h_vals)
     else:
         raise ValueError("Invalid arguments provided to plot_multi_step_degradation.")
 
     ax.set_title("Multi-Step Prediction Degradation vs Horizon")
     ax.set_xlabel("Prediction Horizon (Steps)")
-    ax.set_ylabel("Mean Position Error")
+    ax.set_ylabel("Error")
     ax.legend()
 
     target_path.parent.mkdir(parents=True, exist_ok=True)
@@ -226,6 +228,117 @@ def plot_multi_step_degradation(
     plt.savefig(target_path, dpi=300)
     plt.close()
 
+
+def plot_physical_rollout_degradation(
+    horizons: Sequence[int],
+    pos_errors: Dict[int, float],
+    vel_errors: Optional[Dict[int, float]] = None,
+    save_path: Union[str, Path] = "figures/physical_rollout_degradation.png",
+    relative: bool = True,
+    pos_span: Optional[float] = 2.0,
+    vel_span: Optional[float] = 2.0,
+    label: str = "SPWM",
+) -> None:
+    """
+    Plots multi-step physical kinematic degradation (position & velocity error) vs horizon.
+    If `relative=True`:
+      - If `pos_span` / `vel_span` is provided, plots the error relative to each dynamic span (E_h / span).
+      - Otherwise, errors are plotted as relative ratio to horizon H=1 error (E_h / E_1).
+    """
+    set_paper_style()
+    fig, ax = plt.subplots(figsize=(8, 5))
+    target_path = Path(save_path)
+    h_vals = sorted(list(horizons))
+
+    if relative:
+        if pos_span is not None and pos_span > 0:
+            pos_denom = pos_span
+            pos_suffix = " / Pos Span"
+        else:
+            pos_denom = pos_errors.get(h_vals[0], 1.0) if (h_vals and pos_errors.get(h_vals[0], 0.0) > 0) else 1.0
+            pos_suffix = " / H1"
+        pos_err_list = [pos_errors.get(h, 0.0) / pos_denom for h in h_vals]
+        pos_lbl = f"{label} (Position Relative Error{pos_suffix})"
+    else:
+        pos_err_list = [pos_errors.get(h, 0.0) for h in h_vals]
+        pos_lbl = f"{label} (Position L2 Error)"
+    ax.plot(h_vals, pos_err_list, marker="o", color="#2563EB", lw=2.2, label=pos_lbl)
+
+    if vel_errors is not None:
+        if relative:
+            if vel_span is not None and vel_span > 0:
+                vel_denom = vel_span
+                vel_suffix = " / Vel Span"
+            else:
+                vel_denom = vel_errors.get(h_vals[0], 1.0) if (h_vals and vel_errors.get(h_vals[0], 0.0) > 0) else 1.0
+                vel_suffix = " / H1"
+            vel_err_list = [vel_errors.get(h, 0.0) / vel_denom for h in h_vals]
+            vel_lbl = f"{label} (Velocity Relative Error{vel_suffix})"
+        else:
+            vel_err_list = [vel_errors.get(h, 0.0) for h in h_vals]
+            vel_lbl = f"{label} (Velocity L2 Error)"
+        ax.plot(h_vals, vel_err_list, marker="s", linestyle="--", color="#DC2626", lw=2.2, label=vel_lbl)
+
+    ax.set_xticks(h_vals)
+    ax.set_xlabel("Prediction Horizon (Steps)")
+    ylabel = "Relative Error (Normalized to Span)" if (relative and pos_span is not None) else ("Relative Error (E_h / E_1)" if relative else "Euclidean Error (L2)")
+    ax.set_ylabel(ylabel)
+    ax.set_title("Physical Kinematics Rollout Degradation vs Horizon")
+    ax.legend()
+
+    target_path.parent.mkdir(parents=True, exist_ok=True)
+    plt.tight_layout()
+    plt.savefig(target_path, dpi=300)
+    plt.close()
+
+
+def plot_latent_rollout_degradation(
+    horizons: Sequence[int],
+    latent_errors: Dict[int, float],
+    q_errors: Optional[Dict[int, float]] = None,
+    p_errors: Optional[Dict[int, float]] = None,
+    save_path: Union[str, Path] = "figures/latent_rollout_degradation.png",
+    relative: bool = True,
+    label: str = "SPWM",
+) -> None:
+    """
+    Plots multi-step latent state rollout degradation vs horizon.
+    By default (`relative=True`), plots the relative error growth normalized by 1-step error (MSE(H) / MSE(H=1))
+    for overall latent, coordinate subspace q, and momentum subspace p.
+    """
+    set_paper_style()
+    fig, ax = plt.subplots(figsize=(8, 5))
+    target_path = Path(save_path)
+    h_vals = sorted(list(horizons))
+
+    lat_base = latent_errors.get(h_vals[0], 1.0) if (relative and h_vals and latent_errors.get(h_vals[0], 0.0) > 0) else 1.0
+    lat_err_list = [(latent_errors.get(h, 0.0) / lat_base) if relative else latent_errors.get(h, 0.0) for h in h_vals]
+    lat_lbl = f"{label} (Total Latent MSE{' / H1' if relative else ''})"
+    ax.plot(h_vals, lat_err_list, marker="^", linestyle="-", color="#059669", lw=2.2, label=lat_lbl)
+
+    if q_errors is not None:
+        q_base = q_errors.get(h_vals[0], 1.0) if (relative and h_vals and q_errors.get(h_vals[0], 0.0) > 0) else 1.0
+        q_err_list = [(q_errors.get(h, 0.0) / q_base) if relative else q_errors.get(h, 0.0) for h in h_vals]
+        ax.plot(h_vals, q_err_list, marker="o", linestyle="--", color="#2563EB", lw=1.8, label=f"{label} (Coordinate q-MSE{' / H1' if relative else ''})")
+
+    if p_errors is not None:
+        p_base = p_errors.get(h_vals[0], 1.0) if (relative and h_vals and p_errors.get(h_vals[0], 0.0) > 0) else 1.0
+        p_err_list = [(p_errors.get(h, 0.0) / p_base) if relative else p_errors.get(h, 0.0) for h in h_vals]
+        ax.plot(h_vals, p_err_list, marker="s", linestyle=":", color="#DC2626", lw=1.8, label=f"{label} (Momentum p-MSE{' / H1' if relative else ''})")
+
+    if relative:
+        ax.axhline(1.0, color="#94A3B8", linestyle="--", lw=1.2, alpha=0.7, label="Baseline (H=1)")
+
+    ax.set_xticks(h_vals)
+    ax.set_xlabel("Prediction Horizon (Steps)")
+    ax.set_ylabel("Normalized Relative Error (MSE_h / MSE_1)" if relative else "Mean Squared Error (MSE)")
+    ax.set_title("Latent Space Rollout Degradation vs Horizon (Normalized Error)" if relative else "Latent Space Rollout Degradation vs Horizon")
+    ax.legend()
+
+    target_path.parent.mkdir(parents=True, exist_ok=True)
+    plt.tight_layout()
+    plt.savefig(target_path, dpi=300)
+    plt.close()
 
 def plot_spike_raster(
     spikes_or_fast: np.ndarray,

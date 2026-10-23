@@ -24,7 +24,9 @@ from spwm.evaluation.metrics_resume import (
     save_metrics_resume,
 )
 from spwm.evaluation.visualizer import (
+    plot_latent_rollout_degradation,
     plot_multi_step_degradation,
+    plot_physical_rollout_degradation,
     plot_relay_rollout,
     plot_training_curves,
 )
@@ -141,10 +143,24 @@ def _evaluate_and_save_phase_artifacts(
     if history:
         plot_training_curves(history, figures_dir / "training_curves.png")
 
-    plot_multi_step_degradation(
+    pos_span = 2.0 * float(cfg.environment.box_size)
+    vel_span = float(cfg.data.standard_velocity_range[1] - cfg.data.standard_velocity_range[0])
+    plot_physical_rollout_degradation(
         horizons=test_metrics.horizons,
         pos_errors=test_metrics.position_error_per_horizon,
-        save_path=figures_dir / "rollout_degradation.png",
+        vel_errors=test_metrics.velocity_error_per_horizon,
+        save_path=figures_dir / "physical_rollout_degradation.png",
+        relative=True,
+        pos_span=pos_span,
+        vel_span=vel_span,
+    )
+    plot_latent_rollout_degradation(
+        horizons=test_metrics.horizons,
+        latent_errors=test_metrics.latent_mse_per_horizon,
+        q_errors=test_metrics.q_mse_per_horizon,
+        p_errors=test_metrics.p_mse_per_horizon,
+        save_path=figures_dir / "latent_rollout_degradation.png",
+        relative=True,
     )
 
     sample_batch = next(iter(eval_loaders["test"]))
@@ -189,19 +205,9 @@ def _evaluate_and_save_phase_artifacts(
         num_segments=10,
         model_name=model_display_name,
         version=version_tag,
+        pos_span=pos_span,
+        vel_span=vel_span,
     )
-    canonical_name = get_canonical_metrics_filename(version_tag)
-    canonical_path = save_dir / canonical_name
-    if canonical_path != metrics_resume_path:
-        save_metrics_resume(
-            target_path=canonical_path,
-            history=history,
-            evaluation_result=test_metrics,
-            parameters=total_params,
-            num_segments=10,
-            model_name=model_display_name,
-            version=version_tag,
-        )
     chronicle.log_success(f"Generated metrics resume: {metrics_resume_path.name}")
 
     with torch.no_grad():

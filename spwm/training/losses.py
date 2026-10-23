@@ -82,7 +82,6 @@ class PredictorLoss(nn.Module):
         lambda_sensory: float = 1.0,
         lambda_position: float = 1.0,
         lambda_velocity: float = 1.0,
-        multi_step_horizon: int = 5,
     ) -> None:
         super().__init__()
         self.lambda_encoder = float(lambda_encoder)
@@ -90,7 +89,6 @@ class PredictorLoss(nn.Module):
         self.lambda_sensory = float(lambda_sensory)
         self.lambda_position = float(lambda_position)
         self.lambda_velocity = float(lambda_velocity)
-        self.multi_step_horizon = int(multi_step_horizon)
 
     @classmethod
     def from_config(cls, cfg: LossConfig) -> "PredictorLoss":
@@ -100,7 +98,6 @@ class PredictorLoss(nn.Module):
             lambda_sensory=cfg.lambda_sensory,
             lambda_position=cfg.lambda_position,
             lambda_velocity=cfg.lambda_velocity,
-            multi_step_horizon=cfg.multi_step_horizon,
         )
 
     def forward(
@@ -271,7 +268,6 @@ class SPWMLoss(nn.Module):
         lambda_sensory: float = 1.0,
         lambda_position: float = 1.0,
         lambda_velocity: float = 1.0,
-        multi_step_horizon: int = 5,
         beta_v: float = 2.0,
         comb_sigma: float = 3.5,
         **kwargs: Any,
@@ -282,7 +278,6 @@ class SPWMLoss(nn.Module):
         self.lambda_sensory = float(lambda_sensory)
         self.lambda_position = float(lambda_position)
         self.lambda_velocity = float(lambda_velocity)
-        self.multi_step_horizon = int(multi_step_horizon)
         self.beta_v = float(beta_v)
         self.comb_sigma = float(comb_sigma)
 
@@ -292,7 +287,6 @@ class SPWMLoss(nn.Module):
             lambda_sensory=self.lambda_sensory,
             lambda_position=self.lambda_position,
             lambda_velocity=self.lambda_velocity,
-            multi_step_horizon=self.multi_step_horizon,
         )
         self.funnel_loss = ConvergenceFunnelLoss()
 
@@ -304,7 +298,6 @@ class SPWMLoss(nn.Module):
             lambda_sensory=cfg.lambda_sensory,
             lambda_position=cfg.lambda_position,
             lambda_velocity=cfg.lambda_velocity,
-            multi_step_horizon=cfg.multi_step_horizon,
             **kwargs,
         )
 

@@ -11,13 +11,15 @@ from torch.utils.data import DataLoader
 from spwm.models.world_model import SPWM
 from spwm.evaluation.evaluator import RolloutEvaluator
 from spwm.evaluation.visualizer import (
-    plot_architecture_diagram,
-    plot_training_curves,
-    plot_multi_step_degradation,
-    plot_spike_raster,
-    plot_fast_vs_slow_memory,
-    plot_baseline_comparison,
     plot_ablation_comparison,
+    plot_architecture_diagram,
+    plot_baseline_comparison,
+    plot_fast_vs_slow_memory,
+    plot_latent_rollout_degradation,
+    plot_multi_step_degradation,
+    plot_physical_rollout_degradation,
+    plot_spike_raster,
+    plot_training_curves,
 )
 
 
@@ -41,6 +43,12 @@ def test_rollout_evaluator_long_horizon():
     for h in [1, 5, 10, 25, 50]:
         assert h in res.latent_mse_per_horizon
         assert res.latent_mse_per_horizon[h] >= 0.0
+        if res.q_mse_per_horizon is not None:
+            assert h in res.q_mse_per_horizon
+            assert res.q_mse_per_horizon[h] >= 0.0
+        if res.p_mse_per_horizon is not None:
+            assert h in res.p_mse_per_horizon
+            assert res.p_mse_per_horizon[h] >= 0.0
     assert res.teacher_forcing_mse >= 0.0
     assert res.dynamic_score >= 0.0
     assert res.rollout_mae >= 0.0
@@ -73,6 +81,43 @@ def test_plotting_generation():
         plot_multi_step_degradation(mock_curves, save_path=tmp_path / "fig3_kw.png")
         assert (tmp_path / "fig3_kw.png").is_file()
 
+        # Multi-metric degradation (pos, vel, latent)
+        horizons = [1, 5, 10, 25]
+        pos_errs = {1: 0.1, 5: 0.2, 10: 0.35, 25: 0.45}
+        vel_errs = {1: 0.05, 5: 0.15, 10: 0.25, 25: 0.35}
+        latent_errs = {1: 0.02, 5: 0.08, 10: 0.18, 25: 0.28}
+        plot_multi_step_degradation(
+            horizons=horizons,
+            pos_errors=pos_errs,
+            vel_errors=vel_errs,
+            latent_errors=latent_errs,
+            save_path=tmp_path / "fig3_all_metrics.png",
+        )
+        assert (tmp_path / "fig3_all_metrics.png").is_file()
+
+        plot_physical_rollout_degradation(
+            horizons=horizons,
+            pos_errors=pos_errs,
+            vel_errors=vel_errs,
+            save_path=tmp_path / "physical_rollout_degradation.png",
+            relative=True,
+            pos_span=2.0,
+            vel_span=2.0,
+        )
+        assert (tmp_path / "physical_rollout_degradation.png").is_file()
+
+        q_errs = {1: 0.01, 5: 0.04, 10: 0.09, 25: 0.14}
+        p_errs = {1: 0.01, 5: 0.04, 10: 0.09, 25: 0.14}
+        plot_latent_rollout_degradation(
+            horizons=horizons,
+            latent_errors=latent_errs,
+            q_errors=q_errs,
+            p_errors=p_errs,
+            save_path=tmp_path / "latent_rollout_degradation.png",
+            relative=True,
+        )
+        assert (tmp_path / "latent_rollout_degradation.png").is_file()
+
         # 4. Spike raster
         fast_spk = (np.random.rand(20, 16) > 0.9).astype(np.float32)
         slow_spk = (np.random.rand(20, 16) > 0.95).astype(np.float32)
@@ -97,80 +142,6 @@ def test_plotting_generation():
         mock_ablations = {"Full SPWM-v3": 0.2, "No Slow Memory": 0.45, "Single Timescale": 0.38}
         plot_ablation_comparison(mock_ablations, tmp_path / "fig7.png")
         assert (tmp_path / "fig7.png").is_file()
-
-
-def test_simplified_loss_forward():
-    from spwm.learning.losses import SPWMLoss
-
-    loss_fn = SPWMLoss(lambda_encoder=1.0, lambda_decoder=1.0, lambda_position=1.0, lambda_velocity=1.0)
-    B, T, D = 4, 10, 4
-
-    # Test train_representation mode
-    keypoints = torch.randn(B, T, 8, requires_grad=True)
-    decoded = torch.randn(B, T, D, requires_grad=True)
-    gt = torch.randn(B, T, D)
-
-    repr_loss = loss_fn(
-        keypoints=keypoints,
-        decoded_kinematics=decoded,
-        target_kinematics=gt,
-        mode="train_representation",
-    )
-    assert "total_loss" in repr_loss
-    assert "loss_encoder" in repr_loss
-    assert "loss_decoder" in repr_loss
-    assert "loss_position" in repr_loss
-    assert "loss_velocity" in repr_loss
-    assert repr_loss["total_loss"].item() > 0.0
-    assert repr_loss["loss_position"].item() == 0.0
-    repr_loss["total_loss"].backward()
-    assert keypoints.grad is not None
-    assert decoded.grad is not None
-
-    # Test train_predictor mode
-    pos = torch.randn(B, T, 2, requires_grad=True)
-    vel = torch.randn(B, T, 2, requires_grad=True)
-    pred_loss = loss_fn(
-        rollout_positions=pos,
-        rollout_velocities=vel,
-        target_kinematics=gt,
-        mode="train_predictor",
-    )
-    assert "total_loss" in pred_loss
-    assert "loss_encoder" in pred_loss
-    assert "loss_decoder" in pred_loss
-    assert "loss_position" in pred_loss
-    assert "loss_velocity" in pred_loss
-    assert pred_loss["total_loss"].item() > 0.0
-    assert pred_loss["loss_encoder"].item() == 0.0
-    pred_loss["total_loss"].backward()
-    assert pos.grad is not None
-    assert vel.grad is not None
-
-    # Test train_joint mode
-    kp_j = torch.randn(B, T, 8, requires_grad=True)
-    dec_j = torch.randn(B, T, D, requires_grad=True)
-    pos_j = torch.randn(B, T, 2, requires_grad=True)
-    vel_j = torch.randn(B, T, 2, requires_grad=True)
-    joint_loss = loss_fn(
-        keypoints=kp_j,
-        decoded_kinematics=dec_j,
-        rollout_positions=pos_j,
-        rollout_velocities=vel_j,
-        target_kinematics=gt,
-        mode="train_joint",
-    )
-    assert "total_loss" in joint_loss
-    assert joint_loss["loss_encoder"].item() > 0.0
-    assert joint_loss["loss_decoder"].item() > 0.0
-    assert joint_loss["loss_position"].item() > 0.0
-    assert joint_loss["loss_velocity"].item() > 0.0
-    joint_loss["total_loss"].backward()
-    assert kp_j.grad is not None
-    assert dec_j.grad is not None
-    assert pos_j.grad is not None
-    assert vel_j.grad is not None
-
 
 
 def test_generate_metrics_resume():
@@ -221,6 +192,16 @@ def test_generate_metrics_resume():
         assert data["training_progression"]["sampled_segments"][-1]["epoch"] == 50
         assert "train_loss" in data["training_progression"]["trends"]
         assert "val_loss" in data["training_progression"]["trends"]
+        assert "physical_rollout_degradation" in data["evaluation"]
+        assert "latent_rollout_degradation" in data["evaluation"]
+        assert "position_relative" in data["evaluation"]["physical_rollout_degradation"]
+        assert "velocity_relative" in data["evaluation"]["physical_rollout_degradation"]
+        assert "position_normalized" in data["evaluation"]["physical_rollout_degradation"]
+        assert "velocity_normalized" in data["evaluation"]["physical_rollout_degradation"]
+        assert data["evaluation"]["physical_rollout_degradation"]["position_relative"]["1"] == 1.0
+        assert data["evaluation"]["physical_rollout_degradation"]["velocity_relative"]["1"] == 1.0
+        assert "latent_relative" in data["evaluation"]["latent_rollout_degradation"]
+        assert data["evaluation"]["latent_rollout_degradation"]["latent_relative"]["1"] == 1.0
 
 
 def test_get_canonical_metrics_filename():

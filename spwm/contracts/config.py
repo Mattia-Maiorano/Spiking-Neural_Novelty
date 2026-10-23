@@ -60,7 +60,7 @@ def _strict_dict_to_dataclass(cls: Type[T], data: Dict[str, Any], context: str =
 @dataclass(frozen=True)
 class ProjectConfig:
     """Project-level identity, tracking tags, and pseudo-random reproducibility configuration."""
-    name: str = "spwm_v0_2_1"  #: Unique identifier/tag for the project and run artifacts.
+    name: str = "spwm_v0_2_2"  #: Unique identifier/tag for the project and run artifacts.
     seed: int = 42             #: Global pseudo-random seed for PyTorch, NumPy, and synthetic data generation.
 
 
@@ -120,7 +120,6 @@ class ModelConfig:
     and spatial keypoint bottlenecks.
     """
     type: str = "spwm"                                #: Architecture family ("spwm").
-    encoder_type: str = "spatial_softmax"             #: Visual front-end encoder type ("spatial_softmax" keypoints).
     num_keypoints: int = 16                           #: Number of spatial feature keypoints extracted by the encoder.
     encoder_dim: int = 128                            #: Output feature dimension of the convolutional feature extractor.
     encoder_conv_channels: Tuple[int, ...] = (16, 32) #: Channel depths for 2D convolutional encoder layers.
@@ -209,22 +208,12 @@ class TrainingConfig:
     probe_weight_decay: float = 0.01               #: L2 regularization penalty applied to linear probes.
     temporal_burn_in: int = 15                      #: Initial latent steps for recurrent dynamics warm-up before launching evaluation rollouts.
     representation_checkpoint: Optional[str] = None  #: Optional path to pre-trained representation checkpoint .pt.
-    phase_horizon: int = 10                        #: Dynamic duration H of each cyclic relay phase (M1 nominal horizon, M2 recovery window).
+    phase_horizon: int = 5                        #: Dynamic duration H of each cyclic relay phase (M1 nominal horizon, M2 recovery window).
     max_rollout_horizon: int = 40                  #: Max rollout horizon for M3 training where both M2 and M3 are jointly trained.
     m1_checkpoint: Optional[str] = None            #: Path to pre-trained M1 checkpoint (`model.pt`) for Phase 2 / Phase 3.
     m2_checkpoint: Optional[str] = None            #: Path to pre-trained M2 checkpoint (`model.pt`) for Phase 3.
-    m1_horizon: Optional[int] = None               #: Rollout horizon for M1 nominal predictor (defaults to phase_horizon).
-    m2_horizon: Optional[int] = None               #: Rollout horizon for M2 recovery predictor (defaults to phase_horizon).
-    m3_horizon: Optional[int] = None               #: Rollout horizon for M3 sustained predictor (defaults to phase_horizon).
 
     def __post_init__(self) -> None:
-        if self.m1_horizon is None:
-            object.__setattr__(self, "m1_horizon", self.phase_horizon)
-        if self.m2_horizon is None:
-            object.__setattr__(self, "m2_horizon", self.phase_horizon)
-        if self.m3_horizon is None:
-            object.__setattr__(self, "m3_horizon", self.phase_horizon)
-
         valid_modes = ("train_m1", "train_m2", "train_m3", "train_cascade")
         if self.mode not in valid_modes:
             raise ValueError(f"Invalid training mode '{self.mode}'. Allowed modes: {valid_modes}")
@@ -249,12 +238,11 @@ class LossConfig:
       - Representation components (active in M1): lambda_encoder, lambda_decoder, lambda_sensory
     """
     lambda_encoder: float = 1.0     #: Weight of SpatialSoftmax keypoint MSE loss in 'train_m1'.
-    lambda_decoder: float = 1.0     #: Weight of PhysicalDecoder probe MSE loss in 'train_m1'.
+    lambda_decoder: float = 2.0     #: Weight of PhysicalDecoder probe MSE loss in 'train_m1'.
     lambda_latent: float = 1.0      #: Weight of overall latent trajectory MSE loss.
     lambda_sensory: float = 1.0     #: Weight of top-down sensory prediction MSE loss in 'train_m1'.
-    lambda_position: float = 1.0    #: Weight of coordinate/position (q) subspace MSE in latent rollout losses.
+    lambda_position: float = 1.5    #: Weight of coordinate/position (q) subspace MSE in latent rollout losses.
     lambda_velocity: float = 1.0    #: Weight of momentum/velocity (p) subspace MSE in latent rollout losses.
-    multi_step_horizon: int = 5     #: Multi-step rollout horizon for auxiliary predictor loss evaluation.
 
 
 
@@ -349,9 +337,6 @@ class ExperimentConfig:
             train_updates["representation_checkpoint"] = representation_checkpoint
         if phase_horizon is not None:
             train_updates["phase_horizon"] = phase_horizon
-            train_updates["m1_horizon"] = phase_horizon
-            train_updates["m2_horizon"] = phase_horizon
-            train_updates["m3_horizon"] = phase_horizon
         if max_rollout_horizon is not None:
             train_updates["max_rollout_horizon"] = max_rollout_horizon
         if temporal_burn_in is not None:

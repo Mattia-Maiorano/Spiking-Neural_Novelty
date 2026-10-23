@@ -38,7 +38,7 @@ model:
   p_dim: 96
   predictor_hidden_dim: 256
   ema_decay: 0.9
-  decoder_ema_alpha: 0.85
+  decoder_ema_alpha: 0.5
   in_channels: 2
 neuron:
   model: alif
@@ -68,9 +68,9 @@ training:
   temporal_burn_in: 5
   representation_checkpoint: null
   phase_horizon: 10
-  max_rollout_horizon: 100
-  m1_checkpoint: null
-  m2_checkpoint: null
+  max_rollout_horizon: 30
+  m1_checkpoint: results/spwm_v0_2_0_train_m1/model.pt
+  m2_checkpoint: results/spwm_v0_2_0_train_m2/model.pt
   m1_horizon: 10
   m2_horizon: 10
   m3_horizon: 10

@@ -23,6 +23,42 @@ from spwm.contracts.tensors import assert_tensor_contract
 from spwm.models.predictors import compute_convergence_funnel_target, extrapolate_latent
 
 
+def decompose_latent_loss(
+    predicted_latent: torch.Tensor,
+    target_latent: torch.Tensor,
+    q_dim: int,
+    lambda_position: float = 1.0,
+    lambda_velocity: float = 1.0,
+) -> Dict[str, torch.Tensor]:
+    """Decompose latent trajectory loss into position (q) and momentum/velocity (p) components.
+
+    Latent vector z is partitioned as z = [q, p], where:
+      - q = z[..., :q_dim] (coordinate/position subspace)
+      - p = z[..., q_dim:] (momentum/velocity subspace)
+
+    Total weighted latent loss:
+      L_latent = lambda_position * MSE(q_pred, q_target) + lambda_velocity * MSE(p_pred, p_target)
+    """
+    assert_tensor_contract(predicted_latent, (None, None, None), "decompose_latent_loss.predicted_latent")
+    assert_tensor_contract(target_latent, tuple(predicted_latent.shape), "decompose_latent_loss.target_latent")
+
+    pred_q = predicted_latent[..., :q_dim]
+    target_q = target_latent[..., :q_dim]
+    loss_pos_latent = F.mse_loss(pred_q, target_q)
+
+    pred_p = predicted_latent[..., q_dim:]
+    target_p = target_latent[..., q_dim:]
+    loss_vel_latent = F.mse_loss(pred_p, target_p)
+
+    weighted_loss = float(lambda_position) * loss_pos_latent + float(lambda_velocity) * loss_vel_latent
+    return {
+        "loss_latent": weighted_loss,
+        "loss_pos_latent": loss_pos_latent,
+        "loss_vel_latent": loss_vel_latent,
+    }
+
+
+
 @contextmanager
 def _frozen(module: nn.Module):
     """Context manager that temporarily sets requires_grad=False on all module parameters."""
@@ -170,6 +206,9 @@ class ConvergenceFunnelLoss(nn.Module):
         ground_truth_latent: torch.Tensor,
         t_anchor: Optional[int] = None,
         phase_horizon: Optional[int] = None,
+        q_dim: Optional[int] = None,
+        lambda_position: float = 1.0,
+        lambda_velocity: float = 1.0,
     ) -> Dict[str, torch.Tensor]:
         assert_tensor_contract(predicted_latent, (None, None, None), "ConvergenceFunnelLoss.predicted_latent")
         assert_tensor_contract(
@@ -185,12 +224,37 @@ class ConvergenceFunnelLoss(nn.Module):
             t_anchor=anchor_step,
             phase_horizon=phase_horizon,
         )
-        funnel_loss = F.mse_loss(predicted_latent, target)
-        raw_gt_loss = F.mse_loss(predicted_latent, ground_truth_latent)
+        if q_dim is not None and q_dim > 0 and q_dim < predicted_latent.shape[-1]:
+            decomp_funnel = decompose_latent_loss(
+                predicted_latent=predicted_latent,
+                target_latent=target,
+                q_dim=q_dim,
+                lambda_position=lambda_position,
+                lambda_velocity=lambda_velocity,
+            )
+            funnel_loss = decomp_funnel["loss_latent"]
+            decomp_gt = decompose_latent_loss(
+                predicted_latent=predicted_latent,
+                target_latent=ground_truth_latent,
+                q_dim=q_dim,
+                lambda_position=lambda_position,
+                lambda_velocity=lambda_velocity,
+            )
+            raw_gt_loss = decomp_gt["loss_latent"]
+            loss_pos_latent = decomp_funnel["loss_pos_latent"]
+            loss_vel_latent = decomp_funnel["loss_vel_latent"]
+        else:
+            funnel_loss = F.mse_loss(predicted_latent, target)
+            raw_gt_loss = F.mse_loss(predicted_latent, ground_truth_latent)
+            loss_pos_latent = funnel_loss
+            loss_vel_latent = funnel_loss
+
         return {
             "total_loss": funnel_loss,
             "funnel_loss": funnel_loss,
             "raw_gt_loss": raw_gt_loss,
+            "loss_pos_latent": loss_pos_latent,
+            "loss_vel_latent": loss_vel_latent,
             "blended_target": target,
         }
 
@@ -206,7 +270,7 @@ class SPWMLoss(nn.Module):
         lambda_decoder: float = 1.0,
         lambda_sensory: float = 1.0,
         lambda_position: float = 1.0,
-        lambda_velocity: float = 2.0,
+        lambda_velocity: float = 1.0,
         multi_step_horizon: int = 5,
         beta_v: float = 2.0,
         comb_sigma: float = 3.5,
@@ -256,9 +320,11 @@ class SPWMLoss(nn.Module):
 
 __all__ = [
     "_frozen",
+    "decompose_latent_loss",
     "PredictorLoss",
     "ConvergenceFunnelLoss",
     "SPWMLoss",
     "extrapolate_latent",
     "compute_convergence_funnel_target",
 ]
+

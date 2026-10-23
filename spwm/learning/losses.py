@@ -6,11 +6,13 @@ from spwm.training.losses import (
     SPWMLoss,
     _frozen,
     compute_convergence_funnel_target,
+    decompose_latent_loss,
     extrapolate_latent,
 )
 
 __all__ = [
     "_frozen",
+    "decompose_latent_loss",
     "PredictorLoss",
     "ConvergenceFunnelLoss",
     "SPWMLoss",

@@ -60,7 +60,7 @@ def _strict_dict_to_dataclass(cls: Type[T], data: Dict[str, Any], context: str =
 @dataclass(frozen=True)
 class ProjectConfig:
     """Project-level identity, tracking tags, and pseudo-random reproducibility configuration."""
-    name: str = "spwm_v0_2_0"  #: Unique identifier/tag for the project and run artifacts.
+    name: str = "spwm_v0_2_1"  #: Unique identifier/tag for the project and run artifacts.
     seed: int = 42             #: Global pseudo-random seed for PyTorch, NumPy, and synthetic data generation.
 
 
@@ -129,7 +129,7 @@ class ModelConfig:
     p_dim: int = 96                                   #: Momentum/velocity subspace dimension; MUST be a multiple of q_dim.
     predictor_hidden_dim: int = 256                   #: Hidden layer dimensionality of the predictor residual MLP network.
     ema_decay: float = 0.9                            #: Exponential moving average decay for tracking latent spike statistics.
-    decoder_ema_alpha: float = 0.85                   #: EMA filter smoothing coefficient for PhysicalDecoder momentum readout.
+    decoder_ema_alpha: float = 0.2                    #: EMA filter smoothing coefficient for PhysicalDecoder momentum readout (alpha = 0.5).
     in_channels: int = 2                              #: Event camera input polarity channels (positive and negative spikes).
 
     def __post_init__(self) -> None:
@@ -205,12 +205,12 @@ class TrainingConfig:
     weight_decay: float = 0.0005                   #: Base L2 weight decay penalty applied to Adam optimizer across active submodules.
     grad_clip_norm: float = 0.8                    #: Maximum L2 gradient norm threshold for torch.nn.utils.clip_grad_norm_.
     learning_rate: float = 0.0002                  #: Base Adam learning rate for model weights.
-    probe_lr: float = 0.0005                       #: Dedicated learning rate for downstream kinematic readout linear probes.
+    probe_lr: float = 0.0002                       #: Dedicated learning rate for downstream kinematic readout linear probes.
     probe_weight_decay: float = 0.01               #: L2 regularization penalty applied to linear probes.
-    temporal_burn_in: int = 5                      #: Initial latent steps for recurrent dynamics warm-up before launching evaluation rollouts.
+    temporal_burn_in: int = 15                      #: Initial latent steps for recurrent dynamics warm-up before launching evaluation rollouts.
     representation_checkpoint: Optional[str] = None  #: Optional path to pre-trained representation checkpoint .pt.
     phase_horizon: int = 10                        #: Dynamic duration H of each cyclic relay phase (M1 nominal horizon, M2 recovery window).
-    max_rollout_horizon: int = 100                  #: Max rollout horizon for M3 training where both M2 and M3 are jointly trained.
+    max_rollout_horizon: int = 40                  #: Max rollout horizon for M3 training where both M2 and M3 are jointly trained.
     m1_checkpoint: Optional[str] = None            #: Path to pre-trained M1 checkpoint (`model.pt`) for Phase 2 / Phase 3.
     m2_checkpoint: Optional[str] = None            #: Path to pre-trained M2 checkpoint (`model.pt`) for Phase 3.
     m1_horizon: Optional[int] = None               #: Rollout horizon for M1 nominal predictor (defaults to phase_horizon).
@@ -242,14 +242,20 @@ class TrainingConfig:
 class LossConfig:
     """
     Loss function scaling weights, horizons, and balancing coefficients for SPWM.
+    Coordinates the objective across M1, M2, and M3:
+      - Coordinate (q) subspace error weight: lambda_position
+      - Momentum/velocity (p) subspace error weight: lambda_velocity
+      - Overall latent trajectory scale: lambda_latent
+      - Representation components (active in M1): lambda_encoder, lambda_decoder, lambda_sensory
     """
     lambda_encoder: float = 1.0     #: Weight of SpatialSoftmax keypoint MSE loss in 'train_m1'.
     lambda_decoder: float = 1.0     #: Weight of PhysicalDecoder probe MSE loss in 'train_m1'.
-    lambda_latent: float = 1.0      #: Weight of M1 latent trajectory MSE loss in 'train_m1'.
+    lambda_latent: float = 1.0      #: Weight of overall latent trajectory MSE loss.
     lambda_sensory: float = 1.0     #: Weight of top-down sensory prediction MSE loss in 'train_m1'.
-    lambda_position: float = 1.0    #: Weight of position MSE loss in kinematic rollout losses.
-    lambda_velocity: float = 2.0    #: Weight of velocity MSE loss in kinematic rollout losses.
+    lambda_position: float = 1.0    #: Weight of coordinate/position (q) subspace MSE in latent rollout losses.
+    lambda_velocity: float = 1.0    #: Weight of momentum/velocity (p) subspace MSE in latent rollout losses.
     multi_step_horizon: int = 5     #: Multi-step rollout horizon for auxiliary predictor loss evaluation.
+
 
 
 @dataclass(frozen=True)

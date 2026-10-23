@@ -30,7 +30,8 @@ All configuration schemas are `@dataclass(frozen=True)` classes:
 - [`LatentNeuronConfig`](file:///Users/Mattia/Desktop/Studies/Temp/spwm/contracts/config.py): `beta_mem`, `threshold`, `gamma`, `surrogate`, `surrogate_alpha`.
 - [`MemoryConfig`](file:///Users/Mattia/Desktop/Studies/Temp/spwm/contracts/config.py): `num_timescales`, `timescale_dims`, `betas`. Validates `len(timescale_dims) == num_timescales == len(betas)` and $0 < \beta_k < 1$.
 - [`TrainingConfig`](file:///Users/Mattia/Desktop/Studies/Temp/spwm/contracts/config.py): `mode` (`"train_m1"`, `"train_m2"`, `"train_m3"`), `epochs`, `learning_rate`, `weight_decay`, `grad_clip_norm`, `probe_lr`, `probe_weight_decay`, `phase_horizon`, `m2_num_phases`, `max_rollout_horizon`, `temporal_burn_in`, `representation_checkpoint`, `m1_checkpoint`, `m2_checkpoint`.
-- [`LossConfig`](file:///Users/Mattia/Desktop/Studies/Temp/spwm/contracts/config.py): `lambda_encoder`, `lambda_decoder`, `lambda_latent`, `lambda_position`, `lambda_velocity`, `multi_step_horizon`.
+- [`LossConfig`](file:///Users/Mattia/Desktop/Studies/Temp/spwm/contracts/config.py): `lambda_position` (weight for coordinate $q$ subspace latent MSE), `lambda_velocity` (weight for momentum/velocity $p$ subspace latent MSE), `lambda_latent` (overall latent trajectory multiplier), `lambda_encoder`, `lambda_decoder`, `lambda_sensory`, `multi_step_horizon`.
+
 - [`EvaluationConfig`](file:///Users/Mattia/Desktop/Studies/Temp/spwm/contracts/config.py): `rollout_horizons`.
 - [`ExperimentConfig`](file:///Users/Mattia/Desktop/Studies/Temp/spwm/contracts/config.py): Root composite schema.
   - Cross-validates `data.sequence_length` against the active training phase (`train_m1` requires $T \ge H + 2$; `train_m2` with 2 phases requires $T \ge 3H + 2$; `train_m3` requires $T \ge \min(H_{\max}, H + 1) + 1$).

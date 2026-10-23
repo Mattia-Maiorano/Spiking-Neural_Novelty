@@ -12,7 +12,7 @@ data:
   total_trajectories: 4000
   train_split: 0.8
   val_split: 0.1
-  sequence_length: 45
+  sequence_length: 105
   batch_size: 32
   drift_injection_prob: 0.0
   drift_magnitude: 0.05
@@ -38,7 +38,7 @@ model:
   p_dim: 96
   predictor_hidden_dim: 256
   ema_decay: 0.9
-  decoder_ema_alpha: 0.85
+  decoder_ema_alpha: 0.5
   in_channels: 2
 neuron:
   model: alif

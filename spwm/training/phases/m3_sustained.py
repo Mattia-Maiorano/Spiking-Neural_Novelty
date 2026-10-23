@@ -15,7 +15,9 @@ import torch.nn.functional as F
 
 from spwm.contracts.protocols import PhaseStrategy
 from spwm.models.rollout import rollout_latent
+from spwm.training.losses import decompose_latent_loss
 from spwm.training.metrics import position_error, velocity_error
+
 
 
 class M3PhaseStrategy(PhaseStrategy):
@@ -49,6 +51,12 @@ class M3PhaseStrategy(PhaseStrategy):
     def _compute_m3_objectives(
         self, events: torch.Tensor, flat_kin: torch.Tensor
     ) -> Tuple[torch.Tensor, Dict[str, float]]:
+        # Slice sequence to only the steps needed for M3 sustained relay: up to max_rollout_horizon + 1 steps
+        H_req = max(2 * self.cfg.training.phase_horizon + 1, self.cfg.training.max_rollout_horizon + 1)
+        if events.shape[1] > H_req:
+            events = events[:, :H_req]
+            flat_kin = flat_kin[:, :H_req]
+
         with torch.no_grad():
             enc_latents = self.model(events).latent_states
 
@@ -82,7 +90,16 @@ class M3PhaseStrategy(PhaseStrategy):
         rollout_traj = relay_res.trajectory
 
         gt_latent = enc_latents[:, H + 1 : max_h + 1]
-        total_loss = F.mse_loss(rollout_traj, gt_latent)
+        decomp = decompose_latent_loss(
+            predicted_latent=rollout_traj,
+            target_latent=gt_latent,
+            q_dim=self.model.q_dim,
+            lambda_position=self.cfg.loss.lambda_position,
+            lambda_velocity=self.cfg.loss.lambda_velocity,
+        )
+        total_loss = decomp["loss_latent"]
+        loss_pos_latent = decomp["loss_pos_latent"]
+        loss_vel_latent = decomp["loss_vel_latent"]
 
         # Decode combined M1 (0 -> H) + Relay M2/M3 (H -> max_h) trajectory
         combined_latent = torch.cat([m1_traj.detach(), rollout_traj.detach()], dim=1)
@@ -97,12 +114,15 @@ class M3PhaseStrategy(PhaseStrategy):
             "loss": float(total_loss.item()),
             "loss_encoder": 0.0,
             "loss_decoder": 0.0,
-            "loss_position": float(total_loss.item()),
-            "loss_velocity": 0.0,
+            "loss_sensory": 0.0,
+            "loss_position": float(loss_pos_latent.item()),
+            "loss_velocity": float(loss_vel_latent.item()),
+            "loss_latent": float(total_loss.item()),
             "pos_err": pos_err,
             "vel_err": vel_err,
         }
         return total_loss, metrics
+
 
     def train_step(self, batch: Dict[str, torch.Tensor], epoch: int) -> Dict[str, float]:
         self.model.eval()

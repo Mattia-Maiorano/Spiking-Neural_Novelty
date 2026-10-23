@@ -42,6 +42,12 @@ class M2PhaseStrategy(PhaseStrategy):
     def _compute_m2_objectives(
         self, events: torch.Tensor, flat_kin: torch.Tensor
     ) -> Tuple[torch.Tensor, Dict[str, float]]:
+        # Slice sequence to only the steps needed for M2 recovery: M1 computes 0->H and M2 computes H->2H (requires 2*H + 1 steps)
+        H_req = 2 * self.cfg.training.phase_horizon + 1
+        if events.shape[1] > H_req:
+            events = events[:, :H_req]
+            flat_kin = flat_kin[:, :H_req]
+
         with torch.no_grad():
             enc_latents = self.model(events).latent_states
 
@@ -67,11 +73,19 @@ class M2PhaseStrategy(PhaseStrategy):
         m2_traj_1 = m2_res1.trajectory
         gt_latent_1 = enc_latents[:, H + 1 : H + 1 + phase1_h]
         f1 = self.loss_fn.compute_convergence_funnel_loss(
-            predicted_latent=m2_traj_1, z_anchor=z_anchor1, z_prev=z_prev1,
-            ground_truth_latent=gt_latent_1, t_anchor=H, phase_horizon=H,
+            predicted_latent=m2_traj_1,
+            z_anchor=z_anchor1,
+            z_prev=z_prev1,
+            ground_truth_latent=gt_latent_1,
+            t_anchor=H,
+            phase_horizon=H,
+            q_dim=self.model.q_dim,
+            lambda_position=self.cfg.loss.lambda_position,
+            lambda_velocity=self.cfg.loss.lambda_velocity,
         )
         total_loss = f1["total_loss"]
-        raw_gt_loss = f1["raw_gt_loss"]
+        loss_pos_latent = f1["loss_pos_latent"]
+        loss_vel_latent = f1["loss_vel_latent"]
 
         # Decode combined M1 (0 -> H) + M2 (H -> 2H) trajectory for unified kinematic metrics
         num_obj = self.cfg.environment.num_objects
@@ -84,8 +98,10 @@ class M2PhaseStrategy(PhaseStrategy):
             "loss": float(total_loss.item()),
             "loss_encoder": 0.0,
             "loss_decoder": 0.0,
-            "loss_position": float(raw_gt_loss.item()),
-            "loss_velocity": float(total_loss.item()),
+            "loss_sensory": 0.0,
+            "loss_position": float(loss_pos_latent.item()),
+            "loss_velocity": float(loss_vel_latent.item()),
+            "loss_latent": float(total_loss.item()),
             "pos_err": position_error(decoded_combined, target_kin_combined, num_objects=num_obj),
             "vel_err": velocity_error(decoded_combined, target_kin_combined, num_objects=num_obj),
         }

@@ -94,18 +94,27 @@ class PredictorPhaseHandler(PhaseStrategy):
             f"Remaining: {epoch_duration * (end_epoch - epoch) / 60:4.1f}m"
         )
         chronicle.log_section_header(header)
+        train_loss = train_metrics.get("train_loss", 0.0)
+        train_pos_l = train_metrics.get("train_loss_position", 0.0)
+        train_vel_l = train_metrics.get("train_loss_velocity", 0.0)
+        train_pos_e = train_metrics.get("train_pos_err", 0.0)
+        train_vel_e = train_metrics.get("train_vel_err", 0.0)
         chronicle.log_detail(
             "⚡ Training Losses",
-            f"Train Loss: {train_metrics.get('train_loss', 0.0):.5f} | "
-            f"Pos L2: {train_metrics.get('train_pos_err', 0.0):.5f} | "
-            f"Vel L2: {train_metrics.get('train_vel_err', 0.0):.5f}",
+            f"Total: {train_loss:.5f} [q-MSE: {train_pos_l:.5f} | p-MSE: {train_vel_l:.5f}] | "
+            f"Eval: Pos L2: {train_pos_e:.5f} | Vel L2: {train_vel_e:.5f}",
             indent_level=1,
         )
+
+        val_loss = val_metrics.get("val_loss", 0.0)
+        val_pos_l = val_metrics.get("val_loss_position", 0.0)
+        val_vel_l = val_metrics.get("val_loss_velocity", 0.0)
+        val_pos_e = val_metrics.get("val_pos_err", 0.0)
+        val_vel_e = val_metrics.get("val_vel_err", 0.0)
         chronicle.log_detail(
             "📊 Validation Losses",
-            f"Val Loss: {val_metrics.get('val_loss', 0.0):.5f} | "
-            f"Pos L2: {val_metrics.get('val_pos_err', 0.0):.5f} | "
-            f"Vel L2: {val_metrics.get('val_vel_err', 0.0):.5f}",
+            f"Total: {val_loss:.5f} [q-MSE: {val_pos_l:.5f} | p-MSE: {val_vel_l:.5f}] | "
+            f"Eval: Pos L2: {val_pos_e:.5f} | Vel L2: {val_vel_e:.5f}",
             indent_level=1,
         )
         curr_score = self.get_selection_score(val_metrics)

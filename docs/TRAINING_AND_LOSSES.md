@@ -69,7 +69,9 @@ classDiagram
   1. Runs `seq_out = self.model(events)` in the active grad context, generating latents $\mathbf{z}_{0:T-1}^*$, keypoints $\mathbf{k}_{0:T-1}$, immediate kinematic readouts $\hat{\mathbf{y}}_{0:T-1}^{\text{imm}}$, and top-down sensory prediction errors $\boldsymbol{\epsilon}_{0:T-1} = \mathbf{x}_{0:T-1} - \hat{\mathbf{x}}_{0:T-1}$.
   2. Detaches $\mathbf{z}_0 = \text{stop\_grad}(\mathbf{z}_0^*)$ and target latents $\mathbf{z}_{1:H}^* = \text{stop\_grad}(\mathbf{z}_{1:H})$.
   3. Executes `rollout_latent(model, z_init=z_0, horizon=H, with_grad=True, fixed_predictor=model.m1)` to obtain $\hat{\mathbf{z}}_{1:H}^{(M_1)}$.
-  4. Minimizes $\mathcal{L}_{M_1} = \mathcal{L}_{\text{latent}} + \lambda_{\text{enc}}\mathcal{L}_{\text{encoder}} + \lambda_{\text{dec}}\mathcal{L}_{\text{decoder}} + \lambda_{\text{sensory}}\mathcal{L}_{\text{sensory}}$, updating $M_1$, `encoder`, `dynamics`, `sensory_predictor`, and `physical_decoder`.
+  4. Minimizes $\mathcal{L}_{M_1} = \lambda_{\text{latent}}\mathcal{L}_{\text{latent}} + \lambda_{\text{enc}}\mathcal{L}_{\text{encoder}} + \lambda_{\text{dec}}\mathcal{L}_{\text{decoder}} + \lambda_{\text{sensory}}\mathcal{L}_{\text{sensory}}$, where:
+     $$\mathcal{L}_{\text{latent}} = \lambda_{\text{position}} \cdot \text{MSE}(\hat{\mathbf{q}}, \mathbf{q}^*) + \lambda_{\text{velocity}} \cdot \text{MSE}(\hat{\mathbf{p}}, \mathbf{p}^*)$$
+     updating $M_1$, `encoder`, `dynamics`, `sensory_predictor`, and `physical_decoder`.
 
 ### 2.2 Phase 2: `M2PhaseStrategy` ([`spwm/training/phases/m2_recovery.py`](file:///Users/Mattia/Desktop/Studies/Temp/spwm/training/phases/m2_recovery.py))
 - **Purpose**: Train the recovery predictor $M_2$ to pull drifted off-manifold latent states back onto the true physical manifold without velocity discontinuities.
@@ -79,8 +81,8 @@ classDiagram
 - **Step Execution**:
   1. Under `with torch.no_grad():`, extracts ground-truth latents $\mathbf{z}_{0:T-1}^*$ and rolls out frozen $M_1$ for $H$ steps from $\mathbf{z}_0^*$ to obtain the dirty anchor $\hat{\mathbf{z}}_H$ and its predecessor $\hat{\mathbf{z}}_{H-1}$.
   2. Rolls out trainable $M_2$ for $H$ steps starting from $\hat{\mathbf{z}}_H$ (`rollout_latent(..., fixed_predictor=model.m2, with_grad=True)`).
-  3. Computes [`ConvergenceFunnelLoss`](file:///Users/Mattia/Desktop/Studies/Temp/spwm/training/losses.py) against the blended trajectory $\tilde{\mathbf{z}}_{H+1:2H}^*$.
-  4. If `cfg.training.m2_num_phases == 2` and $T - 1 \ge 3H + 1$: rolls out frozen $M_3$ from $\text{stop\_grad}(\hat{\mathbf{z}}_{2H}^{(M_2)})$ over $[2H+1, 3H]$ to obtain a second dirty anchor $\hat{\mathbf{z}}_{3H}$, then rolls out trainable $M_2$ over $[3H+1, 4H]$ and averages the two funnel losses.
+  3. Computes [`ConvergenceFunnelLoss`](file:///Users/Mattia/Desktop/Studies/Temp/spwm/training/losses.py) against the blended trajectory $\tilde{\mathbf{z}}_{H+1:2H}^*$, parameterized with identical symplectic subspace weights:
+     $$\mathcal{L}_{M_2} = \lambda_{\text{position}} \cdot \text{MSE}(\hat{\mathbf{q}}^{(M_2)}, \tilde{\mathbf{q}}^*) + \lambda_{\text{velocity}} \cdot \text{MSE}(\hat{\mathbf{p}}^{(M_2)}, \tilde{\mathbf{p}}^*)$$
 
 ### 2.3 Phase 3: `M3PhaseStrategy` ([`spwm/training/phases/m3_sustained.py`](file:///Users/Mattia/Desktop/Studies/Temp/spwm/training/phases/m3_sustained.py))
 - **Purpose**: Initialize $M_3$ from $M_1$ (`model.relay.init_m3_from_m1()`) and jointly fine-tune $M_2$ and $M_3$ across multi-cycle alternating rollouts $t \in [H, H_{\max}]$.
@@ -90,7 +92,8 @@ classDiagram
 - **Step Execution**:
   1. Under `with torch.no_grad():`, extracts $\mathbf{z}_{0:T-1}^*$ and rolls out frozen $M_1$ for $H$ steps to obtain $\hat{\mathbf{z}}_H$.
   2. Calls `rollout_latent(model, z_init=z_anchor, horizon=H_max - H, start_step=H, with_grad=True)`, which automatically routes steps $[H, 2H-1] \to M_2$, $[2H, 3H-1] \to M_3$, etc.
-  3. Minimizes MSE between the multi-cycle trajectory $\hat{\mathbf{z}}_{H+1:H_{\max}}$ and $\mathbf{z}_{H+1:H_{\max}}^*$.
+  3. Minimizes decomposed latent loss between the multi-cycle trajectory $\hat{\mathbf{z}}_{H+1:H_{\max}}$ and $\mathbf{z}_{H+1:H_{\max}}^*$:
+     $$\mathcal{L}_{M_3} = \lambda_{\text{position}} \cdot \text{MSE}(\hat{\mathbf{q}}^{\text{relay}}, \mathbf{q}^*) + \lambda_{\text{velocity}} \cdot \text{MSE}(\hat{\mathbf{p}}^{\text{relay}}, \mathbf{p}^*)$$
 
 ---
 
@@ -105,7 +108,8 @@ Given a terminal anchor state $\hat{\mathbf{z}}_{t_a} \in \mathbb{R}^{B \times D
    $$\tau_k = \text{clip}\!\left(\frac{k + 1}{H},\, 0.0,\, 1.0\right)$$
    $$\tilde{\mathbf{z}}_t^* = (1 - \tau_k)\,\text{Extrapolate}(\hat{\mathbf{z}}_{t_a}, t) + \tau_k\,\mathbf{z}_t^*$$
 3. **Convergence Funnel Loss** ([`ConvergenceFunnelLoss`](file:///Users/Mattia/Desktop/Studies/Temp/spwm/training/losses.py)):
-   $$\mathcal{L}_{\text{funnel}} = \frac{1}{B H D}\sum_{b=1}^{B}\sum_{k=0}^{H-1} \left\|\hat{\mathbf{z}}_{b, t_a+k+1}^{(M_2)} - \tilde{\mathbf{z}}_{b, t_a+k+1}^*\right\|_2^2$$
+   $$\mathcal{L}_{\text{funnel}} = \lambda_{\text{position}} \cdot \text{MSE}(\hat{\mathbf{q}}, \tilde{\mathbf{q}}^*) + \lambda_{\text{velocity}} \cdot \text{MSE}(\hat{\mathbf{p}}, \tilde{\mathbf{p}}^*)$$
+
 
 ---
 

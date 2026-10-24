@@ -22,10 +22,7 @@ from spwm.models.encoder import EventEncoder, SpatialSoftmax
 from spwm.models.memory import MultiTimescaleMemory
 from spwm.models.neurons import ALIFCell, SurrogateSpike, surrogate_spike
 from spwm.models.predictors import (
-    LatentDenoiser,
     LatentPredictor,
-    M2Projector,
-    ManifoldProjector,
     PhysicalDecoder,
 )
 from spwm.models.rollout import rollout_latent
@@ -44,9 +41,6 @@ __all__ = [
     "DynamicsState",
     "DynamicsOutput",
     "LatentPredictor",
-    "ManifoldProjector",
-    "M2Projector",
-    "LatentDenoiser",
     "PhysicalDecoder",
     "PredictorOutput",
     "SPWM",

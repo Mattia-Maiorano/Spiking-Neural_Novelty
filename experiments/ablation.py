@@ -57,7 +57,7 @@ def run_single_ablation(
         model=model,
         device=device,
         horizons=[1, 5, 10],
-        num_objects=run_cfg.environment.num_objects,
+        joint_count=run_cfg.environment.joint_count,
     )
     test_res = evaluator.evaluate_dataset(dataloaders["test"])
     rollout_h10 = test_res.latent_mse_per_horizon.get(10, test_res.teacher_forcing_mse)
@@ -95,8 +95,9 @@ def main() -> None:
         batch_size=base_cfg.data.batch_size,
         height=base_cfg.environment.height,
         width=base_cfg.environment.width,
-        num_objects=base_cfg.environment.num_objects,
-        drift_injection_prob=0.0,
+        joint_count=base_cfg.environment.joint_count,
+        action_dim=base_cfg.environment.action_dim,
+        dataset_dir=base_cfg.data.dataset_dir,
     )
 
     ablation_matrix = {

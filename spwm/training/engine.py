@@ -116,42 +116,15 @@ def resolve_version_checkpoint(
     )
 
 
-def load_m1_checkpoint(
-    model: nn.Module,
-    ckpt_path: Union[str, Path],
-    device: Optional[Union[str, torch.device]] = None,
-) -> None:
-    """Strictly load Phase 1 (`train_m1`) trained predictor (and representation) into `model`."""
-    path = Path(ckpt_path)
-    if not path.is_file():
-        raise FileNotFoundError(f"M1 checkpoint not found at: {path}")
-    raw = torch.load(path, map_location=device or "cpu", weights_only=False)
-    state_dict = raw["model_state"] if isinstance(raw, dict) and "model_state" in raw else raw
-
-    # Load predictor / m1 (handling both legacy CascadedTemporalRelay checkpoint 'predictor.m1.*' and current LatentPredictor 'predictor.*')
-    if hasattr(model, "predictor"):
-        if any(k.startswith("predictor.m1.") for k in state_dict.keys()):
-            pred_state = _extract_submodel_state(state_dict, "predictor.m1")
-        else:
-            pred_state = _extract_submodel_state(state_dict, "predictor")
-        model.predictor.load_state_dict(pred_state, strict=True)
-    # Also load representation components if present in checkpoint
-    for sub in ("encoder", "sensory_predictor", "dynamics", "physical_decoder"):
-        sub_state = _extract_submodel_state(state_dict, sub)
-        if sub_state and hasattr(model, sub):
-            getattr(model, sub).load_state_dict(sub_state, strict=True)
-
-
 def enforce_phase_prerequisites(
     model: nn.Module,
     cfg: ExperimentConfig,
     device: Union[str, torch.device],
     results_root: Union[str, Path] = "results",
 ) -> Dict[str, Path]:
-    """Auto-enforce and strictly load prerequisite `model.pt` checkpoints for `train_m1` and `train_m2`.
+    """Auto-enforce and strictly load prerequisite `model.pt` checkpoint for `train_m1`.
 
     - `train_m1`: Requires and loads pre-trained representation (`train_representation` `model.pt`).
-    - `train_m2`: Requires and loads pre-trained representation and M1 (`train_m1` `model.pt`).
     """
     mode = cfg.training.mode.lower()
     loaded: Dict[str, Path] = {}
@@ -177,31 +150,6 @@ def enforce_phase_prerequisites(
                 load_representation_checkpoint(model, rep_path, device=device)
                 loaded["representation"] = rep_path
                 chronicle.log_success(f"Strictly loaded representation model.pt: {rep_path}")
-            except FileNotFoundError as err:
-                chronicle.log_info(f"Phase prerequisite notice for {mode}: {err}")
-
-    elif mode == "train_m2":
-        # Require M1 checkpoint (which contains representation + M1)
-        if cfg.training.m1_checkpoint:
-            m1_path = resolve_version_checkpoint(
-                cfg.project.name,
-                "train_m1",
-                explicit_path=cfg.training.m1_checkpoint,
-                results_root=results_root,
-            )
-            load_m1_checkpoint(model, m1_path, device=device)
-            loaded["m1"] = m1_path
-            chronicle.log_success(f"Strictly loaded M1 model.pt: {m1_path}")
-        else:
-            try:
-                m1_path = resolve_version_checkpoint(
-                    cfg.project.name,
-                    "train_m1",
-                    results_root=results_root,
-                )
-                load_m1_checkpoint(model, m1_path, device=device)
-                loaded["m1"] = m1_path
-                chronicle.log_success(f"Strictly loaded M1 model.pt: {m1_path}")
             except FileNotFoundError as err:
                 chronicle.log_info(f"Phase prerequisite notice for {mode}: {err}")
 
@@ -253,7 +201,7 @@ class BaseTrainer:
             self.loss_fn = loss_fn.to(self.device)
 
         self.mode = cfg.training.mode.lower()
-        if auto_enforce_checkpoints and self.mode in ("train_m1", "train_m2"):
+        if auto_enforce_checkpoints and self.mode == "train_m1":
             enforce_phase_prerequisites(
                 self.model, self.cfg, device=self.device, results_root=self.results_root
             )
@@ -372,7 +320,6 @@ class BaseTrainer:
         except KeyboardInterrupt:
             chronicle.log_warning("[INTERRUPT] Training interrupted manually.")
 
-        # Ensure model.pt exists even if validation score was flat from epoch 1
         best_model_path = self.save_dir / "model.pt"
         if not best_model_path.is_file() and self.history:
             self.save_checkpoint(self.history[-1]["epoch"], is_best=True)
@@ -474,7 +421,6 @@ class Trainer(BaseTrainer):
         learning_rate: float = 1e-3,
         weight_decay: float = 1e-5,
         grad_clip_norm: float = 1.0,
-        learning_algorithm: str = "online_eprop",
         device: Optional[Union[str, torch.device]] = None,
         save_dir: Union[str, Path] = "results/default_run",
         probe_lr: float = 5e-4,
@@ -484,12 +430,10 @@ class Trainer(BaseTrainer):
         best_epoch: Optional[int] = None,
         history: Optional[List[Dict[str, float]]] = None,
         optimizer_state: Optional[Dict[str, Any]] = None,
-        k_max: int = 50,
-        encoder_warmup_epochs: int = 60,
         rollout_horizons: Optional[Sequence[int]] = None,
-        num_objects: int = 1,
+        joint_count: int = 8,
+        action_dim: int = 8,
         phase_horizon: int = 10,
-        max_rollout_horizon: int = 30,
         early_stopping_patience: int = 20,
         auto_enforce_checkpoints: bool = False,
         results_root: Union[str, Path] = "results",
@@ -503,15 +447,20 @@ class Trainer(BaseTrainer):
             timescale_dims = model.timescale_dims
             roll_h = tuple(rollout_horizons) if rollout_horizons is not None else (1, 5, 10, 25, 50, 100)
 
-            seq_len = max(45, 2 * phase_horizon + 5, max_rollout_horizon + 5)
+            seq_len = max(45, 2 * phase_horizon + 5)
             cfg = ExperimentConfig(
                 project=ProjectConfig(name=Path(save_dir).stem),
                 environment=EnvironmentConfig(
                     height=model.height,
                     width=model.width,
-                    num_objects=num_objects,
+                    joint_count=joint_count,
+                    action_dim=action_dim,
                 ),
-                data=DataConfig(sequence_length=seq_len),
+                data=DataConfig(
+                    sequence_length=seq_len,
+                    joint_count=joint_count,
+                    action_dim=action_dim,
+                ),
                 model=ModelConfig(
                     in_channels=model.in_channels,
                     encoder_dim=model.encoder_dim,
@@ -531,7 +480,6 @@ class Trainer(BaseTrainer):
                     probe_lr=probe_lr,
                     probe_weight_decay=probe_weight_decay,
                     phase_horizon=phase_horizon,
-                    max_rollout_horizon=max_rollout_horizon,
                 ),
                 loss=LossConfig(),
                 evaluation=EvaluationConfig(rollout_horizons=roll_h),

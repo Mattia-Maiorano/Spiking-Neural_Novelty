@@ -10,7 +10,7 @@ Exposes:
 
 from __future__ import annotations
 
-from typing import Any, Dict, Optional
+from typing import Dict, Optional
 import chronicle
 import torch
 import torch.nn as nn
@@ -19,7 +19,6 @@ from spwm.contracts.config import ExperimentConfig
 from spwm.contracts.protocols import PhaseStrategy
 from spwm.training.phases.representation import RepresentationPhaseStrategy
 from spwm.training.phases.m1_nominal import M1PhaseStrategy
-from spwm.training.phases.m2_recovery import M2PhaseStrategy, Phase2DenoiserStrategy
 
 PhaseHandler = PhaseStrategy
 
@@ -36,15 +35,13 @@ def build_phase_strategy(
         return RepresentationPhaseStrategy(model=model, cfg=cfg, loss_fn=loss_fn, device=device)
     if mode in ("train_m1", "m1"):
         return M1PhaseStrategy(model=model, cfg=cfg, loss_fn=loss_fn, device=device)
-    if mode in ("train_m2", "m2"):
-        return M2PhaseStrategy(model=model, cfg=cfg, loss_fn=loss_fn, device=device)
     raise ValueError(
-        f"Unsupported training mode '{mode}'. Supported modes: 'train_representation', 'train_m1', 'train_m2'"
+        f"Unsupported training mode '{mode}'. Supported modes: 'train_representation', 'train_m1'"
     )
 
 
 class PredictorPhaseHandler(PhaseStrategy):
-    """Thin dispatcher that delegates to M1PhaseStrategy, M2PhaseStrategy, or M3PhaseStrategy."""
+    """Thin dispatcher that delegates to RepresentationPhaseStrategy or M1PhaseStrategy."""
 
     def setup(self) -> None:
         self.strategy: PhaseStrategy = build_phase_strategy(
@@ -101,7 +98,7 @@ class PredictorPhaseHandler(PhaseStrategy):
         chronicle.log_detail(
             "⚡ Training Losses",
             f"Total: {train_loss:.5f} [q-MSE: {train_pos_l:.5f} | p-MSE: {train_vel_l:.5f}] | "
-            f"Eval: Pos L2: {train_pos_e:.5f} | Vel L2: {train_vel_e:.5f}",
+            f"Eval: Joint Angle L2: {train_pos_e:.5f} | Joint Vel L2: {train_vel_e:.5f}",
             indent_level=1,
         )
 
@@ -113,7 +110,7 @@ class PredictorPhaseHandler(PhaseStrategy):
         chronicle.log_detail(
             "📊 Validation Losses",
             f"Total: {val_loss:.5f} [q-MSE: {val_pos_l:.5f} | p-MSE: {val_vel_l:.5f}] | "
-            f"Eval: Pos L2: {val_pos_e:.5f} | Vel L2: {val_vel_e:.5f}",
+            f"Eval: Joint Angle L2: {val_pos_e:.5f} | Joint Vel L2: {val_vel_e:.5f}",
             indent_level=1,
         )
         curr_score = self.get_selection_score(val_metrics)
@@ -130,8 +127,6 @@ __all__ = [
     "PhaseHandler",
     "RepresentationPhaseStrategy",
     "M1PhaseStrategy",
-    "M2PhaseStrategy",
-    "Phase2DenoiserStrategy",
     "build_phase_strategy",
     "PredictorPhaseHandler",
 ]

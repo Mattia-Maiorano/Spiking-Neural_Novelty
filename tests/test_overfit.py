@@ -9,7 +9,6 @@ import torch.nn.functional as F
 import pytest
 from torch.utils.data import DataLoader
 
-from spwm.data.synthetic_world import MovingObjectsWorld
 from spwm.data.event_camera import EventCameraSimulator
 from spwm.data.datasets import EventWorldDataset, collate_event_batches
 from spwm.models.world_model import SPWM
@@ -20,19 +19,18 @@ def test_tiny_overfit_and_gradient_flow():
     torch.manual_seed(42)
 
     # 1. Tiny dataset: 8 trajectories, T=150 timesteps
-    world = MovingObjectsWorld()
     event_sim = EventCameraSimulator(height=32, width=32)
     dataset = EventWorldDataset(
         trajectory_indices=list(range(8)),
-        world=world,
         event_simulator=event_sim,
         sequence_length=150,
-        num_objects=1,
+        joint_count=4,
+        action_dim=4,
         cache_data=True,
     )
     dataloader = DataLoader(dataset, batch_size=8, shuffle=False, collate_fn=collate_event_batches)
 
-    # 2. SPWM-v3 ALIF model
+    # 2. SPWM-v0.4.0 ALIF model
     model = SPWM(
         in_channels=2,
         height=32,
@@ -45,7 +43,8 @@ def test_tiny_overfit_and_gradient_flow():
         beta_mem=0.80,
         gamma=0.18,
         predictor_hidden_dim=64,
-        num_objects=1,
+        joint_count=4,
+        action_dim=4,
     )
 
     optimizer = torch.optim.AdamW(model.parameters(), lr=1.5e-2)
@@ -58,15 +57,17 @@ def test_tiny_overfit_and_gradient_flow():
         for batch in dataloader:
             events = batch["events"]
             true_kin = batch["flat_kinematics"]
+            actions = batch["actions"]
 
             optimizer.zero_grad()
             with torch.no_grad():
-                out = model(events)
+                out = model(events, actions=actions)
 
             # Predictive and kinematic probe losses
             z_in = out.latent_states[:, :-1]
             z_target = out.latent_states[:, 1:]
-            pred_res = model.predictor(z_in)
+            u_in = actions[:, :-1]
+            pred_res = model.predictor(z_in, u_in)
             l_pred = F.mse_loss(pred_res.predicted_latent, z_target)
 
             decoded = model.physical_decoder(out.latent_states)

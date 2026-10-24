@@ -144,24 +144,22 @@ def process_folder(
                     batch_size=cfg.data.batch_size,
                     height=cfg.environment.height,
                     width=cfg.environment.width,
-                    num_objects=cfg.environment.num_objects,
+                    joint_count=cfg.environment.joint_count,
+                    action_dim=cfg.environment.action_dim,
                     standard_velocity_range=cfg.data.standard_velocity_range,
                     extrapolation_velocity_range=cfg.data.extrapolation_velocity_range,
-                    drift_injection_prob=0.0,
-                    drift_magnitude=cfg.data.drift_magnitude,
-                    mixed_drift=cfg.data.mixed_drift,
                     event_threshold=cfg.environment.event_threshold,
-                    box_size=cfg.environment.box_size,
                     dt=cfg.environment.dt,
                     num_workers=0,
                     cache_data=cfg.data.cache_data,
+                    dataset_dir=cfg.data.dataset_dir,
                 )
                 fixed_predictor_eval = model.m1 if mode == "train_m1" else None
                 evaluator = RolloutEvaluator(
                     model=model,
                     device=device,
                     horizons=expected_horizons,
-                    num_objects=cfg.environment.num_objects,
+                    joint_count=cfg.environment.joint_count,
                     temporal_burn_in=cfg.training.temporal_burn_in,
                     fixed_predictor=fixed_predictor_eval,
                 )
@@ -184,7 +182,7 @@ def process_folder(
                     latent_errors=eval_result.latent_mse_per_horizon,
                     save_path=figures_dir / "rollout_degradation.png",
                 )
-                pos_span = 2.0 * float(cfg.environment.box_size)
+                pos_span = 2.0
                 vel_span = float(cfg.data.standard_velocity_range[1] - cfg.data.standard_velocity_range[0])
                 plot_physical_rollout_degradation(
                     horizons=eval_result.horizons,
@@ -206,9 +204,10 @@ def process_folder(
                 sample_batch = next(iter(dataloaders["test"]))
                 events = sample_batch["events"].to(device)
                 flat_kin = sample_batch["flat_kinematics"].to(device)
+                actions = sample_batch["actions"].to(device)
                 burn_in = min(cfg.training.temporal_burn_in, max(0, events.shape[1] - 2))
                 with torch.no_grad():
-                    out = model(events)
+                    out = model(events, actions=actions)
                     z_start = out.latent_states[:, burn_in]
                     decoder_state = model.physical_decoder.warm_up_filter(out.latent_states[:, : burn_in + 1])
                     eval_h = min(max(expected_horizons), events.shape[1] - 1 - burn_in)
@@ -216,6 +215,7 @@ def process_folder(
                         model=model,
                         z_init=z_start,
                         horizon=eval_h,
+                        actions=actions[:, burn_in : burn_in + eval_h],
                         with_grad=False,
                         decode_kinematics=True,
                         initial_decoder_state=decoder_state,
@@ -232,9 +232,9 @@ def process_folder(
         except Exception as e:
             chronicle.log_warning(f"Could not run/load evaluation for {folder.name}: {e}")
 
-    version_tag = cfg.project.name if cfg is not None else "v0_2_0"
+    version_tag = cfg.project.name if cfg is not None else "v0_4_0"
     model_name = folder.name
-    pos_span = (2.0 * float(cfg.environment.box_size)) if cfg is not None else None
+    pos_span = 2.0 if cfg is not None else None
     vel_span = float(cfg.data.standard_velocity_range[1] - cfg.data.standard_velocity_range[0]) if cfg is not None else None
 
     out_file1 = folder / f"metrics_{version_tag}.json"
@@ -275,7 +275,7 @@ def generate_combined_cascade_report(
     version_tag: str,
     phase_resumes: Dict[str, Dict[str, Any]],
 ) -> None:
-    """Create a combined cascade report uniting M1 (0-10), M2 (0-20), and M3 (full relay 0-100)."""
+    """Create a combined cascade report uniting Representation (Phase 0) and M1 (Phase 1)."""
     if not phase_resumes:
         return
     clean_tag = version_tag[5:] if version_tag.startswith("spwm_") else version_tag
@@ -283,23 +283,23 @@ def generate_combined_cascade_report(
     combined_path = results_dir / f"metrics_{clean_tag}_combined.json"
 
     combined_epochs = sum(int(r.get("total_epochs", 0)) for r in phase_resumes.values())
-    m3_eval = phase_resumes.get("train_m3", {}).get("evaluation")
+    m1_eval = phase_resumes.get("train_m1", {}).get("evaluation")
     combined_payload = {
         "version": version_tag,
         "model_name": f"{version_tag}_combined_cascade",
         "total_epochs_across_phases": combined_epochs,
         "phases": phase_resumes,
-        "full_relay_evaluation": m3_eval,
+        "full_relay_evaluation": m1_eval,
     }
     with open(combined_path, "w", encoding="utf-8") as f:
         json.dump(combined_payload, f, indent=2)
-    chronicle.log_success(f"Generated combined 3-phase cascade report: {combined_path}")
+    chronicle.log_success(f"Generated combined cascade report: {combined_path}")
 
 
 def main() -> None:
     parser = argparse.ArgumentParser(description="Generate metrics_v*.json resume tables for experiment folders.")
     parser.add_argument("--results-dir", type=str, default="results", help="Directory containing experiment results")
-    parser.add_argument("--pattern", type=str, default="spwm_v0_2_0*", help="Glob pattern for folder names")
+    parser.add_argument("--pattern", type=str, default="spwm_v0_4_0*", help="Glob pattern for folder names")
     parser.add_argument("--device", type=str, default=None, help="Device to use for evaluation (mps, cuda, cpu)")
     parser.add_argument("--segments", type=int, default=10, help="Number of segments to split epochs into")
     parser.add_argument("--force-eval", action="store_true", help="Force re-evaluation of model on test dataset")
@@ -322,7 +322,7 @@ def main() -> None:
 
     chronicle.log_info(f"Found {len(matched_folders)} folder(s) matching '{args.pattern}' on device {device}")
     phase_resumes: Dict[str, Dict[str, Any]] = {}
-    version_tag = "spwm_v0_2_0"
+    version_tag = "spwm_v0_4_0"
     for folder in matched_folders:
         res = process_folder(
             folder=folder,
@@ -332,7 +332,7 @@ def main() -> None:
         )
         if res is not None:
             version_tag = res.get("version", version_tag)
-            for pm in ("train_m1", "train_m2", "train_m3"):
+            for pm in ("train_representation", "train_m1"):
                 if folder.name.endswith(pm):
                     phase_resumes[pm] = res
 

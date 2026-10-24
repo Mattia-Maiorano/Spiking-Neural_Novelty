@@ -1,10 +1,10 @@
 """
-Layer 1 Symplectic Latent Predictor (M1) and Physical Kinematic Decoder.
+Layer 1 Action-Conditioned Latent Attractor Predictor (M1) and Articulated Joint PhysicalDecoder.
 Pure neural modules with strict tensor shape assertions and zero training/loss couplings.
 """
 
 from __future__ import annotations
-from typing import Optional, Tuple
+from typing import Optional
 import torch
 import torch.nn as nn
 
@@ -14,71 +14,99 @@ from spwm.contracts.tensors import assert_phase_space_contract, assert_tensor_co
 
 class LatentPredictor(nn.Module):
     """
-    Predictive Transition Head: p(z_(t+1) | z_t).
-    Can run in standard residual mode:
-        z_hat_(t+1) = z_t + delta_z(z_t)
-    or in symplectic semi-implicit Euler mode (z_t = [q_t, p_t]):
-        delta_p_t = MLP(z_t)
-        p_(t+1) = p_t + delta_p_t
-        q_(t+1) = q_t + dt * p_(t+1)
-        z_(t+1) = [q_(t+1), p_(t+1)]
+    Action-Conditioned Latent Attractor Predictor (M1):
+        z_hat_(t+1) = M_1(z_t, u_t)
+
+    Relaxes strictly conservative symplectic Euler integration to learn both dissipative
+    (phase-space volume contracting) and restorative vector fields driven by motor actions u_t:
+        h_t = Backbone([z_t, u_t])
+        gamma_t = sigmoid(dissipation_head(h_t))
+        f_p = force_head(h_t)
+        f_q = restorative_q_head(h_t)
+        p_(t+1) = (1 - dt * gamma_t) * p_t + f_p
+        q_(t+1) = q_t + dt * (p_(t+1)[..., :q_dim] + f_q)
+        z_hat_(t+1) = [q_(t+1), p_(t+1)]
     """
 
     def __init__(
         self,
         latent_dim: int = 128,
+        action_dim: int = 8,
         hidden_dim: int = 256,
         residual: bool = True,
-        symplectic: bool = False,
+        symplectic: bool = True,
         q_dim: Optional[int] = None,
         p_dim: Optional[int] = None,
         dt: float = 0.05,
     ) -> None:
         super().__init__()
-        if latent_dim <= 0 or hidden_dim <= 0:
-            raise ValueError(f"latent_dim ({latent_dim}) and hidden_dim ({hidden_dim}) must be > 0")
+        if latent_dim <= 0 or hidden_dim <= 0 or action_dim <= 0:
+            raise ValueError(
+                f"latent_dim ({latent_dim}), action_dim ({action_dim}), and hidden_dim ({hidden_dim}) must be > 0"
+            )
         self.latent_dim = latent_dim
+        self.action_dim = action_dim
         self.hidden_dim = hidden_dim
         self.residual = residual
         self.symplectic = symplectic
         self.dt = float(dt)
 
-        if symplectic:
-            self.q_dim = q_dim if q_dim is not None else (latent_dim // 4)
-            self.p_dim = p_dim if p_dim is not None else (latent_dim - self.q_dim)
-            if self.q_dim + self.p_dim != latent_dim:
-                raise ValueError(f"q_dim ({self.q_dim}) + p_dim ({self.p_dim}) != latent_dim ({latent_dim})")
-            out_dim = self.p_dim
-        else:
-            self.q_dim = q_dim or (latent_dim // 4)
-            self.p_dim = p_dim or (latent_dim - self.q_dim)
-            out_dim = latent_dim
+        self.q_dim = q_dim if q_dim is not None else (latent_dim // 4)
+        self.p_dim = p_dim if p_dim is not None else (latent_dim - self.q_dim)
+        if self.q_dim + self.p_dim != latent_dim:
+            raise ValueError(f"q_dim ({self.q_dim}) + p_dim ({self.p_dim}) != latent_dim ({latent_dim})")
 
-        self.net = nn.Sequential(
-            nn.Linear(latent_dim, hidden_dim),
+        in_dim = latent_dim + action_dim
+        self.backbone = nn.Sequential(
+            nn.Linear(in_dim, hidden_dim),
             nn.LayerNorm(hidden_dim),
             nn.SiLU(),
             nn.Linear(hidden_dim, hidden_dim),
             nn.LayerNorm(hidden_dim),
             nn.SiLU(),
-            nn.Linear(hidden_dim, out_dim),
         )
 
-    def forward(self, z: torch.Tensor) -> PredictorOutput:
+        if symplectic:
+            self.force_head = nn.Linear(hidden_dim, self.p_dim)
+            self.dissipation_head = nn.Linear(hidden_dim, self.p_dim)
+            self.restorative_q_head = nn.Linear(hidden_dim, self.q_dim)
+            nn.init.constant_(self.dissipation_head.bias, -2.0)
+            nn.init.zeros_(self.restorative_q_head.weight)
+            nn.init.zeros_(self.restorative_q_head.bias)
+        else:
+            self.net = nn.Sequential(
+                self.backbone,
+                nn.Linear(hidden_dim, latent_dim),
+            )
+
+    def forward(self, z: torch.Tensor, action: Optional[torch.Tensor] = None) -> PredictorOutput:
         if z.shape[-1] != self.latent_dim:
             raise ValueError(
                 f"LatentPredictor: expected last dimension {self.latent_dim}, got {z.shape[-1]} (shape {tuple(z.shape)})"
             )
+        if action is None:
+            action = torch.zeros(*z.shape[:-1], self.action_dim, device=z.device, dtype=z.dtype)
+        else:
+            expected_action_shape = tuple(z.shape[:-1]) + (self.action_dim,)
+            assert_tensor_contract(action, expected_action_shape, "LatentPredictor.action")
+
+        zu = torch.cat([z, action], dim=-1)
+
         if self.symplectic:
             q_t = z[..., : self.q_dim]
             p_t = z[..., self.q_dim :]
-            delta_p = self.net(z)
-            p_next = p_t + delta_p
+            h = self.backbone(zu)
+
+            f_p = self.force_head(h)
+            gamma = torch.sigmoid(self.dissipation_head(h))
+            f_q = self.restorative_q_head(h)
+
+            p_next = (1.0 - self.dt * gamma) * p_t + f_p
             p_for_q = p_next[..., : self.q_dim] if self.p_dim != self.q_dim else p_next
-            q_next = q_t + self.dt * p_for_q
+            q_next = q_t + self.dt * (p_for_q + f_q)
             z_next = torch.cat([q_next, p_next], dim=-1)
         else:
-            delta_z = self.net(z)
+            delta_z = self.net(zu)
             z_next = z + delta_z if self.residual else delta_z
 
         return PredictorOutput(
@@ -90,10 +118,12 @@ class LatentPredictor(nn.Module):
 
 class PhysicalDecoder(nn.Module):
     """
-    Diagnostic Linear Probe for Physical Kinematics (x, y, vx, vy).
-      - pos_pred = self.pos_head(q_t)           [B, ..., 2 * num_objects]
-      - vel_pred = self.vel_head(smooth_p)      [B, ..., 2 * num_objects]
-      - decoded  = torch.cat([pos_pred, vel_pred], dim=-1)
+    Articulated Robotic Joint Angles & Angular Velocities Decoder.
+    Maps from the partitioned latent phase space z_t = [q_t, p_t] back to complex
+    3D articulated joint angles q* and angular velocities p*:
+      - pos_pred = self.pos_head(q_t)           [B, ..., joint_count]
+      - vel_pred = self.vel_head(smooth_p)      [B, ..., joint_count]
+      - decoded  = torch.cat([pos_pred, vel_pred], dim=-1)  [B, ..., 2 * joint_count]
     Strictly requires q_dim + p_dim == latent_dim.
     """
 
@@ -102,30 +132,41 @@ class PhysicalDecoder(nn.Module):
         latent_dim: int = 128,
         q_dim: int = 32,
         p_dim: int = 96,
-        num_objects: int = 1,
+        joint_count: int = 8,
+        hidden_dim: int = 64,
         alpha: float = 0.85,
     ) -> None:
         super().__init__()
         assert_phase_space_contract(latent_dim=latent_dim, q_dim=q_dim, p_dim=p_dim)
-        if num_objects <= 0:
-            raise ValueError(f"PhysicalDecoder: num_objects must be > 0, got {num_objects}")
+        if joint_count <= 0:
+            raise ValueError(f"PhysicalDecoder: joint_count must be > 0, got {joint_count}")
 
         self.latent_dim = latent_dim
         self.q_dim = q_dim
         self.p_dim = p_dim
-        self.num_objects = num_objects
+        self.joint_count = joint_count
         self.alpha = float(alpha)
-        self.out_dim = 4 * num_objects
+        self.out_dim = 2 * joint_count
 
-        self.pos_head = nn.Linear(self.q_dim, 2 * num_objects)
-        self.vel_head = nn.Linear(self.p_dim, 2 * num_objects)
+        self.pos_head = nn.Sequential(
+            nn.Linear(self.q_dim, hidden_dim),
+            nn.LayerNorm(hidden_dim),
+            nn.SiLU(),
+            nn.Linear(hidden_dim, self.joint_count),
+        )
+        self.vel_head = nn.Sequential(
+            nn.Linear(self.p_dim, hidden_dim),
+            nn.LayerNorm(hidden_dim),
+            nn.SiLU(),
+            nn.Linear(hidden_dim, self.joint_count),
+        )
 
     def decode_pos(self, q: torch.Tensor) -> torch.Tensor:
-        """Decodes position kinematics from coordinate subspace q."""
+        """Decodes articulated joint angles q* from coordinate subspace q."""
         return self.pos_head(q)
 
     def decode_vel(self, p: torch.Tensor) -> torch.Tensor:
-        """Decodes velocity kinematics from momentum subspace p."""
+        """Decodes articulated joint angular velocities p* from momentum subspace p."""
         return self.vel_head(p)
 
     def warm_up_filter(self, z_prefix: torch.Tensor, initial_state: Optional[torch.Tensor] = None) -> torch.Tensor:
@@ -186,75 +227,8 @@ class PhysicalDecoder(nn.Module):
         return torch.cat([pos_pred, vel_pred], dim=-1)
 
 
-class ManifoldProjector(nn.Module):
-    """
-    Stateless Manifold Projector (Geometric Denoiser) - M2.
-
-    Takes an off-manifold latent state z_noisy (produced by autoregressive M1 rollouts
-    or injected perturbations) and projects it onto the closest valid ground-truth
-    phase space manifold z_clean, without advancing the time index t.
-
-    Forward logic:
-        z_projected = z + self.net(z)
-    """
-
-    def __init__(
-        self,
-        latent_dim: int = 128,
-        hidden_dim: int = 256,
-        bottleneck_dim: Optional[int] = None,
-        q_dim: Optional[int] = None,
-        p_dim: Optional[int] = None,
-    ) -> None:
-        super().__init__()
-        if latent_dim <= 0 or hidden_dim <= 0:
-            raise ValueError(f"latent_dim ({latent_dim}) and hidden_dim ({hidden_dim}) must be > 0")
-
-        self.latent_dim = latent_dim
-        self.hidden_dim = hidden_dim
-        self.q_dim = q_dim if q_dim is not None else (latent_dim // 4)
-        self.p_dim = p_dim if p_dim is not None else (latent_dim - self.q_dim)
-
-        if self.q_dim + self.p_dim != latent_dim:
-            raise ValueError(f"q_dim ({self.q_dim}) + p_dim ({self.p_dim}) != latent_dim ({latent_dim})")
-
-        self.bottleneck_dim = bottleneck_dim if bottleneck_dim is not None else max(16, latent_dim // 2)
-
-        # Bottleneck / residual MLP (autoencoder-style projection or residual denoiser)
-        self.net = nn.Sequential(
-            nn.Linear(latent_dim, hidden_dim),
-            nn.LayerNorm(hidden_dim),
-            nn.SiLU(),
-            nn.Linear(hidden_dim, self.bottleneck_dim),
-            nn.LayerNorm(self.bottleneck_dim),
-            nn.SiLU(),
-            nn.Linear(self.bottleneck_dim, hidden_dim),
-            nn.LayerNorm(hidden_dim),
-            nn.SiLU(),
-            nn.Linear(hidden_dim, latent_dim),
-        )
-
-    def forward(self, z: torch.Tensor) -> torch.Tensor:
-        """Projects off-manifold latent state z onto the manifold without advancing time."""
-        if z.shape[-1] != self.latent_dim:
-            raise ValueError(
-                f"ManifoldProjector: expected last dimension {self.latent_dim}, got {z.shape[-1]} (shape {tuple(z.shape)})"
-            )
-        z_projected = z + self.net(z)
-        return z_projected
-
-
-M2Projector = ManifoldProjector
-LatentDenoiser = ManifoldProjector
-
-
 __all__ = [
     "LatentPredictor",
     "PhysicalDecoder",
     "PredictorOutput",
-    "ManifoldProjector",
-    "M2Projector",
-    "LatentDenoiser",
 ]
-
-

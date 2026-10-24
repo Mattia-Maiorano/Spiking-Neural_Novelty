@@ -1,4 +1,4 @@
-"""Phase 0 Training Strategy: Grounded Representation Pre-training (`train_representation`)."""
+"""Phase 0 Training Strategy: Grounded Articulated State Estimation (`train_representation`)."""
 from __future__ import annotations
 from typing import Dict, Tuple
 import torch
@@ -10,7 +10,7 @@ from spwm.training.metrics import position_error, velocity_error
 
 
 class RepresentationPhaseStrategy(PhaseStrategy):
-    """Isolated strategy for Phase 0 (`train_representation`): Grounded State Estimator."""
+    """Isolated strategy for Phase 0 (`train_representation`): Grounded Articulated Joint State Estimator."""
 
     def setup(self) -> None:
         for p in self.model.parameters():
@@ -48,16 +48,16 @@ class RepresentationPhaseStrategy(PhaseStrategy):
         q = latents[..., :q_dim]
         p = latents[..., q_dim:]
 
-        num_obj = self.model.num_objects
-        pos_true = flat_kin[..., : 2 * num_obj]
-        vel_true = flat_kin[..., 2 * num_obj : 4 * num_obj]
+        joint_count = self.model.joint_count
+        joint_pos_true = flat_kin[..., :joint_count]
+        joint_vel_true = flat_kin[..., joint_count : 2 * joint_count]
 
-        # 1. L_kinematic: Supervised loss against ground-truth physics
+        # 1. L_kinematic: Supervised loss decoding complex joint angles q* and angular velocities p*
         pos_pred = self.model.physical_decoder.decode_pos(q)
         vel_pred = self.model.physical_decoder.decode_vel(p)
-        l_kinematic = F.mse_loss(pos_pred, pos_true) + F.mse_loss(vel_pred, vel_true)
+        l_kinematic = F.mse_loss(pos_pred, joint_pos_true) + F.mse_loss(vel_pred, joint_vel_true)
 
-        # 2. L_derivative: Strict phase-space factorization constraint (raw mapping, no clamp/tanh)
+        # 2. L_derivative: Strict phase-space factorization constraint
         dt = float(self.cfg.environment.dt)
         delta_q = q[:, 1:] - q[:, :-1]
         p_t = p[:, :-1]
@@ -67,7 +67,7 @@ class RepresentationPhaseStrategy(PhaseStrategy):
         # 3. L_smoothness: High-frequency noise suppression on ALIF outputs
         l_smoothness = F.mse_loss(p[:, 1:], p[:, :-1])
 
-        # 4. L_sensory: Existing sensory reconstruction loss
+        # 4. L_sensory: Top-down sensory prediction reconstruction loss
         l_sensory = F.mse_loss(error_neurons, torch.zeros_like(error_neurons))
 
         lambda_1 = float(self.cfg.loss.lambda_kinematic)
@@ -83,8 +83,8 @@ class RepresentationPhaseStrategy(PhaseStrategy):
         )
 
         decoded_all = torch.cat([pos_pred, vel_pred], dim=-1)
-        pos_err = position_error(decoded_all, flat_kin[..., : 4 * num_obj], num_objects=num_obj)
-        vel_err = velocity_error(decoded_all, flat_kin[..., : 4 * num_obj], num_objects=num_obj)
+        pos_err = position_error(decoded_all, flat_kin[..., : 2 * joint_count], joint_count=joint_count)
+        vel_err = velocity_error(decoded_all, flat_kin[..., : 2 * joint_count], joint_count=joint_count)
 
         metrics = {
             "loss": float(total_loss.item()),

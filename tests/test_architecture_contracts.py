@@ -111,9 +111,18 @@ def test_tensor_shape_and_phase_space_assertions():
     with pytest.raises(ValueError, match="dim 2: expected 128, got 64"):
         assert_tensor_contract(torch.zeros(4, 10, 64), (None, None, 128), "bad_dim")
 
-    assert_phase_space_contract(latent_dim=128, q_dim=32, p_dim=96, num_keypoints=16)
+    assert_phase_space_contract(
+        latent_dim=128,
+        q_dim=32,
+        p_dim=96,
+        num_keypoints=16,
+        action_dim=8,
+        actions=torch.zeros(4, 8),
+    )
     with pytest.raises(ValueError, match="q_dim"):
         assert_phase_space_contract(latent_dim=128, q_dim=30, p_dim=98, num_keypoints=15)
+    with pytest.raises(ValueError, match="action_dim"):
+        assert_phase_space_contract(latent_dim=128, q_dim=32, p_dim=96, num_keypoints=16, action_dim=0)
 
     q_valid = torch.uniform if hasattr(torch, "uniform") else (torch.rand(2, 32) * 2.0 - 1.0)
     assert_euclidean_coordinates(q_valid, "q_valid")
@@ -126,9 +135,11 @@ def test_dead_modules_are_pruned():
     repo_root = Path(__file__).resolve().parent.parent
     dead_paths = [
         repo_root / "spwm" / "utils" / "config.py",
+        repo_root / "spwm" / "data" / "synthetic_world.py",
         repo_root / "spwm" / "learning" / "eprop.py",
         repo_root / "spwm" / "core" / "corrector.py",
         repo_root / "spwm" / "learning" / "phases" / "corrector_phase.py",
+        repo_root / "spwm" / "training" / "phases" / "m2_recovery.py",
         repo_root / "spwm" / "training" / "phases" / "m3_sustained.py",
         repo_root / "spwm_v7_3",
     ]

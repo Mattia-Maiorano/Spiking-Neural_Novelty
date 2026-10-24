@@ -60,27 +60,29 @@ def _strict_dict_to_dataclass(cls: Type[T], data: Dict[str, Any], context: str =
 @dataclass(frozen=True)
 class ProjectConfig:
     """Project-level identity, tracking tags, and pseudo-random reproducibility configuration."""
-    name: str = "spwm_v0_3_1"  #: Unique identifier/tag for the project and run artifacts.
-    seed: int = 42             #: Global pseudo-random seed for PyTorch, NumPy, and synthetic data generation.
+    name: str = "spwm_v0_4_0"  #: Unique identifier/tag for the project and run artifacts.
+    seed: int = 42             #: Global pseudo-random seed for PyTorch, NumPy, and trajectory generation.
 
 
 @dataclass(frozen=True)
 class EnvironmentConfig:
     """
-    Synthetic physics environment and event camera sensor configuration.
-    Controls the continuous billiard simulation arena, discrete frame timesteps,
-    and event sensor log-intensity spike generation thresholds.
+    3D Unity Articulated Robotics environment and neuromorphic event camera sensor configuration.
+    Controls the articulated kinematic chain DOF (joint_count), motor command dimension (action_dim),
+    discrete frame timesteps, and event sensor log-intensity spike generation thresholds.
     """
-    num_objects: int = 1           #: Number of moving billiard ball objects in the 2D bounding arena.
-    height: int = 32               #: Pixel height of the synthetic event camera sensor plane (must be divisible by 4).
-    width: int = 32                #: Pixel width of the synthetic event camera sensor plane (must be divisible by 4).
-    box_size: float = 1.0          #: Half-width/box boundaries of the normalized simulation arena [-box_size, box_size].
+    joint_count: int = 8           #: Number of articulated joints J in the robotic kinematic chain.
+    action_dim: int = 8            #: Dimensionality D_u of continuous motor action vectors u_t.
+    height: int = 32               #: Pixel height of the event camera sensor plane (must be divisible by 4).
+    width: int = 32                #: Pixel width of the event camera sensor plane (must be divisible by 4).
     dt: float = 0.05               #: Simulation time step size in seconds per discrete physics frame.
     event_threshold: float = 0.08  #: Log-intensity change threshold required to trigger a polarity spike (+1/-1).
 
     def __post_init__(self) -> None:
-        if self.num_objects <= 0:
-            raise ValueError(f"num_objects must be > 0, got {self.num_objects}")
+        if self.joint_count <= 0:
+            raise ValueError(f"joint_count must be > 0, got {self.joint_count}")
+        if self.action_dim <= 0:
+            raise ValueError(f"action_dim must be > 0, got {self.action_dim}")
         if self.height <= 0 or self.height % 4 != 0:
             raise ValueError(f"Environment height ({self.height}) must be positive and divisible by 4 for 2-stage stride-2 conv encoder.")
         if self.width <= 0 or self.width % 4 != 0:
@@ -90,22 +92,27 @@ class EnvironmentConfig:
 @dataclass(frozen=True)
 class DataConfig:
     """
-    Dataset splitting, sequence length, batching, and kinematic drift configuration.
+    Unity robotics dataset splitting, trajectory directory, sequence length, batching,
+    joint count, and action dimensionality configuration.
     """
-    total_trajectories: int = 4000          #: Total number of synthetic trajectories generated in the dataset.
-    train_split: float = 0.8                #: Fraction of trajectories dedicated to training (must satisfy train+val < 1.0).
-    val_split: float = 0.1                  #: Fraction of trajectories dedicated to validation (remaining is test).
-    sequence_length: int = 105               #: Number of consecutive temporal steps per generated trajectory.
-    batch_size: int = 32                    #: Dataloader batch size during training and validation.
-    drift_injection_prob: float = 0.0       #: Probability per timestep of injecting an unannounced velocity perturbation.
-    drift_magnitude: float = 0.05           #: Instantaneous impulse magnitude added to velocity vectors upon drift injection.
-    mixed_drift: bool = False               #: Whether to alternate nominal and drift-perturbed trajectories 50/50.
-    standard_velocity_range: Tuple[float, float] = (-1.0, 1.0)       #: Initial object velocity range (min, max) for nominal regimes.
-    extrapolation_velocity_range: Tuple[float, float] = (-2.0, 2.0)  #: Velocity range for out-of-distribution extrapolation evaluation.
-    num_workers: int = 0                    #: Number of subprocesses used by PyTorch DataLoaders.
-    cache_data: bool = True                 #: Whether to cache rendered event frames in RAM to accelerate training epochs.
+    dataset_dir: str = "sim/ExportedTrajectories"   #: Path to exported Unity robotic trajectory files.
+    joint_count: int = 8                            #: Number of articulated joints J expected in dataset trajectories.
+    action_dim: int = 8                             #: Dimensionality D_u of motor action vectors in dataset trajectories.
+    total_trajectories: int = 4000                  #: Total number of trajectories across all dataset splits.
+    train_split: float = 0.8                        #: Fraction of trajectories dedicated to training (must satisfy train+val < 1.0).
+    val_split: float = 0.1                          #: Fraction of trajectories dedicated to validation (remaining is test).
+    sequence_length: int = 105                      #: Number of consecutive temporal steps per trajectory.
+    batch_size: int = 32                            #: Dataloader batch size during training and validation.
+    standard_velocity_range: Tuple[float, float] = (-1.0, 1.0)       #: Nominal joint angular velocity scaling range.
+    extrapolation_velocity_range: Tuple[float, float] = (-2.0, 2.0)  #: Extrapolation joint angular velocity range.
+    num_workers: int = 0                            #: Number of subprocesses used by PyTorch DataLoaders.
+    cache_data: bool = True                         #: Whether to cache rendered event frames in RAM to accelerate training epochs.
 
     def __post_init__(self) -> None:
+        if self.joint_count <= 0:
+            raise ValueError(f"DataConfig.joint_count must be > 0, got {self.joint_count}")
+        if self.action_dim <= 0:
+            raise ValueError(f"DataConfig.action_dim must be > 0, got {self.action_dim}")
         if self.train_split + self.val_split >= 1.0:
             raise ValueError(f"train_split ({self.train_split}) + val_split ({self.val_split}) must be < 1.0")
         if self.sequence_length <= 0:
@@ -128,9 +135,9 @@ class ModelConfig:
     p_dim: int = 96                                   #: Momentum/velocity subspace dimension; MUST be a multiple of q_dim.
     predictor_hidden_dim: int = 256                   #: Hidden layer dimensionality of the predictor residual MLP network.
     ema_decay: float = 0.9                            #: Exponential moving average decay for tracking latent spike statistics.
-    decoder_ema_alpha: float = 0.2                    #: EMA filter smoothing coefficient for PhysicalDecoder momentum readout (alpha = 0.5).
+    decoder_ema_alpha: float = 0.2                    #: EMA filter smoothing coefficient for PhysicalDecoder momentum readout.
     in_channels: int = 2                              #: Event camera input polarity channels (positive and negative spikes).
-    symplectic: bool = True                          #: Whether to use symplectic semi-implicit Euler integration for M1.
+    symplectic: bool = True                           #: Whether to use dissipative phase-space integration for M1.
 
     def __post_init__(self) -> None:
         assert_phase_space_contract(
@@ -181,33 +188,29 @@ class MemoryConfig:
 class TrainingConfig:
     """
     Training regime, optimization hyperparameters, phases, and unroll horizons.
-    Representation / Predictor Architecture:
-      1. 'train_representation' (Phase 0 - Grounded State Estimator):
+    Two-Phase Action-Conditioned Attractor Architecture:
+      1. 'train_representation' (Phase 0 - Grounded Articulated State Estimator):
          Jointly trains EventEncoder, SpikingLatentDynamics, SensoryPredictor, and PhysicalDecoder
-         over sensory streams purely as a grounded state estimator without predictor rollouts.
-      2. 'train_m1' (Phase 1 - Symplectic Latent Predictor):
-         Freezes representation modules and trains the symplectic LatentPredictor (M1)
-         autoregressively in pure latent space.
-      3. 'train_m2' (Phase 2 - Stateless Manifold Projector / Geometric Denoiser):
-         Freezes representation modules and M1, trains M2 to map noisy/drifted latent states
-         back to ground-truth states z* without advancing time.
+         over sensory streams to decode complex joint angles q* and angular velocities p*.
+      2. 'train_m1' (Phase 1 - Action-Conditioned Latent Attractor Predictor):
+         Freezes representation modules and trains LatentPredictor (M1) autoregressively
+         conditioned on motor action sequences u_{0:H}.
     """
-    mode: str = "train_m1"                         #: Active training stage: "train_representation", "train_m1", or "train_m2".
-    epochs: int = 100                              #: Total number of training epochs to execute for the active phase.
-    early_stopping_patience: int = 20              #: Epochs without validation improvement before stopping/switching phase.
-    batch_size: int = 32                           #: Mini-batch size per optimization step.
-    weight_decay: float = 0.0005                   #: Base L2 weight decay penalty applied to Adam optimizer across active submodules.
-    grad_clip_norm: float = 0.8                    #: Maximum L2 gradient norm threshold for torch.nn.utils.clip_grad_norm_.
-    learning_rate: float = 0.0002                  #: Base Adam learning rate for model weights.
-    probe_lr: float = 0.0002                       #: Dedicated learning rate for downstream kinematic readout linear probes.
-    probe_weight_decay: float = 0.01               #: L2 regularization penalty applied to linear probes.
-    temporal_burn_in: int = 15                      #: Initial latent steps for recurrent dynamics warm-up before launching evaluation rollouts.
+    mode: str = "train_m1"                           #: Active training stage: "train_representation" or "train_m1".
+    epochs: int = 100                                #: Total number of training epochs to execute for the active phase.
+    early_stopping_patience: int = 20                #: Epochs without validation improvement before stopping.
+    batch_size: int = 32                             #: Mini-batch size per optimization step.
+    weight_decay: float = 0.0005                     #: Base L2 weight decay penalty applied to Adam optimizer across active submodules.
+    grad_clip_norm: float = 0.8                      #: Maximum L2 gradient norm threshold for torch.nn.utils.clip_grad_norm_.
+    learning_rate: float = 0.0002                    #: Base Adam learning rate for model weights.
+    probe_lr: float = 0.0002                         #: Dedicated learning rate for downstream kinematic readout probes.
+    probe_weight_decay: float = 0.01                 #: L2 regularization penalty applied to kinematic probes.
+    temporal_burn_in: int = 15                       #: Initial latent steps for recurrent dynamics warm-up before launching evaluation rollouts.
     representation_checkpoint: Optional[str] = None  #: Optional path to pre-trained representation checkpoint .pt.
-    m1_checkpoint: Optional[str] = None            #: Optional path to pre-trained M1 checkpoint .pt for Phase 2.
-    phase_horizon: int = 50                        #: Duration H of predictor unrolling during training.
+    phase_horizon: int = 50                          #: Duration H of predictor unrolling during training.
 
     def __post_init__(self) -> None:
-        valid_modes = ("train_representation", "train_m1", "train_m2")
+        valid_modes = ("train_representation", "train_m1")
         if self.mode not in valid_modes:
             raise ValueError(f"Invalid training mode '{self.mode}'. Allowed modes: {valid_modes}")
         if self.phase_horizon <= 0:
@@ -220,7 +223,7 @@ class TrainingConfig:
 class LossConfig:
     """
     Loss function scaling weights, horizons, and balancing coefficients for SPWM.
-    Coordinates the objective across Phase 0, M1, M2, and M3:
+    Coordinates the objective across Phase 0 and Phase 1 (M1):
       - Coordinate (q) subspace error weight: lambda_position
       - Momentum/velocity (p) subspace error weight: lambda_velocity
       - Overall latent trajectory scale: lambda_latent
@@ -232,10 +235,9 @@ class LossConfig:
     lambda_sensory: float = 1.0     #: Weight of top-down sensory prediction MSE loss.
     lambda_position: float = 1.0    #: Weight of coordinate/position (q) subspace MSE in latent rollout losses.
     lambda_velocity: float = 1.0    #: Weight of momentum/velocity (p) subspace MSE in latent rollout losses.
-    lambda_kinematic: float = 1.0   #: Weight of physical decoder kinematic MSE loss in Phase 0.
+    lambda_kinematic: float = 1.0   #: Weight of physical decoder joint kinematic MSE loss in Phase 0.
     lambda_derivative: float = 1.0  #: Weight of strict phase-space derivative constraint (q_{t+1}-q_t - dt*p_t) MSE.
     lambda_smoothness: float = 1.0  #: Weight of ALIF momentum smoothness MSE loss in Phase 0.
-
 
 
 @dataclass(frozen=True)
@@ -245,7 +247,6 @@ class EvaluationConfig:
     Governs test-time unrolled rollout evaluations across multiple temporal horizons H.
     """
     rollout_horizons: Tuple[int, ...] = (1, 5, 10, 25, 50, 100)  #: Unrolled rollout evaluation horizons H evaluated on test set.
-    projection_cadence: int = 10                                 #: Cadence N for stateless manifold projection M2 during rollouts.
 
 
 @dataclass(frozen=True)
@@ -266,12 +267,18 @@ class ExperimentConfig:
     evaluation: EvaluationConfig = field(default_factory=EvaluationConfig)
 
     def __post_init__(self) -> None:
-        # Cross-domain sequence length validation against active training phase horizon
+        assert_phase_space_contract(
+            latent_dim=self.model.latent_dim,
+            q_dim=self.model.q_dim,
+            p_dim=self.model.p_dim,
+            num_keypoints=self.model.num_keypoints,
+            action_dim=self.environment.action_dim,
+        )
         H = self.training.phase_horizon
         seq_len = self.data.sequence_length
         mode = self.training.mode
 
-        if mode in ("train_representation"):
+        if mode == "train_representation":
             min_len = 2
             if seq_len < min_len:
                 raise ValueError(
@@ -285,23 +292,16 @@ class ExperimentConfig:
                     f"DataConfig.sequence_length ({seq_len}) is too short for train_m1 "
                     f"with phase_horizon={H} (requires >= {min_len})."
                 )
-        elif mode == "train_m2":
-            min_len = 10
-            if seq_len < min_len:
-                raise ValueError(
-                    f"DataConfig.sequence_length ({seq_len}) is too short for {mode} "
-                    f"(requires >= {min_len})."
-                )
 
     def with_overrides(
         self,
         *,
+        name: Optional[str] = None,
         seed: Optional[int] = None,
         mode: Optional[str] = None,
         epochs: Optional[int] = None,
         early_stopping_patience: Optional[int] = None,
         representation_checkpoint: Optional[str] = None,
-        m1_checkpoint: Optional[str] = None,
         phase_horizon: Optional[int] = None,
         temporal_burn_in: Optional[int] = None,
         sequence_length: Optional[int] = None,
@@ -310,7 +310,12 @@ class ExperimentConfig:
         Creates a new validated, frozen ExperimentConfig with explicit overrides.
         Re-runs all dataclass and cross-domain __post_init__ checks.
         """
-        proj = dataclasses.replace(self.project, seed=seed) if seed is not None else self.project
+        proj_updates: Dict[str, Any] = {}
+        if name is not None:
+            proj_updates["name"] = name
+        if seed is not None:
+            proj_updates["seed"] = seed
+        proj = dataclasses.replace(self.project, **proj_updates) if proj_updates else self.project
         data = dataclasses.replace(self.data, sequence_length=sequence_length) if sequence_length is not None else self.data
 
         train_updates: Dict[str, Any] = {}
@@ -322,8 +327,6 @@ class ExperimentConfig:
             train_updates["early_stopping_patience"] = early_stopping_patience
         if representation_checkpoint is not None:
             train_updates["representation_checkpoint"] = representation_checkpoint
-        if m1_checkpoint is not None:
-            train_updates["m1_checkpoint"] = m1_checkpoint
         if phase_horizon is not None:
             train_updates["phase_horizon"] = phase_horizon
         if temporal_burn_in is not None:

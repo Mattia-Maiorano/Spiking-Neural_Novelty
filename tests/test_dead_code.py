@@ -26,22 +26,40 @@ DEAD_SYMBOLS = {
     "M3PhaseStrategy",
     "load_m2_checkpoint",
     "RelayPredictorProtocol",
+    "ManifoldProjector",
+    "M2Projector",
+    "LatentDenoiser",
+    "M2PhaseStrategy",
+    "Phase2DenoiserStrategy",
+    "MovingObjectsWorld",
+    "load_m1_checkpoint",
 }
 
 DEAD_STRING_LITERALS = {
+    "train_m2",
     "train_m3",
     "train_cascade",
     "max_rollout_horizon",
+    "m1_checkpoint",
     "m2_checkpoint",
     "m2_num_phases",
+    "projection_cadence",
+    "num_objects",
+    "box_size",
+    "drift_injection_prob",
+    "drift_magnitude",
+    "mixed_drift",
 }
 
 DEAD_ATTRIBUTES = {
     "relay",
+    "m2",
     "m3",
 }
 
 OBSOLETE_FILE_PATHS = [
+    Path("spwm/data/synthetic_world.py"),
+    Path("spwm/training/phases/m2_recovery.py"),
     Path("spwm/training/phases/m3_sustained.py"),
     Path("spwm/core/corrector.py"),
     Path("spwm/learning/eprop.py"),
@@ -97,32 +115,38 @@ def test_no_dead_symbols_in_codebase():
 
 
 def test_runtime_model_has_no_dead_attributes():
-    """Verify runtime SPWM instance contains only predictor and stateless M2 projector without phantom m3/relay."""
+    """Verify runtime SPWM instance contains only action-conditioned M1 predictor without phantom m2/m3/relay."""
     cfg = ExperimentConfig()
     model = SPWM.from_config(cfg)
 
     # Pruned attributes must not exist
-    for attr in ("m3", "relay"):
+    for attr in ("m2", "m3", "relay"):
         assert not hasattr(model, attr), f"SPWM instance still has pruned attribute '{attr}'"
 
     # New architecture assertions
     assert hasattr(model, "predictor"), "SPWM instance missing 'predictor'"
-    assert hasattr(model, "m2"), "SPWM instance missing 'm2' manifold projector"
     assert model.m1 is model.predictor, "SPWM 'm1' must alias 'predictor'"
     assert model.predictor.symplectic is True, "SPWM predictor must be symplectic"
+    assert model.predictor.action_dim == cfg.environment.action_dim
 
 
 def test_runtime_config_has_no_dead_fields():
     """Verify runtime TrainingConfig and ExperimentConfig contain no dead fields and reject dead modes."""
     cfg = ExperimentConfig()
     assert not hasattr(cfg.training, "max_rollout_horizon")
+    assert not hasattr(cfg.training, "m1_checkpoint")
     assert not hasattr(cfg.training, "m2_checkpoint")
+    assert not hasattr(cfg.evaluation, "projection_cadence")
+    assert not hasattr(cfg.environment, "num_objects")
+    assert not hasattr(cfg.environment, "box_size")
 
     # Reject dead modes
-    for dead_mode in ("train_m3", "train_cascade"):
+    for dead_mode in ("train_m2", "train_m3", "train_cascade"):
         with pytest.raises(ValueError, match="Invalid training mode"):
             TrainingConfig(mode=dead_mode)
 
-    # Verify train_m2 is valid
-    m2_cfg = TrainingConfig(mode="train_m2")
-    assert m2_cfg.mode == "train_m2"
+    # Verify train_representation and train_m1 are valid
+    rep_cfg = TrainingConfig(mode="train_representation")
+    assert rep_cfg.mode == "train_representation"
+    m1_cfg = TrainingConfig(mode="train_m1")
+    assert m1_cfg.mode == "train_m1"

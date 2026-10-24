@@ -13,6 +13,7 @@ import pytest
 import torch
 
 from spwm.contracts import (
+    DataConfig,
     ExperimentConfig,
     EnvironmentConfig,
     ModelConfig,
@@ -93,27 +94,27 @@ def test_dynamics_strict_beta_and_tier_validation():
         )
 
 
-def test_physical_decoder_multi_object_contract():
-    """PhysicalDecoder must decode 4 * num_objects kinematics and validate latent dimension."""
+def test_physical_decoder_articulated_joint_contract():
+    """PhysicalDecoder must decode 2 * joint_count kinematics (q*, p*) and validate latent dimension."""
     decoder = PhysicalDecoder(
         latent_dim=64,
         q_dim=16,
         p_dim=48,
-        num_objects=2,
+        joint_count=8,
         alpha=0.85,
     )
     assert isinstance(decoder, PhysicalDecoderProtocol)
 
     z_seq = torch.randn(4, 10, 64)
     kin = decoder(z_seq)
-    assert kin.shape == (4, 10, 8)  # 4 * 2 objects
+    assert kin.shape == (4, 10, 16)  # 2 * 8 joints
 
     q_sub = z_seq[..., :16]
     p_sub = z_seq[..., 16:]
     pos_sub = decoder.decode_pos(q_sub)
     vel_sub = decoder.decode_vel(p_sub)
-    assert pos_sub.shape == (4, 10, 4)
-    assert vel_sub.shape == (4, 10, 4)
+    assert pos_sub.shape == (4, 10, 8)
+    assert vel_sub.shape == (4, 10, 8)
 
     with pytest.raises(ValueError, match="dim 2: expected 64, got 32"):
         decoder(torch.randn(4, 10, 32))
@@ -125,7 +126,8 @@ def test_spwm_pure_model_no_dead_buffers_and_differentiable_forward():
     and preserve autograd graph during forward() and forward_representation() when grad is enabled.
     """
     cfg = ExperimentConfig(
-        environment=EnvironmentConfig(height=32, width=32, num_objects=1),
+        environment=EnvironmentConfig(height=32, width=32, joint_count=6, action_dim=6),
+        data=DataConfig(joint_count=6, action_dim=6),
         model=ModelConfig(latent_dim=32, q_dim=8, p_dim=24, num_keypoints=4, encoder_dim=32),
         memory=MemoryConfig(timescale_dims=(16, 16), betas=(0.90, 0.985)),
     )
@@ -134,18 +136,20 @@ def test_spwm_pure_model_no_dead_buffers_and_differentiable_forward():
     assert not hasattr(model, "delta_w_buffer")
     assert not hasattr(model, "B_kin_feedback")
     assert not hasattr(model, "corrector")
+    assert not hasattr(model, "m2")
 
     events = torch.randn(2, 6, 2, 32, 32)
+    actions = torch.randn(2, 6, 6)
     rep_latents, rep_errors = model.forward_representation(events)
     assert rep_latents.shape == (2, 6, 32)
     assert rep_errors.shape == (2, 6, 32)
 
-    out = model(events)
+    out = model(events, actions=actions)
     assert out.latent_states.shape == (2, 6, 32)
     assert out.keypoints is not None
     assert out.keypoints.shape == (2, 6, 8)
     assert out.decoded_kinematics is not None
-    assert out.decoded_kinematics.shape == (2, 6, 4)
+    assert out.decoded_kinematics.shape == (2, 6, 12)
 
     # Verify differentiability through encoder, dynamics, and physical_decoder
     loss = out.latent_states.sum() + out.decoded_kinematics.sum()

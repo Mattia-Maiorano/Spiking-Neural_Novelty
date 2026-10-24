@@ -109,9 +109,7 @@ class RolloutEvaluator:
         model: nn.Module,
         device: Optional[Union[str, torch.device]] = None,
         horizons: Sequence[int] = (1, 5, 10, 25, 50, 100),
-        num_objects: int = 1,
-        use_corrector: bool = True,
-        projection_cadence: Optional[int] = 10,
+        joint_count: int = 8,
         temporal_burn_in: int = 5,
         fixed_predictor: Optional[nn.Module] = None,
     ) -> None:
@@ -128,9 +126,7 @@ class RolloutEvaluator:
         self.model = model.to(self.device)
         self.model.eval()
         self.horizons = list(horizons)
-        self.num_objects = num_objects
-        self.use_corrector = use_corrector
-        self.projection_cadence = projection_cadence
+        self.joint_count = joint_count
         self.temporal_burn_in = temporal_burn_in
         self.fixed_predictor = fixed_predictor
 
@@ -146,15 +142,16 @@ class RolloutEvaluator:
         tf_errors: List[float] = []
         spike_rates: List[float] = []
 
-        q_dim = getattr(self.model, "q_dim", None)
+        q_dim = self.model.q_dim if hasattr(self.model, "q_dim") else None
 
         batch_count = 0
         for batch in data_loader:
             events = batch["events"].to(self.device)
             true_kin = batch["flat_kinematics"].to(self.device)
+            actions = batch["actions"].to(self.device) if "actions" in batch else None
             b, t, _, _, _ = events.shape
 
-            out = self.model(events)
+            out = self.model(events, actions=actions)
             latent_states = out.latent_states
 
             pred_latents = out.predicted_latents[:, :-1]
@@ -176,15 +173,16 @@ class RolloutEvaluator:
                     z_prefix = latent_states[:, : t_start + 1]
                     decoder_state = self.model.physical_decoder.warm_up_filter(z_prefix)
 
+                rollout_actions = actions[:, t_start : t_start + max_eval_h] if actions is not None else None
                 rollout_res = rollout_latent(
                     model=self.model,
                     z_init=z_start,
                     horizon=max_eval_h,
+                    actions=rollout_actions,
                     with_grad=False,
                     decode_kinematics=True,
                     initial_decoder_state=decoder_state,
                     fixed_predictor=self.fixed_predictor,
-                    projection_cadence=self.projection_cadence if self.use_corrector else None,
                 )
 
                 for h in self.horizons:
@@ -205,18 +203,18 @@ class RolloutEvaluator:
                         if rollout_res.decoded_kinematics is not None:
                             decoded_h = rollout_res.decoded_kinematics[:, :h]
                             kin_target_h = true_kin[:, t_start + 1 : t_start + 1 + h]
-                            pos_err = position_error(decoded_h, kin_target_h, self.num_objects)
-                            vel_err = velocity_error(decoded_h, kin_target_h, self.num_objects)
+                            pos_err = position_error(decoded_h, kin_target_h, self.joint_count)
+                            vel_err = velocity_error(decoded_h, kin_target_h, self.joint_count)
                             pos_errors[h].append(pos_err)
                             vel_errors[h].append(vel_err)
 
-                            pred_pos = decoded_h[..., : 2 * self.num_objects]
-                            true_pos = kin_target_h[..., : 2 * self.num_objects]
+                            pred_pos = decoded_h[..., : self.joint_count]
+                            true_pos = kin_target_h[..., : self.joint_count]
                             pos_mse = float(torch.mean((pred_pos - true_pos) ** 2).item())
                             pos_mses[h].append(pos_mse)
 
-                            pred_vel = decoded_h[..., 2 * self.num_objects : 4 * self.num_objects]
-                            true_vel = kin_target_h[..., 2 * self.num_objects : 4 * self.num_objects]
+                            pred_vel = decoded_h[..., self.joint_count : 2 * self.joint_count]
+                            true_vel = kin_target_h[..., self.joint_count : 2 * self.joint_count]
                             vel_mse = float(torch.mean((pred_vel - true_vel) ** 2).item())
                             vel_mses[h].append(vel_mse)
 

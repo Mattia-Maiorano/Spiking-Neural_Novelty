@@ -1,8 +1,8 @@
 """
-Layer 1 SPWM: Spiking Predictive World Model with Symplectic Latent Predictor.
+Layer 1 SPWM: Spiking Predictive World Model with Action-Conditioned Latent Attractor Dynamics (M1).
 Composes pure Layer 1 neural primitives (EventEncoder, SpikingLatentDynamics,
 LatentPredictor, PhysicalDecoder) into a unified, strictly typed world model.
-Zero dead plasticity buffers, zero legacy corrector branches, zero upward imports.
+Zero dead plasticity buffers, zero legacy M2 projector branches, zero upward imports.
 """
 
 from __future__ import annotations
@@ -21,20 +21,19 @@ from spwm.models.dynamics import SpikingLatentDynamics
 from spwm.models.encoder import EventEncoder
 from spwm.models.predictors import (
     LatentPredictor,
-    ManifoldProjector,
     PhysicalDecoder,
 )
 
 
 class SPWM(nn.Module):
     """
-    SPWM: Spiking Predictive World Model (v0.3.1).
+    SPWM: Spiking Predictive World Model (v0.4.0).
     Unified composition of:
       1. SpatialSoftmax Keypoint EventEncoder
       2. Top-down Predictive Coding sensory feedback (`sensory_predictor`)
       3. Dual-timescale ALIF SpikingLatentDynamics
-      4. Symplectic Latent Predictor (M1)
-      5. PhysicalDecoder kinematic linear probe
+      4. Action-Conditioned Latent Attractor Predictor (M1)
+      5. Articulated Joint PhysicalDecoder
     """
 
     def __init__(
@@ -56,7 +55,8 @@ class SPWM(nn.Module):
         surrogate_name: str = "atan",
         surrogate_alpha: float = 2.0,
         predictor_hidden_dim: int = 256,
-        num_objects: int = 1,
+        joint_count: int = 8,
+        action_dim: int = 8,
         ema_decay: float = 0.9,
         decoder_ema_alpha: float = 0.85,
         phase_horizon: int = 50,
@@ -64,7 +64,6 @@ class SPWM(nn.Module):
         dt: float = 0.05,
     ) -> None:
         super().__init__()
-        # Canonical symplectic partition resolution when instantiated with shorthand latent_dim in unit tests
         resolved_q = q_dim if q_dim is not None else (latent_dim // 4)
         resolved_p = p_dim if p_dim is not None else (latent_dim - resolved_q)
         resolved_kp = num_keypoints if num_keypoints is not None else (resolved_q // 2)
@@ -74,6 +73,7 @@ class SPWM(nn.Module):
             q_dim=resolved_q,
             p_dim=resolved_p,
             num_keypoints=resolved_kp,
+            action_dim=action_dim,
         )
 
         self.in_channels = in_channels
@@ -85,7 +85,8 @@ class SPWM(nn.Module):
         self.p_dim = resolved_p
         self.num_keypoints = resolved_kp
         self.timescale_dims = tuple(timescale_dims)
-        self.num_objects = num_objects
+        self.joint_count = joint_count
+        self.action_dim = action_dim
         self.phase_horizon = phase_horizon
         self.symplectic_m1 = symplectic_m1
         self.dt = float(dt)
@@ -119,9 +120,10 @@ class SPWM(nn.Module):
             surrogate_alpha=surrogate_alpha,
         )
 
-        # 4. Symplectic Latent Predictor (M1)
+        # 4. Action-Conditioned Latent Attractor Predictor (M1)
         self.predictor = LatentPredictor(
             latent_dim=latent_dim,
+            action_dim=action_dim,
             hidden_dim=predictor_hidden_dim,
             residual=True,
             symplectic=symplectic_m1,
@@ -130,21 +132,13 @@ class SPWM(nn.Module):
             dt=self.dt,
         )
 
-        # 5. Physical Kinematic Probe Decoder
+        # 5. Articulated Joint Kinematic Decoder
         self.physical_decoder = PhysicalDecoder(
             latent_dim=latent_dim,
             q_dim=resolved_q,
             p_dim=resolved_p,
-            num_objects=num_objects,
+            joint_count=joint_count,
             alpha=decoder_ema_alpha,
-        )
-
-        # 6. Stateless Manifold Projector (M2 Geometric Denoiser)
-        self.m2 = ManifoldProjector(
-            latent_dim=latent_dim,
-            hidden_dim=predictor_hidden_dim,
-            q_dim=resolved_q,
-            p_dim=resolved_p,
         )
 
     @property
@@ -172,7 +166,8 @@ class SPWM(nn.Module):
             surrogate_name=cfg.neuron.surrogate,
             surrogate_alpha=cfg.neuron.surrogate_alpha,
             predictor_hidden_dim=cfg.model.predictor_hidden_dim,
-            num_objects=cfg.environment.num_objects,
+            joint_count=cfg.environment.joint_count,
+            action_dim=cfg.environment.action_dim,
             ema_decay=cfg.model.ema_decay,
             decoder_ema_alpha=cfg.model.decoder_ema_alpha,
             phase_horizon=cfg.training.phase_horizon,
@@ -184,16 +179,18 @@ class SPWM(nn.Module):
         return SPWMState(
             encoder_states=None,
             dynamics_state=self.dynamics.init_state(batch_size, device=device),
+            action=torch.zeros(batch_size, self.action_dim, device=device),
         )
 
     def step(
         self,
         event_frame: torch.Tensor,
         state: Optional[SPWMState] = None,
+        action: Optional[torch.Tensor] = None,
         target_next_latent: Optional[torch.Tensor] = None,
     ) -> Tuple[SPWMStepOutput, SPWMState]:
         """
-        Executes a single sensory-driven predictive coding step.
+        Executes a single sensory-driven predictive coding step with optional action conditioning u_t.
         Respects the active PyTorch autograd context (`torch.enable_grad()` vs `torch.no_grad()`).
         """
         assert_tensor_contract(
@@ -207,6 +204,9 @@ class SPWM(nn.Module):
         if state is None:
             state = self.init_state(B, device=device)
 
+        if action is not None:
+            assert_tensor_contract(action, (B, self.action_dim), "SPWM.step.action")
+
         sensory_x, sensory_keypoints = self.encoder.encode_step(event_frame)
 
         z_prev = state.dynamics_state.z_prev
@@ -219,7 +219,7 @@ class SPWM(nn.Module):
             sensory_keypoints=sensory_keypoints,
         )
 
-        pred_out = self.predictor(z_t)
+        pred_out = self.predictor(z_t, action=action)
         z_hat_next = pred_out.predicted_latent
 
         pred_error = None
@@ -231,6 +231,7 @@ class SPWM(nn.Module):
         new_state = SPWMState(
             encoder_states=None,
             dynamics_state=new_dyn_state,
+            action=action,
         )
 
         output = SPWMStepOutput(
@@ -241,6 +242,7 @@ class SPWM(nn.Module):
             decoded_kinematics=decoded_kinematics,
             ema_spikes=state.dynamics_state.ema_spikes,
             keypoints=sensory_keypoints,
+            action=action,
         )
         return output, new_state
 
@@ -280,7 +282,7 @@ class SPWM(nn.Module):
                 state=state.dynamics_state,
                 sensory_keypoints=sensory_keypoints,
             )
-            state = SPWMState(encoder_states=None, dynamics_state=new_dyn_state)
+            state = SPWMState(encoder_states=None, dynamics_state=new_dyn_state, action=state.action)
             latent_steps.append(z_t)
             error_neuron_steps.append(epsilon_t)
 
@@ -292,9 +294,10 @@ class SPWM(nn.Module):
         self,
         event_sequence: torch.Tensor,
         initial_state: Optional[SPWMState] = None,
+        actions: Optional[torch.Tensor] = None,
     ) -> SPWMSequenceOutput:
         """
-        Processes a full sequence of differential event frames [B, T, C, H, W].
+        Processes a full sequence of differential event frames [B, T, C, H, W] and optional actions [B, T, D_u].
         Preserves autograd graph when called in a gradient-enabled context.
         """
         assert_tensor_contract(
@@ -304,6 +307,9 @@ class SPWM(nn.Module):
         )
         B, T, _, _, _ = event_sequence.shape
         device = event_sequence.device
+        if actions is not None:
+            assert_tensor_contract(actions, (B, T, self.action_dim), "SPWM.forward.actions")
+
         state = initial_state if initial_state is not None else self.init_state(B, device=device)
 
         latent_steps = []
@@ -316,9 +322,11 @@ class SPWM(nn.Module):
 
         for t in range(T):
             event_frame = event_sequence[:, t]
+            u_t = actions[:, t] if actions is not None else None
             step_out, state = self.step(
                 event_frame=event_frame,
                 state=state,
+                action=u_t,
             )
             latent_steps.append(step_out.latent)
             pred_steps.append(step_out.predicted_next_latent)
@@ -364,11 +372,10 @@ class SPWM(nn.Module):
         self,
         initial_latent: torch.Tensor,
         horizon: int = 50,
-        projection_cadence: Optional[int] = None,
+        actions: Optional[torch.Tensor] = None,
     ) -> torch.Tensor:
         """
-        Autonomous multi-step rollout using the symplectic latent predictor (M1) and
-        optional stateless manifold projection (M2).
+        Action-conditioned multi-step rollout using the latent attractor predictor (M1).
         Delegates to unified `rollout_latent`.
         """
         from spwm.models.rollout import rollout_latent
@@ -377,8 +384,8 @@ class SPWM(nn.Module):
             model=self,
             z_init=initial_latent,
             horizon=horizon,
+            actions=actions,
             with_grad=False,
             decode_kinematics=False,
-            projection_cadence=projection_cadence,
         )
         return res.trajectory

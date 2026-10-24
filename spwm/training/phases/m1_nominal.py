@@ -1,4 +1,4 @@
-"""Phase 1 Training Strategy: M1 Nominal Physics (`train_m1`)."""
+"""Phase 1 Training Strategy: Action-Conditioned Latent Attractor Dynamics (`train_m1`)."""
 from __future__ import annotations
 from typing import Dict, Optional, Tuple
 import torch
@@ -6,11 +6,12 @@ import torch.nn as nn
 import torch.nn.functional as F
 
 from spwm.contracts.protocols import PhaseStrategy
+from spwm.contracts.tensors import assert_phase_space_contract
 from spwm.training.metrics import position_error, velocity_error
 
 
 class M1PhaseStrategy(PhaseStrategy):
-    """Isolated strategy for Phase 1 (`train_m1`): M1 Nominal Physics on Pristine Latents."""
+    """Isolated strategy for Phase 1 (`train_m1`): Action-Conditioned M1 Attractor Dynamics on Detached Latents."""
 
     def setup(self) -> None:
         for p in self.model.parameters():
@@ -30,13 +31,25 @@ class M1PhaseStrategy(PhaseStrategy):
                 raise AssertionError(f"Gradient leak! Parameter '{name}' has requires_grad=True in train_m1 mode.")
 
     def _compute_m1_objectives(
-        self, events: torch.Tensor, flat_kin: Optional[torch.Tensor] = None
+        self,
+        events: torch.Tensor,
+        actions: torch.Tensor,
+        flat_kin: Optional[torch.Tensor] = None,
     ) -> Tuple[torch.Tensor, Dict[str, float]]:
         H_req = self.cfg.training.phase_horizon + 1
         if events.shape[1] > H_req:
             events = events[:, :H_req]
+            actions = actions[:, :H_req]
             if flat_kin is not None:
                 flat_kin = flat_kin[:, :H_req]
+
+        assert_phase_space_contract(
+            latent_dim=self.model.latent_dim,
+            q_dim=self.model.q_dim,
+            p_dim=self.model.p_dim,
+            action_dim=self.model.action_dim,
+            actions=actions,
+        )
 
         # Generate ground-truth latent trajectory z^*_{0:T} using frozen Phase 0 modules
         with torch.no_grad():
@@ -45,19 +58,20 @@ class M1PhaseStrategy(PhaseStrategy):
 
         horizon = min(self.cfg.training.phase_horizon, z_target.shape[1] - 1)
         z_start = z_target[:, 0]
+        u_seq = actions[:, :horizon]
 
-        # Run m1 autoregressively: \hat{z}_{t+1} = \hat{z}_t + m1(\hat{z}_t)
+        # Run M1 autoregressively conditioned on motor actions u_{0:H}: \hat{z}_{t+1} = M1(\hat{z}_t, u_t)
         predictions = []
         curr_z = z_start
-        for _ in range(horizon):
-            pred_out = self.model.m1(curr_z)
+        for t in range(horizon):
+            u_t = u_seq[:, t]
+            pred_out = self.model.m1(curr_z, u_t)
             curr_z = pred_out.predicted_latent
             predictions.append(curr_z)
 
         m1_traj = torch.stack(predictions, dim=1)
         target_latents = z_target[:, 1 : 1 + horizon]
 
-        # Loss Function Constraint: L_m1 = MSE(\hat{z}_{t+1}, z_target_{t+1})
         loss_m1 = F.mse_loss(m1_traj, target_latents)
         total_loss = self.cfg.loss.lambda_latent * loss_m1
 
@@ -70,9 +84,9 @@ class M1PhaseStrategy(PhaseStrategy):
             with torch.no_grad():
                 decoded_kin = self.model.physical_decoder(m1_traj)
                 target_kin = flat_kin[:, 1 : 1 + horizon]
-                num_obj = self.cfg.environment.num_objects
-                pos_err = position_error(decoded_kin, target_kin, num_objects=num_obj)
-                vel_err = velocity_error(decoded_kin, target_kin, num_objects=num_obj)
+                joint_count = self.cfg.environment.joint_count
+                pos_err = position_error(decoded_kin, target_kin, joint_count=joint_count)
+                vel_err = velocity_error(decoded_kin, target_kin, joint_count=joint_count)
 
         metrics = {
             "loss": float(total_loss.item()),
@@ -85,6 +99,12 @@ class M1PhaseStrategy(PhaseStrategy):
         }
         return total_loss, metrics
 
+    def _extract_actions(self, batch: Dict[str, torch.Tensor], events: torch.Tensor) -> torch.Tensor:
+        if "actions" in batch and batch["actions"] is not None:
+            return batch["actions"].to(self.device)
+        B, T = events.shape[0], events.shape[1]
+        return torch.zeros(B, T, self.model.action_dim, device=self.device, dtype=events.dtype)
+
     def train_step(self, batch: Dict[str, torch.Tensor], epoch: int) -> Dict[str, float]:
         self.model.eval()
         self.model.m1.train()
@@ -92,10 +112,11 @@ class M1PhaseStrategy(PhaseStrategy):
         self.predictor_optimizer.zero_grad()
 
         events = batch["events"].to(self.device)
+        actions = self._extract_actions(batch, events)
         flat_kin = batch.get("flat_kinematics")
         if flat_kin is not None:
             flat_kin = flat_kin.to(self.device)
-        total_loss, m = self._compute_m1_objectives(events, flat_kin)
+        total_loss, m = self._compute_m1_objectives(events, actions, flat_kin)
         total_loss.backward()
         trainable = [p for p in self.model.parameters() if p.requires_grad]
         nn.utils.clip_grad_norm_(trainable, self.cfg.training.grad_clip_norm)
@@ -106,8 +127,9 @@ class M1PhaseStrategy(PhaseStrategy):
     def validate_step(self, batch: Dict[str, torch.Tensor]) -> Dict[str, float]:
         self.model.eval()
         events = batch["events"].to(self.device)
+        actions = self._extract_actions(batch, events)
         flat_kin = batch.get("flat_kinematics")
         if flat_kin is not None:
             flat_kin = flat_kin.to(self.device)
-        _, m = self._compute_m1_objectives(events, flat_kin)
+        _, m = self._compute_m1_objectives(events, actions, flat_kin)
         return {f"val_{k}": v for k, v in m.items()}

@@ -75,19 +75,18 @@ def main() -> None:
         batch_size=cfg.data.batch_size,
         height=cfg.environment.height,
         width=cfg.environment.width,
-        num_objects=cfg.environment.num_objects,
+        joint_count=cfg.environment.joint_count,
+        action_dim=cfg.environment.action_dim,
         event_threshold=cfg.environment.event_threshold,
-        box_size=cfg.environment.box_size,
         dt=cfg.environment.dt,
-        drift_injection_prob=0.0,
-        mixed_drift=cfg.data.mixed_drift,
+        dataset_dir=cfg.data.dataset_dir,
     )
 
     evaluator = RolloutEvaluator(
         model=model,
         device=device,
         horizons=eval_horizons,
-        num_objects=cfg.environment.num_objects,
+        joint_count=cfg.environment.joint_count,
         temporal_burn_in=cfg.training.temporal_burn_in,
         fixed_predictor=fixed_predictor,
     )
@@ -105,7 +104,7 @@ def main() -> None:
         latent_errors=results.latent_mse_per_horizon,
         save_path=figures_dir / "eval_rollout_degradation.png",
     )
-    pos_span = 2.0 * float(cfg.environment.box_size)
+    pos_span = 2.0
     vel_span = float(cfg.data.standard_velocity_range[1] - cfg.data.standard_velocity_range[0])
     plot_physical_rollout_degradation(
         horizons=results.horizons,

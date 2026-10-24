@@ -29,7 +29,6 @@ from spwm.training.engine import BaseTrainer, enforce_phase_prerequisites, resol
 from spwm.training.losses import SPWMLoss
 from spwm.training.phases import (
     M1PhaseStrategy,
-    M2PhaseStrategy,
     RepresentationPhaseStrategy,
 )
 
@@ -38,8 +37,8 @@ def create_dummy_dataloader(sequence_length=35, batch_size=2, total_traj=4):
     dataset = EventWorldDataset(
         trajectory_indices=list(range(total_traj)),
         sequence_length=sequence_length,
-        drift_injection_prob=0.0,
-        drift_magnitude=0.0,
+        joint_count=4,
+        action_dim=4,
         cache_data=True,
     )
     return DataLoader(dataset, batch_size=batch_size, shuffle=False, collate_fn=collate_event_batches)
@@ -48,8 +47,8 @@ def create_dummy_dataloader(sequence_length=35, batch_size=2, total_traj=4):
 def _make_small_config(mode: str = "train_m1") -> ExperimentConfig:
     return ExperimentConfig(
         project=ProjectConfig(name="test_phase3"),
-        environment=EnvironmentConfig(height=16, width=16, num_objects=1),
-        data=DataConfig(sequence_length=20, batch_size=2, total_trajectories=4),
+        environment=EnvironmentConfig(height=16, width=16, joint_count=4, action_dim=4),
+        data=DataConfig(sequence_length=20, batch_size=2, total_trajectories=4, joint_count=4, action_dim=4),
         model=ModelConfig(
             in_channels=2,
             encoder_conv_channels=(8, 16),
@@ -75,7 +74,7 @@ def _make_small_config(mode: str = "train_m1") -> ExperimentConfig:
 def test_phase_strategy_files_under_150_lines() -> None:
     """Each concrete phase strategy file must remain < 150 lines for small-LLM context isolation."""
     phases_dir = Path(__file__).resolve().parent.parent / "spwm" / "training" / "phases"
-    for fname in ("representation.py", "m1_nominal.py", "m2_recovery.py"):
+    for fname in ("representation.py", "m1_nominal.py"):
         fpath = phases_dir / fname
         assert fpath.exists(), f"Missing phase strategy file: {fpath}"
         line_count = len(fpath.read_text(encoding="utf-8").splitlines())
@@ -83,11 +82,12 @@ def test_phase_strategy_files_under_150_lines() -> None:
 
 
 def test_representation_and_m1_isolated_phase_strategies() -> None:
-    """Verify RepresentationPhaseStrategy, M1PhaseStrategy, and M2PhaseStrategy satisfy PhaseStrategy and isolate gradients."""
+    """Verify RepresentationPhaseStrategy and M1PhaseStrategy satisfy PhaseStrategy and isolate gradients."""
     B, T = 2, 20
     events = torch.rand(B, T, 2, 16, 16)
-    flat_kin = torch.randn(B, T, 4)
-    batch = {"events": events, "flat_kinematics": flat_kin}
+    flat_kin = torch.randn(B, T, 8)  # 2 * 4 joints
+    actions = torch.randn(B, T, 4)
+    batch = {"events": events, "flat_kinematics": flat_kin, "actions": actions}
     device = torch.device("cpu")
 
     # 0. Phase 0: Representation Phase Strategy (trains encoder, dynamics, sensory_predictor, physical_decoder)
@@ -116,7 +116,7 @@ def test_representation_and_m1_isolated_phase_strategies() -> None:
     # Predictor / M1 must be frozen in Phase 0
     assert all(p.grad is None for p in model_rep.predictor.parameters())
 
-    # 1. Phase 1: M1 Phase Strategy (strictly trains M1 on detached latent targets)
+    # 1. Phase 1: M1 Phase Strategy (strictly trains M1 on detached latent targets with actions u_{0:H})
     cfg_m1 = _make_small_config("train_m1")
     model_m1 = SPWM.from_config(cfg_m1)
     m1_strategy = M1PhaseStrategy(model_m1, cfg_m1, loss_fn, device)
@@ -132,25 +132,6 @@ def test_representation_and_m1_isolated_phase_strategies() -> None:
     assert all(p.grad is None for p in model_m1.dynamics.parameters())
     assert all(p.grad is None for p in model_m1.sensory_predictor.parameters())
     assert all(p.grad is None for p in model_m1.physical_decoder.parameters())
-
-    # 2. Phase 2: M2 Phase Strategy (strictly trains M2 manifold projector on noisy/drifted latents)
-    cfg_m2 = _make_small_config("train_m2")
-    model_m2 = SPWM.from_config(cfg_m2)
-    m2_strategy = M2PhaseStrategy(model_m2, cfg_m2, loss_fn, device)
-    assert isinstance(m2_strategy, PhaseStrategy)
-    m2_strategy.verify_gradient_isolation()
-    metrics_m2 = m2_strategy.train_step(batch, epoch=1)
-    assert "train_loss" in metrics_m2 and "train_loss_m2" in metrics_m2
-    assert "train_loss_q" in metrics_m2 and "train_loss_p" in metrics_m2
-    assert any(
-        p.grad is not None and p.grad.abs().sum() > 0 for p in model_m2.m2.parameters()
-    ), "m2 must receive non-zero gradients during train_m2!"
-    # Representation modules and M1 must be strictly frozen in Phase 2
-    assert all(p.grad is None for p in model_m2.encoder.parameters())
-    assert all(p.grad is None for p in model_m2.dynamics.parameters())
-    assert all(p.grad is None for p in model_m2.sensory_predictor.parameters())
-    assert all(p.grad is None for p in model_m2.physical_decoder.parameters())
-    assert all(p.grad is None for p in model_m2.predictor.parameters())
 
 
 def test_scoped_strict_checkpoint_loading(tmp_path: Path) -> None:

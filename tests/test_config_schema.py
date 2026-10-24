@@ -13,7 +13,18 @@ from spwm.config.schema import (
 
 def test_experiment_config_instantiates_cleanly():
     cfg = ExperimentConfig()
-    assert cfg.project.name in ("spwm_v0_2_0", "spwm_v0_2_1", "spwm_v0_2_2", "spwm_v0_3_0", "spwm_v0_3_1")
+    assert cfg.project.name in (
+        "spwm_v0_2_0",
+        "spwm_v0_2_1",
+        "spwm_v0_2_2",
+        "spwm_v0_3_0",
+        "spwm_v0_3_1",
+        "spwm_v0_4_0",
+    )
+    assert cfg.environment.joint_count == 8
+    assert cfg.environment.action_dim == 8
+    assert cfg.data.joint_count == 8
+    assert cfg.data.action_dim == 8
     assert cfg.model.latent_dim == 128
     assert cfg.model.q_dim == 32
     assert cfg.model.p_dim == 96
@@ -31,6 +42,7 @@ def test_experiment_config_instantiates_cleanly():
 
     # Pruned attributes must not exist
     assert not hasattr(cfg.training, "max_rollout_horizon")
+    assert not hasattr(cfg.training, "m1_checkpoint")
     assert not hasattr(cfg.training, "m2_checkpoint")
     assert not hasattr(cfg.training, "m2_num_phases")
     assert not hasattr(cfg.training, "m1_horizon")
@@ -74,16 +86,17 @@ def test_timescale_dims_length_mismatch_raises():
 def test_invalid_and_pruned_training_modes_raise():
     with pytest.raises(ValueError, match="Invalid training mode"):
         TrainingConfig(mode="bogus_mode")
-    # Verify train_representation and train_m2 are valid modes
+    # Verify train_representation and train_m1 are valid modes
     cfg_rep = TrainingConfig(mode="train_representation")
     assert cfg_rep.mode == "train_representation"
-    cfg_m2 = TrainingConfig(mode="train_m2")
-    assert cfg_m2.mode == "train_m2"
+    cfg_m1 = TrainingConfig(mode="train_m1")
+    assert cfg_m1.mode == "train_m1"
     # Legacy modalities remain pruned and raise ValueError
     for pruned_mode in [
         "train_predictor",
         "train_joint",
         "train_corrector",
+        "train_m2",
         "train_m3",
         "train_cascade",
     ]:

@@ -28,15 +28,7 @@ def decompose_latent_loss(
     lambda_position: float = 1.0,
     lambda_velocity: float = 1.0,
 ) -> Dict[str, torch.Tensor]:
-    """Decompose latent trajectory loss into position (q) and momentum/velocity (p) components.
-
-    Latent vector z is partitioned as z = [q, p], where:
-      - q = z[..., :q_dim] (coordinate/position subspace)
-      - p = z[..., q_dim:] (momentum/velocity subspace)
-
-    Total weighted latent loss:
-      L_latent = lambda_position * MSE(q_pred, q_target) + lambda_velocity * MSE(p_pred, p_target)
-    """
+    """Decompose latent trajectory loss into coordinate (q) and momentum/velocity (p) components."""
     assert_tensor_contract(predicted_latent, (None, None, None), "decompose_latent_loss.predicted_latent")
     assert_tensor_contract(target_latent, tuple(predicted_latent.shape), "decompose_latent_loss.target_latent")
 
@@ -54,7 +46,6 @@ def decompose_latent_loss(
         "loss_pos_latent": loss_pos_latent,
         "loss_vel_latent": loss_vel_latent,
     }
-
 
 
 @contextmanager
@@ -106,8 +97,8 @@ class PredictorLoss(nn.Module):
         rollout_velocities: Optional[torch.Tensor] = None,
         target_kinematics: Optional[torch.Tensor] = None,
         target_rollout_kinematics: Optional[torch.Tensor] = None,
-        num_objects: int = 1,
-        mode: str = "train_predictor",
+        joint_count: int = 8,
+        mode: str = "train_m1",
     ) -> Dict[str, torch.Tensor]:
         device = torch.device("cpu")
         for tensor_candidate in (
@@ -126,19 +117,11 @@ class PredictorLoss(nn.Module):
         loss_position = torch.tensor(0.0, device=device)
         loss_velocity = torch.tensor(0.0, device=device)
 
-        if keypoints is not None and target_kinematics is not None and mode in ("train_representation", "train_joint", "train_m1"):
-            k = keypoints.shape[-1] // 2
-            kp = keypoints.view(*keypoints.shape[:-1], k, 2)
-            if num_objects > 1:
-                all_obj_xy = target_kinematics[..., : 2 * num_objects].view(*target_kinematics.shape[:-1], num_objects, 2)
-                dists = torch.sum((kp.unsqueeze(-2) - all_obj_xy.unsqueeze(-3)) ** 2, dim=-1)
-                loss_encoder = dists.min(dim=-1).values.mean()
-            else:
-                gt_xy = target_kinematics[..., :2]
-                gt_expanded = gt_xy.unsqueeze(-2).expand_as(kp)
-                loss_encoder = F.mse_loss(kp, gt_expanded)
+        if keypoints is not None and target_kinematics is not None and mode in ("train_representation", "train_m1"):
+            common_d = min(keypoints.shape[-1], target_kinematics.shape[-1], joint_count)
+            loss_encoder = F.mse_loss(keypoints[..., :common_d], target_kinematics[..., :common_d])
 
-        if decoded_kinematics is not None and target_kinematics is not None and mode in ("train_representation", "train_joint", "train_m1"):
+        if decoded_kinematics is not None and target_kinematics is not None and mode in ("train_representation", "train_m1"):
             dim_kin = decoded_kinematics.shape[-1]
             loss_decoder = F.mse_loss(decoded_kinematics, target_kinematics[..., :dim_kin])
 
@@ -150,17 +133,17 @@ class PredictorLoss(nn.Module):
             )
             if rollout_positions is not None and rollout_target is not None:
                 t_roll = rollout_positions.shape[1]
-                true_pos = rollout_target[:, :t_roll, : 2 * num_objects].reshape(rollout_positions.shape)
+                true_pos = rollout_target[:, :t_roll, :joint_count].reshape(rollout_positions.shape)
                 loss_position = F.mse_loss(rollout_positions, true_pos)
 
             if rollout_velocities is not None and rollout_target is not None:
                 t_roll = rollout_velocities.shape[1]
-                true_vel = rollout_target[:, :t_roll, 2 * num_objects : 4 * num_objects].reshape(
+                true_vel = rollout_target[:, :t_roll, joint_count : 2 * joint_count].reshape(
                     rollout_velocities.shape
                 )
                 loss_velocity = F.mse_loss(rollout_velocities, true_vel)
 
-            if mode in ("train_joint", "train_m1"):
+            if mode == "train_m1":
                 total_loss = (
                     self.lambda_encoder * loss_encoder
                     + self.lambda_decoder * loss_decoder
@@ -191,8 +174,6 @@ class SPWMLoss(nn.Module):
         lambda_sensory: float = 1.0,
         lambda_position: float = 1.0,
         lambda_velocity: float = 1.0,
-        beta_v: float = 2.0,
-        comb_sigma: float = 3.5,
         **kwargs: Any,
     ) -> None:
         super().__init__()
@@ -201,8 +182,6 @@ class SPWMLoss(nn.Module):
         self.lambda_sensory = float(lambda_sensory)
         self.lambda_position = float(lambda_position)
         self.lambda_velocity = float(lambda_velocity)
-        self.beta_v = float(beta_v)
-        self.comb_sigma = float(comb_sigma)
 
         self.predictor_loss = PredictorLoss(
             lambda_encoder=self.lambda_encoder,
@@ -236,4 +215,3 @@ __all__ = [
     "PredictorLoss",
     "SPWMLoss",
 ]
-

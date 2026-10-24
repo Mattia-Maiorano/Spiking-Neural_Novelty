@@ -1,10 +1,10 @@
 """
-Main Training Entrypoint for SPWM (v0.2.0).
+Main Training Entrypoint for SPWM (v0.4.0).
 Streamlined, config-first Single Source of Truth with immutable ExperimentConfig
-and scoped strict checkpoint loading (`model.pt`) across M1 -> M2 -> M3 phases.
+and scoped strict checkpoint loading (`model.pt`) across Representation -> M1 phases.
 
 Usage:
-    python experiments/train.py --config configs/experiments/spwm_v0_1_0.yaml
+    python experiments/train.py --config configs/experiments/spwm_v0_4_0.yaml
 """
 
 from __future__ import annotations
@@ -55,8 +55,8 @@ def parse_args() -> argparse.Namespace:
         "--mode",
         type=str,
         default=None,
-        choices=["train_representation", "train_m1", "train_m2"],
-        help="Override training mode (train_representation, train_m1, or train_m2)",
+        choices=["train_representation", "train_m1"],
+        help="Override training mode (train_representation or train_m1)",
     )
     parser.add_argument("--device", type=str, default=None, help="Device (cpu, cuda, mps)")
     parser.add_argument("--seed", type=int, default=None, help="Override random seed")
@@ -73,12 +73,6 @@ def parse_args() -> argparse.Namespace:
         type=str,
         default=None,
         help="Representation checkpoint (model.pt) for Phase 1 (train_m1) training",
-    )
-    parser.add_argument(
-        "--m1-checkpoint",
-        type=str,
-        default=None,
-        help="M1 checkpoint (model.pt) for Phase 2 (train_m2) training",
     )
     parser.add_argument("--phase-horizon", type=int, default=None, help="Predictor unroll horizon during training")
     parser.add_argument("--temporal-burn-in", type=int, default=None, help="Override temporal burn-in steps for recurrent warm-up")
@@ -120,24 +114,22 @@ def _evaluate_and_save_phase_artifacts(
         batch_size=cfg.data.batch_size,
         height=cfg.environment.height,
         width=cfg.environment.width,
-        num_objects=cfg.environment.num_objects,
+        joint_count=cfg.environment.joint_count,
+        action_dim=cfg.environment.action_dim,
         standard_velocity_range=cfg.data.standard_velocity_range,
         extrapolation_velocity_range=cfg.data.extrapolation_velocity_range,
-        drift_injection_prob=0.0,
-        drift_magnitude=cfg.data.drift_magnitude,
-        mixed_drift=cfg.data.mixed_drift,
         event_threshold=cfg.environment.event_threshold,
-        box_size=cfg.environment.box_size,
         dt=cfg.environment.dt,
         num_workers=cfg.data.num_workers,
         cache_data=cfg.data.cache_data,
+        dataset_dir=cfg.data.dataset_dir,
     )
 
     evaluator = RolloutEvaluator(
         model=model,
         device=device,
         horizons=eval_horizons,
-        num_objects=cfg.environment.num_objects,
+        joint_count=cfg.environment.joint_count,
         temporal_burn_in=cfg.training.temporal_burn_in,
         fixed_predictor=fixed_predictor_eval,
     )
@@ -152,7 +144,7 @@ def _evaluate_and_save_phase_artifacts(
     if history:
         plot_training_curves(history, figures_dir / "training_curves.png")
 
-    pos_span = 2.0 * float(cfg.environment.box_size)
+    pos_span = 2.0
     vel_span = float(cfg.data.standard_velocity_range[1] - cfg.data.standard_velocity_range[0])
     plot_physical_rollout_degradation(
         horizons=test_metrics.horizons,
@@ -175,9 +167,10 @@ def _evaluate_and_save_phase_artifacts(
     sample_batch = next(iter(eval_loaders["test"]))
     events = sample_batch["events"].to(device)
     flat_kin = sample_batch["flat_kinematics"].to(device)
+    actions = sample_batch["actions"].to(device)
     burn_in = min(cfg.training.temporal_burn_in, max(0, events.shape[1] - 2))
     with torch.no_grad():
-        out = model(events)
+        out = model(events, actions=actions)
         z_start = out.latent_states[:, burn_in]
         decoder_state = model.physical_decoder.warm_up_filter(out.latent_states[:, : burn_in + 1])
         max_mode_h = max(eval_horizons)
@@ -186,6 +179,7 @@ def _evaluate_and_save_phase_artifacts(
             model=model,
             z_init=z_start,
             horizon=eval_h,
+            actions=actions[:, burn_in : burn_in + eval_h],
             with_grad=False,
             decode_kinematics=True,
             initial_decoder_state=decoder_state,
@@ -257,8 +251,6 @@ def main() -> None:
         overrides["early_stopping_patience"] = args.patience
     if args.representation_checkpoint is not None:
         overrides["representation_checkpoint"] = args.representation_checkpoint
-    if args.m1_checkpoint is not None:
-        overrides["m1_checkpoint"] = args.m1_checkpoint
     if args.phase_horizon is not None:
         overrides["phase_horizon"] = args.phase_horizon
     if args.temporal_burn_in is not None:
@@ -291,17 +283,15 @@ def main() -> None:
         batch_size=cfg.data.batch_size,
         height=cfg.environment.height,
         width=cfg.environment.width,
-        num_objects=cfg.environment.num_objects,
+        joint_count=cfg.environment.joint_count,
+        action_dim=cfg.environment.action_dim,
         standard_velocity_range=cfg.data.standard_velocity_range,
         extrapolation_velocity_range=cfg.data.extrapolation_velocity_range,
-        drift_injection_prob=0.0,
-        drift_magnitude=cfg.data.drift_magnitude,
-        mixed_drift=cfg.data.mixed_drift,
         event_threshold=cfg.environment.event_threshold,
-        box_size=cfg.environment.box_size,
         dt=cfg.environment.dt,
         num_workers=cfg.data.num_workers,
         cache_data=cfg.data.cache_data,
+        dataset_dir=cfg.data.dataset_dir,
     )
 
     model = SPWM.from_config(cfg).to(device)

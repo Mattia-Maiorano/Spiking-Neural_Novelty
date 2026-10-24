@@ -94,7 +94,7 @@ class DynamicsOutput:
 
 @dataclass
 class PredictorOutput:
-    """Container for stateless latent predictor output."""
+    """Container for action-conditioned latent predictor output."""
     predicted_latent: torch.Tensor  # [B, ..., latent_dim]
     mean: torch.Tensor              # [B, ..., latent_dim]
     log_var: Optional[torch.Tensor] = None
@@ -102,9 +102,10 @@ class PredictorOutput:
 
 @dataclass
 class SPWMState:
-    """Complete recurrent state of the SPWM world model."""
+    """Complete recurrent state of the SPWM world model, including action tensor u_t."""
     encoder_states: Optional[Any]
     dynamics_state: DynamicsState
+    action: Optional[torch.Tensor] = None  # [B, action_dim] (u_t)
 
 
 @dataclass
@@ -114,9 +115,10 @@ class SPWMStepOutput:
     predicted_next_latent: torch.Tensor         # [B, latent_dim] (z_hat_(t+1))
     error_neurons: torch.Tensor                 # [B, encoder_dim] (epsilon_t = x_t - W_pred z_(t-1))
     prediction_error: Optional[torch.Tensor]    # [B] if target latent is available
-    decoded_kinematics: Optional[torch.Tensor]  # [B, 4 * N]
+    decoded_kinematics: Optional[torch.Tensor]  # [B, 2 * joint_count] (joint angles q* and angular velocities p*)
     ema_spikes: Optional[torch.Tensor] = None   # [B, total_memory_dim]
     keypoints: Optional[torch.Tensor] = None    # [B, q_dim]
+    action: Optional[torch.Tensor] = None       # [B, action_dim] (u_t)
 
 
 @dataclass
@@ -167,24 +169,27 @@ class TelemetryContainer:
 
 @dataclass
 class RolloutResult:
-    """Standardized output container for autonomous latent rollouts."""
+    """Standardized output container for action-conditioned autonomous latent rollouts."""
     trajectory: torch.Tensor                          # [B, H, latent_dim]
     fast_trajectory: torch.Tensor                     # [B, H, latent_dim]
+    actions: Optional[torch.Tensor] = None            # [B, H, action_dim] or [B, action_dim]
     spikes: Optional[torch.Tensor] = None
     gain_masks: Optional[torch.Tensor] = None
-    decoded_kinematics: Optional[torch.Tensor] = None # [B, H, 4 * num_objects]
+    decoded_kinematics: Optional[torch.Tensor] = None # [B, H, 2 * joint_count]
     telemetry: Optional[Union[TelemetryContainer, Dict[str, List[torch.Tensor]]]] = None
     active_models: Optional[List[str]] = None
-    num_objects: int = 1
+    joint_count: int = 8
 
     @property
     def positions(self) -> Optional[torch.Tensor]:
+        """Decoded joint angles q* in [B, H, joint_count]."""
         if self.decoded_kinematics is None:
             return None
-        return self.decoded_kinematics[..., : 2 * self.num_objects]
+        return self.decoded_kinematics[..., : self.joint_count]
 
     @property
     def velocities(self) -> Optional[torch.Tensor]:
+        """Decoded joint angular velocities p* in [B, H, joint_count]."""
         if self.decoded_kinematics is None:
             return None
-        return self.decoded_kinematics[..., 2 * self.num_objects : 4 * self.num_objects]
+        return self.decoded_kinematics[..., self.joint_count : 2 * self.joint_count]

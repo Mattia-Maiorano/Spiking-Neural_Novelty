@@ -1,0 +1,52 @@
+// Neuromorphic Event Camera Compute Shader (SPWM-v0.4.0)
+// Computes temporal log-intensity differencing:
+//   L(u, v; t) = log(luminance(I(u, v; t)) + eps)
+//   delta_L(u, v; t) = L(u, v; t) - L(u, v; t - dt)
+// Emits binary ON (+1) and OFF (-1) polarity spikes matching threshold theta = 0.08.
+
+#pragma kernel ComputeLogIntensityEvents
+
+Texture2D<float4> CurrentFrame;
+RWTexture2D<float> PrevLogIntensity;
+RWStructuredBuffer<float> DenseEventBuffer; // Flattened [2, H, W] (Channel 0: ON, Channel 1: OFF)
+
+uint Width;
+uint Height;
+float EventThreshold; // Default: 0.08
+uint IsFirstFrame;
+
+[numthreads(8, 8, 1)]
+void ComputeLogIntensityEvents(uint3 id : SV_DispatchThreadID)
+{
+    if (id.x >= Width || id.y >= Height)
+    {
+        return;
+    }
+
+    float4 rgba = CurrentFrame[id.xy];
+    // ITU-R BT.709 luminance conversion
+    float luminance = dot(rgba.rgb, float3(0.2126f, 0.7152f, 0.0722f));
+    float logL = log(max(luminance, 0.0f) + 1e-3f);
+
+    uint pixelIdx = id.y * Width + id.x;
+    uint totalPixels = Width * Height;
+
+    if (IsFirstFrame != 0)
+    {
+        PrevLogIntensity[id.xy] = logL;
+        DenseEventBuffer[pixelIdx] = 0.0f;
+        DenseEventBuffer[totalPixels + pixelIdx] = 0.0f;
+        return;
+    }
+
+    float prevL = PrevLogIntensity[id.xy];
+    float deltaL = logL - prevL;
+    PrevLogIntensity[id.xy] = logL;
+
+    float posSpike = (deltaL > EventThreshold) ? 1.0f : 0.0f;
+    float negSpike = (deltaL < -EventThreshold) ? 1.0f : 0.0f;
+
+    // Channel 0: Positive polarity (ON), Channel 1: Negative polarity (OFF)
+    DenseEventBuffer[pixelIdx] = posSpike;
+    DenseEventBuffer[totalPixels + pixelIdx] = negSpike;
+}

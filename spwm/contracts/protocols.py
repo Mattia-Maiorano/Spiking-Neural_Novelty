@@ -70,32 +70,34 @@ class DynamicsProtocol(Protocol):
 
 @runtime_checkable
 class PredictorModuleProtocol(Protocol):
-    """Contract for a single stateless latent transition predictor (M1, M2, or M3)."""
+    """Contract for an action-conditioned latent transition predictor (M1)."""
     latent_dim: int
+    action_dim: int
 
-    def __call__(self, z: torch.Tensor) -> PredictorOutput:
+    def __call__(self, z: torch.Tensor, action: Optional[torch.Tensor] = None) -> PredictorOutput:
         ...
 
 
 @runtime_checkable
 class PredictorProtocol(Protocol):
-    """Contract for the symplectic latent predictor (M1)."""
+    """Contract for the action-conditioned dissipative latent predictor (M1)."""
     latent_dim: int
+    action_dim: int
     hidden_dim: int
     symplectic: bool
     dt: float
 
-    def __call__(self, z: torch.Tensor) -> PredictorOutput:
+    def __call__(self, z: torch.Tensor, action: Optional[torch.Tensor] = None) -> PredictorOutput:
         ...
 
 
 @runtime_checkable
 class PhysicalDecoderProtocol(Protocol):
-    """Contract for kinematic position & velocity readout probe."""
+    """Contract for articulated joint angle & angular velocity readout decoder."""
     latent_dim: int
     q_dim: int
     p_dim: int
-    num_objects: int
+    joint_count: int
 
     def decode_pos(self, q: torch.Tensor) -> torch.Tensor:
         ...
@@ -124,7 +126,8 @@ class WorldModelProtocol(Protocol):
     latent_dim: int
     q_dim: int
     p_dim: int
-    num_objects: int
+    joint_count: int
+    action_dim: int
     encoder: nn.Module
     dynamics: nn.Module
     predictor: nn.Module
@@ -132,10 +135,6 @@ class WorldModelProtocol(Protocol):
 
     @property
     def m1(self) -> nn.Module:
-        ...
-
-    @property
-    def m2(self) -> nn.Module:
         ...
 
     def forward_representation(
@@ -149,13 +148,14 @@ class WorldModelProtocol(Protocol):
         self,
         event_sequence: torch.Tensor,
         initial_state: Optional[SPWMState] = None,
+        actions: Optional[torch.Tensor] = None,
     ) -> SPWMSequenceOutput:
         ...
 
 
 class PhaseStrategy(ABC):
     """
-    Uniform contract for isolated phase-specific training strategies (M1, M2, M3).
+    Uniform contract for isolated phase-specific training strategies (Phase 0 & Phase 1).
     Each concrete strategy lives in its own module (< 150 lines) so small LLMs can
     inspect and modify a single training phase with < 3 files in context.
     """

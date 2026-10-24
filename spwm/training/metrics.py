@@ -1,7 +1,7 @@
 """
 Scientific Evaluation & Training Metrics for SPWM (Layer 2 — Training).
 
-Covers latent prediction accuracy, physical kinematic decoding L2 errors,
+Covers latent prediction accuracy, articulated joint angle & angular velocity L2 errors,
 spike sparsity, parameter capacity, and neuromorphic energy estimation.
 """
 
@@ -24,11 +24,11 @@ def multi_step_mse(rollout_predictions: torch.Tensor, target_latents: torch.Tens
 def position_error(
     decoded_kinematics: torch.Tensor,
     true_kinematics: torch.Tensor,
-    num_objects: int = 1,
+    joint_count: int = 8,
 ) -> float:
-    """Mean L2 Euclidean distance between predicted and true object positions."""
-    pred_pos = decoded_kinematics[..., : 2 * num_objects].reshape(-1, num_objects, 2)
-    true_pos = true_kinematics[..., : 2 * num_objects].reshape(-1, num_objects, 2)
+    """Mean L2 Euclidean distance between predicted and ground-truth joint angles q*."""
+    pred_pos = decoded_kinematics[..., :joint_count].reshape(-1, joint_count)
+    true_pos = true_kinematics[..., :joint_count].reshape(-1, joint_count)
     dist = torch.norm(pred_pos - true_pos, dim=-1)
     return float(torch.mean(dist).item())
 
@@ -36,11 +36,11 @@ def position_error(
 def velocity_error(
     decoded_kinematics: torch.Tensor,
     true_kinematics: torch.Tensor,
-    num_objects: int = 1,
+    joint_count: int = 8,
 ) -> float:
-    """Mean L2 Euclidean distance between predicted and true object velocities."""
-    pred_vel = decoded_kinematics[..., 2 * num_objects : 4 * num_objects].reshape(-1, num_objects, 2)
-    true_vel = true_kinematics[..., 2 * num_objects : 4 * num_objects].reshape(-1, num_objects, 2)
+    """Mean L2 Euclidean distance between predicted and ground-truth joint angular velocities p*."""
+    pred_vel = decoded_kinematics[..., joint_count : 2 * joint_count].reshape(-1, joint_count)
+    true_vel = true_kinematics[..., joint_count : 2 * joint_count].reshape(-1, joint_count)
     dist = torch.norm(pred_vel - true_vel, dim=-1)
     return float(torch.mean(dist).item())
 

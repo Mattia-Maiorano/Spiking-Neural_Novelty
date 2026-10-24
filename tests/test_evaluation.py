@@ -4,7 +4,6 @@ import torch
 import numpy as np
 import pytest
 
-from spwm.data.synthetic_world import MovingObjectsWorld
 from spwm.data.event_camera import EventCameraSimulator
 from spwm.data.datasets import EventWorldDataset, collate_event_batches
 from torch.utils.data import DataLoader
@@ -23,21 +22,19 @@ from spwm.evaluation.visualizer import (
 )
 
 
-
 def test_rollout_evaluator_long_horizon():
-    world = MovingObjectsWorld()
     sim = EventCameraSimulator(height=32, width=32)
     ds = EventWorldDataset(
         trajectory_indices=[0, 1],
-        world=world,
         event_simulator=sim,
         sequence_length=150,
-        num_objects=1,
+        joint_count=8,
+        action_dim=8,
     )
     loader = DataLoader(ds, batch_size=2, collate_fn=collate_event_batches)
 
-    model = SPWM(latent_dim=32, timescale_dims=(16, 16), encoder_dim=32)
-    evaluator = RolloutEvaluator(model=model, horizons=[1, 5, 10, 25, 50], num_objects=1)
+    model = SPWM(latent_dim=32, timescale_dims=(16, 16), encoder_dim=32, joint_count=8, action_dim=8)
+    evaluator = RolloutEvaluator(model=model, horizons=[1, 5, 10, 25, 50], joint_count=8)
     res = evaluator.evaluate_dataset(loader)
 
     for h in [1, 5, 10, 25, 50]:

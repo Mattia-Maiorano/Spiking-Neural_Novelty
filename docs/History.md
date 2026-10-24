@@ -1770,3 +1770,44 @@ Durante il rollout multi-step ([`spwm/models/rollout.py`](file:///Users/Mattia/D
   - Test anti-dead code ([`tests/test_dead_code.py`](file:///Users/Mattia/Desktop/Studies/Temp/tests/test_dead_code.py)) e test dedicati al denoiser geometrico ([`tests/test_m2_denoiser.py`](file:///Users/Mattia/Desktop/Studies/Temp/tests/test_m2_denoiser.py)).
   - Suite completa di 69 test eseguita con successo al 100%.
 
+---
+---
+
+# SPWM-v0.4.0: Modellazione del Mondo Robotico Articolato 3D in Unity C# e Dinamica ad Attrattori con Azioni
+
+### 1. Motivazione e Cambio di Paradigma (Post-Mortem v0.3.1)
+I mondi sintetici 2D (biliardo con rimbalzi elastici e perturbazioni impulsive stocastiche di drift) e l'ausilio di un denoiser geometrico stateless ($M_2$) hanno mostrato i loro limiti concettuali ed empirici:
+1. **Irrealismo Fisico dei Rimbalzi 2D**: La dinamica a rimbalzo conservativo su pareti rigide non rispecchia i sistemi robotici del mondo reale, governati da catene cinematiche articolate ad albero (Featherstone), attriti articolari coulombiani e viscosi, gravità e reazioni di contatto al suolo.
+2. **Superamento di $M_2$ Denoiser**: In sistemi fisici guidati da attuatori continui $\mathbf{u}_t$, le traiettorie convergono naturalmente a manifold stabili (attrattori a ciclo limite per deambulazione ritmica o punti fissi per bilanciamento posturale). L'integrazione di un integratore dissipativo dipendente dalle azioni elimina la necessità di proiettori arbitrari $M_2$, riducendo la complessità architetturale a due sole fasi organiche (**Phase 0 Representation** & **Phase 1 Action-Conditioned M1**).
+
+### 2. Modifiche Architetturali e Nuove Componenti (sim/ & spwm/)
+
+- **Ambiente di Simulazione Robotica 3D in Unity C# (`sim/`)**:
+  - `ArticulatedRobotRig.cs`: Modella catene cinematiche Feathertone PhysX 4 (`ArticulationBody`) ad alto grado di libertà (humanoid biped $J=8$, quadrupedi, bracci manipolatori) con inerzie realistiche e attrito articolare.
+  - `ActionConditionedController.cs`: Controller di movimento condizionato dai comandi $\mathbf{u}_t \in \mathbb{R}^{D_u}$. Supporta attrattori a ciclo limite CPG (camminata con accoppiamento bilaterale in antifase) e attrattori a punto fisso (bilanciamento posturale PD).
+  - `NeuromorphicEventBridge.cs` & `EventCameraLogDiff.compute`: Bridge neuromorfico su GPU compute shader che converte i frame di luminanza in eventi di polarità (+1/-1) a soglia logaritmica differenziale $\theta = 0.08$.
+  - `RoboticTelemetryLogger.cs`: Registratore di telemetria e traiettorie robotiche complete ($\mathbf{q}^*, \mathbf{p}^*, \mathbf{u}_t, \mathbf{E}$) esportate in formato JSON per l'addestramento PyTorch.
+
+- **Layer 0: Contratti e Schemi Estesi ad Azioni $\mathbf{u}_t$**:
+  - In `spwm/contracts/config.py`: Aggiunti `joint_count` ($J=8$) e `action_dim` ($D_u=8$) in `EnvironmentConfig` e `DataConfig`; `dataset_dir` per traiettorie Unity; rimossi `train_m2` e `m1_checkpoint`.
+  - In `spwm/contracts/tensors.py`: `assert_phase_space_contract` valida esplicitamente la forma $[B, \dots, D_u]$, il rango $\ge 2$ e la finitezza del tensore azioni $\mathbf{u}_t$.
+  - In `spwm/contracts/states.py`: `SPWMState`, `SPWMStepOutput` e `RolloutResult` integrano esplicitamente il tensore azioni $\mathbf{u}_t$ e le proprietà di scomposizione articolare `.positions` e `.velocities` su $J$ giunti.
+
+- **Layer 1: Predittore ad Attrattori Dissipativi ($M_1$) e PhysicalDecoder Articolato**:
+  - `LatentPredictor` accetta $[\mathbf{z}_t, \mathbf{u}_t]$ apprendendo campi dissipativi $\gamma_t = \sigma(\text{Linear}(\mathbf{h}_t))$ e forze $(\mathbf{f}_p, \mathbf{f}_q)$:
+    $$\mathbf{p}_{t+1} = (1 - \Delta t \cdot \gamma_t) \mathbf{p}_t + \mathbf{f}_p$$
+    $$\mathbf{q}_{t+1} = \mathbf{q}_t + \Delta t \cdot (\mathbf{p}_{t+1}[..., :q\_dim] + \mathbf{f}_q)$$
+  - `PhysicalDecoder`: Teste MLP nonlineari per decodificare gli angoli articolari continui $\mathbf{q}^*$ e le velocità angolari $\mathbf{p}^*$ per tutti gli $J$ giunti.
+  - Rimozione totale di $M_2$ (`ManifoldProjector`, `LatentDenoiser`) dal modello e da `spwm/models/__init__.py`.
+
+- **Layer 2: Pipeline Dati e Strategie di Addestramento a Due Fasi**:
+  - `spwm/data/synthetic_world.py` eliminato e sostituito da `RoboticTrajectory`, `simulate_articulated_trajectory` e l'ingestione JSON di traiettorie Unity in `spwm/data/datasets.py`.
+  - `M1PhaseStrategy`: Rollout autoregressivo guidato dalla sequenza di azioni $\mathbf{u}_{0:H}$ con perdita $\mathcal{L}_{M_1} = \text{MSE}(\hat{\mathbf{z}}_{t+1}, \mathbf{z}_{\text{target}, t+1})$.
+  - Eliminato `spwm/training/phases/m2_recovery.py`.
+
+### 3. Validazione e Copertura Test
+- Rimozione di `tests/test_m2_denoiser.py` e `tests/test_synthetic_world.py`.
+- Aggiornati `test_architecture_contracts.py`, `test_dead_code.py`, `test_relay.py`, `test_models_contracts.py`, `test_unified_rollout.py`, `test_training_phases.py` per verificare il passaggio ad azioni e cinematica robotica articolata.
+- Suite completa di 57 test eseguita e validata con esito 100% positivo.
+
+

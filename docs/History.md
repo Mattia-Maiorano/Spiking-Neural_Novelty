@@ -1725,16 +1725,17 @@ In **SPWM-v0.3.0**, la pipeline di training viene rigorosamente disaccoppiata in
 ---
 ---
 
-# SPWM-v0.3.1: Pruning del Modello a 3 Componenti e Adozione dell'Architettura Simplettica a 2 Fasi (Representation / Symplectic Predictor M1)
+# SPWM-v0.3.1: Integrazione Simplettica e Manifold Projector M2 (Geometric Denoiser)
 
 ### 1. Motivazione e Svolta Architetturale
-Il paradigma a 3 modelli a staffetta (**Cascaded Temporal Relay**: $M_1 \to M_2 \leftrightarrow M_3$, `ConvergenceFunnelLoss`, multi-phase cascade) introduceva complessità di coordinamento e overhead di handoff artificiali tra finestre temporali discrete. L'analisi geometrica dello spazio delle fasi ha evidenziato che una formulazione energeticamente conservativa basata su principi simplettici consente a un singolo modello predittivo $M_1$ di sostenere l'autoregressione su orizzonti arbitrari senza divergenza esplosiva o collasso dissipativo.
+Il vecchio paradigma a staffetta temporale (**Cascaded Temporal Relay**: $M_1 \to M_2 \leftrightarrow M_3$, `ConvergenceFunnelLoss`, multi-phase cascade) introduceva complessità di coordinamento, overhead di handoff artificiali tra finestre temporali discrete e accumulo caotico di errori.
+Nel refactor v0.3.1, l'architettura è stata ripensata su due pilastri geometrici complementari:
+1. **Dinamica Conservativa Simplettica ($M_1$):** L'integrazione semi-implicita di Eulero preserva l'area nello spazio delle fasi, garantendo stabilità energetica e assenza di divergenze esplosive o collassi dissipativi su orizzonti estesi.
+2. **Stateless Manifold Projector ($M_2$ Denoiser):** Invece di avanzare il tempo, $M_2$ agisce come un proiettore geometrico $z_{\text{clean}} = M_2(z_{\text{noisy}})$, mappando stati latenti perturbati o deviati nuovamente sul manifold valido della dinamica senza avanzamento temporale.
 
-In **SPWM-v0.3.1**, la vecchia implementazione a 3 modelli è stata completamente potata in favore di un'architettura rigorosa a 2 stadi:
-1. **Fase 0 (`train_representation`):** Grounded State Estimator sensoriale su flussi di eventi (con encoder, dinamica spiking multi-scala, predittore sensoriale top-down e decoder cinematico).
-2. **Fase 1 (`train_m1`):** Symplectic Latent Predictor ($M_1$) operante nello spazio delle fasi puro.
+### 2. Formulazione Matematica
 
-### 2. Formulazione Matematica: Integrazione Simplettica Semi-Implicita di Eulero
+#### A. Integrazione Simplettica Semi-Implicita di Eulero ($M_1$)
 Nel predittore latente ([`spwm/models/predictors.py`](file:///Users/Mattia/Desktop/Studies/Temp/spwm/models/predictors.py)), lo stato viene scomposto nelle coordinate geometriche $q_t \in \mathbb{R}^{q\_dim}$ e nei momenti canonici $p_t \in \mathbb{R}^{p\_dim}$:
 1. **Aggiornamento del Momento:**
    $$\Delta p_t = \text{MLP}(z_t), \quad p_{t+1} = p_t + \Delta p_t$$
@@ -1746,18 +1747,26 @@ Nel predittore latente ([`spwm/models/predictors.py`](file:///Users/Mattia/Deskt
 
 Questa integrazione simplettica preserva l'area hamiltoniana nello spazio delle fasi e la 2-forma canonica $dp \wedge dq$, garantendo che le orbite fisiche non subiscano dissipazione numerica o instabilità sul lungo termine.
 
-### 3. Completo Pruning dell'Old Logic & Dead Code Guards
-- **File Fisici Eliminati:**
-  - `spwm/training/phases/m2_recovery.py`
-  - `spwm/training/phases/m3_sustained.py`
-  - Vecchi moduli legacy `eprop.py`, `corrector.py`, `corrector_phase.py`.
-- **Classi, Simboli e Metodi Potati:**
-  - `CascadedTemporalRelay`, `ConvergenceFunnelLoss`, `compute_convergence_funnel_target`, `compute_convergence_funnel_loss`, `extrapolate_latent`.
-  - `M2PhaseStrategy`, `M3PhaseStrategy`, `load_m1_checkpoint`, `load_m2_checkpoint`.
-  - Attributi `model.m2`, `model.m3`, `model.relay` (ora `model.predictor` è l'istanza primaria e `model.m1` ne è alias).
-  - Modalità `train_m2`, `train_m3`, `train_cascade` (ora sollevano immediatamente `ValueError`).
-  - Proprietà di configurazione `max_rollout_horizon`, `m1_checkpoint`, `m2_checkpoint`, `m2_num_phases`, `symplectic_m1_all_the_way`.
-- **Suite di Test Anti-Dead-Code ([`tests/test_dead_code.py`](file:///Users/Mattia/Desktop/Studies/Temp/tests/test_dead_code.py)):**
-  Introdotto un verificatore AST statico e dinamico permanente che ispeziona `spwm/` ed `experiments/` per garantire che nessun residuo o import fantasma della vecchia architettura possa ricomparire nel codebase.
-- **Validazione:** Suite completa di 62 test eseguita con successo al 100%.
+#### B. Stateless Manifold Projector ($M_2$) & Regime di Addestramento
+In [`spwm/training/phases/m2_recovery.py`](file:///Users/Mattia/Desktop/Studies/Temp/spwm/training/phases/m2_recovery.py), con rappresentazione e $M_1$ rigorosamente congelati (`requires_grad = False`), $M_2$ viene addestrato su vettori off-manifold generati da due regimi:
+1. **Rollout Autoregressivo di $M_1$:** $k$ passi di drift ($k \in \{5, 15, 25\}$) per catturare l'errore effettivo dell'integratore.
+2. **Iniezione Gaussiana:** $z_{\text{noisy}} = z_k^* + \mathcal{N}(0, \sigma^2 \mathbf{I})$ con $\sigma \in [0.01, 0.05]$.
+
+L'obiettivo è l'annullamento della deviazione rispetto allo stato pristine $z_k^*$ mediante loss Smooth-L1 decomposta:
+$$\mathcal{L}_{M_2} = \lambda_q \cdot \text{SmoothL1}(\hat{q}, q_k^*) + \lambda_p \cdot \text{SmoothL1}(\hat{p}, p_k^*)$$
+
+#### C. Protocollo di Inferenza ed Evaluation: Integrate & Project
+Durante il rollout multi-step ([`spwm/models/rollout.py`](file:///Users/Mattia/Desktop/Studies/Temp/spwm/models/rollout.py)):
+- Ad ogni passo $t$, $M_1$ avanza temporalmente la traiettoria simplettica.
+- A cadenza prefissata $N$ (es. $t \pmod N == 0$, con `projection_cadence=10`), $M_2$ riproietta lo stato accumulato sul manifold: $z_t = M_2(z_t)$.
+- Lo stato riproiettato funge da ancora per i successivi passi di integrazione di $M_1$.
+
+### 3. Struttura dei Moduli, Pruning e Guardie Anti-Dead-Code
+- **Potatura Completa del Vecchio Codice Relay / Cascade:**
+  - Eliminati i vecchi moduli `spwm/training/phases/m3_sustained.py`, `spwm/core/corrector.py`, `spwm/learning/eprop.py`.
+  - Pruned: `CascadedTemporalRelay`, `ConvergenceFunnelLoss`, target/loss functions a funnel, `train_m3`, `train_cascade`.
+  - Modello SPWM include `predictor` ($M_1$) e `m2` (`ManifoldProjector`), con `model.m1` alias di `model.predictor`.
+- **Suite di Test e Validazione:**
+  - Test anti-dead code ([`tests/test_dead_code.py`](file:///Users/Mattia/Desktop/Studies/Temp/tests/test_dead_code.py)) e test dedicati al denoiser geometrico ([`tests/test_m2_denoiser.py`](file:///Users/Mattia/Desktop/Studies/Temp/tests/test_m2_denoiser.py)).
+  - Suite completa di 69 test eseguita con successo al 100%.
 

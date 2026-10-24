@@ -250,5 +250,4 @@ All checkpoint operations in [`spwm/training/engine.py`](file:///Users/Mattia/De
 - **Autonomous Symplectic Rollout (`relay_rollout.png`)**: Qualitative sanity check verifying that autonomous symplectic prediction produces smooth, stable orbits without dissipative decay or numerical explosion.
 - **Rollout Degradation Curve (`fig3_multi_step_degradation.png`)**: Quantitative confirmation that position and velocity errors remain bounded across horizons up to $H=100$.
 - **Integrate & Project Protocol Verification**: Confirmed via `tests/test_m2_denoiser.py` and `tests/test_unified_rollout.py` with periodic $M2$ projection resetting accumulation drift without advancing time.
- **Rollout Degradation Curve (`fig3_multi_step_degradation.png`)**: Quantitative confirmation that position and velocity errors remain bounded across horizons up to $H=100$.
 - **Multi-Channel & Multi-Metric Consistency**: Low error across all channels, balanced spike rates, and low velocity error.

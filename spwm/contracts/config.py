@@ -207,7 +207,7 @@ class TrainingConfig:
     phase_horizon: int = 50                        #: Duration H of predictor unrolling during training.
 
     def __post_init__(self) -> None:
-        valid_modes = ("train_representation", "train_m1", "train_m2", "train_denoiser")
+        valid_modes = ("train_representation", "train_m1", "train_m2")
         if self.mode not in valid_modes:
             raise ValueError(f"Invalid training mode '{self.mode}'. Allowed modes: {valid_modes}")
         if self.phase_horizon <= 0:
@@ -285,7 +285,7 @@ class ExperimentConfig:
                     f"DataConfig.sequence_length ({seq_len}) is too short for train_m1 "
                     f"with phase_horizon={H} (requires >= {min_len})."
                 )
-        elif mode in ("train_m2", "train_denoiser"):
+        elif mode == "train_m2":
             min_len = 10
             if seq_len < min_len:
                 raise ValueError(

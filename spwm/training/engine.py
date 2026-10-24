@@ -180,7 +180,7 @@ def enforce_phase_prerequisites(
             except FileNotFoundError as err:
                 chronicle.log_info(f"Phase prerequisite notice for {mode}: {err}")
 
-    elif mode in ("train_m2", "train_denoiser"):
+    elif mode == "train_m2":
         # Require M1 checkpoint (which contains representation + M1)
         if cfg.training.m1_checkpoint:
             m1_path = resolve_version_checkpoint(
@@ -253,7 +253,7 @@ class BaseTrainer:
             self.loss_fn = loss_fn.to(self.device)
 
         self.mode = cfg.training.mode.lower()
-        if auto_enforce_checkpoints and self.mode in ("train_m1", "train_m2", "train_denoiser"):
+        if auto_enforce_checkpoints and self.mode in ("train_m1", "train_m2"):
             enforce_phase_prerequisites(
                 self.model, self.cfg, device=self.device, results_root=self.results_root
             )

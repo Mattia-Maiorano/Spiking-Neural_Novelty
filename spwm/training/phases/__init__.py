@@ -36,7 +36,7 @@ def build_phase_strategy(
         return RepresentationPhaseStrategy(model=model, cfg=cfg, loss_fn=loss_fn, device=device)
     if mode in ("train_m1", "m1"):
         return M1PhaseStrategy(model=model, cfg=cfg, loss_fn=loss_fn, device=device)
-    if mode in ("train_m2", "m2", "train_denoiser", "denoiser"):
+    if mode in ("train_m2", "m2"):
         return M2PhaseStrategy(model=model, cfg=cfg, loss_fn=loss_fn, device=device)
     raise ValueError(
         f"Unsupported training mode '{mode}'. Supported modes: 'train_representation', 'train_m1', 'train_m2'"

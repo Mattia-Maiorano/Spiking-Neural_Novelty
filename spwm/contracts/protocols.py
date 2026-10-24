@@ -78,22 +78,14 @@ class PredictorModuleProtocol(Protocol):
 
 
 @runtime_checkable
-class RelayPredictorProtocol(Protocol):
-    """Contract for the Cascaded Temporal Relay (M1, M2, M3)."""
+class PredictorProtocol(Protocol):
+    """Contract for the symplectic latent predictor (M1)."""
     latent_dim: int
     hidden_dim: int
-    phase_horizon: int
-    m1: nn.Module
-    m2: nn.Module
-    m3: nn.Module
+    symplectic: bool
+    dt: float
 
-    def get_active_model(self, step: int) -> Tuple[nn.Module, str, int]:
-        ...
-
-    def init_m3_from_m1(self) -> None:
-        ...
-
-    def __call__(self, z: torch.Tensor, step: Optional[int] = None) -> PredictorOutput:
+    def __call__(self, z: torch.Tensor) -> PredictorOutput:
         ...
 
 
@@ -133,15 +125,10 @@ class WorldModelProtocol(Protocol):
     q_dim: int
     p_dim: int
     num_objects: int
-    phase_horizon: int
     encoder: nn.Module
     dynamics: nn.Module
-    predictor: RelayPredictorProtocol
+    predictor: nn.Module
     physical_decoder: PhysicalDecoderProtocol
-
-    @property
-    def relay(self) -> RelayPredictorProtocol:
-        ...
 
     @property
     def m1(self) -> nn.Module:
@@ -149,10 +136,6 @@ class WorldModelProtocol(Protocol):
 
     @property
     def m2(self) -> nn.Module:
-        ...
-
-    @property
-    def m3(self) -> nn.Module:
         ...
 
     def forward_representation(

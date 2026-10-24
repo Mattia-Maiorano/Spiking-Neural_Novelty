@@ -19,7 +19,7 @@ from spwm.contracts import (
     MemoryConfig,
     EncoderProtocol,
     DynamicsProtocol,
-    RelayPredictorProtocol,
+    PredictorProtocol,
     PhysicalDecoderProtocol,
     WorldModelProtocol,
 )
@@ -27,7 +27,6 @@ from spwm.models.encoder import EventEncoder, SpatialSoftmax
 from spwm.models.dynamics import SpikingLatentDynamics
 from spwm.models.predictors import (
     LatentPredictor,
-    CascadedTemporalRelay,
     PhysicalDecoder,
 )
 from spwm.models.world_model import SPWM

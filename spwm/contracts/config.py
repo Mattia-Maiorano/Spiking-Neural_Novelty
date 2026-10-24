@@ -60,7 +60,7 @@ def _strict_dict_to_dataclass(cls: Type[T], data: Dict[str, Any], context: str =
 @dataclass(frozen=True)
 class ProjectConfig:
     """Project-level identity, tracking tags, and pseudo-random reproducibility configuration."""
-    name: str = "spwm_v0_3_0"  #: Unique identifier/tag for the project and run artifacts.
+    name: str = "spwm_v0_3_1"  #: Unique identifier/tag for the project and run artifacts.
     seed: int = 42             #: Global pseudo-random seed for PyTorch, NumPy, and synthetic data generation.
 
 
@@ -130,6 +130,7 @@ class ModelConfig:
     ema_decay: float = 0.9                            #: Exponential moving average decay for tracking latent spike statistics.
     decoder_ema_alpha: float = 0.2                    #: EMA filter smoothing coefficient for PhysicalDecoder momentum readout (alpha = 0.5).
     in_channels: int = 2                              #: Event camera input polarity channels (positive and negative spikes).
+    symplectic: bool = True                          #: Whether to use symplectic semi-implicit Euler integration for M1.
 
     def __post_init__(self) -> None:
         assert_phase_space_contract(
@@ -180,24 +181,18 @@ class MemoryConfig:
 class TrainingConfig:
     """
     Training regime, optimization hyperparameters, phases, and unroll horizons.
-    Cascaded Temporal Relay Architecture:
-      1. 'train_m1' (Phase 1 - Nominal Physics & Representation):
-         Jointly trains EventEncoder, SpikingLatentDynamics, PhysicalDecoder, and M1 on clean on-manifold trajectories (t = 0 -> phase_horizon).
-         M2 and M3 are strictly frozen.
-      2. 'train_m2' (Phase 2 - Recovery Predictor / Shock Absorber):
-         Trains M2 strictly on a single recovery phase (t = H -> 2H) after frozen M1 computes 0 -> H,
-         minimizing the Convergence Funnel blended target loss.
-         M1, M3, Encoder, Dynamics, and PhysicalDecoder are permanently frozen.
-      3. 'train_m3' (Phase 3 - Sustained Predictor / Max Rollout Training):
-         M3 is initialized from M1 pre-trained weights.
-         Trains BOTH M2 and M3 jointly across the alternating relay up to max_rollout_horizon.
-         M1, Encoder, Dynamics, and PhysicalDecoder remain permanently frozen.
-      4. 'train_cascade' (Automated Sequential Cascade):
-         Automatically runs train_m1 -> train_m2 -> train_m3 in sequence, transitioning to the next phase
-         after `early_stopping_patience` (default: 20) epochs without validation improvement and strictly loading
-         the best validation `model.pt` from each preceding stage.
+    Representation / Predictor Architecture:
+      1. 'train_representation' (Phase 0 - Grounded State Estimator):
+         Jointly trains EventEncoder, SpikingLatentDynamics, SensoryPredictor, and PhysicalDecoder
+         over sensory streams purely as a grounded state estimator without predictor rollouts.
+      2. 'train_m1' (Phase 1 - Symplectic Latent Predictor):
+         Freezes representation modules and trains the symplectic LatentPredictor (M1)
+         autoregressively in pure latent space.
+      3. 'train_m2' (Phase 2 - Stateless Manifold Projector / Geometric Denoiser):
+         Freezes representation modules and M1, trains M2 to map noisy/drifted latent states
+         back to ground-truth states z* without advancing time.
     """
-    mode: str = "train_m1"                         #: Active training stage: "train_m1", "train_m2", "train_m3", or "train_cascade".
+    mode: str = "train_m1"                         #: Active training stage: "train_representation", "train_m1", or "train_m2".
     epochs: int = 100                              #: Total number of training epochs to execute for the active phase.
     early_stopping_patience: int = 20              #: Epochs without validation improvement before stopping/switching phase.
     batch_size: int = 32                           #: Mini-batch size per optimization step.
@@ -208,23 +203,17 @@ class TrainingConfig:
     probe_weight_decay: float = 0.01               #: L2 regularization penalty applied to linear probes.
     temporal_burn_in: int = 15                      #: Initial latent steps for recurrent dynamics warm-up before launching evaluation rollouts.
     representation_checkpoint: Optional[str] = None  #: Optional path to pre-trained representation checkpoint .pt.
-    phase_horizon: int = 5                        #: Dynamic duration H of each cyclic relay phase (M1 nominal horizon, M2 recovery window).
-    max_rollout_horizon: int = 40                  #: Max rollout horizon for M3 training where both M2 and M3 are jointly trained.
-    m1_checkpoint: Optional[str] = None            #: Path to pre-trained M1 checkpoint (`model.pt`) for Phase 2 / Phase 3.
-    m2_checkpoint: Optional[str] = None            #: Path to pre-trained M2 checkpoint (`model.pt`) for Phase 3.
+    m1_checkpoint: Optional[str] = None            #: Optional path to pre-trained M1 checkpoint .pt for Phase 2.
+    phase_horizon: int = 50                        #: Duration H of predictor unrolling during training.
 
     def __post_init__(self) -> None:
-        valid_modes = ("train_representation", "train_m1", "train_m2", "train_m3", "train_cascade")
+        valid_modes = ("train_representation", "train_m1", "train_m2", "train_denoiser")
         if self.mode not in valid_modes:
             raise ValueError(f"Invalid training mode '{self.mode}'. Allowed modes: {valid_modes}")
         if self.phase_horizon <= 0:
             raise ValueError(f"phase_horizon must be > 0, got {self.phase_horizon}")
         if self.early_stopping_patience <= 0:
             raise ValueError(f"early_stopping_patience must be > 0, got {self.early_stopping_patience}")
-        if self.max_rollout_horizon <= self.phase_horizon:
-            raise ValueError(
-                f"max_rollout_horizon ({self.max_rollout_horizon}) must be > phase_horizon ({self.phase_horizon})"
-            )
 
 
 @dataclass(frozen=True)
@@ -256,6 +245,7 @@ class EvaluationConfig:
     Governs test-time unrolled rollout evaluations across multiple temporal horizons H.
     """
     rollout_horizons: Tuple[int, ...] = (1, 5, 10, 25, 50, 100)  #: Unrolled rollout evaluation horizons H evaluated on test set.
+    projection_cadence: int = 10                                 #: Cadence N for stateless manifold projection M2 during rollouts.
 
 
 @dataclass(frozen=True)
@@ -295,19 +285,12 @@ class ExperimentConfig:
                     f"DataConfig.sequence_length ({seq_len}) is too short for train_m1 "
                     f"with phase_horizon={H} (requires >= {min_len})."
                 )
-        elif mode == "train_m2":
-            min_len = 2 * H + 1
-            if seq_len < min_len:
-                raise ValueError(
-                    f"DataConfig.sequence_length ({seq_len}) is too short for train_m2 "
-                    f"with phase_horizon={H} (requires >= {min_len})."
-                )
-        elif mode in ("train_m3", "train_cascade"):
-            min_len = max(2 * H + 1, self.training.max_rollout_horizon + 1)
+        elif mode in ("train_m2", "train_denoiser"):
+            min_len = 10
             if seq_len < min_len:
                 raise ValueError(
                     f"DataConfig.sequence_length ({seq_len}) is too short for {mode} "
-                    f"with max_rollout_horizon={self.training.max_rollout_horizon} (requires >= {min_len})."
+                    f"(requires >= {min_len})."
                 )
 
     def with_overrides(
@@ -317,11 +300,9 @@ class ExperimentConfig:
         mode: Optional[str] = None,
         epochs: Optional[int] = None,
         early_stopping_patience: Optional[int] = None,
-        m1_checkpoint: Optional[str] = None,
-        m2_checkpoint: Optional[str] = None,
         representation_checkpoint: Optional[str] = None,
+        m1_checkpoint: Optional[str] = None,
         phase_horizon: Optional[int] = None,
-        max_rollout_horizon: Optional[int] = None,
         temporal_burn_in: Optional[int] = None,
         sequence_length: Optional[int] = None,
     ) -> "ExperimentConfig":
@@ -339,16 +320,12 @@ class ExperimentConfig:
             train_updates["epochs"] = epochs
         if early_stopping_patience is not None:
             train_updates["early_stopping_patience"] = early_stopping_patience
-        if m1_checkpoint is not None:
-            train_updates["m1_checkpoint"] = m1_checkpoint
-        if m2_checkpoint is not None:
-            train_updates["m2_checkpoint"] = m2_checkpoint
         if representation_checkpoint is not None:
             train_updates["representation_checkpoint"] = representation_checkpoint
+        if m1_checkpoint is not None:
+            train_updates["m1_checkpoint"] = m1_checkpoint
         if phase_horizon is not None:
             train_updates["phase_horizon"] = phase_horizon
-        if max_rollout_horizon is not None:
-            train_updates["max_rollout_horizon"] = max_rollout_horizon
         if temporal_burn_in is not None:
             train_updates["temporal_burn_in"] = temporal_burn_in
 

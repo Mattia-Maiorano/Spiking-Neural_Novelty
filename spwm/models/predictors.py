@@ -1,5 +1,5 @@
 """
-Layer 1 Latent Predictors, Cascaded Temporal Relay (M1, M2, M3), and Physical Kinematic Decoder.
+Layer 1 Symplectic Latent Predictor (M1) and Physical Kinematic Decoder.
 Pure neural modules with strict tensor shape assertions and zero training/loss couplings.
 """
 
@@ -15,8 +15,13 @@ from spwm.contracts.tensors import assert_phase_space_contract, assert_tensor_co
 class LatentPredictor(nn.Module):
     """
     Predictive Transition Head: p(z_(t+1) | z_t).
-    Uses a residual MLP block to predict the temporal differential or next latent state:
-        z_hat_(t+1) = z_t + delta_z(z_t).
+    Can run in standard residual mode:
+        z_hat_(t+1) = z_t + delta_z(z_t)
+    or in symplectic semi-implicit Euler mode (z_t = [q_t, p_t]):
+        delta_p_t = MLP(z_t)
+        p_(t+1) = p_t + delta_p_t
+        q_(t+1) = q_t + dt * p_(t+1)
+        z_(t+1) = [q_(t+1), p_(t+1)]
     """
 
     def __init__(
@@ -24,6 +29,10 @@ class LatentPredictor(nn.Module):
         latent_dim: int = 128,
         hidden_dim: int = 256,
         residual: bool = True,
+        symplectic: bool = False,
+        q_dim: Optional[int] = None,
+        p_dim: Optional[int] = None,
+        dt: float = 0.05,
     ) -> None:
         super().__init__()
         if latent_dim <= 0 or hidden_dim <= 0:
@@ -31,6 +40,19 @@ class LatentPredictor(nn.Module):
         self.latent_dim = latent_dim
         self.hidden_dim = hidden_dim
         self.residual = residual
+        self.symplectic = symplectic
+        self.dt = float(dt)
+
+        if symplectic:
+            self.q_dim = q_dim if q_dim is not None else (latent_dim // 4)
+            self.p_dim = p_dim if p_dim is not None else (latent_dim - self.q_dim)
+            if self.q_dim + self.p_dim != latent_dim:
+                raise ValueError(f"q_dim ({self.q_dim}) + p_dim ({self.p_dim}) != latent_dim ({latent_dim})")
+            out_dim = self.p_dim
+        else:
+            self.q_dim = q_dim or (latent_dim // 4)
+            self.p_dim = p_dim or (latent_dim - self.q_dim)
+            out_dim = latent_dim
 
         self.net = nn.Sequential(
             nn.Linear(latent_dim, hidden_dim),
@@ -39,7 +61,7 @@ class LatentPredictor(nn.Module):
             nn.Linear(hidden_dim, hidden_dim),
             nn.LayerNorm(hidden_dim),
             nn.SiLU(),
-            nn.Linear(hidden_dim, latent_dim),
+            nn.Linear(hidden_dim, out_dim),
         )
 
     def forward(self, z: torch.Tensor) -> PredictorOutput:
@@ -47,84 +69,23 @@ class LatentPredictor(nn.Module):
             raise ValueError(
                 f"LatentPredictor: expected last dimension {self.latent_dim}, got {z.shape[-1]} (shape {tuple(z.shape)})"
             )
-        delta_z = self.net(z)
-        z_next = z + delta_z if self.residual else delta_z
+        if self.symplectic:
+            q_t = z[..., : self.q_dim]
+            p_t = z[..., self.q_dim :]
+            delta_p = self.net(z)
+            p_next = p_t + delta_p
+            p_for_q = p_next[..., : self.q_dim] if self.p_dim != self.q_dim else p_next
+            q_next = q_t + self.dt * p_for_q
+            z_next = torch.cat([q_next, p_next], dim=-1)
+        else:
+            delta_z = self.net(z)
+            z_next = z + delta_z if self.residual else delta_z
+
         return PredictorOutput(
             predicted_latent=z_next,
             mean=z_next,
             log_var=None,
         )
-
-
-class CascadedTemporalRelay(nn.Module):
-    """
-    Cascaded Temporal Relay of stateless predictors (M1, M2, M3).
-    Enables autonomous, self-recovering infinite-horizon rollouts (t -> inf) without catastrophic drift.
-
-    Entities:
-      - M1 (Nominal Predictor): High-fidelity physics engine for steps t=0 to phase_horizon - 1.
-      - M2 (Recovery Predictor): Shock absorber for drifted states in alternating windows.
-      - M3 (Sustained Predictor): Infinite cruiser maintaining predictions from recovered states.
-
-    Cyclic Relay Schedule:
-      - step < H: M1 (nominal, steps 0..H-1)
-      - For step >= H:
-          Let k = step - H
-          If (k // H) % 2 == 0: M2
-          Else: M3
-          Local step in H-step window: k % H
-    """
-
-    def __init__(
-        self,
-        latent_dim: int = 128,
-        hidden_dim: int = 256,
-        residual: bool = True,
-        phase_horizon: int = 10,
-    ) -> None:
-        super().__init__()
-        if phase_horizon <= 0:
-            raise ValueError(f"CascadedTemporalRelay: phase_horizon must be > 0, got {phase_horizon}")
-        self.latent_dim = latent_dim
-        self.hidden_dim = hidden_dim
-        self.residual = residual
-        self.phase_horizon = phase_horizon
-
-        self.m1 = LatentPredictor(latent_dim=latent_dim, hidden_dim=hidden_dim, residual=residual)
-        self.m2 = LatentPredictor(latent_dim=latent_dim, hidden_dim=hidden_dim, residual=residual)
-        self.m3 = LatentPredictor(latent_dim=latent_dim, hidden_dim=hidden_dim, residual=residual)
-
-    def get_active_model(self, step: int) -> Tuple[LatentPredictor, str, int]:
-        """
-        Determines active model, name, and local step within the dynamic H-step window.
-        Uses modular arithmetic so the system operates autonomously across infinite horizons.
-        """
-        if step < 0:
-            raise ValueError(f"Rollout step index must be >= 0, got {step}")
-        H = self.phase_horizon
-        if step < H:
-            return self.m1, "m1", step
-        k = step - H
-        cycle_idx = k // H
-        step_in_window = k % H
-        if cycle_idx % 2 == 0:
-            return self.m2, "m2", step_in_window
-        else:
-            return self.m3, "m3", step_in_window
-
-    def forward(self, z: torch.Tensor, step: Optional[int] = None) -> PredictorOutput:
-        """
-        Predicts next latent state. If step is provided, uses the Cyclic Relay schedule.
-        If step is None, uses nominal predictor M1.
-        """
-        if step is None:
-            return self.m1(z)
-        model, _, _ = self.get_active_model(step)
-        return model(z)
-
-    def init_m3_from_m1(self) -> None:
-        """Initializes M3 using a strict copy of M1's pre-trained weights."""
-        self.m3.load_state_dict(self.m1.state_dict(), strict=True)
 
 
 class PhysicalDecoder(nn.Module):
@@ -225,66 +186,75 @@ class PhysicalDecoder(nn.Module):
         return torch.cat([pos_pred, vel_pred], dim=-1)
 
 
-def extrapolate_latent(
-    z_anchor: torch.Tensor,
-    t: int,
-    t_anchor: int = 10,
-    z_prev: Optional[torch.Tensor] = None,
-) -> torch.Tensor:
-    """Linearly extrapolate a latent state from z_anchor at step t_anchor to step t >= t_anchor.
-
-    Formula:
-        Extrapolate(z_anchor, t) = z_anchor + (t - t_anchor) * (z_anchor - z_prev)
+class ManifoldProjector(nn.Module):
     """
-    assert_tensor_contract(z_anchor, (None, None), "extrapolate_latent.z_anchor")
-    dt = float(t - t_anchor)
-    if z_prev is None or dt == 0.0:
-        return z_anchor
-    assert_tensor_contract(z_prev, tuple(z_anchor.shape), "extrapolate_latent.z_prev")
-    delta_z = z_anchor - z_prev
-    return z_anchor + dt * delta_z
+    Stateless Manifold Projector (Geometric Denoiser) - M2.
 
+    Takes an off-manifold latent state z_noisy (produced by autoregressive M1 rollouts
+    or injected perturbations) and projects it onto the closest valid ground-truth
+    phase space manifold z_clean, without advancing the time index t.
 
-def compute_convergence_funnel_target(
-    z_anchor: torch.Tensor,
-    z_prev: Optional[torch.Tensor],
-    z_ground_truth: torch.Tensor,
-    t_anchor: int = 10,
-    phase_horizon: Optional[int] = None,
-) -> torch.Tensor:
-    r"""Compute the interpolated Convergence Funnel target sequence for M2 recovery.
-
-    For step index k in [0, H-1] (corresponding to t = t_anchor + k + 1):
-        \tau_k = (k + 1) / H \in (0, 1]
-        \tilde{z}^*_t = (1 - \tau_k) \cdot \text{Extrapolate}(z_{\text{anchor}}, t) + \tau_k \cdot z^*_t
+    Forward logic:
+        z_projected = z + self.net(z)
     """
-    assert_tensor_contract(z_anchor, (None, None), "compute_convergence_funnel_target.z_anchor")
-    assert_tensor_contract(
-        z_ground_truth,
-        (z_anchor.shape[0], None, z_anchor.shape[1]),
-        "compute_convergence_funnel_target.z_ground_truth",
-    )
-    _, H_seq, _ = z_ground_truth.shape
-    denom = float(phase_horizon) if phase_horizon is not None else float(max(H_seq, 1))
 
-    blended_steps = []
-    for idx in range(H_seq):
-        t = t_anchor + idx + 1
-        tau = min(1.0, max(0.0, float(idx + 1) / denom))
-        z_ext = extrapolate_latent(z_anchor=z_anchor, t=t, t_anchor=t_anchor, z_prev=z_prev)
-        z_target = (1.0 - tau) * z_ext + tau * z_ground_truth[:, idx]
-        blended_steps.append(z_target)
+    def __init__(
+        self,
+        latent_dim: int = 128,
+        hidden_dim: int = 256,
+        bottleneck_dim: Optional[int] = None,
+        q_dim: Optional[int] = None,
+        p_dim: Optional[int] = None,
+    ) -> None:
+        super().__init__()
+        if latent_dim <= 0 or hidden_dim <= 0:
+            raise ValueError(f"latent_dim ({latent_dim}) and hidden_dim ({hidden_dim}) must be > 0")
 
-    return torch.stack(blended_steps, dim=1)
+        self.latent_dim = latent_dim
+        self.hidden_dim = hidden_dim
+        self.q_dim = q_dim if q_dim is not None else (latent_dim // 4)
+        self.p_dim = p_dim if p_dim is not None else (latent_dim - self.q_dim)
+
+        if self.q_dim + self.p_dim != latent_dim:
+            raise ValueError(f"q_dim ({self.q_dim}) + p_dim ({self.p_dim}) != latent_dim ({latent_dim})")
+
+        self.bottleneck_dim = bottleneck_dim if bottleneck_dim is not None else max(16, latent_dim // 2)
+
+        # Bottleneck / residual MLP (autoencoder-style projection or residual denoiser)
+        self.net = nn.Sequential(
+            nn.Linear(latent_dim, hidden_dim),
+            nn.LayerNorm(hidden_dim),
+            nn.SiLU(),
+            nn.Linear(hidden_dim, self.bottleneck_dim),
+            nn.LayerNorm(self.bottleneck_dim),
+            nn.SiLU(),
+            nn.Linear(self.bottleneck_dim, hidden_dim),
+            nn.LayerNorm(hidden_dim),
+            nn.SiLU(),
+            nn.Linear(hidden_dim, latent_dim),
+        )
+
+    def forward(self, z: torch.Tensor) -> torch.Tensor:
+        """Projects off-manifold latent state z onto the manifold without advancing time."""
+        if z.shape[-1] != self.latent_dim:
+            raise ValueError(
+                f"ManifoldProjector: expected last dimension {self.latent_dim}, got {z.shape[-1]} (shape {tuple(z.shape)})"
+            )
+        z_projected = z + self.net(z)
+        return z_projected
+
+
+M2Projector = ManifoldProjector
+LatentDenoiser = ManifoldProjector
 
 
 __all__ = [
     "LatentPredictor",
-    "CascadedTemporalRelay",
     "PhysicalDecoder",
     "PredictorOutput",
-    "extrapolate_latent",
-    "compute_convergence_funnel_target",
+    "ManifoldProjector",
+    "M2Projector",
+    "LatentDenoiser",
 ]
 
 

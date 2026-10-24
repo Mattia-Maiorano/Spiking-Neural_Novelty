@@ -15,16 +15,16 @@ class M1PhaseStrategy(PhaseStrategy):
     def setup(self) -> None:
         for p in self.model.parameters():
             p.requires_grad = False
-        for p in self.model.m1.parameters():
+        for p in self.model.predictor.parameters():
             p.requires_grad = True
 
         lr, wd = self.cfg.training.learning_rate, self.cfg.training.weight_decay
         self.predictor_optimizer = torch.optim.Adam(
-            self.model.m1.parameters(), lr=lr, weight_decay=wd
+            self.model.predictor.parameters(), lr=lr, weight_decay=wd
         )
 
     def verify_gradient_isolation(self) -> None:
-        authorized = ("m1",)
+        authorized = ("predictor", "m1")
         for name, p in self.model.named_parameters():
             if not any(k in name for k in authorized) and p.requires_grad:
                 raise AssertionError(f"Gradient leak! Parameter '{name}' has requires_grad=True in train_m1 mode.")

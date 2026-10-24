@@ -64,7 +64,7 @@ def main() -> None:
         phase_horizon=cfg.training.phase_horizon,
         config_horizons=cfg.evaluation.rollout_horizons,
     )
-    fixed_predictor = model.m1 if cfg.training.mode == "train_m1" else None
+    fixed_predictor = model.m1
     eval_seq_len = max(cfg.data.sequence_length, cfg.training.temporal_burn_in + max(eval_horizons) + 1)
 
     dataloaders = create_dataloaders(

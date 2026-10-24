@@ -39,6 +39,8 @@ model:
   ema_decay: 0.9
   decoder_ema_alpha: 0.2
   in_channels: 2
+  symplectic: false
+  symplectic_m1_all_the_way: false
 neuron:
   model: alif
   threshold: 1.0

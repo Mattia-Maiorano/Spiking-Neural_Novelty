@@ -1722,3 +1722,42 @@ In **SPWM-v0.3.0**, la pipeline di training viene rigorosamente disaccoppiata in
    - Aggiunto `load_representation_checkpoint` con verifica scoped dei moduli della rappresentazione.
    - Tutti i file di strategia (`representation.py`, `m1_nominal.py`) soddisfano l'invariante di progetto $<150$ righe.
 
+---
+---
+
+# SPWM-v0.3.1: Pruning del Modello a 3 Componenti e Adozione dell'Architettura Simplettica a 2 Fasi (Representation / Symplectic Predictor M1)
+
+### 1. Motivazione e Svolta Architetturale
+Il paradigma a 3 modelli a staffetta (**Cascaded Temporal Relay**: $M_1 \to M_2 \leftrightarrow M_3$, `ConvergenceFunnelLoss`, multi-phase cascade) introduceva complessità di coordinamento e overhead di handoff artificiali tra finestre temporali discrete. L'analisi geometrica dello spazio delle fasi ha evidenziato che una formulazione energeticamente conservativa basata su principi simplettici consente a un singolo modello predittivo $M_1$ di sostenere l'autoregressione su orizzonti arbitrari senza divergenza esplosiva o collasso dissipativo.
+
+In **SPWM-v0.3.1**, la vecchia implementazione a 3 modelli è stata completamente potata in favore di un'architettura rigorosa a 2 stadi:
+1. **Fase 0 (`train_representation`):** Grounded State Estimator sensoriale su flussi di eventi (con encoder, dinamica spiking multi-scala, predittore sensoriale top-down e decoder cinematico).
+2. **Fase 1 (`train_m1`):** Symplectic Latent Predictor ($M_1$) operante nello spazio delle fasi puro.
+
+### 2. Formulazione Matematica: Integrazione Simplettica Semi-Implicita di Eulero
+Nel predittore latente ([`spwm/models/predictors.py`](file:///Users/Mattia/Desktop/Studies/Temp/spwm/models/predictors.py)), lo stato viene scomposto nelle coordinate geometriche $q_t \in \mathbb{R}^{q\_dim}$ e nei momenti canonici $p_t \in \mathbb{R}^{p\_dim}$:
+1. **Aggiornamento del Momento:**
+   $$\Delta p_t = \text{MLP}(z_t), \quad p_{t+1} = p_t + \Delta p_t$$
+2. **Aggiornamento Semi-Implicito delle Coordinate:**
+   L'aggiornamento di $q$ impiega il momento *successivo* $p_{t+1}$:
+   $$q_{t+1} = q_t + \Delta t \cdot p_{t+1}[..., :q\_dim]$$
+3. **Stato Ricombinato:**
+   $$z_{t+1} = [q_{t+1}, p_{t+1}]$$
+
+Questa integrazione simplettica preserva l'area hamiltoniana nello spazio delle fasi e la 2-forma canonica $dp \wedge dq$, garantendo che le orbite fisiche non subiscano dissipazione numerica o instabilità sul lungo termine.
+
+### 3. Completo Pruning dell'Old Logic & Dead Code Guards
+- **File Fisici Eliminati:**
+  - `spwm/training/phases/m2_recovery.py`
+  - `spwm/training/phases/m3_sustained.py`
+  - Vecchi moduli legacy `eprop.py`, `corrector.py`, `corrector_phase.py`.
+- **Classi, Simboli e Metodi Potati:**
+  - `CascadedTemporalRelay`, `ConvergenceFunnelLoss`, `compute_convergence_funnel_target`, `compute_convergence_funnel_loss`, `extrapolate_latent`.
+  - `M2PhaseStrategy`, `M3PhaseStrategy`, `load_m1_checkpoint`, `load_m2_checkpoint`.
+  - Attributi `model.m2`, `model.m3`, `model.relay` (ora `model.predictor` è l'istanza primaria e `model.m1` ne è alias).
+  - Modalità `train_m2`, `train_m3`, `train_cascade` (ora sollevano immediatamente `ValueError`).
+  - Proprietà di configurazione `max_rollout_horizon`, `m1_checkpoint`, `m2_checkpoint`, `m2_num_phases`, `symplectic_m1_all_the_way`.
+- **Suite di Test Anti-Dead-Code ([`tests/test_dead_code.py`](file:///Users/Mattia/Desktop/Studies/Temp/tests/test_dead_code.py)):**
+  Introdotto un verificatore AST statico e dinamico permanente che ispeziona `spwm/` ed `experiments/` per garantire che nessun residuo o import fantasma della vecchia architettura possa ricomparire nel codebase.
+- **Validazione:** Suite completa di 62 test eseguita con successo al 100%.
+

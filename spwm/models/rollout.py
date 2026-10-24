@@ -2,7 +2,7 @@
 Unified Autoregressive Latent Rollout Engine (Layer 1 — Models).
 
 Single source of truth for autonomous latent rollout mechanics across
-training phases (M1, M2, M3), validation, and evaluation.
+training (M1), validation, and evaluation.
 Depends exclusively on Layer 0 (`spwm.contracts`).
 """
 
@@ -27,20 +27,22 @@ def rollout_latent(
     telemetry: Optional[Union[TelemetryContainer, Dict[str, List[torch.Tensor]]]] = None,
     start_step: int = 0,
     fixed_predictor: Optional[nn.Module] = None,
+    projection_cadence: Optional[int] = None,
 ) -> RolloutResult:
     """Execute an autonomous multi-step rollout in latent space starting from z_init.
 
     Args:
-        model: World model exposing `predictor` (and optionally `physical_decoder`).
+        model: World model exposing `predictor` / `m1` (and optionally `m2`, `physical_decoder`).
         z_init: Initial latent state [B, latent_dim].
         horizon: Number of rollout steps (> 0).
-        with_grad: If True, preserves the autograd graph during rollout (used by M1/M2/M3 training).
+        with_grad: If True, preserves the autograd graph during rollout (used by M1 training).
         decode_kinematics: If True and model has `physical_decoder`, decodes [B, H, 4 * N] kinematics.
         initial_decoder_state: Optional warm EMA filter state [B, p_dim] for `physical_decoder`.
         telemetry: Optional TelemetryContainer or dict for logging step states.
-        start_step: Step offset in the CascadedTemporalRelay cycle (default 0).
-        fixed_predictor: Optional sub-predictor module (e.g., `model.m1` or `model.m2`) to invoke
-            directly instead of cycling through `model.predictor`.
+        start_step: Optional step offset (retained for signature compatibility, default 0).
+        fixed_predictor: Optional predictor module (e.g., `model.m1`) to invoke directly.
+        projection_cadence: Cadence N for stateless manifold projection M2 (e.g. N = 10).
+            Every N steps (t % N == 0), z_t = M2.forward(z_t), resetting drift without advancing time.
 
     Returns:
         RolloutResult containing trajectory, decoded_kinematics, active_models, and num_objects.
@@ -58,22 +60,23 @@ def rollout_latent(
         active_models: List[str] = []
         curr_z = z_init
 
-        for step_offset in range(horizon):
-            t = start_step + step_offset
-            if fixed_predictor is not None:
-                pred_out = fixed_predictor(curr_z)
-                active_name = "fixed"
-            elif hasattr(model.predictor, "get_active_model"):
-                active_mod, active_name, _ = model.predictor.get_active_model(t)
-                pred_out = active_mod(curr_z)
-            else:
-                pred_out = model.predictor(curr_z)
-                active_name = "predictor"
+        predictor_fn = fixed_predictor if fixed_predictor is not None else model.predictor
 
-            z_next = pred_out.predicted_latent
-            curr_z = z_next
+        for step in range(horizon):
+            t = step + 1
+            # 1. Integrate forward using M1 (symplectic step)
+            pred_out = predictor_fn(curr_z)
+            curr_z = pred_out.predicted_latent
+            active = "m1"
+
+            # 2. Every N steps (if t % N == 0): project back onto manifold using M2
+            if projection_cadence is not None and projection_cadence > 0 and t % projection_cadence == 0:
+                if hasattr(model, "m2") and model.m2 is not None:
+                    curr_z = model.m2(curr_z)
+                    active = "m1+m2"
+
             predictions.append(curr_z)
-            active_models.append(active_name)
+            active_models.append(active)
 
         trajectory = torch.stack(predictions, dim=1)
 

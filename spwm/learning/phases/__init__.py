@@ -2,20 +2,18 @@
 
 from spwm.training.phases import (
     M1PhaseStrategy,
-    M2PhaseStrategy,
-    M3PhaseStrategy,
     PhaseHandler,
     PhaseStrategy,
     PredictorPhaseHandler,
+    RepresentationPhaseStrategy,
     build_phase_strategy,
 )
 
 __all__ = [
     "PhaseStrategy",
     "PhaseHandler",
+    "RepresentationPhaseStrategy",
     "M1PhaseStrategy",
-    "M2PhaseStrategy",
-    "M3PhaseStrategy",
     "PredictorPhaseHandler",
     "build_phase_strategy",
 ]

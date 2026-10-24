@@ -3,7 +3,6 @@ Pure, Composable Loss Formulations for SPWM (Layer 2 — Training).
 
 Single source of truth for:
 - PredictorLoss (representation keypoint/decoder MSE + rollout kinematic MSE)
-- ConvergenceFunnelLoss (M2 recovery trajectory blending against linear extrapolation)
 - SPWMLoss (unified facade for phase training)
 - _frozen context manager for temporary parameter freezing
 
@@ -20,7 +19,6 @@ import torch.nn.functional as F
 
 from spwm.contracts.config import LossConfig
 from spwm.contracts.tensors import assert_tensor_contract
-from spwm.models.predictors import compute_convergence_funnel_target, extrapolate_latent
 
 
 def decompose_latent_loss(
@@ -183,83 +181,8 @@ class PredictorLoss(nn.Module):
     compute_loss = forward
 
 
-class ConvergenceFunnelLoss(nn.Module):
-    r"""Convergence Funnel Loss for M2 (Recovery Predictor).
-
-    Targets the blended trajectory:
-        \tau_k = (k + 1) / H \in (0, 1]
-        \tilde{z}^*_t = (1 - \tau_k) \cdot \text{Extrapolate}(\hat{z}_{\text{anchor}}, t) + \tau_k \cdot z^*_t
-    """
-
-    def __init__(self, t_anchor: int = 10) -> None:
-        super().__init__()
-        self.t_anchor = int(t_anchor)
-
-    def forward(
-        self,
-        predicted_latent: torch.Tensor,
-        z_anchor: torch.Tensor,
-        z_prev: Optional[torch.Tensor],
-        ground_truth_latent: torch.Tensor,
-        t_anchor: Optional[int] = None,
-        phase_horizon: Optional[int] = None,
-        q_dim: Optional[int] = None,
-        lambda_position: float = 1.0,
-        lambda_velocity: float = 1.0,
-    ) -> Dict[str, torch.Tensor]:
-        assert_tensor_contract(predicted_latent, (None, None, None), "ConvergenceFunnelLoss.predicted_latent")
-        assert_tensor_contract(
-            ground_truth_latent,
-            tuple(predicted_latent.shape),
-            "ConvergenceFunnelLoss.ground_truth_latent",
-        )
-        anchor_step = self.t_anchor if t_anchor is None else t_anchor
-        target = compute_convergence_funnel_target(
-            z_anchor=z_anchor,
-            z_prev=z_prev,
-            z_ground_truth=ground_truth_latent,
-            t_anchor=anchor_step,
-            phase_horizon=phase_horizon,
-        )
-        if q_dim is not None and q_dim > 0 and q_dim < predicted_latent.shape[-1]:
-            decomp_funnel = decompose_latent_loss(
-                predicted_latent=predicted_latent,
-                target_latent=target,
-                q_dim=q_dim,
-                lambda_position=lambda_position,
-                lambda_velocity=lambda_velocity,
-            )
-            funnel_loss = decomp_funnel["loss_latent"]
-            decomp_gt = decompose_latent_loss(
-                predicted_latent=predicted_latent,
-                target_latent=ground_truth_latent,
-                q_dim=q_dim,
-                lambda_position=lambda_position,
-                lambda_velocity=lambda_velocity,
-            )
-            raw_gt_loss = decomp_gt["loss_latent"]
-            loss_pos_latent = decomp_funnel["loss_pos_latent"]
-            loss_vel_latent = decomp_funnel["loss_vel_latent"]
-        else:
-            funnel_loss = F.mse_loss(predicted_latent, target)
-            raw_gt_loss = F.mse_loss(predicted_latent, ground_truth_latent)
-            loss_pos_latent = funnel_loss
-            loss_vel_latent = funnel_loss
-
-        return {
-            "total_loss": funnel_loss,
-            "funnel_loss": funnel_loss,
-            "raw_gt_loss": raw_gt_loss,
-            "loss_pos_latent": loss_pos_latent,
-            "loss_vel_latent": loss_vel_latent,
-            "blended_target": target,
-        }
-
-    compute_loss = forward
-
-
 class SPWMLoss(nn.Module):
-    """Unified loss module combining PredictorLoss and ConvergenceFunnelLoss."""
+    """Unified loss module wrapping PredictorLoss."""
 
     def __init__(
         self,
@@ -288,7 +211,6 @@ class SPWMLoss(nn.Module):
             lambda_position=self.lambda_position,
             lambda_velocity=self.lambda_velocity,
         )
-        self.funnel_loss = ConvergenceFunnelLoss()
 
     @classmethod
     def from_config(cls, cfg: LossConfig, **kwargs: Any) -> "SPWMLoss":
@@ -307,17 +229,11 @@ class SPWMLoss(nn.Module):
     def compute_loss(self, *args: Any, **kwargs: Any) -> Dict[str, torch.Tensor]:
         return self.predictor_loss(*args, **kwargs)
 
-    def compute_convergence_funnel_loss(self, *args: Any, **kwargs: Any) -> Dict[str, torch.Tensor]:
-        return self.funnel_loss(*args, **kwargs)
-
 
 __all__ = [
     "_frozen",
     "decompose_latent_loss",
     "PredictorLoss",
-    "ConvergenceFunnelLoss",
     "SPWMLoss",
-    "extrapolate_latent",
-    "compute_convergence_funnel_target",
 ]
 

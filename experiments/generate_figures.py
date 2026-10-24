@@ -24,7 +24,7 @@ def main() -> None:
     parser = argparse.ArgumentParser(description="Generate all scientific figures.")
     parser.add_argument("--results-dir", type=str, default="results", help="Directory containing experiment results")
     parser.add_argument("--output-dir", type=str, default="results/figures", help="Target directory for figures")
-    parser.add_argument("--version", type=str, default="spwm_v0_2_0", help="Target model version prefix")
+    parser.add_argument("--version", type=str, default="spwm_v0_3_1", help="Target model version prefix")
     args = parser.parse_args()
 
     results_dir = Path(args.results_dir)
@@ -37,10 +37,10 @@ def main() -> None:
     plot_architecture_diagram(out_dir / "fig1_architecture.png")
     chronicle.log_success("Generated Figure 1: Architecture Diagram")
 
-    # Figure 2: Combined Training Curves across M1 -> M2 -> M3
+    # Figure 2: Combined Training Curves across Representation -> M1
     combined_history: List[Dict[str, Any]] = []
     epoch_offset = 0
-    for phase_suffix in ("train_m1", "train_m2", "train_m3"):
+    for phase_suffix in ("train_representation", "train_m1"):
         phase_log = results_dir / f"{args.version}_{phase_suffix}" / "training_log.json"
         if phase_log.is_file():
             with open(phase_log, "r", encoding="utf-8") as f:
@@ -55,7 +55,7 @@ def main() -> None:
     if combined_history:
         plot_training_curves(combined_history, out_dir / "fig2_training_curves.png")
         chronicle.log_success(
-            f"Generated Figure 2: Combined M1+M2+M3 Training Curves ({len(combined_history)} total epochs)"
+            f"Generated Figure 2: Representation + M1 Training Curves ({len(combined_history)} total epochs)"
         )
     else:
         csv_candidates = list(results_dir.glob("**/training_log.csv"))
@@ -67,12 +67,10 @@ def main() -> None:
             plot_training_curves(history, out_dir / "fig2_training_curves.png")
             chronicle.log_success(f"Generated Figure 2: Training Curves from {csv_candidates[0]}")
 
-    # Figure 3: Multi-Step Rollout Degradation Curve (Combined M1 [0-10], M2 [0-20], M3 [0-100])
+    # Figure 3: Multi-Step Rollout Degradation Curve for Symplectic M1 Predictor
     phase_degradation_curves: Dict[str, Dict[int, float]] = {}
     for m, label in [
-        (f"{args.version}_train_m1", "Phase 1: M1 Isolated (0-10)"),
-        (f"{args.version}_train_m2", "Phase 2: M1+M2 Recovery (0-20)"),
-        (f"{args.version}_train_m3", "Phase 3: M1+M2+M3 Full Relay (0-100)"),
+        (f"{args.version}_train_m1", "Symplectic Predictor (M1)"),
     ]:
         m_dir = results_dir / m
         candidates = sorted(m_dir.glob("metrics*.json")) if m_dir.is_dir() else []
@@ -91,15 +89,13 @@ def main() -> None:
     if phase_degradation_curves:
         plot_multi_step_degradation(phase_degradation_curves, out_dir / "fig3_multi_step_degradation.png")
         chronicle.log_success(
-            f"Generated Figure 3: Combined Degradation Curve across {len(phase_degradation_curves)} phases"
+            f"Generated Figure 3: Degradation Curve across {len(phase_degradation_curves)} phases"
         )
 
-    # Figure 6: Phase Comparison across M1, M2, M3
+    # Figure 6: Performance Summary
     comparison_metrics = {}
     for m, label in [
-        (f"{args.version}_train_m1", "Phase 1 (M1 Nominal)"),
-        (f"{args.version}_train_m2", "Phase 2 (M2 Recovery)"),
-        (f"{args.version}_train_m3", "Phase 3 (M3 Sustained Relay)"),
+        (f"{args.version}_train_m1", "Phase 1 (M1 Symplectic Predictor)"),
     ]:
         candidates = sorted((results_dir / m).glob("metrics*.json")) if (results_dir / m).is_dir() else []
         for m_path in candidates:

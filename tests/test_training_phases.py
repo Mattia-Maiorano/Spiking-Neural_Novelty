@@ -1,18 +1,13 @@
-"""
-Phase 3 TDD Tests: Layer 2 Training Mechanics, Losses, Isolated Phase Strategies,
-and Scoped Strict Checkpoint Loading.
+"""Phase Training Tests: Layer 2 Training Mechanics, Losses, Isolated Phase Strategies,
+and Checkpoint Loading.
 """
 
 from __future__ import annotations
 
-from torch.utils.data import DataLoader
-
-from spwm.data.datasets import collate_event_batches, EventWorldDataset
-from spwm.training import Trainer
-
 from pathlib import Path
 import pytest
 import torch
+from torch.utils.data import DataLoader
 
 from spwm.contracts.config import (
     DataConfig,
@@ -27,20 +22,17 @@ from spwm.contracts.config import (
     TrainingConfig,
 )
 from spwm.contracts.protocols import PhaseStrategy
+from spwm.data.datasets import EventWorldDataset, collate_event_batches
 from spwm.models.world_model import SPWM
-from spwm.training.engine import BaseTrainer, load_m1_checkpoint, load_m2_checkpoint
-from spwm.training.losses import (
-    ConvergenceFunnelLoss,
-    SPWMLoss,
-    compute_convergence_funnel_target,
-    extrapolate_latent,
-)
+from spwm.training import Trainer
+from spwm.training.engine import BaseTrainer, enforce_phase_prerequisites, resolve_version_checkpoint
+from spwm.training.losses import SPWMLoss
 from spwm.training.phases import (
-    RepresentationPhaseStrategy,
     M1PhaseStrategy,
     M2PhaseStrategy,
-    M3PhaseStrategy,
+    RepresentationPhaseStrategy,
 )
+
 
 def create_dummy_dataloader(sequence_length=35, batch_size=2, total_traj=4):
     dataset = EventWorldDataset(
@@ -74,7 +66,6 @@ def _make_small_config(mode: str = "train_m1") -> ExperimentConfig:
             mode=mode,
             epochs=1,
             phase_horizon=3,
-            max_rollout_horizon=9,
         ),
         loss=LossConfig(lambda_encoder=1.0, lambda_decoder=1.0, lambda_position=1.0, lambda_velocity=1.0),
         evaluation=EvaluationConfig(rollout_horizons=(3, 6)),
@@ -84,43 +75,15 @@ def _make_small_config(mode: str = "train_m1") -> ExperimentConfig:
 def test_phase_strategy_files_under_150_lines() -> None:
     """Each concrete phase strategy file must remain < 150 lines for small-LLM context isolation."""
     phases_dir = Path(__file__).resolve().parent.parent / "spwm" / "training" / "phases"
-    for fname in ("representation.py", "m1_nominal.py", "m2_recovery.py", "m3_sustained.py"):
+    for fname in ("representation.py", "m1_nominal.py", "m2_recovery.py"):
         fpath = phases_dir / fname
         assert fpath.exists(), f"Missing phase strategy file: {fpath}"
         line_count = len(fpath.read_text(encoding="utf-8").splitlines())
         assert line_count < 150, f"{fname} has {line_count} lines (must be < 150 lines)"
 
 
-def test_convergence_funnel_exact_boundary_math() -> None:
-    """Verify linear phase-space extrapolation and Convergence Funnel boundary conditions."""
-    B, H, D = 2, 4, 8
-    z_prev = torch.ones(B, D) * 1.0
-    z_anchor = torch.ones(B, D) * 2.0  # delta = +1.0 per step
-    z_true = torch.zeros(B, H, D)
-
-    z_funnel = compute_convergence_funnel_target(
-        z_anchor=z_anchor,
-        z_prev=z_prev,
-        z_ground_truth=z_true,
-        t_anchor=10,
-        phase_horizon=H,
-    )
-    assert z_funnel.shape == (B, H, D)
-
-    # At idx=0 (t=11): tau = 1/4 = 0.25 -> (1 - 0.25) * Extrapolate(11) + 0.25 * 0
-    expected_step0 = 0.75 * extrapolate_latent(z_anchor, t=11, t_anchor=10, z_prev=z_prev)
-    assert torch.allclose(z_funnel[:, 0, :], expected_step0, atol=1e-6)
-
-    # At idx=H-1 (t=14): tau = 4/4 = 1.0 -> purely ground-truth z_true[:, H-1, :]
-    assert torch.allclose(z_funnel[:, H - 1, :], z_true[:, H - 1, :], atol=1e-6)
-
-    loss_mod = ConvergenceFunnelLoss(t_anchor=10)
-    out = loss_mod(z_funnel, z_anchor, z_prev, z_true, t_anchor=10, phase_horizon=H)
-    assert torch.isclose(out["funnel_loss"], torch.tensor(0.0), atol=1e-6)
-
-
-def test_m1_m2_m3_isolated_phase_strategies() -> None:
-    """Verify RepresentationPhaseStrategy, M1PhaseStrategy, M2PhaseStrategy, and M3PhaseStrategy satisfy PhaseStrategy and isolate gradients."""
+def test_representation_and_m1_isolated_phase_strategies() -> None:
+    """Verify RepresentationPhaseStrategy, M1PhaseStrategy, and M2PhaseStrategy satisfy PhaseStrategy and isolate gradients."""
     B, T = 2, 20
     events = torch.rand(B, T, 2, 16, 16)
     flat_kin = torch.randn(B, T, 4)
@@ -150,10 +113,8 @@ def test_m1_m2_m3_isolated_phase_strategies() -> None:
     assert any(
         p.grad is not None and p.grad.abs().sum() > 0 for p in model_rep.physical_decoder.parameters()
     ), "physical_decoder must receive non-zero gradients during train_representation!"
-    # M1, M2, M3 must be frozen
-    assert all(p.grad is None for p in model_rep.m1.parameters())
-    assert all(p.grad is None for p in model_rep.m2.parameters())
-    assert all(p.grad is None for p in model_rep.m3.parameters())
+    # Predictor / M1 must be frozen in Phase 0
+    assert all(p.grad is None for p in model_rep.predictor.parameters())
 
     # 1. Phase 1: M1 Phase Strategy (strictly trains M1 on detached latent targets)
     cfg_m1 = _make_small_config("train_m1")
@@ -172,54 +133,48 @@ def test_m1_m2_m3_isolated_phase_strategies() -> None:
     assert all(p.grad is None for p in model_m1.sensory_predictor.parameters())
     assert all(p.grad is None for p in model_m1.physical_decoder.parameters())
 
-    # 2. M2 Phase Strategy
+    # 2. Phase 2: M2 Phase Strategy (strictly trains M2 manifold projector on noisy/drifted latents)
     cfg_m2 = _make_small_config("train_m2")
     model_m2 = SPWM.from_config(cfg_m2)
     m2_strategy = M2PhaseStrategy(model_m2, cfg_m2, loss_fn, device)
     assert isinstance(m2_strategy, PhaseStrategy)
     m2_strategy.verify_gradient_isolation()
     metrics_m2 = m2_strategy.train_step(batch, epoch=1)
-    assert "train_loss" in metrics_m2 and "train_loss_velocity" in metrics_m2
-
-    # 3. M3 Phase Strategy
-    cfg_m3 = _make_small_config("train_m3")
-    model_m3 = SPWM.from_config(cfg_m3)
-    m3_strategy = M3PhaseStrategy(model_m3, cfg_m3, loss_fn, device)
-    assert isinstance(m3_strategy, PhaseStrategy)
-    m3_strategy.verify_gradient_isolation()
-    metrics_m3 = m3_strategy.train_step(batch, epoch=1)
-    assert "train_loss" in metrics_m3 and "train_loss_position" in metrics_m3
-
+    assert "train_loss" in metrics_m2 and "train_loss_m2" in metrics_m2
+    assert "train_loss_q" in metrics_m2 and "train_loss_p" in metrics_m2
+    assert any(
+        p.grad is not None and p.grad.abs().sum() > 0 for p in model_m2.m2.parameters()
+    ), "m2 must receive non-zero gradients during train_m2!"
+    # Representation modules and M1 must be strictly frozen in Phase 2
+    assert all(p.grad is None for p in model_m2.encoder.parameters())
+    assert all(p.grad is None for p in model_m2.dynamics.parameters())
+    assert all(p.grad is None for p in model_m2.sensory_predictor.parameters())
+    assert all(p.grad is None for p in model_m2.physical_decoder.parameters())
+    assert all(p.grad is None for p in model_m2.predictor.parameters())
 
 
 def test_scoped_strict_checkpoint_loading(tmp_path: Path) -> None:
-    """Verify strict checkpoint scoping for M1 -> M2 -> M3 transitions and full checkpoints."""
+    """Verify strict checkpoint scoping and error handling for corrupted checkpoints."""
     cfg = _make_small_config("train_m1")
     model_src = SPWM.from_config(cfg)
     trainer_src = BaseTrainer(model_src, cfg, device="cpu", save_dir=tmp_path)
 
-    m1_ckpt = tmp_path / "m1.pt"
-    m2_ckpt = tmp_path / "m2.pt"
-    trainer_src.save_checkpoint(epoch=1, path=m1_ckpt)
-    trainer_src.save_checkpoint(epoch=1, path=m2_ckpt)
+    ckpt_path = tmp_path / "model.pt"
+    trainer_src.save_checkpoint(epoch=1, path=ckpt_path)
 
     model_dst = SPWM.from_config(cfg)
     with torch.no_grad():
-        for p in model_dst.m1.parameters():
-            p.zero_()
-        for p in model_dst.m2.parameters():
+        for p in model_dst.parameters():
             p.zero_()
 
-    load_m1_checkpoint(model_dst, m1_ckpt, device=torch.device("cpu"))
-    for p_s, p_d in zip(model_src.m1.parameters(), model_dst.m1.parameters()):
-        assert torch.allclose(p_s, p_d)
+    trainer_dst = BaseTrainer(model_dst, cfg, device="cpu", save_dir=tmp_path)
+    trainer_dst.load_checkpoint(ckpt_path)
 
-    load_m2_checkpoint(model_dst, m2_ckpt, device=torch.device("cpu"))
-    for p_s, p_d in zip(model_src.m2.parameters(), model_dst.m2.parameters()):
+    for p_s, p_d in zip(model_src.parameters(), model_dst.parameters()):
         assert torch.allclose(p_s, p_d)
 
     # Corrupt checkpoint keys -> must raise RuntimeError due to strict=True
-    corrupted = torch.load(m1_ckpt, map_location="cpu", weights_only=False)
+    corrupted = torch.load(ckpt_path, map_location="cpu", weights_only=False)
     corrupted["model_state"]["unexpected_phantom_layer.weight"] = torch.ones(4, 4)
     bad_ckpt = tmp_path / "bad.pt"
     torch.save(corrupted, bad_ckpt)
@@ -227,37 +182,52 @@ def test_scoped_strict_checkpoint_loading(tmp_path: Path) -> None:
     with pytest.raises(RuntimeError):
         trainer_src.load_checkpoint(bad_ckpt)
 
-def test_train_cascade_and_auto_enforced_model_pt(tmp_path):
-    """Verifies train_cascade runs M1 -> M2 -> M3 using best model.pt and early stopping patience."""
-    from spwm.training.engine import enforce_phase_prerequisites, resolve_version_checkpoint
 
+def test_enforce_phase_prerequisites_and_model_pt(tmp_path: Path) -> None:
+    """Verifies that train_m1 enforces existence of train_representation model.pt."""
     model = SPWM(latent_dim=32, q_dim=8, p_dim=24, timescale_dims=(16, 16), phase_horizon=4)
-    loader = create_dummy_dataloader(sequence_length=20)
 
     # Missing prerequisite model.pt must raise FileNotFoundError
     with pytest.raises(FileNotFoundError, match="model.pt"):
-        resolve_version_checkpoint("spwm_v_test", "train_m1", results_root=tmp_path)
+        resolve_version_checkpoint("spwm_v_test", "train_representation", results_root=tmp_path)
 
-    cascade_dir = tmp_path / "spwm_v_test_train_cascade"
-    trainer = Trainer(
+    cfg_test = _make_small_config("train_m1").with_overrides(seed=42)
+    # With project.name = "spwm_v_test"
+    from dataclasses import replace
+    cfg_test = replace(cfg_test, project=ProjectConfig(name="spwm_v_test"))
+
+    cfg_missing = replace(
+        cfg_test,
+        training=replace(cfg_test.training, representation_checkpoint=str(tmp_path / "missing.pt")),
+    )
+
+    # Verify enforce_phase_prerequisites raises when explicit checkpoint does not exist
+    with pytest.raises(FileNotFoundError):
+        enforce_phase_prerequisites(
+            model=model,
+            cfg=cfg_missing,
+            device="cpu",
+            results_root=tmp_path,
+        )
+
+    # Create dummy representation checkpoint
+    rep_dir = tmp_path / "spwm_v_test_train_representation"
+    rep_dir.mkdir(parents=True, exist_ok=True)
+    rep_ckpt = rep_dir / "model.pt"
+    torch.save(
+        {
+            "epoch": 10,
+            "model_state": model.state_dict(),
+            "config": _make_small_config("train_representation"),
+        },
+        rep_ckpt,
+    )
+
+    # Now enforce_phase_prerequisites should succeed and return the checkpoint paths dictionary
+    loaded = enforce_phase_prerequisites(
         model=model,
-        train_loader=loader,
-        val_loader=loader,
-        mode="train_cascade",
-        phase_horizon=4,
-        max_rollout_horizon=12,
-        early_stopping_patience=2,
-        save_dir=cascade_dir,
+        cfg=cfg_test,
+        device="cpu",
         results_root=tmp_path,
     )
-    trainer.cfg = trainer.cfg.with_overrides()  # keep project name
-    history = trainer.fit(epochs=2, patience=1)
-    assert len(history) >= 3
-    phases_seen = {rec["phase"] for rec in history}
-    assert phases_seen == {"train_representation", "train_m1", "train_m2", "train_m3"}
-
-    # Verify model.pt was created for each phase
-    for pm in ("train_representation", "train_m1", "train_m2", "train_m3"):
-        p_pt = resolve_version_checkpoint(trainer.cfg.project.name, pm, results_root=tmp_path)
-        assert p_pt.name == "model.pt"
-        assert p_pt.is_file()
+    assert loaded["representation"] == rep_ckpt

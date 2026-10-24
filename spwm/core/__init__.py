@@ -3,7 +3,6 @@
 from spwm.models import (
     ALIFCell,
     ALIFState,
-    CascadedTemporalRelay,
     DynamicsOutput,
     DynamicsState,
     EventEncoder,
@@ -16,10 +15,6 @@ from spwm.models import (
     SpikingLatentDynamics,
     SurrogateSpike,
     surrogate_spike,
-)
-from spwm.models.predictors import (
-    compute_convergence_funnel_target,
-    extrapolate_latent,
 )
 
 __all__ = [
@@ -35,9 +30,6 @@ __all__ = [
     "DynamicsState",
     "DynamicsOutput",
     "LatentPredictor",
-    "CascadedTemporalRelay",
     "PhysicalDecoder",
     "PredictorOutput",
-    "extrapolate_latent",
-    "compute_convergence_funnel_target",
 ]

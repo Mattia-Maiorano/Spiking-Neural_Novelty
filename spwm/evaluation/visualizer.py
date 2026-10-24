@@ -30,17 +30,15 @@ def set_paper_style():
 
 def plot_architecture_diagram(save_path: Union[str, Path]) -> None:
     set_paper_style()
-    fig, ax = plt.subplots(figsize=(12, 6))
+    fig, ax = plt.subplots(figsize=(12, 5))
     ax.axis("off")
 
     boxes = [
-        ("Event Stream\n[B, T, 2, H, W]", (0.08, 0.5), "#E2E8F0"),
-        ("Spiking Sensory\nEncoder", (0.25, 0.5), "#CBD5E1"),
-        ("Latent State z_t\n[B, D]", (0.42, 0.5), "#93C5FD"),
-        ("M1: Nominal Predictor\n(t=0 -> H, clean manifold)", (0.72, 0.8), "#34D399"),
-        ("M2: Recovery Funnel\n(Cyclic H -> 2H, Funnel Target)", (0.72, 0.5), "#FBBF24"),
-        ("M3: Sustained Predictor\n(Max Rollout Relay with M2)", (0.72, 0.2), "#A78BFA"),
-        ("Physical Decoder\n(x, y, vx, vy)", (0.95, 0.5), "#F472B6"),
+        ("Event Stream\n[B, T, 2, H, W]", (0.10, 0.5), "#E2E8F0"),
+        ("SpatialSoftmax\nEventEncoder", (0.28, 0.5), "#CBD5E1"),
+        ("Phase-Space State\nz_t = [q_t, p_t]", (0.48, 0.5), "#93C5FD"),
+        ("Symplectic Predictor\n(M1 Semi-Implicit Euler)", (0.72, 0.5), "#34D399"),
+        ("Physical Decoder\n(x, y, vx, vy)", (0.92, 0.5), "#F472B6"),
     ]
 
     for text, (x, y), color in boxes:
@@ -52,11 +50,10 @@ def plot_architecture_diagram(save_path: Union[str, Path]) -> None:
         )
 
     # Connecting arrows
-    ax.annotate("", xy=(0.17, 0.5), xytext=(0.33, 0.5), arrowprops=dict(arrowstyle="<-", lw=1.5, color="#475569"))
-    ax.annotate("", xy=(0.34, 0.5), xytext=(0.50, 0.5), arrowprops=dict(arrowstyle="<-", lw=1.5, color="#475569"))
-    ax.annotate("", xy=(0.50, 0.5), xytext=(0.60, 0.8), arrowprops=dict(arrowstyle="->", lw=1.5, color="#059669"))
-    ax.annotate("", xy=(0.50, 0.5), xytext=(0.60, 0.5), arrowprops=dict(arrowstyle="->", lw=1.5, color="#D97706"))
-    ax.annotate("", xy=(0.50, 0.5), xytext=(0.60, 0.2), arrowprops=dict(arrowstyle="->", lw=1.5, color="#7C3AED"))
+    ax.annotate("", xy=(0.19, 0.5), xytext=(0.21, 0.5), arrowprops=dict(arrowstyle="->", lw=1.5, color="#475569"))
+    ax.annotate("", xy=(0.36, 0.5), xytext=(0.39, 0.5), arrowprops=dict(arrowstyle="->", lw=1.5, color="#475569"))
+    ax.annotate("", xy=(0.58, 0.5), xytext=(0.60, 0.5), arrowprops=dict(arrowstyle="->", lw=1.5, color="#059669"))
+    ax.annotate("", xy=(0.82, 0.5), xytext=(0.85, 0.5), arrowprops=dict(arrowstyle="->", lw=1.5, color="#475569"))
 
     save_path = Path(save_path)
     save_path.parent.mkdir(parents=True, exist_ok=True)
@@ -65,19 +62,15 @@ def plot_architecture_diagram(save_path: Union[str, Path]) -> None:
     plt.close()
 
 
-def plot_relay_rollout(
+def plot_rollout_trajectory(
     pred_traj: Union[np.ndarray, torch.Tensor],
     gt_traj: Union[np.ndarray, torch.Tensor],
-    phase_horizon: int = 10,
+    phase_horizon: int = 50,
     save_path: Optional[Union[str, Path]] = None,
     channel_idx: int = 0,
 ) -> None:
     """
-    Plots autonomous rollout across the Cascaded Temporal Relay (M1, M2, M3).
-    Bands denote active model windows:
-      - [0, H): M1 (Nominal Predictor)
-      - [H + 2k*H, H + (2k+1)*H): M2 (Recovery Funnel)
-      - [H + (2k+1)*H, H + (2k+2)*H): M3 (Sustained Autoregression)
+    Plots autonomous rollout from the Symplectic Latent Predictor (M1) vs Ground Truth.
     """
     set_paper_style()
     if isinstance(pred_traj, torch.Tensor):
@@ -91,38 +84,15 @@ def plot_relay_rollout(
         gt_traj = gt_traj[0]
 
     T = min(len(pred_traj), len(gt_traj))
-    H = phase_horizon
     timesteps = np.arange(T)
 
     fig, ax = plt.subplots(figsize=(12, 5))
 
     # Plot trajectories
     ax.plot(timesteps, gt_traj[:T, channel_idx], label="Ground Truth", color="#1E293B", lw=2.2, linestyle="--")
-    ax.plot(timesteps, pred_traj[:T, channel_idx], label="Relay Prediction", color="#2563EB", lw=2.0)
+    ax.plot(timesteps, pred_traj[:T, channel_idx], label="Symplectic Prediction (M1)", color="#2563EB", lw=2.0)
 
-    # Color background bands by active model
-    # M1: [0, H)
-    if H > 0:
-        ax.axvspan(0, min(H, T), alpha=0.15, color="#10B981", label="M1 Window (Nominal)")
-    
-    # Cyclic M2 and M3
-    m2_labeled = False
-    m3_labeled = False
-    t_curr = H
-    cycle = 0
-    while t_curr < T:
-        t_next = min(t_curr + H, T)
-        if cycle % 2 == 0:
-            ax.axvspan(t_curr, t_next, alpha=0.15, color="#F59E0B", label="M2 Window (Funnel)" if not m2_labeled else None)
-            m2_labeled = True
-        else:
-            ax.axvspan(t_curr, t_next, alpha=0.15, color="#8B5CF6", label="M3 Window (Sustained)" if not m3_labeled else None)
-            m3_labeled = True
-        ax.axvline(t_curr, color="#94A3B8", linestyle=":", lw=1.2)
-        t_curr = t_next
-        cycle += 1
-
-    ax.set_title(f"Cascaded Temporal Relay Autonomous Rollout (Phase Horizon H={H})")
+    ax.set_title("Symplectic Latent Predictor (M1) Autonomous Rollout")
     ax.set_xlabel("Rollout Step (t)")
     ax.set_ylabel(f"Coordinate Value (Channel {channel_idx})")
     ax.legend(loc="upper left", frameon=True)
@@ -135,6 +105,9 @@ def plot_relay_rollout(
         plt.close()
     else:
         plt.show()
+
+
+plot_relay_rollout = plot_rollout_trajectory
 
 
 def plot_training_curves(history: List[Dict[str, float]], save_path: Union[str, Path]) -> None:

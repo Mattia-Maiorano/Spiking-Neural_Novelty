@@ -55,8 +55,8 @@ def parse_args() -> argparse.Namespace:
         "--mode",
         type=str,
         default=None,
-        choices=["train_representation", "train_m1", "train_m2", "train_m3", "train_cascade"],
-        help="Override training mode",
+        choices=["train_representation", "train_m1", "train_m2"],
+        help="Override training mode (train_representation, train_m1, or train_m2)",
     )
     parser.add_argument("--device", type=str, default=None, help="Device (cpu, cuda, mps)")
     parser.add_argument("--seed", type=int, default=None, help="Override random seed")
@@ -72,12 +72,15 @@ def parse_args() -> argparse.Namespace:
         "--representation-checkpoint",
         type=str,
         default=None,
-        help="Representation checkpoint (model.pt) for Phase 1/2/3 training",
+        help="Representation checkpoint (model.pt) for Phase 1 (train_m1) training",
     )
-    parser.add_argument("--m1-checkpoint", type=str, default=None, help="M1 nominal checkpoint (model.pt) for M2 or M3 phase")
-    parser.add_argument("--m2-checkpoint", type=str, default=None, help="M2 recovery checkpoint (model.pt) for M3 phase")
-    parser.add_argument("--phase-horizon", type=int, default=None, help="Dynamic phase duration horizon (default 10)")
-    parser.add_argument("--max-rollout-horizon", type=int, default=None, help="Maximum rollout horizon for M3 training")
+    parser.add_argument(
+        "--m1-checkpoint",
+        type=str,
+        default=None,
+        help="M1 checkpoint (model.pt) for Phase 2 (train_m2) training",
+    )
+    parser.add_argument("--phase-horizon", type=int, default=None, help="Predictor unroll horizon during training")
     parser.add_argument("--temporal-burn-in", type=int, default=None, help="Override temporal burn-in steps for recurrent warm-up")
     return parser.parse_args()
 
@@ -197,7 +200,7 @@ def _evaluate_and_save_phase_artifacts(
                 phase_horizon=cfg.training.phase_horizon,
                 save_path=relay_plot_path,
             )
-            chronicle.log_success(f"Generated Cascaded Temporal Relay rollout plot: {relay_plot_path.name}")
+            chronicle.log_success(f"Generated Symplectic Predictor (M1) rollout plot: {relay_plot_path.name}")
 
     total_params = sum(p.numel() for p in model.parameters())
     version_tag = cfg.project.name
@@ -256,12 +259,8 @@ def main() -> None:
         overrides["representation_checkpoint"] = args.representation_checkpoint
     if args.m1_checkpoint is not None:
         overrides["m1_checkpoint"] = args.m1_checkpoint
-    if args.m2_checkpoint is not None:
-        overrides["m2_checkpoint"] = args.m2_checkpoint
     if args.phase_horizon is not None:
         overrides["phase_horizon"] = args.phase_horizon
-    if args.max_rollout_horizon is not None:
-        overrides["max_rollout_horizon"] = args.max_rollout_horizon
     if args.temporal_burn_in is not None:
         overrides["temporal_burn_in"] = args.temporal_burn_in
 
@@ -307,9 +306,8 @@ def main() -> None:
 
     model = SPWM.from_config(cfg).to(device)
 
-    if mode != "train_cascade":
-        # Auto-enforced strict loading of best validation `model.pt` from matching version
-        enforce_phase_prerequisites(model, cfg, device=device, results_root=results_root)
+    # Auto-enforced strict loading of best validation `model.pt` from matching version
+    enforce_phase_prerequisites(model, cfg, device=device, results_root=results_root)
 
     engine = BaseTrainer(
         model=model,
@@ -322,39 +320,21 @@ def main() -> None:
     )
 
     resume_ckpt = save_dir / "checkpoint.pt"
-    if mode != "train_cascade" and resume_ckpt.is_file():
+    if resume_ckpt.is_file():
         engine.load_checkpoint(resume_ckpt)
         chronicle.log_info(f"Resumed from checkpoint: {resume_ckpt} at epoch {engine.start_epoch}")
 
     history = engine.fit()
     cfg.save(save_dir / "config.yaml")
 
-    if mode == "train_cascade":
-        for phase_mode in ("train_representation", "train_m1", "train_m2", "train_m3"):
-            phase_dir = results_root / f"{cfg.project.name}_{phase_mode}"
-            phase_log_path = phase_dir / "training_log.json"
-            phase_hist = []
-            if phase_log_path.is_file():
-                with open(phase_log_path, "r", encoding="utf-8") as f:
-                    phase_hist = json.load(f)
-            phase_model = SPWM.from_config(cfg).to(device)
-            _evaluate_and_save_phase_artifacts(
-                model=phase_model,
-                cfg=cfg.with_overrides(mode=phase_mode),
-                phase_mode=phase_mode,
-                save_dir=phase_dir,
-                history=phase_hist,
-                device=device,
-            )
-    else:
-        _evaluate_and_save_phase_artifacts(
-            model=model,
-            cfg=cfg,
-            phase_mode=mode,
-            save_dir=save_dir,
-            history=history,
-            device=device,
-        )
+    _evaluate_and_save_phase_artifacts(
+        model=model,
+        cfg=cfg,
+        phase_mode=mode,
+        save_dir=save_dir,
+        history=history,
+        device=device,
+    )
 
 
 if __name__ == "__main__":

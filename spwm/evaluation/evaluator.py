@@ -86,27 +86,15 @@ class RolloutEvaluationResult:
         return self.compute_dynamic_score()
 
 def get_phase_eval_horizons(
-    mode: str,
-    phase_horizon: int = 10,
+    mode: str = "train_m1",
+    phase_horizon: int = 50,
     config_horizons: Sequence[int] = (1, 5, 10, 25, 50, 100),
+    evaluate_all_horizons: bool = True,
 ) -> List[int]:
-    """Return the canonical evaluation horizons for a given training phase mode.
+    """Return the canonical evaluation horizons for evaluation.
 
-    - `train_m1`: M1 runs isolated for the first `phase_horizon` steps (`0 -> H`, e.g., `[1, 5, 10]`).
-    - `train_m2`: Frozen M1 computes `0 -> H` and M2 computes `H -> 2H`; combined evaluation
-      runs up to `2 * H` (e.g., `[1, 5, 10, 15, 20]`).
-    - `train_m3` / `train_cascade`: Full relay (`0 -> H` M1, `H -> 2H` M2, `2H -> 3H` M3, `3H -> 4H` M2, ...)
-      evaluated up to the horizons specified in `schema.py` (`config_horizons`).
+    In the representation / predictor (M1) architecture, M1 rollouts are evaluated across all configured horizons.
     """
-    m = mode.lower()
-    H = phase_horizon
-    if m == "train_m1":
-        h_set = {h for h in config_horizons if h <= H} | {1, max(1, H // 2), H}
-        return sorted(h for h in h_set if 1 <= h <= H)
-    if m == "train_m2":
-        max_m2 = 2 * H
-        h_set = {h for h in config_horizons if h <= max_m2} | {1, max(1, H // 2), H, H + max(1, H // 2), max_m2}
-        return sorted(h for h in h_set if 1 <= h <= max_m2)
     return sorted(set(config_horizons))
 
 
@@ -123,6 +111,7 @@ class RolloutEvaluator:
         horizons: Sequence[int] = (1, 5, 10, 25, 50, 100),
         num_objects: int = 1,
         use_corrector: bool = True,
+        projection_cadence: Optional[int] = 10,
         temporal_burn_in: int = 5,
         fixed_predictor: Optional[nn.Module] = None,
     ) -> None:
@@ -141,6 +130,7 @@ class RolloutEvaluator:
         self.horizons = list(horizons)
         self.num_objects = num_objects
         self.use_corrector = use_corrector
+        self.projection_cadence = projection_cadence
         self.temporal_burn_in = temporal_burn_in
         self.fixed_predictor = fixed_predictor
 
@@ -194,6 +184,7 @@ class RolloutEvaluator:
                     decode_kinematics=True,
                     initial_decoder_state=decoder_state,
                     fixed_predictor=self.fixed_predictor,
+                    projection_cadence=self.projection_cadence if self.use_corrector else None,
                 )
 
                 for h in self.horizons:

@@ -1,9 +1,9 @@
-"""
-TDD Contract & Layering Tests for SPWM-v0.2.0 4-Layer Architecture.
+"""TDD Contract & Layering Tests for SPWM-v0.3.1 4-Layer Architecture.
 Enforces:
 1. Layer 0 (`spwm.contracts`) immutability, frozen dataclasses, and cross-domain validation.
 2. Runtime tensor shape & phase-space mathematical contracts (`assert_tensor_contract`, `assert_phase_space_contract`).
-3. Absence of dead legacy modules (`spwm.utils.config`, `spwm.learning.eprop`, `spwm.core.corrector`, `spwm.learning.phases.corrector_phase`).
+3. Absence of dead legacy modules (`spwm.utils.config`, `spwm.learning.eprop`, `spwm.core.corrector`,
+   `spwm.learning.phases.corrector_phase`, `spwm.training.phases.m2_recovery`, `spwm.training.phases.m3_sustained`).
 4. Strict import hierarchy across `contracts` -> `models` / `data` -> `training` -> `evaluation`.
 5. AST-level ban on silent fallbacks (`getattr` with default on config/model, `load_state_dict(..., strict=False)`, silent `except TypeError:` or `except Exception: pass`).
 """
@@ -16,40 +16,40 @@ import pytest
 import torch
 
 from spwm.contracts.config import (
-    ExperimentConfig,
-    ProjectConfig,
-    EnvironmentConfig,
     DataConfig,
-    ModelConfig,
-    LatentNeuronConfig,
-    MemoryConfig,
-    TrainingConfig,
-    LossConfig,
+    EnvironmentConfig,
     EvaluationConfig,
+    ExperimentConfig,
+    LatentNeuronConfig,
+    LossConfig,
+    MemoryConfig,
+    ModelConfig,
+    ProjectConfig,
+    TrainingConfig,
 )
-from spwm.contracts.tensors import (
-    assert_tensor_contract,
-    assert_phase_space_contract,
-    assert_euclidean_coordinates,
+from spwm.contracts.protocols import (
+    DynamicsProtocol,
+    EncoderProtocol,
+    PhaseStrategy,
+    PhysicalDecoderProtocol,
+    PredictorProtocol,
+    WorldModelProtocol,
 )
 from spwm.contracts.states import (
     ALIFState,
-    MultiTimescaleState,
-    DynamicsState,
     DynamicsOutput,
+    DynamicsState,
+    MultiTimescaleState,
     PredictorOutput,
+    RolloutResult,
+    SPWMSequenceOutput,
     SPWMState,
     SPWMStepOutput,
-    SPWMSequenceOutput,
-    RolloutResult,
 )
-from spwm.contracts.protocols import (
-    EncoderProtocol,
-    DynamicsProtocol,
-    RelayPredictorProtocol,
-    PhysicalDecoderProtocol,
-    WorldModelProtocol,
-    PhaseStrategy,
+from spwm.contracts.tensors import (
+    assert_euclidean_coordinates,
+    assert_phase_space_contract,
+    assert_tensor_contract,
 )
 
 
@@ -59,7 +59,7 @@ def test_frozen_config_immutability():
     with pytest.raises(FrozenInstanceError):
         cfg.project.seed = 999  # type: ignore[misc]
     with pytest.raises(FrozenInstanceError):
-        cfg.training.mode = "train_m2"  # type: ignore[misc]
+        cfg.training.mode = "train_representation"  # type: ignore[misc]
     with pytest.raises(FrozenInstanceError):
         cfg.model.latent_dim = 64  # type: ignore[misc]
 
@@ -69,13 +69,13 @@ def test_config_with_overrides_revalidates_invariants():
     cfg = ExperimentConfig()
     updated = cfg.with_overrides(
         seed=123,
-        mode="train_m2",
+        mode="train_representation",
         epochs=50,
         phase_horizon=8,
         early_stopping_patience=15,
     )
     assert updated.project.seed == 123
-    assert updated.training.mode == "train_m2"
+    assert updated.training.mode == "train_representation"
     assert updated.training.epochs == 50
     assert updated.training.phase_horizon == 8
     assert updated.training.early_stopping_patience == 15
@@ -91,18 +91,11 @@ def test_cross_domain_sequence_length_and_sensor_validation():
     with pytest.raises(ValueError, match="divisible by 4"):
         EnvironmentConfig(height=30, width=32)
 
-    # Sequence length too short for train_m2 (requires >= 2*H + 1)
+    # Sequence length too short for train_m1 (requires >= H + 1)
     with pytest.raises(ValueError, match="sequence_length"):
         ExperimentConfig(
-            data=DataConfig(sequence_length=18),
-            training=TrainingConfig(mode="train_m2", phase_horizon=10),
-        )
-
-    # Sequence length too short for train_m3 max_rollout_horizon
-    with pytest.raises(ValueError, match="sequence_length"):
-        ExperimentConfig(
-            data=DataConfig(sequence_length=20),
-            training=TrainingConfig(mode="train_m3", phase_horizon=10, max_rollout_horizon=30),
+            data=DataConfig(sequence_length=8),
+            training=TrainingConfig(mode="train_m1", phase_horizon=10),
         )
 
 
@@ -136,6 +129,7 @@ def test_dead_modules_are_pruned():
         repo_root / "spwm" / "learning" / "eprop.py",
         repo_root / "spwm" / "core" / "corrector.py",
         repo_root / "spwm" / "learning" / "phases" / "corrector_phase.py",
+        repo_root / "spwm" / "training" / "phases" / "m3_sustained.py",
         repo_root / "spwm_v7_3",
     ]
     for p in dead_paths:
@@ -152,8 +146,7 @@ def test_dead_modules_are_pruned():
 
 
 def test_strict_4_layer_import_hierarchy():
-    """
-    Verifies strict unidirectional dependency layering across spwm/:
+    """Verifies strict unidirectional dependency layering across spwm/:
     - Layer 0 (`spwm.contracts`) imports NO other `spwm.*` package.
     - Layer 1 (`spwm.models`, `spwm.data`) imports ONLY `spwm.contracts` (or `spwm.models`/`spwm.data`).
       NEVER `spwm.training`, `spwm.learning`, or `spwm.evaluation`.
@@ -202,8 +195,7 @@ def test_strict_4_layer_import_hierarchy():
 
 
 def test_zero_silent_fallbacks_ast_guard():
-    """
-    AST static verification across spwm/:
+    """AST static verification across spwm/:
     1. No `getattr(obj, name, default)` with a 3rd fallback argument in spwm/models or spwm/training.
     2. No `load_state_dict(..., strict=False)` in spwm/.
     3. No `except TypeError:` or `except Exception: pass` in spwm/.

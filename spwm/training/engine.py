@@ -4,7 +4,7 @@ BaseTrainer & Trainer Engine for SPWM (Layer 2 — Training).
 Single source of truth for:
 - Epoch lifecycle orchestration (`fit`, `train_epoch`, `evaluate`)
 - Scoped `strict=True` checkpoint management (`save_checkpoint`, `load_checkpoint`,
-  `load_m1_checkpoint`, `load_m2_checkpoint`)
+  `load_representation_checkpoint`)
 - Gradient isolation verification (`verify_gradient_isolation`)
 
 Zero upward imports into `spwm.evaluation` and zero silent `getattr` or `strict=False` fallbacks.
@@ -74,52 +74,6 @@ def load_representation_checkpoint(
     )
 
 
-def load_m1_checkpoint(
-    model: nn.Module,
-    ckpt_path: Union[str, Path],
-    device: Optional[Union[str, torch.device]] = None,
-) -> None:
-    """Strictly load Phase 1 (`train_m1`) trained components into `model`.
-
-    Loads `encoder`, `sensory_predictor`, `dynamics`, `predictor.m1`, and `physical_decoder`
-    each with `strict=True`.
-    """
-    path = Path(ckpt_path)
-    if not path.is_file():
-        raise FileNotFoundError(f"M1 checkpoint not found at: {path}")
-    raw = torch.load(path, map_location=device or "cpu", weights_only=False)
-    state_dict = raw["model_state"] if isinstance(raw, dict) and "model_state" in raw else raw
-
-    model.encoder.load_state_dict(_extract_submodel_state(state_dict, "encoder"), strict=True)
-    model.sensory_predictor.load_state_dict(
-        _extract_submodel_state(state_dict, "sensory_predictor"), strict=True
-    )
-    model.dynamics.load_state_dict(_extract_submodel_state(state_dict, "dynamics"), strict=True)
-    model.predictor.m1.load_state_dict(
-        _extract_submodel_state(state_dict, "predictor.m1"), strict=True
-    )
-    model.physical_decoder.load_state_dict(
-        _extract_submodel_state(state_dict, "physical_decoder"), strict=True
-    )
-
-
-def load_m2_checkpoint(
-    model: nn.Module,
-    ckpt_path: Union[str, Path],
-    device: Optional[Union[str, torch.device]] = None,
-) -> None:
-    """Strictly load Phase 2 (`train_m2`) trained recovery predictor (`predictor.m2`) into `model`."""
-    path = Path(ckpt_path)
-    if not path.is_file():
-        raise FileNotFoundError(f"M2 checkpoint not found at: {path}")
-    raw = torch.load(path, map_location=device or "cpu", weights_only=False)
-    state_dict = raw["model_state"] if isinstance(raw, dict) and "model_state" in raw else raw
-
-    model.predictor.m2.load_state_dict(
-        _extract_submodel_state(state_dict, "predictor.m2"), strict=True
-    )
-
-
 def resolve_version_checkpoint(
     version_name: str,
     phase_mode: str,
@@ -162,17 +116,42 @@ def resolve_version_checkpoint(
     )
 
 
+def load_m1_checkpoint(
+    model: nn.Module,
+    ckpt_path: Union[str, Path],
+    device: Optional[Union[str, torch.device]] = None,
+) -> None:
+    """Strictly load Phase 1 (`train_m1`) trained predictor (and representation) into `model`."""
+    path = Path(ckpt_path)
+    if not path.is_file():
+        raise FileNotFoundError(f"M1 checkpoint not found at: {path}")
+    raw = torch.load(path, map_location=device or "cpu", weights_only=False)
+    state_dict = raw["model_state"] if isinstance(raw, dict) and "model_state" in raw else raw
+
+    # Load predictor / m1 (handling both legacy CascadedTemporalRelay checkpoint 'predictor.m1.*' and current LatentPredictor 'predictor.*')
+    if hasattr(model, "predictor"):
+        if any(k.startswith("predictor.m1.") for k in state_dict.keys()):
+            pred_state = _extract_submodel_state(state_dict, "predictor.m1")
+        else:
+            pred_state = _extract_submodel_state(state_dict, "predictor")
+        model.predictor.load_state_dict(pred_state, strict=True)
+    # Also load representation components if present in checkpoint
+    for sub in ("encoder", "sensory_predictor", "dynamics", "physical_decoder"):
+        sub_state = _extract_submodel_state(state_dict, sub)
+        if sub_state and hasattr(model, sub):
+            getattr(model, sub).load_state_dict(sub_state, strict=True)
+
+
 def enforce_phase_prerequisites(
     model: nn.Module,
     cfg: ExperimentConfig,
     device: Union[str, torch.device],
     results_root: Union[str, Path] = "results",
 ) -> Dict[str, Path]:
-    """Auto-enforce and strictly load prerequisite `model.pt` checkpoints for `train_m2` and `train_m3`.
+    """Auto-enforce and strictly load prerequisite `model.pt` checkpoints for `train_m1` and `train_m2`.
 
-    - `train_m2`: Requires and loads M1 (`model.pt`) from matching version.
-    - `train_m3`: Requires and loads M1 (`model.pt`) and M2 (`model.pt`) from matching version,
-      and initializes M3 from M1 (`strict=True`).
+    - `train_m1`: Requires and loads pre-trained representation (`train_representation` `model.pt`).
+    - `train_m2`: Requires and loads pre-trained representation and M1 (`train_m1` `model.pt`).
     """
     mode = cfg.training.mode.lower()
     loaded: Dict[str, Path] = {}
@@ -197,43 +176,34 @@ def enforce_phase_prerequisites(
                 )
                 load_representation_checkpoint(model, rep_path, device=device)
                 loaded["representation"] = rep_path
+                chronicle.log_success(f"Strictly loaded representation model.pt: {rep_path}")
             except FileNotFoundError as err:
                 chronicle.log_info(f"Phase prerequisite notice for {mode}: {err}")
 
-    elif mode == "train_m2":
-        m1_path = resolve_version_checkpoint(
-            cfg.project.name,
-            "train_m1",
-            explicit_path=cfg.training.m1_checkpoint,
-            results_root=results_root,
-        )
-        load_m1_checkpoint(model, m1_path, device=device)
-        loaded["m1"] = m1_path
-        chronicle.log_success(f"Strictly loaded M1 best model.pt for M2 training: {m1_path}")
-
-    elif mode == "train_m3":
-        m1_path = resolve_version_checkpoint(
-            cfg.project.name,
-            "train_m1",
-            explicit_path=cfg.training.m1_checkpoint,
-            results_root=results_root,
-        )
-        load_m1_checkpoint(model, m1_path, device=device)
-        loaded["m1"] = m1_path
-        chronicle.log_success(f"Strictly loaded M1 best model.pt for M3 training: {m1_path}")
-
-        model.relay.init_m3_from_m1()
-        chronicle.log_success("Initialized M3 weights from M1 (strict=True).")
-
-        m2_path = resolve_version_checkpoint(
-            cfg.project.name,
-            "train_m2",
-            explicit_path=cfg.training.m2_checkpoint,
-            results_root=results_root,
-        )
-        load_m2_checkpoint(model, m2_path, device=device)
-        loaded["m2"] = m2_path
-        chronicle.log_success(f"Strictly loaded M2 best model.pt for M3 training: {m2_path}")
+    elif mode in ("train_m2", "train_denoiser"):
+        # Require M1 checkpoint (which contains representation + M1)
+        if cfg.training.m1_checkpoint:
+            m1_path = resolve_version_checkpoint(
+                cfg.project.name,
+                "train_m1",
+                explicit_path=cfg.training.m1_checkpoint,
+                results_root=results_root,
+            )
+            load_m1_checkpoint(model, m1_path, device=device)
+            loaded["m1"] = m1_path
+            chronicle.log_success(f"Strictly loaded M1 model.pt: {m1_path}")
+        else:
+            try:
+                m1_path = resolve_version_checkpoint(
+                    cfg.project.name,
+                    "train_m1",
+                    results_root=results_root,
+                )
+                load_m1_checkpoint(model, m1_path, device=device)
+                loaded["m1"] = m1_path
+                chronicle.log_success(f"Strictly loaded M1 model.pt: {m1_path}")
+            except FileNotFoundError as err:
+                chronicle.log_info(f"Phase prerequisite notice for {mode}: {err}")
 
     return loaded
 
@@ -283,7 +253,7 @@ class BaseTrainer:
             self.loss_fn = loss_fn.to(self.device)
 
         self.mode = cfg.training.mode.lower()
-        if auto_enforce_checkpoints and self.mode in ("train_m2", "train_m3"):
+        if auto_enforce_checkpoints and self.mode in ("train_m1", "train_m2", "train_denoiser"):
             enforce_phase_prerequisites(
                 self.model, self.cfg, device=self.device, results_root=self.results_root
             )
@@ -419,70 +389,7 @@ class BaseTrainer:
         epochs: Optional[int] = None,
         patience: Optional[int] = None,
     ) -> List[Dict[str, float]]:
-        if self.mode != "train_cascade":
-            return self._fit_single_phase(epochs=epochs, patience=patience)
-
-        # Automated Sequential Cascade: train_representation -> train_m1 -> train_m2 -> train_m3
-        # Transitions to the next phase after `early_stopping_patience` (default 20) epochs without val improvement,
-        # strictly loading the best validation `model.pt` from each preceding phase.
-        cascade_phases = ("train_representation", "train_m1", "train_m2", "train_m3")
-        combined_history: List[Dict[str, float]] = []
-        base_root = self.save_dir.parent if self.save_dir.name.endswith("_train_cascade") else self.results_root
-        rep_best_ckpt: Optional[Path] = None
-        m1_best_ckpt: Optional[Path] = None
-        m2_best_ckpt: Optional[Path] = None
-
-        for phase_mode in cascade_phases:
-            phase_dir = base_root / f"{self.cfg.project.name}_{phase_mode}"
-            phase_dir.mkdir(parents=True, exist_ok=True)
-
-            phase_cfg = self.cfg.with_overrides(
-                mode=phase_mode,
-                representation_checkpoint=str(rep_best_ckpt) if rep_best_ckpt is not None else self.cfg.training.representation_checkpoint,
-                m1_checkpoint=str(m1_best_ckpt) if m1_best_ckpt is not None else self.cfg.training.m1_checkpoint,
-                m2_checkpoint=str(m2_best_ckpt) if m2_best_ckpt is not None else self.cfg.training.m2_checkpoint,
-            )
-
-            if phase_mode in ("train_m1", "train_m2", "train_m3"):
-                enforce_phase_prerequisites(
-                    self.model, phase_cfg, device=self.device, results_root=base_root
-                )
-
-            phase_trainer = BaseTrainer(
-                model=self.model,
-                cfg=phase_cfg,
-                train_loader=self.train_loader,
-                val_loader=self.val_loader,
-                loss_fn=self.loss_fn,
-                device=self.device,
-                save_dir=phase_dir,
-            )
-            phase_hist = phase_trainer._fit_single_phase(epochs=epochs, patience=patience)
-            phase_cfg.save(phase_dir / "config.yaml")
-            combined_history.extend(phase_hist)
-
-            best_pt = phase_dir / "model.pt"
-            if not best_pt.is_file():
-                raise FileNotFoundError(f"Expected best validation model.pt at {best_pt} after {phase_mode}")
-
-            # Reload best validation weights before transitioning to the next phase
-            best_ckpt_data = torch.load(best_pt, map_location=self.device, weights_only=False)
-            best_state = best_ckpt_data["model_state"] if isinstance(best_ckpt_data, dict) and "model_state" in best_ckpt_data else best_ckpt_data
-            self.model.load_state_dict(best_state, strict=True)
-
-            if phase_mode == "train_representation":
-                rep_best_ckpt = best_pt
-            elif phase_mode == "train_m1":
-                m1_best_ckpt = best_pt
-            elif phase_mode == "train_m2":
-                m2_best_ckpt = best_pt
-
-        self.history = combined_history
-        self.best_score = phase_trainer.best_score
-        self.best_epoch = phase_trainer.best_epoch
-        self.save_checkpoint(epoch=len(combined_history), is_best=True)
-        self.save_training_log()
-        return self.history
+        return self._fit_single_phase(epochs=epochs, patience=patience)
 
     def evaluate(self, loader: Optional[DataLoader] = None) -> Dict[str, float]:
         target_loader = loader if loader is not None else self.val_loader
@@ -653,8 +560,7 @@ class Trainer(BaseTrainer):
 __all__ = [
     "BaseTrainer",
     "Trainer",
-    "load_m1_checkpoint",
-    "load_m2_checkpoint",
+    "load_representation_checkpoint",
     "resolve_version_checkpoint",
     "enforce_phase_prerequisites",
 ]

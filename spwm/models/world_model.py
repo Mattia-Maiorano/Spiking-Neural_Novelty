@@ -1,7 +1,7 @@
 """
-Layer 1 SPWM: Spiking Predictive World Model with Cascaded Temporal Relay.
+Layer 1 SPWM: Spiking Predictive World Model with Symplectic Latent Predictor.
 Composes pure Layer 1 neural primitives (EventEncoder, SpikingLatentDynamics,
-CascadedTemporalRelay, PhysicalDecoder) into a unified, strictly typed world model.
+LatentPredictor, PhysicalDecoder) into a unified, strictly typed world model.
 Zero dead plasticity buffers, zero legacy corrector branches, zero upward imports.
 """
 
@@ -20,20 +20,20 @@ from spwm.contracts.tensors import assert_phase_space_contract, assert_tensor_co
 from spwm.models.dynamics import SpikingLatentDynamics
 from spwm.models.encoder import EventEncoder
 from spwm.models.predictors import (
-    CascadedTemporalRelay,
     LatentPredictor,
+    ManifoldProjector,
     PhysicalDecoder,
 )
 
 
 class SPWM(nn.Module):
     """
-    SPWM: Spiking Predictive World Model (v0.2.0).
+    SPWM: Spiking Predictive World Model (v0.3.1).
     Unified composition of:
       1. SpatialSoftmax Keypoint EventEncoder
       2. Top-down Predictive Coding sensory feedback (`sensory_predictor`)
       3. Dual-timescale ALIF SpikingLatentDynamics
-      4. CascadedTemporalRelay of Stateless Predictors (M1, M2, M3)
+      4. Symplectic Latent Predictor (M1)
       5. PhysicalDecoder kinematic linear probe
     """
 
@@ -59,7 +59,9 @@ class SPWM(nn.Module):
         num_objects: int = 1,
         ema_decay: float = 0.9,
         decoder_ema_alpha: float = 0.85,
-        phase_horizon: int = 10,
+        phase_horizon: int = 50,
+        symplectic_m1: bool = True,
+        dt: float = 0.05,
     ) -> None:
         super().__init__()
         # Canonical symplectic partition resolution when instantiated with shorthand latent_dim in unit tests
@@ -85,6 +87,8 @@ class SPWM(nn.Module):
         self.timescale_dims = tuple(timescale_dims)
         self.num_objects = num_objects
         self.phase_horizon = phase_horizon
+        self.symplectic_m1 = symplectic_m1
+        self.dt = float(dt)
 
         # 1. Spatial Softmax Keypoint Event Encoder
         self.encoder = EventEncoder(
@@ -115,12 +119,15 @@ class SPWM(nn.Module):
             surrogate_alpha=surrogate_alpha,
         )
 
-        # 4. Cascaded Temporal Relay of Stateless Predictors (M1, M2, M3)
-        self.predictor = CascadedTemporalRelay(
+        # 4. Symplectic Latent Predictor (M1)
+        self.predictor = LatentPredictor(
             latent_dim=latent_dim,
             hidden_dim=predictor_hidden_dim,
             residual=True,
-            phase_horizon=phase_horizon,
+            symplectic=symplectic_m1,
+            q_dim=resolved_q,
+            p_dim=resolved_p,
+            dt=self.dt,
         )
 
         # 5. Physical Kinematic Probe Decoder
@@ -132,21 +139,17 @@ class SPWM(nn.Module):
             alpha=decoder_ema_alpha,
         )
 
-    @property
-    def relay(self) -> CascadedTemporalRelay:
-        return self.predictor
+        # 6. Stateless Manifold Projector (M2 Geometric Denoiser)
+        self.m2 = ManifoldProjector(
+            latent_dim=latent_dim,
+            hidden_dim=predictor_hidden_dim,
+            q_dim=resolved_q,
+            p_dim=resolved_p,
+        )
 
     @property
     def m1(self) -> LatentPredictor:
-        return self.predictor.m1
-
-    @property
-    def m2(self) -> LatentPredictor:
-        return self.predictor.m2
-
-    @property
-    def m3(self) -> LatentPredictor:
-        return self.predictor.m3
+        return self.predictor
 
     @classmethod
     def from_config(cls, cfg: ExperimentConfig) -> "SPWM":
@@ -173,6 +176,8 @@ class SPWM(nn.Module):
             ema_decay=cfg.model.ema_decay,
             decoder_ema_alpha=cfg.model.decoder_ema_alpha,
             phase_horizon=cfg.training.phase_horizon,
+            symplectic_m1=cfg.model.symplectic,
+            dt=cfg.environment.dt,
         )
 
     def init_state(self, batch_size: int, device: Optional[torch.device] = None) -> SPWMState:
@@ -359,9 +364,11 @@ class SPWM(nn.Module):
         self,
         initial_latent: torch.Tensor,
         horizon: int = 50,
+        projection_cadence: Optional[int] = None,
     ) -> torch.Tensor:
         """
-        Autonomous multi-step rollout over the Cascaded Temporal Relay (M1 -> M2 <-> M3).
+        Autonomous multi-step rollout using the symplectic latent predictor (M1) and
+        optional stateless manifold projection (M2).
         Delegates to unified `rollout_latent`.
         """
         from spwm.models.rollout import rollout_latent
@@ -372,5 +379,6 @@ class SPWM(nn.Module):
             horizon=horizon,
             with_grad=False,
             decode_kinematics=False,
+            projection_cadence=projection_cadence,
         )
         return res.trajectory

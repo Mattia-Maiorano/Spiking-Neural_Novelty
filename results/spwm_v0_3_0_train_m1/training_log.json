@@ -658,5 +658,27 @@
     "is_best": false,
     "epochs_without_improvement": 20,
     "duration": 3.3914289474487305
+  },
+  {
+    "epoch": 31,
+    "phase": "train_m1",
+    "train_loss": 0.044752496853470804,
+    "train_loss_m1": 0.044752496853470804,
+    "train_loss_latent": 0.044752496853470804,
+    "train_loss_position": 0.07267383955419064,
+    "train_loss_velocity": 0.03544538460671902,
+    "train_pos_err": 0.6429199904203415,
+    "train_vel_err": 0.7666420048475265,
+    "val_loss": 0.04640008881688118,
+    "val_loss_m1": 0.04640008881688118,
+    "val_loss_latent": 0.04640008881688118,
+    "val_loss_position": 0.07817728645526446,
+    "val_loss_velocity": 0.0358076890787253,
+    "val_pos_err": 0.654257228741279,
+    "val_vel_err": 0.780596292935885,
+    "score": 0.04640008881688118,
+    "is_best": false,
+    "epochs_without_improvement": 1,
+    "duration": 4.565275192260742
   }
 ]

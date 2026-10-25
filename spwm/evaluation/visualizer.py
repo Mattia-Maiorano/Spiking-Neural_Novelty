@@ -4,13 +4,19 @@ Produces clean, publication-ready figures without deprecated baseline comparison
 """
 
 from __future__ import annotations
+import json
+import math
+from dataclasses import dataclass, field
+from datetime import datetime, timezone
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Sequence, Union
+from typing import Any, Dict, Iterable, List, Mapping, Optional, Sequence, Union
 import numpy as np
 import torch
 import matplotlib
 matplotlib.use("Agg")
 import matplotlib.pyplot as plt
+
+from spwm.evaluation.evaluator import RolloutEvaluator, TrajectoryRollout
 
 
 def set_paper_style():
@@ -424,6 +430,237 @@ def plot_model_comparison(metrics: Dict[str, Dict[str, float]], save_path: Union
 
 
 plot_baseline_comparison = plot_model_comparison
+
+
+# ---------------------------------------------------------------------------
+# Unity Ghost Execution Telemetry Export
+# ---------------------------------------------------------------------------
+
+GHOST_SCHEMA_VERSION = "spwm.ghost_trajectory/1.0"
+DEFAULT_GHOST_FILENAME = "trajectory_ghost_v0_4_0.json"
+DEFAULT_UNITY_PROJECT_DIR = Path(__file__).resolve().parents[2] / "sim"
+
+
+def _finite(x: float, ndigits: int = 6) -> float:
+    """Unity's JsonUtility cannot parse NaN/Infinity; clamp to a finite rounded float."""
+    x = float(x)
+    if not math.isfinite(x):
+        return 0.0
+    return round(x, ndigits)
+
+
+def _vec(arr: np.ndarray, ndigits: int = 6) -> List[float]:
+    return [_finite(v, ndigits) for v in np.asarray(arr, dtype=np.float64).ravel()]
+
+
+@dataclass
+class GhostTrajectory:
+    """In-memory representation of the ghost-execution JSON contract (one trajectory)."""
+    metadata: Dict[str, Any]
+    frames: List[Dict[str, Any]] = field(default_factory=list)
+
+    def to_dict(self) -> Dict[str, Any]:
+        return {"metadata": self.metadata, "frames": self.frames}
+
+
+class GhostVisualizerExporter:
+    """Serializes one autonomous M1 rollout vs. ground truth for Unity ghost playback.
+
+    Hooks into `RolloutEvaluator.rollout_trajectory`, so the exported trajectory is produced by
+    the exact same burn-in / decoder warm-up / `rollout_latent` protocol as the benchmark metrics.
+
+    Output contract (`trajectory_ghost_v0_4_0.json`, written to `<unity>/Assets/StreamingAssets`):
+        metadata: schema, model_version, horizon (H), dt, joint_count, t_start, sample ids, summary.
+        frames[H]: {
+            t, time_s,
+            ground_truth_q[J], predicted_q[J],            # joint angles (rad)
+            ground_truth_p[J], predicted_p[J],            # joint angular velocities (rad/s)
+            instantaneous_metrics: {
+                position_abs_error,                       # ||q_hat_t - q*_t||_2
+                velocity_abs_error,                       # ||p_hat_t - p*_t||_2
+                velocity_relative_degradation,            # E_v(t) / E_v(1)  (metrics_resume convention)
+                position_relative_degradation,            # E_q(t) / E_q(1)
+            }
+        }
+
+    Frame `t` (1-indexed) is the prediction for simulation index `t_start + t`.
+    """
+
+    def __init__(
+        self,
+        evaluator: RolloutEvaluator,
+        unity_project_dir: Union[str, Path] = DEFAULT_UNITY_PROJECT_DIR,
+        filename: str = DEFAULT_GHOST_FILENAME,
+        model_version: str = "spwm_v0_4_0",
+        dt: float = 0.05,
+        horizon: int = 100,
+        joint_names: Optional[Sequence[str]] = None,
+        precision: int = 6,
+    ) -> None:
+        if horizon <= 0:
+            raise ValueError(f"GhostVisualizerExporter: horizon must be positive, got {horizon}")
+        if dt <= 0:
+            raise ValueError(f"GhostVisualizerExporter: dt must be positive, got {dt}")
+        self.evaluator = evaluator
+        self.unity_project_dir = Path(unity_project_dir)
+        self.filename = filename
+        self.model_version = model_version
+        self.dt = float(dt)
+        self.horizon = int(horizon)
+        self.joint_names = list(joint_names) if joint_names is not None else None
+        self.precision = int(precision)
+
+    @property
+    def output_path(self) -> Path:
+        return self.unity_project_dir / "Assets" / "StreamingAssets" / self.filename
+
+    # -- capture -----------------------------------------------------------------
+
+    def capture_batch(
+        self,
+        batch: Mapping[str, Any],
+        sample_index: int = 0,
+        extra_metadata: Optional[Dict[str, Any]] = None,
+    ) -> GhostTrajectory:
+        """Run the benchmark rollout on `batch` and build the ghost payload for one sample."""
+        traj = self.evaluator.rollout_trajectory(batch, horizon=self.horizon)
+        b = traj.target_kinematics.shape[0]
+        if not 0 <= sample_index < b:
+            raise IndexError(f"sample_index {sample_index} out of range for batch of size {b}")
+        if traj.horizon < self.horizon:
+            raise ValueError(
+                f"Sequence only supports H={traj.horizon} < requested H={self.horizon}. "
+                f"Increase sequence_length to >= temporal_burn_in + H + 1."
+            )
+        meta = dict(extra_metadata or {})
+        if "trajectory_ids" in batch:
+            meta.setdefault("trajectory_id", int(batch["trajectory_ids"][sample_index]))
+        return self.from_trajectory_rollout(traj, sample_index=sample_index, extra_metadata=meta)
+
+    def capture(
+        self,
+        data_loader: Iterable[Mapping[str, Any]],
+        batch_index: int = 0,
+        sample_index: int = 0,
+    ) -> GhostTrajectory:
+        """Select batch `batch_index` from `data_loader` and capture sample `sample_index`."""
+        for i, batch in enumerate(data_loader):
+            if i == batch_index:
+                return self.capture_batch(batch, sample_index, extra_metadata={"batch_index": batch_index})
+        raise IndexError(f"batch_index {batch_index} exceeds data loader length")
+
+    def from_trajectory_rollout(
+        self,
+        traj: TrajectoryRollout,
+        sample_index: int = 0,
+        extra_metadata: Optional[Dict[str, Any]] = None,
+    ) -> GhostTrajectory:
+        """Pure serialization of a `TrajectoryRollout` (no model execution)."""
+        j = traj.joint_count
+        h = min(self.horizon, traj.horizon)
+        pred = traj.rollout.decoded_kinematics[sample_index, :h].detach().float().cpu().numpy()
+        true = traj.target_kinematics[sample_index, :h].detach().float().cpu().numpy()
+        return self.from_arrays(
+            predicted_q=pred[:, :j],
+            ground_truth_q=true[:, :j],
+            predicted_p=pred[:, j : 2 * j],
+            ground_truth_p=true[:, j : 2 * j],
+            extra_metadata={"t_start": int(traj.t_start), "sample_index": int(sample_index), **(extra_metadata or {})},
+        )
+
+    def from_arrays(
+        self,
+        predicted_q: np.ndarray,
+        ground_truth_q: np.ndarray,
+        predicted_p: Optional[np.ndarray] = None,
+        ground_truth_p: Optional[np.ndarray] = None,
+        extra_metadata: Optional[Dict[str, Any]] = None,
+    ) -> GhostTrajectory:
+        """Build the payload from raw [H, J] arrays. Metrics follow `spwm.training.metrics` (per-step L2)."""
+        q_hat = np.asarray(predicted_q, dtype=np.float64)
+        q_star = np.asarray(ground_truth_q, dtype=np.float64)
+        if q_hat.shape != q_star.shape or q_hat.ndim != 2:
+            raise ValueError(f"q arrays must share shape [H, J]; got {q_hat.shape} vs {q_star.shape}")
+        h, j = q_hat.shape
+        has_p = predicted_p is not None and ground_truth_p is not None
+        p_hat = np.asarray(predicted_p, dtype=np.float64) if has_p else np.zeros_like(q_hat)
+        p_star = np.asarray(ground_truth_p, dtype=np.float64) if has_p else np.zeros_like(q_hat)
+
+        pos_err = np.linalg.norm(q_hat - q_star, axis=-1)          # [H]
+        vel_err = np.linalg.norm(p_hat - p_star, axis=-1)          # [H]
+        pos_ref = pos_err[0] if pos_err[0] > 1e-8 else 1.0
+        vel_ref = vel_err[0] if vel_err[0] > 1e-8 else 1.0
+        pos_rel = pos_err / pos_ref
+        vel_rel = vel_err / vel_ref
+
+        nd = self.precision
+        frames: List[Dict[str, Any]] = []
+        for t in range(h):
+            frames.append({
+                "t": t + 1,
+                "time_s": _finite((t + 1) * self.dt, nd),
+                "ground_truth_q": _vec(q_star[t], nd),
+                "predicted_q": _vec(q_hat[t], nd),
+                "ground_truth_p": _vec(p_star[t], nd),
+                "predicted_p": _vec(p_hat[t], nd),
+                "instantaneous_metrics": {
+                    "position_abs_error": _finite(pos_err[t], nd),
+                    "velocity_abs_error": _finite(vel_err[t], nd),
+                    "velocity_relative_degradation": _finite(vel_rel[t], nd),
+                    "position_relative_degradation": _finite(pos_rel[t], nd),
+                },
+            })
+
+        names = self.joint_names if self.joint_names and len(self.joint_names) == j else [f"joint_{i}" for i in range(j)]
+        metadata: Dict[str, Any] = {
+            "schema": GHOST_SCHEMA_VERSION,
+            "model_version": self.model_version,
+            "horizon": int(h),
+            "dt": _finite(self.dt, 6),
+            "joint_count": int(j),
+            "joint_names": names,
+            "angle_unit": "rad",
+            "has_velocities": bool(has_p),
+            "t_start": 0,
+            "sample_index": 0,
+            "trajectory_id": -1,
+            "batch_index": 0,
+            "exported_at": datetime.now(timezone.utc).isoformat(timespec="seconds"),
+            "summary": {
+                "mean_position_abs_error": _finite(pos_err.mean(), nd),
+                "final_position_abs_error": _finite(pos_err[-1], nd),
+                "max_position_abs_error": _finite(pos_err.max(), nd),
+                "mean_velocity_abs_error": _finite(vel_err.mean(), nd),
+                "final_velocity_abs_error": _finite(vel_err[-1], nd),
+                "max_velocity_abs_error": _finite(vel_err.max(), nd),
+                "final_velocity_relative_degradation": _finite(vel_rel[-1], nd),
+                "final_position_relative_degradation": _finite(pos_rel[-1], nd),
+            },
+        }
+        metadata.update(extra_metadata or {})
+        return GhostTrajectory(metadata=metadata, frames=frames)
+
+    # -- persistence -------------------------------------------------------------
+
+    def save(self, ghost: GhostTrajectory, path: Optional[Union[str, Path]] = None) -> Path:
+        """Write the payload as JSON (default: `<unity>/Assets/StreamingAssets/<filename>`)."""
+        target = Path(path) if path is not None else self.output_path
+        target.parent.mkdir(parents=True, exist_ok=True)
+        tmp = target.with_suffix(target.suffix + ".tmp")
+        with open(tmp, "w", encoding="utf-8") as f:
+            json.dump(ghost.to_dict(), f, separators=(",", ":"), allow_nan=False)
+        tmp.replace(target)  # atomic swap so Unity never reads a half-written file
+        return target
+
+    def export(
+        self,
+        data_loader: Iterable[Mapping[str, Any]],
+        batch_index: int = 0,
+        sample_index: int = 0,
+        path: Optional[Union[str, Path]] = None,
+    ) -> Path:
+        """Capture + save in one call. Returns the written JSON path."""
+        return self.save(self.capture(data_loader, batch_index, sample_index), path)
 
 
 

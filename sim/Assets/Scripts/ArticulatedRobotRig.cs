@@ -1,6 +1,10 @@
 using System;
 using System.Collections.Generic;
 using UnityEngine;
+#if UNITY_6000_0_OR_NEWER
+using PhysicMaterial = UnityEngine.PhysicsMaterial;
+using PhysicMaterialCombine = UnityEngine.PhysicsMaterialCombine;
+#endif
 
 namespace SPWM.Robotics
 {
@@ -194,7 +198,7 @@ namespace SPWM.Robotics
                 Vector3 rootPos = new Vector3(0f, 1.05f, 0f);
                 Quaternion rootRot = Quaternion.identity;
                 _rootBody.TeleportRoot(rootPos, rootRot);
-                _rootBody.velocity = Vector3.zero;
+                _rootBody.linearVelocity = Vector3.zero;
                 _rootBody.angularVelocity = Vector3.zero;
             }
 
@@ -207,7 +211,11 @@ namespace SPWM.Robotics
             }
         }
 
-        private List<ArticulatedLinkSpec> GetArchetypeSpecs(RobotArchetype type)
+        /// <summary>
+        /// Canonical link specification table per archetype. Actuated joint order (all non-root specs)
+        /// defines the column order of q* / p* in exported telemetry. Shared with kinematic visualizers.
+        /// </summary>
+        public static List<ArticulatedLinkSpec> GetArchetypeSpecs(RobotArchetype type)
         {
             var specs = new List<ArticulatedLinkSpec>();
             if (type == RobotArchetype.Humanoid)

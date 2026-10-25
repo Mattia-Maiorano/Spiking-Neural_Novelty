@@ -214,3 +214,33 @@ def test_get_canonical_metrics_filename():
 
 
 
+
+
+def test_ghost_visualizer_exporter_contract():
+    import json
+    from spwm.evaluation.visualizer import GhostVisualizerExporter
+
+    sim = EventCameraSimulator(height=32, width=32)
+    ds = EventWorldDataset(trajectory_indices=[0, 1], event_simulator=sim, sequence_length=40, joint_count=8, action_dim=8)
+    loader = DataLoader(ds, batch_size=2, collate_fn=collate_event_batches)
+    model = SPWM(latent_dim=32, timescale_dims=(16, 16), encoder_dim=32, joint_count=8, action_dim=8)
+    evaluator = RolloutEvaluator(model=model, horizons=[30], joint_count=8, temporal_burn_in=5)
+
+    with tempfile.TemporaryDirectory() as tmpdir:
+        exporter = GhostVisualizerExporter(evaluator, unity_project_dir=tmpdir, horizon=30, dt=0.05)
+        out = exporter.export(loader, batch_index=0, sample_index=1)
+        assert out == Path(tmpdir) / "Assets" / "StreamingAssets" / "trajectory_ghost_v0_4_0.json"
+        payload = json.loads(out.read_text())
+
+    meta, frames = payload["metadata"], payload["frames"]
+    assert meta["horizon"] == 30 and meta["dt"] == 0.05 and meta["model_version"] == "spwm_v0_4_0"
+    assert meta["trajectory_id"] == 1 and meta["t_start"] == 5
+    assert len(frames) == 30
+    for f in frames:
+        assert len(f["ground_truth_q"]) == 8 and len(f["predicted_q"]) == 8
+        m = f["instantaneous_metrics"]
+        assert m["position_abs_error"] >= 0.0 and m["velocity_relative_degradation"] >= 0.0
+    assert abs(frames[0]["instantaneous_metrics"]["velocity_relative_degradation"] - 1.0) < 1e-6
+    # Ground truth must be the true kinematics aligned at t_start + t.
+    true_q = ds[1]["joint_positions"].numpy()
+    assert np.allclose(frames[0]["ground_truth_q"], true_q[6], atol=1e-5)

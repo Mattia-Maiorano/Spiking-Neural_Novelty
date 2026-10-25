@@ -1,8 +1,11 @@
 from spwm.evaluation.evaluator import (
     RolloutEvaluator,
     RolloutEvaluationResult,
+    TrajectoryRollout,
 )
 from spwm.evaluation.visualizer import (
+    GhostTrajectory,
+    GhostVisualizerExporter,
     plot_architecture_diagram,
     plot_training_curves,
     plot_multi_step_degradation,
@@ -23,6 +26,9 @@ from spwm.evaluation.metrics_resume import (
 __all__ = [
     "RolloutEvaluator",
     "RolloutEvaluationResult",
+    "TrajectoryRollout",
+    "GhostTrajectory",
+    "GhostVisualizerExporter",
     "generate_metrics_resume",
     "save_metrics_resume",
     "get_canonical_metrics_filename",

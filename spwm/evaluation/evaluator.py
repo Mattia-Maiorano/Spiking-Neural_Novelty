@@ -6,14 +6,31 @@ quantifying autonomous rollout MAE, drift ratio, and physical kinematic accuracy
 
 from __future__ import annotations
 from dataclasses import dataclass
-from typing import Dict, List, Optional, Sequence, Union
+from typing import Any, Dict, List, Mapping, Optional, Sequence, Tuple, Union
 import numpy as np
 import torch
 import torch.nn as nn
 from torch.utils.data import DataLoader
 
+from spwm.contracts.states import RolloutResult
 from spwm.training.metrics import position_error, velocity_error
 from spwm.models.rollout import rollout_latent
+
+
+@dataclass
+class TrajectoryRollout:
+    """Single-batch autonomous rollout paired with its time-aligned ground truth.
+
+    Produced by `RolloutEvaluator.rollout_trajectory` using the exact benchmark protocol
+    (burn-in, decoder warm-up, `rollout_latent`) so downstream exporters never diverge
+    from the evaluated metrics.
+    """
+    rollout: RolloutResult                 # predictions for steps t_start+1 .. t_start+horizon
+    target_kinematics: torch.Tensor        # [B, horizon, 2 * joint_count] ground truth (q*, p*)
+    target_latents: torch.Tensor           # [B, horizon, latent_dim] encoder latents
+    t_start: int                           # index of the last observed (burn-in) frame
+    horizon: int
+    joint_count: int
 
 
 @dataclass
@@ -130,6 +147,83 @@ class RolloutEvaluator:
         self.temporal_burn_in = temporal_burn_in
         self.fixed_predictor = fixed_predictor
 
+    def _autonomous_rollout(
+        self,
+        latent_states: torch.Tensor,
+        actions: Optional[torch.Tensor],
+        max_horizon: int,
+    ) -> Optional[Tuple[RolloutResult, int, int]]:
+        """Canonical benchmark rollout protocol shared by metrics and trajectory exporters.
+
+        Returns (rollout_result, t_start, evaluated_horizon) or None if the sequence is too short.
+        """
+        t = latent_states.shape[1]
+        burn_in = min(self.temporal_burn_in, max(0, t - 2))
+        t_start = burn_in
+        z_start = latent_states[:, t_start]
+        max_eval_h = min(max_horizon, t - 1 - t_start)
+        if max_eval_h <= 0:
+            return None
+
+        decoder_state = None
+        if hasattr(self.model, "physical_decoder") and self.model.physical_decoder is not None:
+            z_prefix = latent_states[:, : t_start + 1]
+            decoder_state = self.model.physical_decoder.warm_up_filter(z_prefix)
+
+        rollout_actions = actions[:, t_start : t_start + max_eval_h] if actions is not None else None
+        rollout_res = rollout_latent(
+            model=self.model,
+            z_init=z_start,
+            horizon=max_eval_h,
+            actions=rollout_actions,
+            with_grad=False,
+            decode_kinematics=True,
+            initial_decoder_state=decoder_state,
+            fixed_predictor=self.fixed_predictor,
+        )
+        return rollout_res, t_start, max_eval_h
+
+    @torch.no_grad()
+    def rollout_trajectory(
+        self,
+        batch: Mapping[str, Any],
+        horizon: Optional[int] = None,
+    ) -> TrajectoryRollout:
+        """Run the benchmark rollout on a single batch and return per-step trajectories.
+
+        Args:
+            batch: Collated batch with `events`, `flat_kinematics` and optionally `actions`.
+            horizon: Requested rollout horizon (defaults to max configured horizon).
+
+        Raises:
+            ValueError: if the sequence is too short or the model exposes no physical decoder.
+        """
+        requested_h = int(horizon) if horizon is not None else max(self.horizons)
+        events = batch["events"].to(self.device)
+        true_kin = batch["flat_kinematics"].to(self.device)
+        actions = batch["actions"].to(self.device) if "actions" in batch else None
+
+        out = self.model(events, actions=actions)
+        latent_states = out.latent_states
+        res = self._autonomous_rollout(latent_states, actions, requested_h)
+        if res is None:
+            raise ValueError(
+                f"rollout_trajectory: sequence length {latent_states.shape[1]} too short for burn-in "
+                f"{self.temporal_burn_in} + horizon {requested_h}."
+            )
+        rollout_res, t_start, eval_h = res
+        if rollout_res.decoded_kinematics is None:
+            raise ValueError("rollout_trajectory: model has no physical_decoder; cannot decode joint angles.")
+
+        return TrajectoryRollout(
+            rollout=rollout_res,
+            target_kinematics=true_kin[:, t_start + 1 : t_start + 1 + eval_h],
+            target_latents=latent_states[:, t_start + 1 : t_start + 1 + eval_h],
+            t_start=t_start,
+            horizon=eval_h,
+            joint_count=self.joint_count,
+        )
+
     @torch.no_grad()
     def evaluate_dataset(self, data_loader: DataLoader, max_batches: Optional[int] = None) -> RolloutEvaluationResult:
         latent_errors: Dict[int, List[float]] = {h: [] for h in self.horizons}
@@ -162,28 +256,10 @@ class RolloutEvaluator:
             if hasattr(out, "mean_spike_rate"):
                 spike_rates.append(float(out.mean_spike_rate.item()))
 
-            burn_in = min(self.temporal_burn_in, max(0, t - 2))
-            t_start = burn_in
-            z_start = latent_states[:, t_start]
-            max_eval_h = min(max(self.horizons), t - 1 - t_start)
+            rollout_out = self._autonomous_rollout(latent_states, actions, max(self.horizons))
 
-            if max_eval_h > 0:
-                decoder_state = None
-                if hasattr(self.model, "physical_decoder") and self.model.physical_decoder is not None:
-                    z_prefix = latent_states[:, : t_start + 1]
-                    decoder_state = self.model.physical_decoder.warm_up_filter(z_prefix)
-
-                rollout_actions = actions[:, t_start : t_start + max_eval_h] if actions is not None else None
-                rollout_res = rollout_latent(
-                    model=self.model,
-                    z_init=z_start,
-                    horizon=max_eval_h,
-                    actions=rollout_actions,
-                    with_grad=False,
-                    decode_kinematics=True,
-                    initial_decoder_state=decoder_state,
-                    fixed_predictor=self.fixed_predictor,
-                )
+            if rollout_out is not None:
+                rollout_res, t_start, max_eval_h = rollout_out
 
                 for h in self.horizons:
                     if h <= max_eval_h:

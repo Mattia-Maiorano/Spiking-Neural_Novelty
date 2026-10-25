@@ -424,7 +424,7 @@ class Trainer(BaseTrainer):
         device: Optional[Union[str, torch.device]] = None,
         save_dir: Union[str, Path] = "results/default_run",
         probe_lr: float = 5e-4,
-        probe_weight_decay: float = 1e-2,
+        probe_weight_decay: float = 1e-4,
         start_epoch: int = 1,
         best_val_loss: float = float("inf"),
         best_epoch: Optional[int] = None,

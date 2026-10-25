@@ -79,8 +79,9 @@ classDiagram
   4. Runs $M_1$ autoregressively across horizon $H$:
      $$\hat{\mathbf{z}}_{t+1} = M_1(\hat{\mathbf{z}}_t, \mathbf{u}_t)$$
 - **Loss Constraint**:
-  $$\mathcal{L}_{M_1} = \text{MSE}(\hat{\mathbf{z}}_{t+1}, \mathbf{z}_{\text{target}, t+1})$$
-  No kinematic or sensory backpropagation occurs in Phase 1; $M_1$ trains purely in latent phase space to reproduce the driven attractor vector field.
+  $$\mathcal{L}_{M_1} = \lambda_{\text{position}} \text{MSE}(\hat{\mathbf{q}}_{t+1}, \mathbf{q}_{\text{target}, t+1}) + \lambda_{\text{velocity}} \text{MSE}(\hat{\mathbf{p}}_{t+1}, \mathbf{p}_{\text{target}, t+1})$$
+  $$\mathcal{L}_{\text{total}} = \lambda_{\text{latent}} \mathcal{L}_{M_1}$$
+  No kinematic or sensory backpropagation occurs in Phase 1; $M_1$ trains purely in latent phase space to reproduce the driven attractor vector field with explicit balance between coordinate and momentum subspaces.
 
 ---
 

@@ -204,7 +204,7 @@ class TrainingConfig:
     grad_clip_norm: float = 0.8                      #: Maximum L2 gradient norm threshold for torch.nn.utils.clip_grad_norm_.
     learning_rate: float = 0.0002                    #: Base Adam learning rate for model weights.
     probe_lr: float = 0.0002                         #: Dedicated learning rate for downstream kinematic readout probes.
-    probe_weight_decay: float = 0.01                 #: L2 regularization penalty applied to kinematic probes.
+    probe_weight_decay: float = 0.0001               #: L2 regularization penalty applied to kinematic probes.
     temporal_burn_in: int = 15                       #: Initial latent steps for recurrent dynamics warm-up before launching evaluation rollouts.
     representation_checkpoint: Optional[str] = None  #: Optional path to pre-trained representation checkpoint .pt.
     phase_horizon: int = 50                          #: Duration H of predictor unrolling during training.
@@ -235,7 +235,7 @@ class LossConfig:
     lambda_sensory: float = 1.0     #: Weight of top-down sensory prediction MSE loss.
     lambda_position: float = 1.0    #: Weight of coordinate/position (q) subspace MSE in latent rollout losses.
     lambda_velocity: float = 1.0    #: Weight of momentum/velocity (p) subspace MSE in latent rollout losses.
-    lambda_kinematic: float = 1.0   #: Weight of physical decoder joint kinematic MSE loss in Phase 0.
+    lambda_kinematic: float = 5.0   #: Weight of physical decoder joint kinematic MSE loss in Phase 0.
     lambda_derivative: float = 1.0  #: Weight of strict phase-space derivative constraint (q_{t+1}-q_t - dt*p_t) MSE.
     lambda_smoothness: float = 1.0  #: Weight of ALIF momentum smoothness MSE loss in Phase 0.
 

@@ -72,12 +72,14 @@ class M1PhaseStrategy(PhaseStrategy):
         m1_traj = torch.stack(predictions, dim=1)
         target_latents = z_target[:, 1 : 1 + horizon]
 
-        loss_m1 = F.mse_loss(m1_traj, target_latents)
-        total_loss = self.cfg.loss.lambda_latent * loss_m1
-
         q_dim = self.model.q_dim
         loss_pos_latent = F.mse_loss(m1_traj[..., :q_dim], target_latents[..., :q_dim])
         loss_vel_latent = F.mse_loss(m1_traj[..., q_dim:], target_latents[..., q_dim:])
+        loss_m1 = (
+            float(self.cfg.loss.lambda_position) * loss_pos_latent
+            + float(self.cfg.loss.lambda_velocity) * loss_vel_latent
+        )
+        total_loss = float(self.cfg.loss.lambda_latent) * loss_m1
 
         pos_err, vel_err = 0.0, 0.0
         if flat_kin is not None and hasattr(self.model, "physical_decoder"):

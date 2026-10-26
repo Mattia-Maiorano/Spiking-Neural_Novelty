@@ -1,7 +1,8 @@
 """
-PyTorch Dataset and DataLoader pipelines for SPWM-v0.4.0 (3D Unity Robotics & Attractor Dynamics).
-Parses exported Unity robotic trajectories (joint positions q*, joint velocities p*, motor actions u_t,
-and neuromorphic event streams) while enforcing strict trajectory-level partitioning to prevent temporal leakage.
+PyTorch Dataset and DataLoader pipelines for SPWM-v0.5.0 (6-DOF Active Perception Grasping).
+Parses exported Unity robotic trajectories (joint positions q* in R^6, joint velocities p* in R^6,
+motor actions u_t in R^6, phase flags in {0, 1, 2}, and neuromorphic event streams) while enforcing
+strict trajectory-level partitioning to prevent temporal leakage.
 """
 
 from __future__ import annotations
@@ -12,6 +13,7 @@ import numpy as np
 import torch
 from torch.utils.data import DataLoader, Dataset
 
+from spwm.contracts.tensors import J, assert_tensor_contract
 from spwm.data.event_camera import EventBatch, EventCameraSimulator, RoboticTrajectory
 
 
@@ -33,72 +35,268 @@ def partition_trajectories(
     }
 
 
+def _compute_default_phase_schedule(length: int) -> Tuple[int, int, int, np.ndarray]:
+    """
+    Computes phase boundaries and integer phase flags [T] in {0, 1, 2}:
+      - 0: Blind Approach (includes Phase 0 neutral setup + Phase 1 approach)
+      - 1: Sensory Heft (Phase 1.5 high-acceleration micro-movement after grasp attachment)
+      - 2: Blind Transport (Phase 2 loaded transport with active wrist rotation)
+    Ensures all 3 phases are represented even for short test sequences.
+    """
+    setup_steps = max(1, min(4, length // 12))
+    approach_end = max(setup_steps + 1, int(round(0.38 * length)))
+    heft_steps = max(2, min(12, int(round(0.14 * length))))
+    heft_end = min(length - 1, approach_end + heft_steps)
+    if heft_end <= approach_end:
+        approach_end = max(1, length // 3)
+        heft_end = max(approach_end + 1, (2 * length) // 3)
+
+    flags = np.zeros((length,), dtype=np.int64)
+    flags[approach_end:heft_end] = 1
+    flags[heft_end:] = 2
+    return setup_steps, approach_end, heft_end, flags
+
+
+def _solve_6dof_industrial_ik(
+    target_pos: np.ndarray,
+    wrist_twist: np.ndarray,
+    joint_count: int = J,
+) -> np.ndarray:
+    """
+    Analytical elbow-up 6-DOF inverse kinematics matching ArticulatedRobotRig.SolveInverseKinematics6D:
+      Base_Root (0.16m) + Shoulder_Pan (0.14m) -> Shoulder_Lift pivot at y = 0.30m
+      Upper arm L1 = 0.30m, Forearm L2 = 0.26m, Distal wrist chain L_tool = 0.28m.
+    """
+    q = np.zeros((joint_count,), dtype=np.float32)
+    x, y, z = float(target_pos[0]), float(target_pos[1]), float(target_pos[2])
+
+    # 1. Joint 0 (Shoulder_Pan): rotate base yaw so arm plane aligns with (x, z)
+    q0 = float(np.clip(np.arctan2(x, z), -2.60, 2.60))
+    q[0] = q0
+    if joint_count == 1:
+        return q
+
+    r_tip = float(np.sqrt(x * x + z * z))
+    y_shoulder = 0.30
+    l1, l2, l_tool = 0.30, 0.26, 0.28
+
+    # Orient distal wrist links ~29 deg from vertical downward toward ground/workspace target
+    alpha = 0.50
+    r_w = max(0.05, r_tip - l_tool * float(np.sin(alpha)))
+    y_w = y + l_tool * float(np.cos(alpha))
+    dy = y_w - y_shoulder
+    dist = float(np.sqrt(r_w * r_w + dy * dy))
+
+    max_reach = (l1 + l2) * 0.992
+    min_reach = abs(l1 - l2) * 1.05
+    if dist > max_reach and dist > 1e-5:
+        scale = max_reach / dist
+        r_w *= scale
+        dy *= scale
+        dist = max_reach
+    elif dist < min_reach and dist > 1e-5:
+        scale = min_reach / dist
+        r_w *= scale
+        dy *= scale
+        dist = min_reach
+
+    cos_q2 = float(np.clip((dist * dist - l1 * l1 - l2 * l2) / (2.0 * l1 * l2), -1.0, 1.0))
+    q2 = float(np.clip(np.arccos(cos_q2), 0.0, 2.60))
+    beta = float(np.arctan2(r_w, dy))
+    psi = float(np.arctan2(l2 * np.sin(q2), l1 + l2 * np.cos(q2)))
+    q1 = float(np.clip(beta - psi, -2.60, 2.60))
+    q3_base = float(np.clip((np.pi - alpha) - (q1 + q2), -2.60, 2.60))
+
+    q[1] = q1
+    if joint_count > 2:
+        q[2] = q2
+    if joint_count > 3:
+        q[3] = float(np.clip(q3_base + float(wrist_twist[0]), -2.60, 2.60))
+    if joint_count > 4:
+        q[4] = float(np.clip(float(wrist_twist[1]), -2.60, 2.60))
+    if joint_count > 5:
+        q[5] = float(np.clip(float(wrist_twist[2]), -2.60, 2.60))
+    return q
+
+
 def simulate_articulated_trajectory(
     trajectory_id: int,
     length: int = 105,
-    joint_count: int = 8,
-    action_dim: int = 8,
+    joint_count: int = J,
+    action_dim: int = J,
     velocity_range: Tuple[float, float] = (-1.0, 1.0),
     dt: float = 0.05,
-    damping: float = 0.25,
+    damping: float = 0.15,
     seed: Optional[int] = None,
 ) -> RoboticTrajectory:
     """
-    Simulates an action-conditioned 3D articulated robotic trajectory matching the Unity C# physics controller:
-      - Even trajectory IDs form rhythmic CPG limit-cycle walking gait attractors.
-      - Odd trajectory IDs form damped PD posture fixed-point attractors under gravity and joint friction.
+    Simulates a 6-DOF Active Perception Grasping trajectory matching the Unity C# industrial physics pipeline:
+      - Phase 0 (The Neutral Start, flag=0): Starts at a clean, poised neutral resting posture.
+      - Phase 1 (The Approach, flag=0): Deliberate minimum-jerk sweep of the end-effector tip to the exact
+        3D location of the target object sitting on the ground.
+      - Phase 1.5 (The "Heft", flag=1): Upon instant rigid FixedJoint lock, executes a sharp, deliberate
+        upward lift (+12 cm) with a crisp wrist twist so the heavy payload's mass and rotational inertia
+        pull on the arm's joints.
+      - Phase 2 (The Transport, flag=2): Smoothly carries the locked object to a new 3D workspace location
+        while deliberately twisting the wrist joints (Pitch, Yaw, Roll) to rotate the object from flat to upright.
     """
     rng = np.random.default_rng(seed if seed is not None else trajectory_id)
-    v_scale = max(0.2, 0.5 * (abs(velocity_range[1]) + abs(velocity_range[0])))
+    v_scale = max(0.25, 0.5 * (abs(velocity_range[1]) + abs(velocity_range[0])))
+    max_joint_angle = 2.60
 
-    q = rng.uniform(-0.45, 0.45, size=(joint_count,)).astype(np.float32)
-    p = rng.uniform(-0.35 * v_scale, 0.35 * v_scale, size=(joint_count,)).astype(np.float32)
+    # 1. Phase 0: Clean neutral resting posture matching ArticulatedRobotRig.GetNeutralRestingPose()
+    base_neutral = np.array([0.0, 0.35, 0.85, 0.35, 0.0, 0.0], dtype=np.float32)
+    q_neutral = np.resize(base_neutral, (joint_count,)).astype(np.float32)
+    q_neutral = q_neutral + rng.uniform(-0.02, 0.02, size=(joint_count,)).astype(np.float32)
 
-    half_dof = max(1, joint_count // 2)
-    phase_offsets = np.array(
-        [(np.pi if j >= half_dof else 0.0) + (j % half_dof) * 0.45 for j in range(joint_count)],
+    # 2. Target object resting flat on the ground plane (y = half_height)
+    shapes = ("Sphere", "ElongatedCylinder", "Box")
+    payload_shape = shapes[int(rng.integers(0, len(shapes)))]
+    payload_mass = float(rng.uniform(1.20, 4.50))
+    half_height = 0.035
+
+    start_radius = float(rng.uniform(0.32, 0.43))
+    start_azimuth = float(rng.uniform(-0.55, 0.55))
+    if abs(start_azimuth) < 0.20:
+        start_azimuth = 0.26 if start_azimuth >= 0.0 else -0.26
+
+    grasp_point = np.array(
+        [
+            start_radius * np.sin(start_azimuth),
+            2.0 * half_height,  # Top surface of the object sitting on the ground at y = 0
+            start_radius * np.cos(start_azimuth),
+        ],
         dtype=np.float32,
-    ) + rng.uniform(-0.2, 0.2, size=(joint_count,)).astype(np.float32)
-    equilibrium_q = rng.uniform(-0.5, 0.5, size=(joint_count,)).astype(np.float32)
-    omega = float(2.0 * np.pi * (1.2 + 0.3 * (trajectory_id % 3)))
+    )
+    q_grasp = _solve_6dof_industrial_ik(
+        grasp_point,
+        wrist_twist=np.array([0.0, 0.0, 0.0], dtype=np.float32),
+        joint_count=joint_count,
+    )
+
+    # 3. Phase 1.5 ("The Heft"): Instant rigid lock + sharp +12 cm upward lift + crisp wrist twist
+    heft_point = grasp_point + np.array([0.0, 0.12, 0.0], dtype=np.float32)
+    heft_twist = np.array([0.24, -0.28, 0.36], dtype=np.float32)
+    q_heft_peak = _solve_6dof_industrial_ik(heft_point, wrist_twist=heft_twist, joint_count=joint_count)
+
+    # 4. Phase 2 ("The Transport"): Carry to new elevated 3D location on opposite side while twisting wrist upright
+    target_radius = float(rng.uniform(0.30, 0.42))
+    target_azimuth = -float(np.sign(start_azimuth)) * float(rng.uniform(0.35, 0.65))
+    target_height = float(rng.uniform(0.26, 0.38))
+    target_point = np.array(
+        [
+            target_radius * np.sin(target_azimuth),
+            target_height,
+            target_radius * np.cos(target_azimuth),
+        ],
+        dtype=np.float32,
+    )
+    side_sign = 1.0 if target_point[0] >= 0.0 else -1.0
+    transport_twist = np.array(
+        [-0.55, float(heft_twist[1]) + side_sign * 0.95, float(heft_twist[2]) + side_sign * 1.45],
+        dtype=np.float32,
+    )
+    q_target = _solve_6dof_industrial_ik(target_point, wrist_twist=transport_twist, joint_count=joint_count)
+
+    # Progressive downstream unloaded link inertias (Base -> Shoulder -> Elbow -> Wrist)
+    unloaded_inertia = np.array(
+        [max(0.16, 0.80 - 0.11 * j) for j in range(joint_count)],
+        dtype=np.float32,
+    )
+    # Rotational inertia contribution when heavy payload is rigidly locked at the gripper tip
+    shape_rot_factor = 1.45 if payload_shape == "ElongatedCylinder" else (1.18 if payload_shape == "Box" else 0.85)
+    payload_inertia = np.array(
+        [
+            0.16 * payload_mass * (1.25 if j < max(1, joint_count // 2) else shape_rot_factor)
+            for j in range(joint_count)
+        ],
+        dtype=np.float32,
+    )
+
+    setup_steps, approach_end, heft_end, phase_flags = _compute_default_phase_schedule(length)
+
+    q = q_neutral.copy()
+    p = np.zeros((joint_count,), dtype=np.float32)
 
     q_steps = np.zeros((length, joint_count), dtype=np.float32)
     p_steps = np.zeros((length, joint_count), dtype=np.float32)
     u_steps = np.zeros((length, action_dim), dtype=np.float32)
-    times = (np.arange(length, dtype=np.float32) * float(dt))
+    times = np.arange(length, dtype=np.float32) * float(dt)
 
-    is_limit_cycle = (trajectory_id % 2 == 0)
-    stiffness = 6.5
-    gravity_torque_scale = 0.35
+    kp = 0.85
+    kd = 0.18
+    drive_stiffness = 16.5 * v_scale
+    gravity_scale = 0.22
 
     for t in range(length):
-        time_s = float(times[t])
-        if is_limit_cycle:
-            # CPG rhythmic motor target command -> stable limit-cycle attractor
-            raw_u = 0.75 * np.sin(omega * time_s + phase_offsets) + 0.20 * np.cos(2.0 * omega * time_s + phase_offsets)
-        else:
-            # Postural PD command -> stable fixed-point attractor with smooth exploratory excitation
-            target_q = equilibrium_q + 0.30 * np.sin(0.6 * omega * time_s + phase_offsets)
-            raw_u = np.clip(1.2 * (target_q - q) - 0.35 * p, -1.0, 1.0)
+        flag = int(phase_flags[t])
+        gain_boost = 1.0
 
+        if t < setup_steps:
+            # Phase 0 (The Neutral Start): Hold clean neutral resting posture
+            q_des = q_neutral
+            dq_des = np.zeros((joint_count,), dtype=np.float32)
+            eff_inertia = unloaded_inertia
+            eff_gravity = gravity_scale
+        elif flag == 0:
+            # Phase 1 (The Approach): Smooth minimum-jerk sweep to ground object's top grasp surface
+            span = max(1, approach_end - setup_steps)
+            tau = float(np.clip((t - setup_steps + 1) / float(span), 0.0, 1.0))
+            s = (tau ** 3) * (10.0 + tau * (-15.0 + 6.0 * tau))
+            ds = 30.0 * (tau ** 2) * ((1.0 - tau) ** 2) / max(float(dt) * span, 1e-3)
+            q_des = (1.0 - s) * q_neutral + s * q_grasp
+            dq_des = (q_grasp - q_neutral) * ds
+            eff_inertia = unloaded_inertia
+            eff_gravity = gravity_scale
+        elif flag == 1:
+            # Phase 1.5 (The "Heft"): Rigid FixedJoint lock + sharp, monotonic upward lift (+12 cm)
+            span = max(1, heft_end - approach_end)
+            tau = float(np.clip((t - approach_end + 1) / float(span), 0.0, 1.0))
+            fast_tau = float(np.clip(tau * 1.35, 0.0, 1.0))
+            lift_progress = (fast_tau ** 3) * (10.0 + fast_tau * (-15.0 + 6.0 * fast_tau))
+            dlift = (
+                30.0 * (fast_tau ** 2) * ((1.0 - fast_tau) ** 2) * 1.35 / max(float(dt) * span, 1e-3)
+                if (tau * 1.35 <= 1.0)
+                else 0.0
+            )
+            q_des = q_grasp + (q_heft_peak - q_grasp) * lift_progress
+            dq_des = (q_heft_peak - q_grasp) * dlift
+            gain_boost = 2.2
+            eff_inertia = unloaded_inertia + payload_inertia
+            eff_gravity = gravity_scale * (1.0 + 0.42 * payload_mass)
+        else:
+            # Phase 2 (The Transport): Deliberate minimum-jerk carry to new 3D location while twisting wrist upright
+            span = max(1, length - heft_end)
+            tau = float(np.clip((t - heft_end + 1) / float(span), 0.0, 1.0))
+            s = (tau ** 3) * (10.0 + tau * (-15.0 + 6.0 * tau))
+            ds = 30.0 * (tau ** 2) * ((1.0 - tau) ** 2) / max(float(dt) * span, 1e-3)
+            q_des = (1.0 - s) * q_heft_peak + s * q_target
+            dq_des = (q_target - q_heft_peak) * ds
+            eff_inertia = unloaded_inertia + payload_inertia
+            eff_gravity = gravity_scale * (1.0 + 0.42 * payload_mass)
+
+        raw_target_rad = q_des + gain_boost * (kp * (q_des - q) + kd * (dq_des - p))
         u_t = np.zeros((action_dim,), dtype=np.float32)
         common_d = min(joint_count, action_dim)
-        u_t[:common_d] = np.clip(raw_u[:common_d], -1.0, 1.0)
+        u_t[:common_d] = np.clip(raw_target_rad[:common_d] / max_joint_angle, -1.0, 1.0)
         if action_dim > joint_count:
-            u_t[joint_count:] = np.sin(omega * time_s + np.arange(action_dim - joint_count, dtype=np.float32))
+            u_t[joint_count:] = np.sin(float(times[t]) + np.arange(action_dim - joint_count, dtype=np.float32))
 
         q_steps[t] = q.copy()
         p_steps[t] = p.copy()
         u_steps[t] = u_t.copy()
 
-        # Dissipative articulated joint dynamics: motor drive + restorative spring + gravity - viscous damping
-        drive_target = u_t[:common_d] if common_d == joint_count else np.resize(u_t, (joint_count,))
-        gravity_term = -gravity_torque_scale * np.sin(q)
-        coulomb_friction = -0.05 * np.tanh(5.0 * p)
-        accel = stiffness * (drive_target - q) + gravity_term + coulomb_friction - (damping * 6.0) * p
+        # Featherstone articulated dynamics with inertial coupling (mass + rotational inertia tensor)
+        drive_u = u_t[:common_d] if common_d == joint_count else np.resize(u_t, (joint_count,))
+        drive_target_rad = drive_u * max_joint_angle
+        motor_torque = drive_stiffness * (drive_target_rad - q) * gain_boost
+        gravity_torque = -eff_gravity * np.sin(q)
+        coulomb_friction = -0.04 * np.tanh(5.0 * p)
+        viscous_torque = -(damping * 7.5) * p
+        accel = (motor_torque + gravity_torque + coulomb_friction + viscous_torque) / eff_inertia
 
-        p = p + float(dt) * accel
-        q = np.clip(q + float(dt) * p, -1.0, 1.0)
+        p = np.clip(p + float(dt) * accel, -4.5 * v_scale, 4.5 * v_scale).astype(np.float32)
+        q = np.clip(q + float(dt) * p, -max_joint_angle, max_joint_angle).astype(np.float32)
 
     return RoboticTrajectory(
         trajectory_id=trajectory_id,
@@ -108,6 +306,9 @@ def simulate_articulated_trajectory(
         times=times,
         joint_count=joint_count,
         action_dim=action_dim,
+        phase_flags=phase_flags,
+        payload_mass=payload_mass,
+        payload_shape=payload_shape,
     )
 
 
@@ -123,6 +324,11 @@ def export_unity_trajectory_file(
     path = Path(file_path)
     path.parent.mkdir(parents=True, exist_ok=True)
     T = trajectory.joint_positions.shape[0]
+    phase_flags = (
+        trajectory.phase_flags.astype(np.int64)
+        if trajectory.phase_flags is not None
+        else _compute_default_phase_schedule(T)[3]
+    )
 
     if path.suffix.lower() == ".npz":
         payload: Dict[str, Any] = {
@@ -130,6 +336,7 @@ def export_unity_trajectory_file(
             "joint_positions": trajectory.joint_positions.astype(np.float32),
             "joint_velocities": trajectory.joint_velocities.astype(np.float32),
             "actions": trajectory.actions.astype(np.float32),
+            "phase_flags": phase_flags,
             "times": trajectory.times.astype(np.float32),
         }
         if trajectory.grayscale_frames is not None:
@@ -144,6 +351,7 @@ def export_unity_trajectory_file(
         step_rec: Dict[str, Any] = {
             "step": t,
             "timestamp": float(trajectory.times[t]),
+            "phase_flag": int(phase_flags[t]),
             "joint_positions": trajectory.joint_positions[t].tolist(),
             "joint_velocities": trajectory.joint_velocities[t].tolist(),
             "actions": trajectory.actions[t].tolist(),
@@ -156,8 +364,9 @@ def export_unity_trajectory_file(
 
     doc = {
         "trajectory_id": int(trajectory.trajectory_id),
-        "archetype": "Humanoid",
-        "attractor_regime": "LimitCycleWalkingGait" if trajectory.trajectory_id % 2 == 0 else "FixedPointBalancing",
+        "archetype": "ManipulatorArm",
+        "payload_shape": trajectory.payload_shape,
+        "payload_mass": float(trajectory.payload_mass),
         "sequence_length": int(T),
         "joint_count": int(trajectory.joint_count),
         "action_dim": int(trajectory.action_dim),
@@ -165,6 +374,7 @@ def export_unity_trajectory_file(
         "sensor_width": int(sensor_width),
         "dt": float(dt),
         "event_threshold": float(event_threshold),
+        "phase_flags": phase_flags.tolist(),
         "steps": steps,
     }
     with open(path, "w", encoding="utf-8") as f:
@@ -183,6 +393,9 @@ def parse_unity_trajectory_file(
     if not path.is_file():
         raise FileNotFoundError(f"Unity trajectory file not found: {path}")
 
+    payload_mass = 1.5
+    payload_shape = "Box"
+
     if path.suffix.lower() == ".npz":
         with np.load(path, allow_pickle=False) as data:
             traj_id = int(data["trajectory_id"])
@@ -190,6 +403,11 @@ def parse_unity_trajectory_file(
             p = data["joint_velocities"].astype(np.float32)
             u = data["actions"].astype(np.float32)
             times = data["times"].astype(np.float32) if "times" in data else np.arange(len(q), dtype=np.float32) * 0.05
+            phase_flags = (
+                data["phase_flags"].astype(np.int64)
+                if "phase_flags" in data
+                else _compute_default_phase_schedule(len(q))[3]
+            )
             gray = data["grayscale_frames"].astype(np.float32) if "grayscale_frames" in data else None
             ev = data["dense_events"].astype(np.float32) if "dense_events" in data else None
     else:
@@ -199,12 +417,21 @@ def parse_unity_trajectory_file(
         H = int(doc.get("sensor_height", sensor_height))
         W = int(doc.get("sensor_width", sensor_width))
         dt = float(doc.get("dt", 0.05))
+        payload_mass = float(doc.get("payload_mass", 1.5))
+        payload_shape = str(doc.get("payload_shape", "Box"))
         steps = doc["steps"]
 
         q = np.array([s["joint_positions"] for s in steps], dtype=np.float32)
         p = np.array([s["joint_velocities"] for s in steps], dtype=np.float32)
         u = np.array([s["actions"] for s in steps], dtype=np.float32)
         times = np.array([s.get("timestamp", idx * dt) for idx, s in enumerate(steps)], dtype=np.float32)
+
+        if steps and "phase_flag" in steps[0]:
+            phase_flags = np.array([int(s["phase_flag"]) for s in steps], dtype=np.int64)
+        elif "phase_flags" in doc and doc["phase_flags"]:
+            phase_flags = np.array(doc["phase_flags"], dtype=np.int64)
+        else:
+            phase_flags = _compute_default_phase_schedule(len(steps))[3]
 
         gray = None
         if steps and "grayscale_frame" in steps[0] and steps[0]["grayscale_frame"]:
@@ -218,6 +445,7 @@ def parse_unity_trajectory_file(
         p = p[:sequence_length]
         u = u[:sequence_length]
         times = times[:sequence_length]
+        phase_flags = phase_flags[:sequence_length]
         if gray is not None:
             gray = gray[:sequence_length]
         if ev is not None:
@@ -231,6 +459,9 @@ def parse_unity_trajectory_file(
         times=times,
         joint_count=int(q.shape[-1]),
         action_dim=int(u.shape[-1]),
+        phase_flags=phase_flags,
+        payload_mass=payload_mass,
+        payload_shape=payload_shape,
         grayscale_frames=gray,
         dense_events=ev,
     )
@@ -238,9 +469,9 @@ def parse_unity_trajectory_file(
 
 class EventWorldDataset(Dataset):
     """
-    Dataset of neuromorphic event streams and articulated robotic telemetry (q*, p*, u_t).
+    Dataset of neuromorphic event streams and 6-DOF articulated manipulator telemetry (q*, p*, u_t, phase_flags).
     Parses exported Unity trajectory files from `dataset_dir` when present, and falls back to
-    deterministic 3D articulated robotic attractor simulation seeded strictly by trajectory_id.
+    deterministic 6-DOF active perception grasping simulation seeded strictly by trajectory_id.
     """
 
     def __init__(
@@ -249,8 +480,8 @@ class EventWorldDataset(Dataset):
         dataset_dir: Optional[Union[str, Path]] = None,
         event_simulator: Optional[EventCameraSimulator] = None,
         sequence_length: int = 105,
-        joint_count: int = 8,
-        action_dim: int = 8,
+        joint_count: int = J,
+        action_dim: int = J,
         velocity_range: Tuple[float, float] = (-1.0, 1.0),
         dt: float = 0.05,
         cache_data: bool = True,
@@ -310,6 +541,19 @@ class EventWorldDataset(Dataset):
         u_tensor = torch.from_numpy(traj.actions).float()
         flat_kin = torch.cat([q_tensor, p_tensor], dim=-1)
 
+        if traj.phase_flags is not None:
+            phase_flags_np = traj.phase_flags
+        else:
+            phase_flags_np = _compute_default_phase_schedule(q_tensor.shape[0])[3]
+        phase_flags_tensor = torch.from_numpy(np.asarray(phase_flags_np, dtype=np.int64)).long()
+
+        T_actual = q_tensor.shape[0]
+        assert_tensor_contract(q_tensor, (T_actual, self.joint_count), "EventWorldDataset.joint_positions", check_finite=True)
+        assert_tensor_contract(p_tensor, (T_actual, self.joint_count), "EventWorldDataset.joint_velocities", check_finite=True)
+        assert_tensor_contract(u_tensor, (T_actual, self.action_dim), "EventWorldDataset.actions", check_finite=True)
+        assert_tensor_contract(flat_kin, (T_actual, 2 * self.joint_count), "EventWorldDataset.flat_kinematics", check_finite=True)
+        assert_tensor_contract(phase_flags_tensor, (T_actual,), "EventWorldDataset.phase_flags")
+
         return {
             "events": event_batch.dense_events,      # [T, 2, H, W]
             "joint_positions": q_tensor,             # [T, joint_count] (q^*)
@@ -318,6 +562,7 @@ class EventWorldDataset(Dataset):
             "velocities": p_tensor,                  # [T, joint_count]
             "actions": u_tensor,                     # [T, action_dim] (u_t)
             "flat_kinematics": flat_kin,             # [T, 2 * joint_count]
+            "phase_flags": phase_flags_tensor,       # [T] int64 in {0, 1, 2}
             "trajectory_id": traj_id,
         }
 
@@ -332,12 +577,13 @@ class EventWorldDataset(Dataset):
 
 
 def collate_event_batches(batch: List[Dict[str, Any]]) -> Dict[str, torch.Tensor]:
-    """Collates a list of trajectory items into a batched dictionary with actions u_t."""
+    """Collates a list of trajectory items into a batched dictionary with actions u_t and phase_flags."""
     events = torch.stack([item["events"] for item in batch], dim=0)                      # [B, T, 2, H, W]
     flat_kinematics = torch.stack([item["flat_kinematics"] for item in batch], dim=0)    # [B, T, 2 * J]
     joint_positions = torch.stack([item["joint_positions"] for item in batch], dim=0)    # [B, T, J]
     joint_velocities = torch.stack([item["joint_velocities"] for item in batch], dim=0)  # [B, T, J]
     actions = torch.stack([item["actions"] for item in batch], dim=0)                    # [B, T, D_u]
+    phase_flags = torch.stack([item["phase_flags"] for item in batch], dim=0)            # [B, T]
     trajectory_ids = torch.tensor([item["trajectory_id"] for item in batch], dtype=torch.long)
 
     return {
@@ -348,6 +594,7 @@ def collate_event_batches(batch: List[Dict[str, Any]]) -> Dict[str, torch.Tensor
         "positions": joint_positions,
         "velocities": joint_velocities,
         "actions": actions,
+        "phase_flags": phase_flags,
         "trajectory_ids": trajectory_ids,
     }
 
@@ -360,8 +607,8 @@ def create_dataloaders(
     batch_size: int = 32,
     height: int = 32,
     width: int = 32,
-    joint_count: int = 8,
-    action_dim: int = 8,
+    joint_count: int = J,
+    action_dim: int = J,
     dataset_dir: Optional[Union[str, Path]] = None,
     standard_velocity_range: Tuple[float, float] = (-1.0, 1.0),
     extrapolation_velocity_range: Tuple[float, float] = (-2.0, 2.0),

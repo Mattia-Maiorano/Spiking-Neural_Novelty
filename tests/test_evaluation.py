@@ -28,13 +28,13 @@ def test_rollout_evaluator_long_horizon():
         trajectory_indices=[0, 1],
         event_simulator=sim,
         sequence_length=150,
-        joint_count=8,
-        action_dim=8,
+        joint_count=6,
+        action_dim=6,
     )
     loader = DataLoader(ds, batch_size=2, collate_fn=collate_event_batches)
 
-    model = SPWM(latent_dim=32, timescale_dims=(16, 16), encoder_dim=32, joint_count=8, action_dim=8)
-    evaluator = RolloutEvaluator(model=model, horizons=[1, 5, 10, 25, 50], joint_count=8)
+    model = SPWM(latent_dim=32, timescale_dims=(16, 16), encoder_dim=32, joint_count=6, action_dim=6)
+    evaluator = RolloutEvaluator(model=model, horizons=[1, 5, 10, 25, 50], joint_count=6)
     res = evaluator.evaluate_dataset(loader)
 
     for h in [1, 5, 10, 25, 50]:
@@ -209,22 +209,15 @@ def test_get_canonical_metrics_filename():
     assert get_canonical_metrics_filename("spwm_v8_3") == "metrics_v8_3.json"
 
 
-
-
-
-
-
-
-
 def test_ghost_visualizer_exporter_contract():
     import json
     from spwm.evaluation.visualizer import GhostVisualizerExporter
 
     sim = EventCameraSimulator(height=32, width=32)
-    ds = EventWorldDataset(trajectory_indices=[0, 1], event_simulator=sim, sequence_length=40, joint_count=8, action_dim=8)
+    ds = EventWorldDataset(trajectory_indices=[0, 1], event_simulator=sim, sequence_length=40, joint_count=6, action_dim=6)
     loader = DataLoader(ds, batch_size=2, collate_fn=collate_event_batches)
-    model = SPWM(latent_dim=32, timescale_dims=(16, 16), encoder_dim=32, joint_count=8, action_dim=8)
-    evaluator = RolloutEvaluator(model=model, horizons=[30], joint_count=8, temporal_burn_in=5)
+    model = SPWM(latent_dim=32, timescale_dims=(16, 16), encoder_dim=32, joint_count=6, action_dim=6)
+    evaluator = RolloutEvaluator(model=model, horizons=[30], joint_count=6, temporal_burn_in=5)
 
     with tempfile.TemporaryDirectory() as tmpdir:
         exporter = GhostVisualizerExporter(evaluator, unity_project_dir=tmpdir, horizon=30, dt=0.05)
@@ -234,13 +227,44 @@ def test_ghost_visualizer_exporter_contract():
 
     meta, frames = payload["metadata"], payload["frames"]
     assert meta["horizon"] == 30 and meta["dt"] == 0.05 and meta["model_version"] == "spwm_v0_4_0"
-    assert meta["trajectory_id"] == 1 and meta["t_start"] == 5
+    assert meta["trajectory_id"] == 1 and meta["t_start"] == 2
     assert len(frames) == 30
     for f in frames:
-        assert len(f["ground_truth_q"]) == 8 and len(f["predicted_q"]) == 8
+        assert len(f["ground_truth_q"]) == 6 and len(f["predicted_q"]) == 6
         m = f["instantaneous_metrics"]
         assert m["position_abs_error"] >= 0.0 and m["velocity_relative_degradation"] >= 0.0
     assert abs(frames[0]["instantaneous_metrics"]["velocity_relative_degradation"] - 1.0) < 1e-6
     # Ground truth must be the true kinematics aligned at t_start + t.
     true_q = ds[1]["joint_positions"].numpy()
-    assert np.allclose(frames[0]["ground_truth_q"], true_q[6], atol=1e-5)
+    assert np.allclose(frames[0]["ground_truth_q"], true_q[3], atol=1e-5)
+
+
+def test_evaluator_active_perception_sensory_injection_halts_m1_on_flag_1():
+    """Verify RolloutEvaluator active perception halts M1 during heft steps matching training."""
+    B, T = 2, 12
+    model = SPWM(latent_dim=32, timescale_dims=(16, 16), encoder_dim=32, joint_count=6, action_dim=6)
+    evaluator = RolloutEvaluator(model=model, horizons=[9], joint_count=6, temporal_burn_in=2)
+
+    events = torch.rand(B, T, 2, 32, 32)
+    actions = torch.randn(B, T, 6)
+    flat_kin = torch.randn(B, T, 12)
+    # Timesteps: 0..4 Phase 1 (0), 5..7 Phase 1.5 (1), 8..11 Phase 2 (2)
+    phase_flags = torch.tensor([[0, 0, 0, 0, 0, 1, 1, 1, 2, 2, 2, 2]] * B, dtype=torch.long)
+    batch = {"events": events, "actions": actions, "flat_kinematics": flat_kin, "phase_flags": phase_flags}
+
+    m1_call_count = 0
+    orig_m1_forward = model.m1.forward
+
+    def counted_m1_forward(*args, **kwargs):
+        nonlocal m1_call_count
+        m1_call_count += 1
+        return orig_m1_forward(*args, **kwargs)
+
+    model.m1.forward = counted_m1_forward  # type: ignore[method-assign]
+    traj = evaluator.rollout_trajectory(batch, horizon=9)
+
+    # first_heft = 5 -> t_start = 2 -> horizon = 9 steps.
+    # Out of 9 steps (next_idx = 3..11), 3 steps have flag == 1 (next_idx = 5, 6, 7), so M1 runs on 6 steps!
+    assert m1_call_count == 6
+    assert traj.horizon == 9
+    assert traj.t_start == 2

@@ -26,10 +26,10 @@ from spwm.evaluation.visualizer import DEFAULT_UNITY_PROJECT_DIR, GhostVisualize
 from spwm.models.world_model import SPWM
 from spwm.utils.reproducibility import set_seed
 
-# Actuated joint order of `ArticulatedRobotRig` (Humanoid archetype), matching q* column order.
-HUMANOID_JOINT_NAMES = [
-    "Left_Hip", "Left_Knee", "Left_Ankle", "Left_Shoulder",
-    "Right_Hip", "Right_Knee", "Right_Ankle", "Right_Shoulder",
+# Actuated joint order of `ArticulatedRobotRig` (6-DOF ManipulatorArm), matching q* column order.
+MANIPULATOR_JOINT_NAMES = [
+    "Shoulder_Pan", "Shoulder_Lift", "Elbow_Flex",
+    "Wrist_Pitch", "Wrist_Yaw", "Wrist_Roll",
 ]
 
 
@@ -41,7 +41,7 @@ def main() -> None:
     parser.add_argument("--horizon", type=int, default=100, help="Rollout horizon H")
     parser.add_argument("--batch-index", type=int, default=0, help="Test-loader batch to sample from")
     parser.add_argument("--sample-index", type=int, default=0, help="Sample within the batch")
-    parser.add_argument("--model-version", type=str, default="spwm_v0_4_0")
+    parser.add_argument("--model-version", type=str, default="spwm_v0_5_0")
     parser.add_argument("--device", type=str, default=None, help="Device (cpu, mps, cuda)")
     args = parser.parse_args()
 
@@ -93,7 +93,7 @@ def main() -> None:
         temporal_burn_in=cfg.training.temporal_burn_in,
         fixed_predictor=model.m1,
     )
-    joint_names = HUMANOID_JOINT_NAMES if cfg.environment.joint_count == len(HUMANOID_JOINT_NAMES) else None
+    joint_names = MANIPULATOR_JOINT_NAMES if cfg.environment.joint_count == len(MANIPULATOR_JOINT_NAMES) else None
     exporter = GhostVisualizerExporter(
         evaluator=evaluator,
         unity_project_dir=args.unity_project,

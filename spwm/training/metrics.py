@@ -10,6 +10,8 @@ from __future__ import annotations
 import torch
 import torch.nn as nn
 
+from spwm.contracts.tensors import J, assert_tensor_contract
+
 
 def one_step_mse(z_pred: torch.Tensor, z_target: torch.Tensor) -> float:
     """Computes Mean Squared Error for 1-step latent prediction."""
@@ -24,11 +26,13 @@ def multi_step_mse(rollout_predictions: torch.Tensor, target_latents: torch.Tens
 def position_error(
     decoded_kinematics: torch.Tensor,
     true_kinematics: torch.Tensor,
-    joint_count: int = 8,
+    joint_count: int = J,
 ) -> float:
     """Mean L2 Euclidean distance between predicted and ground-truth joint angles q*."""
     pred_pos = decoded_kinematics[..., :joint_count].reshape(-1, joint_count)
     true_pos = true_kinematics[..., :joint_count].reshape(-1, joint_count)
+    assert_tensor_contract(pred_pos, (None, joint_count), "position_error.pred_pos")
+    assert_tensor_contract(true_pos, (None, joint_count), "position_error.true_pos")
     dist = torch.norm(pred_pos - true_pos, dim=-1)
     return float(torch.mean(dist).item())
 
@@ -36,11 +40,13 @@ def position_error(
 def velocity_error(
     decoded_kinematics: torch.Tensor,
     true_kinematics: torch.Tensor,
-    joint_count: int = 8,
+    joint_count: int = J,
 ) -> float:
     """Mean L2 Euclidean distance between predicted and ground-truth joint angular velocities p*."""
     pred_vel = decoded_kinematics[..., joint_count : 2 * joint_count].reshape(-1, joint_count)
     true_vel = true_kinematics[..., joint_count : 2 * joint_count].reshape(-1, joint_count)
+    assert_tensor_contract(pred_vel, (None, joint_count), "velocity_error.pred_vel")
+    assert_tensor_contract(true_vel, (None, joint_count), "velocity_error.true_vel")
     dist = torch.norm(pred_vel - true_vel, dim=-1)
     return float(torch.mean(dist).item())
 

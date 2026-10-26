@@ -9,7 +9,7 @@ import torch
 import torch.nn as nn
 
 from spwm.contracts.states import PredictorOutput
-from spwm.contracts.tensors import assert_phase_space_contract, assert_tensor_contract
+from spwm.contracts.tensors import J, assert_phase_space_contract, assert_tensor_contract
 
 
 class LatentPredictor(nn.Module):
@@ -31,7 +31,7 @@ class LatentPredictor(nn.Module):
     def __init__(
         self,
         latent_dim: int = 128,
-        action_dim: int = 8,
+        action_dim: int = J,
         hidden_dim: int = 256,
         residual: bool = True,
         symplectic: bool = True,
@@ -132,7 +132,7 @@ class PhysicalDecoder(nn.Module):
         latent_dim: int = 128,
         q_dim: int = 32,
         p_dim: int = 96,
-        joint_count: int = 8,
+        joint_count: int = J,
         hidden_dim: int = 64,
         alpha: float = 0.85,
     ) -> None:
@@ -224,7 +224,10 @@ class PhysicalDecoder(nn.Module):
             else:
                 vel_pred = self.vel_head(p)
 
-        return torch.cat([pos_pred, vel_pred], dim=-1)
+        decoded = torch.cat([pos_pred, vel_pred], dim=-1)
+        expected_out = tuple(z.shape[:-1]) + (2 * self.joint_count,)
+        assert_tensor_contract(decoded, expected_out, "PhysicalDecoder.decoded_kinematics")
+        return decoded
 
 
 __all__ = [

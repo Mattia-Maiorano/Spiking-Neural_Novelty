@@ -25,7 +25,12 @@ from spwm.models.predictors import (
     LatentPredictor,
     PhysicalDecoder,
 )
-from spwm.models.rollout import rollout_latent
+from spwm.models.rollout import (
+    compute_rollout_schedule,
+    ground_initial_state,
+    rollout_latent,
+    step_grounded,
+)
 from spwm.models.world_model import SPWM
 
 __all__ = [

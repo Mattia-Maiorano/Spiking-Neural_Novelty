@@ -8,6 +8,9 @@ from __future__ import annotations
 from typing import Optional, Tuple
 import torch
 
+# Master 6-DOF Manipulator Joint & Action Dimensionality (SPWM-v0.5.0)
+J: int = 6
+
 
 def assert_tensor_contract(
     tensor: torch.Tensor,

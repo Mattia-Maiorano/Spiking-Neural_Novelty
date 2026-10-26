@@ -54,7 +54,7 @@ def test_unified_rollout_output_shapes_and_types():
 def test_world_model_delegates_to_rollout_latent():
     B = 2
     latent_dim = 32
-    action_dim = 8
+    action_dim = 6
     H = 10
 
     model = SPWM(
@@ -62,7 +62,7 @@ def test_world_model_delegates_to_rollout_latent():
         q_dim=8,
         p_dim=24,
         timescale_dims=(16, 16),
-        joint_count=8,
+        joint_count=6,
         action_dim=action_dim,
     )
 
@@ -76,7 +76,7 @@ def test_world_model_delegates_to_rollout_latent():
 def test_rollout_with_grad_and_start_step():
     B = 2
     latent_dim = 32
-    action_dim = 8
+    action_dim = 6
     H = 10
 
     model = SPWM(
@@ -84,7 +84,7 @@ def test_rollout_with_grad_and_start_step():
         q_dim=8,
         p_dim=24,
         timescale_dims=(16, 16),
-        joint_count=8,
+        joint_count=6,
         action_dim=action_dim,
         phase_horizon=5,
     )

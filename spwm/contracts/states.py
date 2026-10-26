@@ -178,7 +178,7 @@ class RolloutResult:
     decoded_kinematics: Optional[torch.Tensor] = None # [B, H, 2 * joint_count]
     telemetry: Optional[Union[TelemetryContainer, Dict[str, List[torch.Tensor]]]] = None
     active_models: Optional[List[str]] = None
-    joint_count: int = 8
+    joint_count: int = 6
 
     @property
     def positions(self) -> Optional[torch.Tensor]:

@@ -16,7 +16,7 @@ from spwm.contracts.states import (
     SPWMState,
     SPWMStepOutput,
 )
-from spwm.contracts.tensors import assert_phase_space_contract, assert_tensor_contract
+from spwm.contracts.tensors import J, assert_phase_space_contract, assert_tensor_contract
 from spwm.models.dynamics import SpikingLatentDynamics
 from spwm.models.encoder import EventEncoder
 from spwm.models.predictors import (
@@ -27,7 +27,7 @@ from spwm.models.predictors import (
 
 class SPWM(nn.Module):
     """
-    SPWM: Spiking Predictive World Model (v0.4.0).
+    SPWM: Spiking Predictive World Model (v0.5.0).
     Unified composition of:
       1. SpatialSoftmax Keypoint EventEncoder
       2. Top-down Predictive Coding sensory feedback (`sensory_predictor`)
@@ -55,8 +55,8 @@ class SPWM(nn.Module):
         surrogate_name: str = "atan",
         surrogate_alpha: float = 2.0,
         predictor_hidden_dim: int = 256,
-        joint_count: int = 8,
-        action_dim: int = 8,
+        joint_count: int = J,
+        action_dim: int = J,
         ema_decay: float = 0.9,
         decoder_ema_alpha: float = 0.85,
         phase_horizon: int = 50,

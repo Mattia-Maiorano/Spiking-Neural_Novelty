@@ -12,7 +12,7 @@ import sys
 from typing import Any, Dict, Optional, Tuple, Type, TypeVar, Union, get_type_hints
 import yaml
 
-from spwm.contracts.tensors import assert_phase_space_contract
+from spwm.contracts.tensors import J, assert_phase_space_contract
 
 T = TypeVar("T")
 
@@ -60,7 +60,7 @@ def _strict_dict_to_dataclass(cls: Type[T], data: Dict[str, Any], context: str =
 @dataclass(frozen=True)
 class ProjectConfig:
     """Project-level identity, tracking tags, and pseudo-random reproducibility configuration."""
-    name: str = "spwm_v0_4_0"  #: Unique identifier/tag for the project and run artifacts.
+    name: str = "spwm_v0_5_0"  #: Unique identifier/tag for the project and run artifacts.
     seed: int = 42             #: Global pseudo-random seed for PyTorch, NumPy, and trajectory generation.
 
 
@@ -68,11 +68,11 @@ class ProjectConfig:
 class EnvironmentConfig:
     """
     3D Unity Articulated Robotics environment and neuromorphic event camera sensor configuration.
-    Controls the articulated kinematic chain DOF (joint_count), motor command dimension (action_dim),
+    Controls the 6-DOF articulated manipulator chain (joint_count=6), motor command dimension (action_dim=6),
     discrete frame timesteps, and event sensor log-intensity spike generation thresholds.
     """
-    joint_count: int = 8           #: Number of articulated joints J in the robotic kinematic chain.
-    action_dim: int = 8            #: Dimensionality D_u of continuous motor action vectors u_t.
+    joint_count: int = J           #: Number of articulated joints J=6 in the robotic manipulator chain.
+    action_dim: int = J            #: Dimensionality D_u=6 of continuous motor action vectors u_t.
     height: int = 32               #: Pixel height of the event camera sensor plane (must be divisible by 4).
     width: int = 32                #: Pixel width of the event camera sensor plane (must be divisible by 4).
     dt: float = 0.05               #: Simulation time step size in seconds per discrete physics frame.
@@ -96,8 +96,8 @@ class DataConfig:
     joint count, and action dimensionality configuration.
     """
     dataset_dir: str = "sim/ExportedTrajectories"   #: Path to exported Unity robotic trajectory files.
-    joint_count: int = 8                            #: Number of articulated joints J expected in dataset trajectories.
-    action_dim: int = 8                             #: Dimensionality D_u of motor action vectors in dataset trajectories.
+    joint_count: int = J                            #: Number of articulated joints J=6 expected in dataset trajectories.
+    action_dim: int = J                             #: Dimensionality D_u=6 of motor action vectors in dataset trajectories.
     total_trajectories: int = 4000                  #: Total number of trajectories across all dataset splits.
     train_split: float = 0.8                        #: Fraction of trajectories dedicated to training (must satisfy train+val < 1.0).
     val_split: float = 0.1                          #: Fraction of trajectories dedicated to validation (remaining is test).

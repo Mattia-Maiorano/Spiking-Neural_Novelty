@@ -1810,4 +1810,43 @@ I mondi sintetici 2D (biliardo con rimbalzi elastici e perturbazioni impulsive s
 - Aggiornati `test_architecture_contracts.py`, `test_dead_code.py`, `test_relay.py`, `test_models_contracts.py`, `test_unified_rollout.py`, `test_training_phases.py` per verificare il passaggio ad azioni e cinematica robotica articolata.
 - Suite completa di 57 test eseguita e validata con esito 100% positivo.
 
+---
+---
+
+# SPWM-v0.5.0: Manipolatore 6-DOF con Active Perception Grasping & Replay Olografico Ghost in Unity
+
+### 1. Motivazione e Cambio di Paradigma (Post-Mortem v0.4.0)
+Nelle traiettorie passive di v0.4.0, la dinamica neurale apprendeva bene l'evoluzione nominale a catena cinematica libera ma non disponeva di un meccanismo per discriminare carichi ignoti ed eterogenei:
+1. **Manipolazione Attiva & Identificazione Inerziale**: Nella manipolazione robotica reale, la massa e il tensore d'inerzia di un oggetto afferrato sono inizialmente ignoti. Per stimarli in modo causale, il robot deve compiere un micro-movimento di "scuotimento" o sollevamento attivo (**Active Perception Heft**) che ecciti le velocità articolari proporzionalmente al carico.
+2. **Iniezione Sensoriale in M1**: L'addestramento puramente cieco di $M_1$ collassava la predizione della traiettoria di trasporto qualora il carico variasse. Integrando un'iniezione sensoriale grounded dai moduli di rappresentazione durante la fase di heft (`phase_flags == 1`), $M_1$ sincronizza lo stato ricorrente prima di unrollare autoregressivamente la fase di trasporto cieco (`phase_flags == 2`).
+
+### 2. Modifiche Architetturali e Nuove Componenti
+
+- **Ambiente di Simulazione Unity C# (`sim/`)**:
+  - `ArticulatedRobotRig.cs`: Morfologia standardizzata su braccio manipolatore a 6 gradi di libertà (`RobotArchetype.ManipulatorArm`, $J=6$: Shoulder Pan, Shoulder Lift, Elbow Flex, Wrist Pitch, Wrist Yaw, Wrist Roll) con base fissa da 20 kg.
+  - `ProceduralObjectSpawner.cs`: Spawner procedurale di carichi con geometria variabile (Sfera, Cilindro, Parallelepipedo), massa compresa tra $0.2\,\text{kg}$ e $3.5\,\text{kg}$ e vincolo rigido `FixedJoint` istanziato all'impatto con l'end-effector.
+  - `ActionConditionedController.cs`: Controller PD a waypoint sequenziali strutturato in tre fasi:
+    - *Fase 0/1 (Blind Approach)*: Setup neutro e discesa/raggiungimento delle coordinate di presa.
+    - *Fase 1.5 (Sensory Heft)*: Sollevamento rapido (5 cm ad alta accelerazione) con torsione del polso per eccitare i transitori inerziali.
+    - *Fase 2 (Blind Transport)*: Trasporto verso la posa target 6D con variazione angolare dei giunti di polso.
+  - `GhostPlaybackManager.cs` & `HolographicGhost.shader`: Manager Unity per il playback sincrono affiancato del robot ground-truth e del "fantasma" olografico predetto dal modello neurale.
+
+- **Layer 0: Contratti e Schemi Estesi**:
+  - `spwm/contracts/tensors.py`: Esportata costante master `J = 6` e aggiornati i contratti di fase per $D_u = J = 6$.
+  - `spwm/contracts/config.py`: Default di `joint_count` e `action_dim` impostati a $J=6$; `ProjectConfig.name = "spwm_v0_5_0"`.
+  - `spwm/contracts/states.py`: `RolloutResult` configurato con default `joint_count = 6`.
+
+- **Layer 1 & Layer 2: Dati e Strategia M1 con Active Perception**:
+  - `spwm/data/datasets.py`: Ingestione e simulazione fallback con tensore `phase_flags: [B, T]` in $\{0, 1, 2\}$, tracciamento di `payload_mass` e `payload_shape`.
+  - `spwm/training/phases/m1_nominal.py`: `M1PhaseStrategy` calcola l'orizzonte e sincronizza lo stato $\hat{\mathbf{z}}_t$ tramite dinamica sensoriale grounded quando `flag == 1` (Sensory Heft), unrollando $M_1$ autoregressivamente nelle fasi cieche.
+
+- **Layer 3: Esportatore Telemetria Ghost per Unity**:
+  - `spwm/evaluation/visualizer.py`: Aggiunta classe `GhostVisualizerExporter` per catturare batch/sample di rollout ed esportare la telemetria cinematico-visiva in `sim/Assets/StreamingAssets/trajectory_ghost_v0_4_0.json` con validazione runtime e precisione numerica controllata.
+
+### 3. Validazione e Copertura Test
+- Aggiornati test in `test_architecture_contracts.py`, `test_config_schema.py`, `test_evaluation.py`, `test_training_phases.py`, `test_models_contracts.py`, `test_unified_rollout.py`.
+- Introdotto test `test_m1_active_perception_sensory_injection_halts_m1_on_flag_1` e `test_ghost_visualizer_exporter_contract`.
+- Suite di test completata con successo al 100%.
+
+
 

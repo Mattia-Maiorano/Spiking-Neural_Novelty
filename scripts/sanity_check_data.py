@@ -26,8 +26,8 @@ def main():
         total_trajectories=100,
         sequence_length=150,
         batch_size=16,
-        joint_count=8,
-        action_dim=8,
+        joint_count=6,
+        action_dim=6,
         num_workers=0,
         cache_data=True,
     )

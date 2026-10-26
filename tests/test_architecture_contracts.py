@@ -101,6 +101,9 @@ def test_cross_domain_sequence_length_and_sensor_validation():
 
 def test_tensor_shape_and_phase_space_assertions():
     """Runtime tensor contract validators must catch rank, dimension, NaN, and phase-space violations."""
+    from spwm.contracts.tensors import J
+
+    assert J == 6
     x = torch.zeros(4, 10, 128)
     assert_tensor_contract(x, (4, 10, 128), "latent_seq")
     assert_tensor_contract(x, (None, None, 128), "latent_seq")
@@ -116,8 +119,8 @@ def test_tensor_shape_and_phase_space_assertions():
         q_dim=32,
         p_dim=96,
         num_keypoints=16,
-        action_dim=8,
-        actions=torch.zeros(4, 8),
+        action_dim=6,
+        actions=torch.zeros(4, 6),
     )
     with pytest.raises(ValueError, match="q_dim"):
         assert_phase_space_contract(latent_dim=128, q_dim=30, p_dim=98, num_keypoints=15)

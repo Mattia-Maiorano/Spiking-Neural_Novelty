@@ -6,6 +6,7 @@ import torch.nn as nn
 import torch.nn.functional as F
 
 from spwm.contracts.protocols import PhaseStrategy
+from spwm.contracts.tensors import assert_tensor_contract
 from spwm.training.metrics import position_error, velocity_error
 
 
@@ -43,12 +44,13 @@ class RepresentationPhaseStrategy(PhaseStrategy):
     def _compute_representation_objectives(
         self, events: torch.Tensor, flat_kin: torch.Tensor
     ) -> Tuple[torch.Tensor, Dict[str, float]]:
+        joint_count = self.model.joint_count
+        assert_tensor_contract(flat_kin, (None, None, 2 * joint_count), "RepresentationPhaseStrategy.flat_kin")
         latents, error_neurons = self.model.forward_representation(events)
         q_dim = self.model.q_dim
         q = latents[..., :q_dim]
         p = latents[..., q_dim:]
 
-        joint_count = self.model.joint_count
         joint_pos_true = flat_kin[..., :joint_count]
         joint_vel_true = flat_kin[..., joint_count : 2 * joint_count]
 

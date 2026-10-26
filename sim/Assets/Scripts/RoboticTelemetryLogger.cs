@@ -10,9 +10,10 @@ namespace SPWM.Robotics
     {
         public int step;
         public float timestamp;
-        public float[] joint_positions;   // q* in R^{joint_count}
-        public float[] joint_velocities;  // p* in R^{joint_count}
-        public float[] actions;           // u_t in R^{action_dim}
+        public int phase_flag;            // 0 = Blind Approach, 1 = Sensory Heft, 2 = Blind Transport
+        public float[] joint_positions;   // q* in R^6
+        public float[] joint_velocities;  // p* in R^6
+        public float[] actions;           // u_t in R^6
         public float[] grayscale_frame;   // Flattened [H * W] intensity frame
         public float[] dense_events;      // Flattened [2 * H * W] ON/OFF binary spikes
     }
@@ -22,7 +23,8 @@ namespace SPWM.Robotics
     {
         public int trajectory_id;
         public string archetype;
-        public string attractor_regime;
+        public string payload_shape;
+        public float payload_mass;
         public int sequence_length;
         public int joint_count;
         public int action_dim;
@@ -30,16 +32,18 @@ namespace SPWM.Robotics
         public int sensor_width;
         public float dt;
         public float event_threshold;
+        public int[] phase_flags;
         public List<TimestepTelemetryRecord> steps = new List<TimestepTelemetryRecord>();
     }
 
     /// <summary>
-    /// Ground-Truth Telemetry & Neuromorphic Sensor Exporter for SPWM-v0.4.0.
-    /// Orchestrates trajectory rollouts in Unity, recording per-timestep:
+    /// Ground-Truth Telemetry & Neuromorphic Sensor Exporter for SPWM-v0.5.0 (6-DOF Active Perception Grasping).
+    /// Orchestrates 6-DOF manipulator trajectory rollouts in Unity, recording per-timestep:
     ///   - trajectory_id
-    ///   - joint_positions (q*)
-    ///   - joint_velocities (p*)
-    ///   - applied motor actions (u_t)
+    ///   - phase_flag (0 = Blind Approach, 1 = Sensory Heft, 2 = Blind Transport)
+    ///   - joint_positions (q* in R^6)
+    ///   - joint_velocities (p* in R^6)
+    ///   - applied motor actions (u_t in R^6)
     ///   - neuromorphic dense event frames / grayscale image sequences
     /// Serializes trajectories to JSON files consumable by spwm.data.datasets.EventWorldDataset.
     /// </summary>
@@ -48,6 +52,7 @@ namespace SPWM.Robotics
         [Header("Simulation & Export Settings")]
         [SerializeField] private ArticulatedRobotRig robotRig;
         [SerializeField] private ActionConditionedController controller;
+        [SerializeField] private ProceduralObjectSpawner objectSpawner;
         [SerializeField] private NeuromorphicEventBridge eventBridge;
         [SerializeField] private string exportDirectory = "ExportedTrajectories";
         [SerializeField] private int totalTrajectoriesToExport = 100;
@@ -57,40 +62,50 @@ namespace SPWM.Robotics
         private void Awake()
         {
             Time.fixedDeltaTime = physicsDt;
+            if (objectSpawner == null && robotRig != null)
+            {
+                objectSpawner = robotRig.GetComponent<ProceduralObjectSpawner>();
+            }
         }
 
         /// <summary>
-        /// Runs and serializes a single deterministic trajectory for the given trajectoryId.
-        /// Alternates between limit-cycle walking gaits (even IDs) and fixed-point posture balancing (odd IDs).
+        /// Runs and serializes a single deterministic 6-DOF active perception grasping trajectory
+        /// for the given trajectoryId.
         /// </summary>
         public ExportedUnityTrajectory RecordAndExportTrajectory(int trajectoryId)
         {
             robotRig.ResetToDeterministicPose(seed: trajectoryId);
-            controller.InitializeControllerState(seed: trajectoryId);
-            controller.CurrentRegime = (trajectoryId % 2 == 0)
-                ? AttractorRegime.LimitCycleWalkingGait
-                : AttractorRegime.FixedPointBalancing;
+            SpawnedPayloadSpec? payloadSpec = null;
+            if (objectSpawner != null)
+            {
+                payloadSpec = objectSpawner.SpawnEpisodePayload(episodeSeed: trajectoryId, rig: robotRig);
+            }
+            controller.InitializeControllerState(seed: trajectoryId, payloadSpec: payloadSpec);
             eventBridge.ResetSensorBaseline();
 
             var trajectory = new ExportedUnityTrajectory
             {
                 trajectory_id = trajectoryId,
                 archetype = robotRig.Archetype.ToString(),
-                attractor_regime = controller.CurrentRegime.ToString(),
+                payload_shape = payloadSpec.HasValue ? payloadSpec.Value.Shape.ToString() : "Box",
+                payload_mass = payloadSpec.HasValue ? payloadSpec.Value.Mass : 1.5f,
                 sequence_length = sequenceLength,
                 joint_count = robotRig.JointCount,
                 action_dim = controller.ActionDim,
                 sensor_height = eventBridge.SensorHeight,
                 sensor_width = eventBridge.SensorWidth,
                 dt = physicsDt,
-                event_threshold = eventBridge.EventThreshold
+                event_threshold = eventBridge.EventThreshold,
+                phase_flags = new int[sequenceLength]
             };
 
             Physics.autoSimulation = false;
             for (int t = 0; t < sequenceLength; t++)
             {
                 float currentTime = t * physicsDt;
-                float[] u_t = controller.SampleRegimeAction(currentTime, trajectoryId);
+                float[] u_t = controller.StepWaypointController(t, sequenceLength, physicsDt);
+                int phaseFlag = controller.CurrentPhaseFlag;
+                trajectory.phase_flags[t] = phaseFlag;
                 controller.ApplyActionsToJoints();
 
                 float[] q_star = robotRig.GetJointPositions();
@@ -101,6 +116,7 @@ namespace SPWM.Robotics
                 {
                     step = t,
                     timestamp = currentTime,
+                    phase_flag = phaseFlag,
                     joint_positions = q_star,
                     joint_velocities = p_star,
                     actions = u_t,

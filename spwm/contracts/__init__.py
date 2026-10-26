@@ -16,6 +16,7 @@ from spwm.contracts.config import (
     ExperimentConfig,
 )
 from spwm.contracts.tensors import (
+    J,
     assert_tensor_contract,
     assert_phase_space_contract,
     assert_euclidean_coordinates,
@@ -44,6 +45,7 @@ from spwm.contracts.protocols import (
 )
 
 __all__ = [
+    "J",
     "ProjectConfig",
     "EnvironmentConfig",
     "DataConfig",

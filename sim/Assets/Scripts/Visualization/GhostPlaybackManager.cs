@@ -7,8 +7,9 @@ namespace SPWM.Visualization
     /// <summary>
     /// Purely kinematic (physics-free) replica of <see cref="ArticulatedRobotRig"/> for playback.
     /// Built from the same <see cref="ArticulatedRobotRig.GetArchetypeSpecs"/> table, so joint order
-    /// matches the q* columns of the exported telemetry exactly.
-    /// Each link = unscaled pivot transform (rotates) + scaled visual child (renders).
+    /// and link segment geometry match the bolted 6-DOF industrial robot arm exactly.
+    /// Each link = unscaled pivot transform (rotates around the exact physical pivot) + scaled visual shaft
+    /// spanning [0, d.y] + bolted spherical joint housing at (0, 0, 0) + magnetic gripper tip on the wrist roll link.
     /// </summary>
     public sealed class KinematicRobotRig
     {
@@ -20,6 +21,7 @@ namespace SPWM.Visualization
         private float _totalMass;
 
         public Transform Root { get; }
+        public Transform EndEffectorTip { get; private set; }
         public int JointCount => _jointPivots.Count;
         public IReadOnlyList<Renderer> Renderers => _renderers;
 
@@ -29,24 +31,30 @@ namespace SPWM.Visualization
             Root = new GameObject(name).transform;
             Root.SetParent(parent, false);
             Root.localPosition = localOffset;
+            Root.localRotation = Quaternion.identity;
+            Root.localScale = Vector3.one;
 
             List<ArticulatedLinkSpec> specs = ArticulatedRobotRig.GetArchetypeSpecs(archetype);
             var created = new List<Transform>(specs.Count);
 
-            foreach (ArticulatedLinkSpec spec in specs)
+            for (int i = 0; i < specs.Count; i++)
             {
+                ArticulatedLinkSpec spec = specs[i];
                 var pivot = new GameObject(spec.Name).transform;
                 pivot.SetParent(spec.ParentIndex < 0 ? Root : created[spec.ParentIndex], false);
                 pivot.localPosition = spec.LocalAnchorPosition;
                 pivot.localRotation = Quaternion.identity;
+                pivot.localScale = Vector3.one;
 
-                CreateVisual(pivot, spec, material, isRoot: spec.ParentIndex < 0);
+                bool isRoot = spec.ParentIndex < 0;
+                bool isEndEffector = i == specs.Count - 1;
+                CreateVisual(pivot, spec, material, isRoot, isEndEffector);
                 created.Add(pivot);
                 _links.Add(pivot);
                 _linkMasses.Add(Mathf.Max(0.01f, spec.Mass));
                 _totalMass += Mathf.Max(0.01f, spec.Mass);
 
-                if (spec.ParentIndex >= 0)
+                if (!isRoot)
                 {
                     // ArticulationBody revolute joints rotate about the anchor frame's X axis.
                     Vector3 axis = forceSagittalAxis
@@ -58,21 +66,68 @@ namespace SPWM.Visualization
             }
         }
 
-        private void CreateVisual(Transform pivot, ArticulatedLinkSpec spec, Material material, bool isRoot)
+        private void CreateVisual(Transform pivot, ArticulatedLinkSpec spec, Material material, bool isRoot, bool isEndEffector)
         {
             Vector3 d = spec.LinkDimensions;
-            bool elongatedY = d.y >= d.x && d.y >= d.z;
-            GameObject vis = GameObject.CreatePrimitive(elongatedY ? PrimitiveType.Capsule : PrimitiveType.Cube);
-            vis.name = spec.Name + "_Visual";
-            Object.Destroy(vis.GetComponent<Collider>()); // visual only: no physics interaction between rigs
 
-            vis.transform.SetParent(pivot, false);
-            vis.transform.localScale = d;
-            // Capsule primitive height = 2 * scale.y, cube height = scale.y. Hang links below their joint.
-            float halfHeight = elongatedY ? d.y : 0.5f * d.y;
-            vis.transform.localPosition = isRoot ? Vector3.zero : new Vector3(0f, -halfHeight, 0f);
+            if (isRoot)
+            {
+                // Heavy bolted floor flange + pedestal column spanning [0, d.y]
+                GameObject flange = GameObject.CreatePrimitive(PrimitiveType.Cylinder);
+                flange.name = spec.Name + "_FloorFlange";
+                Object.Destroy(flange.GetComponent<Collider>());
+                flange.transform.SetParent(pivot, false);
+                flange.transform.localScale = new Vector3(d.x * 1.45f, 0.015f, d.z * 1.45f);
+                flange.transform.localPosition = new Vector3(0f, 0.015f, 0f);
+                RegisterRenderer(flange.GetComponent<Renderer>(), material);
+            }
+            else
+            {
+                // Spherical bolted joint housing centered at the exact pivot (0, 0, 0) so links never visually gap
+                GameObject hub = GameObject.CreatePrimitive(PrimitiveType.Sphere);
+                hub.name = spec.Name + "_JointHub";
+                Object.Destroy(hub.GetComponent<Collider>());
+                hub.transform.SetParent(pivot, false);
+                float hubDiameter = Mathf.Max(d.x, d.z) * 1.22f;
+                hub.transform.localScale = new Vector3(hubDiameter, hubDiameter, hubDiameter);
+                hub.transform.localPosition = Vector3.zero;
+                RegisterRenderer(hub.GetComponent<Renderer>(), material);
+            }
 
-            var r = vis.GetComponent<Renderer>();
+            // Rigid cylindrical structural shaft spanning strictly from the joint pivot (0, 0, 0) to child pivot (0, d.y, 0).
+            // Unity's Cylinder primitive has height = 2.0, so localScale.y = 0.5 * d.y and localPosition.y = 0.5 * d.y.
+            GameObject shaft = GameObject.CreatePrimitive(PrimitiveType.Cylinder);
+            shaft.name = spec.Name + "_VisualShaft";
+            Object.Destroy(shaft.GetComponent<Collider>());
+            shaft.transform.SetParent(pivot, false);
+            shaft.transform.localScale = new Vector3(d.x, 0.5f * d.y, d.z);
+            shaft.transform.localPosition = new Vector3(0f, 0.5f * d.y, 0f);
+            shaft.transform.localRotation = Quaternion.identity;
+            RegisterRenderer(shaft.GetComponent<Renderer>(), material);
+
+            if (isEndEffector)
+            {
+                // Magnetic gripper tip anchored at the distal end of Wrist_Roll (0, d.y, 0)
+                var tip = new GameObject("EndEffectorTip").transform;
+                tip.SetParent(pivot, false);
+                tip.localPosition = new Vector3(0f, d.y, 0f);
+                tip.localRotation = Quaternion.identity;
+                tip.localScale = Vector3.one;
+                EndEffectorTip = tip;
+
+                GameObject magPlate = GameObject.CreatePrimitive(PrimitiveType.Cylinder);
+                magPlate.name = "MagneticGripperPlate";
+                Object.Destroy(magPlate.GetComponent<Collider>());
+                magPlate.transform.SetParent(tip, false);
+                magPlate.transform.localScale = new Vector3(d.x * 1.45f, 0.008f, d.z * 1.45f);
+                magPlate.transform.localPosition = Vector3.zero;
+                RegisterRenderer(magPlate.GetComponent<Renderer>(), material);
+            }
+        }
+
+        private void RegisterRenderer(Renderer r, Material material)
+        {
+            if (r == null) return;
             r.sharedMaterial = material;
             r.shadowCastingMode = UnityEngine.Rendering.ShadowCastingMode.On;
             _renderers.Add(r);
@@ -110,9 +165,10 @@ namespace SPWM.Visualization
     }
 
     /// <summary>
-    /// Ghost execution playback: instantiates an opaque Target rig driven by ground_truth_q and a
-    /// holographic Ghost rig driven by predicted_q, interpolating joint rotations between the
-    /// discrete simulation steps (dt = 50 ms) with <see cref="Quaternion.Slerp"/>.
+    /// Ghost execution playback: instantiates an opaque Target 6-DOF industrial robot rig driven by ground_truth_q,
+    /// a holographic Ghost rig driven by predicted_q, the bolted industrial floor, and the heavy target payload object
+    /// sitting on the ground, being grabbed at the grasp frame, lifted sharply during Heft, and carried + twisted
+    /// upright during Transport.
     /// </summary>
     [DisallowMultipleComponent]
     public sealed class GhostPlaybackManager : MonoBehaviour
@@ -121,7 +177,7 @@ namespace SPWM.Visualization
         [SerializeField] private string trajectoryFileName = "trajectory_ghost_v0_4_0.json";
 
         [Header("Rig")]
-        [SerializeField] private RobotArchetype archetype = RobotArchetype.Humanoid;
+        [SerializeField] private RobotArchetype archetype = RobotArchetype.ManipulatorArm;
         [Tooltip("Matte, opaque material for the ground-truth (target) robot.")]
         [SerializeField] private Material targetMaterial;
         [Tooltip("HolographicGhost material (SPWM/HolographicGhost shader) for the predicted robot.")]
@@ -132,6 +188,11 @@ namespace SPWM.Visualization
         [SerializeField] private bool forceSagittalAxis = false;
         [Tooltip("Visual exaggeration of joint angles. Keep 1 for physically faithful playback.")]
         [SerializeField, Range(0.25f, 3f)] private float angleScale = 1f;
+
+        [Header("Grasp & Payload Visualization")]
+        [Tooltip("Playback frame index (0-indexed) at which the end-effector locks onto the ground object (start of Heft).")]
+        [SerializeField] private int graspLockFrameIndex = 35;
+        [SerializeField] private Vector3 payloadDimensions = new Vector3(0.11f, 0.07f, 0.09f);
 
         [Header("Playback")]
         [SerializeField] private bool playOnStart = true;
@@ -146,6 +207,11 @@ namespace SPWM.Visualization
         private KinematicRobotRig _ghost;
         private Quaternion[,] _targetRot; // [frame, joint] precomputed
         private Quaternion[,] _ghostRot;
+        private Transform _payloadVisual;
+        private Vector3 _payloadGroundPosition;
+        private Quaternion _payloadGroundRotation;
+        private Vector3 _payloadGraspLocalPos;
+        private Quaternion _payloadGraspLocalRot;
         private float _playbackTime;      // seconds of simulated time since frame 0
         private float _delayRemaining;
         private float _holdRemaining;
@@ -197,6 +263,7 @@ namespace SPWM.Visualization
             }
 
             PrecomputeRotations();
+            InitializeEnvironmentAndPayload();
             ApplyPose(0f);
             Loaded?.Invoke(this);
         }
@@ -212,8 +279,8 @@ namespace SPWM.Visualization
             {
                 targetMaterial = new Material(Shader.Find("Standard")) { name = "GroundTruthMatte (runtime)" };
                 targetMaterial.color = new Color(0.78f, 0.80f, 0.84f);
-                targetMaterial.SetFloat("_Glossiness", 0.12f);
-                targetMaterial.SetFloat("_Metallic", 0.0f);
+                targetMaterial.SetFloat("_Glossiness", 0.22f);
+                targetMaterial.SetFloat("_Metallic", 0.15f);
             }
             if (ghostMaterial == null)
             {
@@ -239,6 +306,86 @@ namespace SPWM.Visualization
                 {
                     _targetRot[f, j] = _target.JointRotation(j, fr.ground_truth_q[j], angleScale);
                     _ghostRot[f, j] = _ghost.JointRotation(j, fr.predicted_q[j], angleScale);
+                }
+            }
+        }
+
+        /// <summary>
+        /// Instantiates the industrial ground plane and the target payload sitting on the ground at the exact
+        /// 3D location reached by the arm at the grasp frame, so the arm approaches it, locks onto it,
+        /// performs a sharp upward Heft lift, and carries + twists it upright to the final target location.
+        /// </summary>
+        private void InitializeEnvironmentAndPayload()
+        {
+            // 1. Industrial ground plate at y = 0 where the robot base is bolted
+            GameObject ground = GameObject.CreatePrimitive(PrimitiveType.Cube);
+            ground.name = "IndustrialWorkcellFloor";
+            Object.Destroy(ground.GetComponent<Collider>());
+            ground.transform.SetParent(transform, false);
+            ground.transform.localScale = new Vector3(1.6f, 0.016f, 1.6f);
+            ground.transform.localPosition = new Vector3(0f, -0.008f, 0f);
+            var groundRenderer = ground.GetComponent<Renderer>();
+            if (groundRenderer != null)
+            {
+                Shader s = Shader.Find("Standard");
+                if (s != null)
+                {
+                    var floorMat = new Material(s)
+                    {
+                        name = "WorkcellFloorMat (runtime)",
+                        color = new Color(0.11f, 0.13f, 0.16f)
+                    };
+                    floorMat.SetFloat("_Glossiness", 0.18f);
+                    floorMat.SetFloat("_Metallic", 0.1f);
+                    groundRenderer.sharedMaterial = floorMat;
+                }
+            }
+
+            // 2. Pose the target rig at graspLockFrameIndex to read the exact world-space gripper tip pose on contact
+            int lockFrame = Mathf.Clamp(graspLockFrameIndex, 0, _data.FrameCount - 1);
+            for (int j = 0; j < _data.JointCount; j++)
+            {
+                _target.SetJointLocalRotation(j, _targetRot[lockFrame, j]);
+            }
+
+            Transform tip = _target.EndEffectorTip;
+            Vector3 tipWorldPos = tip != null ? tip.position : (transform.position + new Vector3(0.24f, 0.07f, 0.28f));
+            Quaternion tipWorldRot = tip != null ? tip.rotation : Quaternion.identity;
+
+            // Place the payload sitting flat on the ground directly beneath the gripper tip at the grasp moment
+            float halfHeight = 0.5f * payloadDimensions.y;
+            float groundCenterY = Mathf.Max(halfHeight, tipWorldPos.y - halfHeight);
+            _payloadGroundPosition = new Vector3(tipWorldPos.x, groundCenterY, tipWorldPos.z);
+            float yawDeg = Mathf.Atan2(tipWorldPos.x - transform.position.x, tipWorldPos.z - transform.position.z) * Mathf.Rad2Deg;
+            _payloadGroundRotation = Quaternion.Euler(0f, yawDeg, 0f);
+
+            // Compute exact rigid-lock offset relative to the gripper tip at the moment of magnetic lock
+            _payloadGraspLocalPos = Quaternion.Inverse(tipWorldRot) * (_payloadGroundPosition - tipWorldPos);
+            _payloadGraspLocalRot = Quaternion.Inverse(tipWorldRot) * _payloadGroundRotation;
+
+            // 3. Instantiate the visual target payload block
+            GameObject payloadObj = GameObject.CreatePrimitive(PrimitiveType.Cube);
+            payloadObj.name = "TargetPayload_HeavyBlock";
+            Object.Destroy(payloadObj.GetComponent<Collider>());
+            payloadObj.transform.SetParent(transform, true);
+            payloadObj.transform.localScale = payloadDimensions;
+            payloadObj.transform.SetPositionAndRotation(_payloadGroundPosition, _payloadGroundRotation);
+            _payloadVisual = payloadObj.transform;
+
+            var payloadRenderer = payloadObj.GetComponent<Renderer>();
+            if (payloadRenderer != null)
+            {
+                Shader s = Shader.Find("Standard");
+                if (s != null)
+                {
+                    var payloadMat = new Material(s)
+                    {
+                        name = "TargetPayloadMat (runtime)",
+                        color = new Color(0.92f, 0.44f, 0.14f)
+                    };
+                    payloadMat.SetFloat("_Glossiness", 0.38f);
+                    payloadMat.SetFloat("_Metallic", 0.25f);
+                    payloadRenderer.sharedMaterial = payloadMat;
                 }
             }
         }
@@ -279,6 +426,8 @@ namespace SPWM.Visualization
         /// <summary>
         /// Poses both rigs at continuous frame position <paramref name="framePos"/>: frames i and i+1 are
         /// blended with Quaternion.Slerp using alpha = frac(framePos), giving smooth motion between 50 ms steps.
+        /// Updates the target payload pose: sitting on the ground before graspLockFrameIndex, and rigidly
+        /// locked to the end-effector tip during Heft and Transport.
         /// </summary>
         private void ApplyPose(float framePos)
         {
@@ -292,6 +441,23 @@ namespace SPWM.Visualization
             {
                 _target.SetJointLocalRotation(j, Quaternion.Slerp(_targetRot[i0, j], _targetRot[i1, j], alpha));
                 _ghost.SetJointLocalRotation(j, Quaternion.Slerp(_ghostRot[i0, j], _ghostRot[i1, j], alpha));
+            }
+
+            if (_payloadVisual != null)
+            {
+                if (FramePosition < graspLockFrameIndex || _target.EndEffectorTip == null)
+                {
+                    // Before Heft: payload sits stationary on the ground waiting for the arm's approach
+                    _payloadVisual.SetPositionAndRotation(_payloadGroundPosition, _payloadGroundRotation);
+                }
+                else
+                {
+                    // Heft & Transport: payload is rigidly locked to the magnetic gripper tip
+                    Transform tip = _target.EndEffectorTip;
+                    Vector3 lockedPos = tip.position + tip.rotation * _payloadGraspLocalPos;
+                    Quaternion lockedRot = tip.rotation * _payloadGraspLocalRot;
+                    _payloadVisual.SetPositionAndRotation(lockedPos, lockedRot);
+                }
             }
         }
 

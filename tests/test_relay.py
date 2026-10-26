@@ -73,7 +73,7 @@ def test_action_conditioned_dissipative_predictor_integration():
     latent_dim = 128
     q_dim = 32
     p_dim = 96
-    action_dim = 8
+    action_dim = 6
     dt = 0.05
     predictor = LatentPredictor(
         latent_dim=latent_dim,

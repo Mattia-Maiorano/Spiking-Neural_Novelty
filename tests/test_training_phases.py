@@ -37,8 +37,8 @@ def create_dummy_dataloader(sequence_length=35, batch_size=2, total_traj=4):
     dataset = EventWorldDataset(
         trajectory_indices=list(range(total_traj)),
         sequence_length=sequence_length,
-        joint_count=4,
-        action_dim=4,
+        joint_count=6,
+        action_dim=6,
         cache_data=True,
     )
     return DataLoader(dataset, batch_size=batch_size, shuffle=False, collate_fn=collate_event_batches)
@@ -47,8 +47,8 @@ def create_dummy_dataloader(sequence_length=35, batch_size=2, total_traj=4):
 def _make_small_config(mode: str = "train_m1") -> ExperimentConfig:
     return ExperimentConfig(
         project=ProjectConfig(name="test_phase3"),
-        environment=EnvironmentConfig(height=16, width=16, joint_count=4, action_dim=4),
-        data=DataConfig(sequence_length=20, batch_size=2, total_trajectories=4, joint_count=4, action_dim=4),
+        environment=EnvironmentConfig(height=16, width=16, joint_count=6, action_dim=6),
+        data=DataConfig(sequence_length=20, batch_size=2, total_trajectories=4, joint_count=6, action_dim=6),
         model=ModelConfig(
             in_channels=2,
             encoder_conv_channels=(8, 16),
@@ -85,9 +85,10 @@ def test_representation_and_m1_isolated_phase_strategies() -> None:
     """Verify RepresentationPhaseStrategy and M1PhaseStrategy satisfy PhaseStrategy and isolate gradients."""
     B, T = 2, 20
     events = torch.rand(B, T, 2, 16, 16)
-    flat_kin = torch.randn(B, T, 8)  # 2 * 4 joints
-    actions = torch.randn(B, T, 4)
-    batch = {"events": events, "flat_kinematics": flat_kin, "actions": actions}
+    flat_kin = torch.randn(B, T, 12)  # 2 * 6 joints
+    actions = torch.randn(B, T, 6)
+    phase_flags = torch.tensor([[0, 0, 0, 0, 0, 0, 1, 1, 1, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2]] * B, dtype=torch.long)
+    batch = {"events": events, "flat_kinematics": flat_kin, "actions": actions, "phase_flags": phase_flags}
     device = torch.device("cpu")
 
     # 0. Phase 0: Representation Phase Strategy (trains encoder, dynamics, sensory_predictor, physical_decoder)
@@ -116,7 +117,7 @@ def test_representation_and_m1_isolated_phase_strategies() -> None:
     # Predictor / M1 must be frozen in Phase 0
     assert all(p.grad is None for p in model_rep.predictor.parameters())
 
-    # 1. Phase 1: M1 Phase Strategy (strictly trains M1 on detached latent targets with actions u_{0:H})
+    # 1. Phase 1: M1 Phase Strategy (strictly trains M1 with Active Perception Injection on phase_flags == 1)
     cfg_m1 = _make_small_config("train_m1")
     model_m1 = SPWM.from_config(cfg_m1)
     m1_strategy = M1PhaseStrategy(model_m1, cfg_m1, loss_fn, device)
@@ -132,6 +133,37 @@ def test_representation_and_m1_isolated_phase_strategies() -> None:
     assert all(p.grad is None for p in model_m1.dynamics.parameters())
     assert all(p.grad is None for p in model_m1.sensory_predictor.parameters())
     assert all(p.grad is None for p in model_m1.physical_decoder.parameters())
+
+
+def test_m1_active_perception_sensory_injection_halts_m1_on_flag_1() -> None:
+    """Verify M1PhaseStrategy temporarily halts M1 during Phase 1.5 (flag == 1) and injects grounded dynamics."""
+    B, T = 2, 12
+    cfg = _make_small_config("train_m1")
+    model = SPWM.from_config(cfg)
+    loss_fn = SPWMLoss.from_config(cfg.loss)
+    strategy = M1PhaseStrategy(model, cfg, loss_fn, torch.device("cpu"))
+
+    events = torch.rand(B, T, 2, 16, 16)
+    actions = torch.randn(B, T, 6)
+    flat_kin = torch.randn(B, T, 12)
+    # Timesteps: 0..1 setup, 2..4 Phase 1 (0), 5..7 Phase 1.5 (1), 8..11 Phase 2 (2)
+    phase_flags = torch.tensor([[0, 0, 0, 0, 0, 1, 1, 1, 2, 2, 2, 2]] * B, dtype=torch.long)
+
+    m1_call_count = 0
+    orig_m1_forward = model.m1.forward
+
+    def counted_m1_forward(*args, **kwargs):
+        nonlocal m1_call_count
+        m1_call_count += 1
+        return orig_m1_forward(*args, **kwargs)
+
+    model.m1.forward = counted_m1_forward  # type: ignore[method-assign]
+    loss, metrics = strategy._compute_m1_objectives(events, actions, flat_kin, phase_flags)
+    # first_heft = 5 -> init_frames = min(3, 4) = 3 -> t_start = 2 -> horizon = 12 - 1 - 2 = 9
+    # Out of 9 steps (next_idx = 3..11), 3 steps have flag == 1 (next_idx = 5, 6, 7), so M1 runs on 6 steps!
+    assert m1_call_count == 6
+    assert loss.requires_grad
+    assert metrics["loss"] >= 0.0
 
 
 def test_scoped_strict_checkpoint_loading(tmp_path: Path) -> None:

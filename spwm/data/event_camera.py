@@ -10,17 +10,22 @@ from typing import List, Optional, Tuple
 import numpy as np
 import torch
 
+from spwm.contracts.tensors import J
+
 
 @dataclass
 class RoboticTrajectory:
-    """Ground-truth 3D articulated robotic trajectory exported from Unity or synthesized."""
+    """Ground-truth 3D 6-DOF manipulator trajectory exported from Unity or synthesized."""
     trajectory_id: int
     joint_positions: np.ndarray   # [T, joint_count] (q^*)
     joint_velocities: np.ndarray  # [T, joint_count] (p^*)
     actions: np.ndarray           # [T, action_dim] (u_t)
     times: np.ndarray             # [T]
-    joint_count: int = 8
-    action_dim: int = 8
+    joint_count: int = J
+    action_dim: int = J
+    phase_flags: Optional[np.ndarray] = None       # [T] int64 in {0: BlindApproach, 1: SensoryHeft, 2: BlindTransport}
+    payload_mass: float = 1.5
+    payload_shape: str = "Box"
     grayscale_frames: Optional[np.ndarray] = None  # [T, H, W]
     dense_events: Optional[np.ndarray] = None      # [T, 2, H, W]
 
@@ -84,38 +89,34 @@ class EventCameraSimulator:
 
     def render_articulated_frame(self, joint_positions: np.ndarray) -> np.ndarray:
         """
-        Projects an articulated kinematic chain with joint angles q^* in R^J onto the 2D sensor plane [-1, 1]^2
-        via forward kinematics of two bilateral limb chains and renders anti-aliased Gaussian link profiles.
+        Projects a 6-DOF articulated manipulator chain with joint angles q^* in R^J onto the 2D sensor plane [-1, 1]^2
+        via forward kinematics of the serial arm links with progressively decreasing link radii.
         """
         frame = np.zeros((self.height, self.width), dtype=np.float32)
         dof = int(joint_positions.shape[0])
-        half_dof = max(1, dof // 2)
-        sigma_sq = (self.link_radius ** 2) + 1e-8
+        curr_x, curr_y = 0.0, -0.55
+        cum_angle = 0.5 * np.pi
+        total_reach = 1.25
 
-        # Render two bilateral kinematic chains (left/right limbs anchored near pelvis)
-        for chain_idx, base_x in enumerate((-0.22, 0.22)):
-            curr_x, curr_y = float(base_x), 0.05
-            cum_angle = -0.5 * np.pi
-            start_j = 0 if chain_idx == 0 else half_dof
-            end_j = half_dof if chain_idx == 0 else dof
-            n_links = max(1, end_j - start_j)
-            link_len = 0.68 / float(n_links)
+        for j in range(dof):
+            link_scale = max(0.45, 1.0 - 0.10 * j)
+            sigma_sq = ((self.link_radius * link_scale) ** 2) + 1e-8
+            link_len = (total_reach / float(max(1, dof))) * link_scale
+            cum_angle = cum_angle + float(joint_positions[j])
 
-            for j in range(start_j, end_j):
-                cum_angle = cum_angle + float(joint_positions[j])
-                next_x = np.clip(curr_x + link_len * np.cos(cum_angle), -0.92, 0.92)
-                next_y = np.clip(curr_y + link_len * np.sin(cum_angle), -0.92, 0.92)
-                mid_x = 0.5 * (curr_x + next_x)
-                mid_y = 0.5 * (curr_y + next_y)
+            next_x = np.clip(curr_x + link_len * np.cos(cum_angle), -0.92, 0.92)
+            next_y = np.clip(curr_y + link_len * np.sin(cum_angle), -0.92, 0.92)
+            mid_x = 0.5 * (curr_x + next_x)
+            mid_y = 0.5 * (curr_y + next_y)
 
-                dist_sq_joint = (self.grid_x - next_x) ** 2 + (self.grid_y - next_y) ** 2
-                dist_sq_mid = (self.grid_x - mid_x) ** 2 + (self.grid_y - mid_y) ** 2
-                blob = np.maximum(
-                    np.exp(-0.5 * dist_sq_joint / sigma_sq),
-                    0.85 * np.exp(-0.5 * dist_sq_mid / sigma_sq),
-                )
-                frame = np.maximum(frame, blob.astype(np.float32))
-                curr_x, curr_y = float(next_x), float(next_y)
+            dist_sq_joint = (self.grid_x - next_x) ** 2 + (self.grid_y - next_y) ** 2
+            dist_sq_mid = (self.grid_x - mid_x) ** 2 + (self.grid_y - mid_y) ** 2
+            blob = np.maximum(
+                np.exp(-0.5 * dist_sq_joint / sigma_sq),
+                0.85 * np.exp(-0.5 * dist_sq_mid / sigma_sq),
+            )
+            frame = np.maximum(frame, blob.astype(np.float32))
+            curr_x, curr_y = float(next_x), float(next_y)
 
         return frame
 

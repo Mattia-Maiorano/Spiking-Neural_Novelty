@@ -100,21 +100,21 @@ def test_physical_decoder_articulated_joint_contract():
         latent_dim=64,
         q_dim=16,
         p_dim=48,
-        joint_count=8,
+        joint_count=6,
         alpha=0.85,
     )
     assert isinstance(decoder, PhysicalDecoderProtocol)
 
     z_seq = torch.randn(4, 10, 64)
     kin = decoder(z_seq)
-    assert kin.shape == (4, 10, 16)  # 2 * 8 joints
+    assert kin.shape == (4, 10, 12)  # 2 * 6 joints
 
     q_sub = z_seq[..., :16]
     p_sub = z_seq[..., 16:]
     pos_sub = decoder.decode_pos(q_sub)
     vel_sub = decoder.decode_vel(p_sub)
-    assert pos_sub.shape == (4, 10, 8)
-    assert vel_sub.shape == (4, 10, 8)
+    assert pos_sub.shape == (4, 10, 6)
+    assert vel_sub.shape == (4, 10, 6)
 
     with pytest.raises(ValueError, match="dim 2: expected 64, got 32"):
         decoder(torch.randn(4, 10, 32))

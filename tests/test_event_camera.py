@@ -16,9 +16,14 @@ def test_event_camera_simulator_shapes_and_sparsity():
     traj = simulate_articulated_trajectory(
         trajectory_id=1,
         length=25,
-        joint_count=8,
-        action_dim=8,
+        joint_count=6,
+        action_dim=6,
     )
+    assert traj.phase_flags is not None
+    assert traj.phase_flags.shape == (25,)
+    assert set(np.unique(traj.phase_flags).tolist()).issubset({0, 1, 2})
+    assert {0, 1, 2}.issubset(set(np.unique(traj.phase_flags).tolist()))
+
     sim = EventCameraSimulator(height=32, width=32, event_threshold=0.08)
 
     batch = sim.trajectory_to_events(traj, return_sparse=True)
@@ -54,6 +59,8 @@ def test_unity_telemetry_serialization_and_dataset_collation(tmp_path: Path):
     assert parsed.joint_positions.shape == (15, 6)
     assert parsed.joint_velocities.shape == (15, 6)
     assert parsed.actions.shape == (15, 6)
+    assert parsed.phase_flags is not None
+    assert parsed.phase_flags.shape == (15,)
 
     ds = EventWorldDataset(
         trajectory_indices=[0, 1, 2, 3],
@@ -70,10 +77,13 @@ def test_unity_telemetry_serialization_and_dataset_collation(tmp_path: Path):
     assert item["events"].shape == (15, 2, 24, 24)
     assert item["flat_kinematics"].shape == (15, 12)
     assert item["actions"].shape == (15, 6)
+    assert item["phase_flags"].shape == (15,)
+    assert item["phase_flags"].dtype == torch.long
 
     # Test collation
     batch = collate_event_batches([ds[0], ds[1]])
     assert batch["events"].shape == (2, 15, 2, 24, 24)
     assert batch["flat_kinematics"].shape == (2, 15, 12)
     assert batch["actions"].shape == (2, 15, 6)
+    assert batch["phase_flags"].shape == (2, 15)
     assert batch["trajectory_ids"].shape == (2,)

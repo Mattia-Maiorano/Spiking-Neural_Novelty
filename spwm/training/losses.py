@@ -18,7 +18,7 @@ import torch.nn as nn
 import torch.nn.functional as F
 
 from spwm.contracts.config import LossConfig
-from spwm.contracts.tensors import assert_tensor_contract
+from spwm.contracts.tensors import J, assert_tensor_contract
 
 
 def decompose_latent_loss(
@@ -97,7 +97,7 @@ class PredictorLoss(nn.Module):
         rollout_velocities: Optional[torch.Tensor] = None,
         target_kinematics: Optional[torch.Tensor] = None,
         target_rollout_kinematics: Optional[torch.Tensor] = None,
-        joint_count: int = 8,
+        joint_count: int = J,
         mode: str = "train_m1",
     ) -> Dict[str, torch.Tensor]:
         device = torch.device("cpu")

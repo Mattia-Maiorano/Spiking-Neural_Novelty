@@ -87,7 +87,7 @@ class PredictorPhaseHandler(PhaseStrategy):
         header = (
             f"Epoch [{epoch:03d}/{end_epoch:03d}] [{mode}]{best_tag}  "
             f"Time: {epoch_duration:5.1f}s | Total: {total_elapsed / 60:4.1f}m | "
-            f"Remaining: {epoch_duration * (end_epoch - epoch) / 60:4.1f}m"
+            f"Remaining: {epoch_duration * (end_epoch - epoch) / 60:4.1f}m - Patience: {epoch_duration * 10}"
         )
         chronicle.log_section_header(header)
         train_loss = train_metrics.get("train_loss", 0.0)

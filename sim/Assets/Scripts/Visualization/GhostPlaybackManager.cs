@@ -66,6 +66,13 @@ namespace SPWM.Visualization
             }
         }
 
+        private static void SafeDestroy(Object obj)
+        {
+            if (obj == null) return;
+            if (Application.isPlaying) Object.Destroy(obj);
+            else Object.DestroyImmediate(obj);
+        }
+
         private void CreateVisual(Transform pivot, ArticulatedLinkSpec spec, Material material, bool isRoot, bool isEndEffector)
         {
             Vector3 d = spec.LinkDimensions;
@@ -75,7 +82,7 @@ namespace SPWM.Visualization
                 // Heavy bolted floor flange + pedestal column spanning [0, d.y]
                 GameObject flange = GameObject.CreatePrimitive(PrimitiveType.Cylinder);
                 flange.name = spec.Name + "_FloorFlange";
-                Object.Destroy(flange.GetComponent<Collider>());
+                SafeDestroy(flange.GetComponent<Collider>());
                 flange.transform.SetParent(pivot, false);
                 flange.transform.localScale = new Vector3(d.x * 1.45f, 0.015f, d.z * 1.45f);
                 flange.transform.localPosition = new Vector3(0f, 0.015f, 0f);
@@ -86,7 +93,7 @@ namespace SPWM.Visualization
                 // Spherical bolted joint housing centered at the exact pivot (0, 0, 0) so links never visually gap
                 GameObject hub = GameObject.CreatePrimitive(PrimitiveType.Sphere);
                 hub.name = spec.Name + "_JointHub";
-                Object.Destroy(hub.GetComponent<Collider>());
+                SafeDestroy(hub.GetComponent<Collider>());
                 hub.transform.SetParent(pivot, false);
                 float hubDiameter = Mathf.Max(d.x, d.z) * 1.22f;
                 hub.transform.localScale = new Vector3(hubDiameter, hubDiameter, hubDiameter);
@@ -98,7 +105,7 @@ namespace SPWM.Visualization
             // Unity's Cylinder primitive has height = 2.0, so localScale.y = 0.5 * d.y and localPosition.y = 0.5 * d.y.
             GameObject shaft = GameObject.CreatePrimitive(PrimitiveType.Cylinder);
             shaft.name = spec.Name + "_VisualShaft";
-            Object.Destroy(shaft.GetComponent<Collider>());
+            SafeDestroy(shaft.GetComponent<Collider>());
             shaft.transform.SetParent(pivot, false);
             shaft.transform.localScale = new Vector3(d.x, 0.5f * d.y, d.z);
             shaft.transform.localPosition = new Vector3(0f, 0.5f * d.y, 0f);
@@ -117,7 +124,7 @@ namespace SPWM.Visualization
 
                 GameObject magPlate = GameObject.CreatePrimitive(PrimitiveType.Cylinder);
                 magPlate.name = "MagneticGripperPlate";
-                Object.Destroy(magPlate.GetComponent<Collider>());
+                SafeDestroy(magPlate.GetComponent<Collider>());
                 magPlate.transform.SetParent(tip, false);
                 magPlate.transform.localScale = new Vector3(d.x * 1.45f, 0.008f, d.z * 1.45f);
                 magPlate.transform.localPosition = Vector3.zero;
@@ -174,7 +181,7 @@ namespace SPWM.Visualization
     public sealed class GhostPlaybackManager : MonoBehaviour
     {
         [Header("Data")]
-        [SerializeField] private string trajectoryFileName = "trajectory_ghost_v0_4_0.json";
+        [SerializeField] private string trajectoryFileName = "trajectory_ghost.json";
 
         [Header("Rig")]
         [SerializeField] private RobotArchetype archetype = RobotArchetype.ManipulatorArm;
@@ -236,23 +243,28 @@ namespace SPWM.Visualization
         public event System.Action<GhostPlaybackManager> Loaded;
         public event System.Action<GhostPlaybackManager> PlaybackRestarted;
 
-        private void Awake()
+        public void LoadTrajectory(string filenameOrPath)
         {
-            try
+            if (System.IO.File.Exists(filenameOrPath))
             {
-                _data = GhostTrajectoryData.LoadFromStreamingAssets(trajectoryFileName);
+                string json = System.IO.File.ReadAllText(filenameOrPath);
+                _data = GhostTrajectoryData.FromJson(json);
             }
-            catch (System.Exception e)
+            else
             {
-                Debug.LogError($"[GhostPlaybackManager] {e.Message}", this);
-                enabled = false;
-                return;
+                _data = GhostTrajectoryData.LoadFromStreamingAssets(filenameOrPath);
             }
 
             EnsureMaterials();
-            _target = new KinematicRobotRig("TargetRig_GroundTruth", transform, archetype, targetMaterial, Vector3.zero, forceSagittalAxis);
-            _ghost = new KinematicRobotRig("GhostRig_SPWM", transform, archetype, ghostMaterial, ghostOffset, forceSagittalAxis);
-            _ghost.SetShadowCasting(false); // holograms do not cast shadows
+            if (_target == null)
+            {
+                _target = new KinematicRobotRig("TargetRig_GroundTruth", transform, archetype, targetMaterial, Vector3.zero, forceSagittalAxis);
+            }
+            if (_ghost == null)
+            {
+                _ghost = new KinematicRobotRig("GhostRig_SPWM", transform, archetype, ghostMaterial, ghostOffset, forceSagittalAxis);
+                _ghost.SetShadowCasting(false);
+            }
 
             if (_target.JointCount != _data.JointCount)
             {
@@ -263,9 +275,27 @@ namespace SPWM.Visualization
             }
 
             PrecomputeRotations();
+            if (_data.metadata != null && _data.metadata.grasp_lock_frame_index >= 0)
+            {
+                graspLockFrameIndex = _data.metadata.grasp_lock_frame_index;
+            }
             InitializeEnvironmentAndPayload();
             ApplyPose(0f);
             Loaded?.Invoke(this);
+        }
+
+        private void Awake()
+        {
+            try
+            {
+                LoadTrajectory(trajectoryFileName);
+            }
+            catch (System.Exception e)
+            {
+                Debug.LogError($"[GhostPlaybackManager] {e.Message}", this);
+                enabled = false;
+                return;
+            }
         }
 
         private void Start()
@@ -315,12 +345,19 @@ namespace SPWM.Visualization
         /// 3D location reached by the arm at the grasp frame, so the arm approaches it, locks onto it,
         /// performs a sharp upward Heft lift, and carries + twists it upright to the final target location.
         /// </summary>
+        private static void SafeDestroy(Object obj)
+        {
+            if (obj == null) return;
+            if (Application.isPlaying) Object.Destroy(obj);
+            else Object.DestroyImmediate(obj);
+        }
+
         private void InitializeEnvironmentAndPayload()
         {
             // 1. Industrial ground plate at y = 0 where the robot base is bolted
             GameObject ground = GameObject.CreatePrimitive(PrimitiveType.Cube);
             ground.name = "IndustrialWorkcellFloor";
-            Object.Destroy(ground.GetComponent<Collider>());
+            SafeDestroy(ground.GetComponent<Collider>());
             ground.transform.SetParent(transform, false);
             ground.transform.localScale = new Vector3(1.6f, 0.016f, 1.6f);
             ground.transform.localPosition = new Vector3(0f, -0.008f, 0f);
@@ -366,7 +403,7 @@ namespace SPWM.Visualization
             // 3. Instantiate the visual target payload block
             GameObject payloadObj = GameObject.CreatePrimitive(PrimitiveType.Cube);
             payloadObj.name = "TargetPayload_HeavyBlock";
-            Object.Destroy(payloadObj.GetComponent<Collider>());
+            SafeDestroy(payloadObj.GetComponent<Collider>());
             payloadObj.transform.SetParent(transform, true);
             payloadObj.transform.localScale = payloadDimensions;
             payloadObj.transform.SetPositionAndRotation(_payloadGroundPosition, _payloadGroundRotation);

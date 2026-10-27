@@ -116,6 +116,8 @@ namespace SPWM.Robotics
                 rb.isKinematic = false;
                 rb.linearVelocity = Vector3.zero;
                 rb.angularVelocity = Vector3.zero;
+                rb.solverIterations = 24;
+                rb.solverVelocityIterations = 8;
             }
 
             _fixedJoint = gameObject.AddComponent<FixedJoint>();
@@ -126,6 +128,7 @@ namespace SPWM.Robotics
             _fixedJoint.breakForce = float.PositiveInfinity;
             _fixedJoint.breakTorque = float.PositiveInfinity;
             _fixedJoint.enableCollision = false;
+            _fixedJoint.enablePreprocessing = false;
             _isAttached = true;
             return _fixedJoint;
         }
@@ -143,8 +146,14 @@ namespace SPWM.Robotics
     public class ProceduralObjectSpawner : MonoBehaviour
     {
         [Header("Workspace Bounds (Meters from Base)")]
-        [SerializeField] private float minReachRadius = 0.30f;
-        [SerializeField] private float maxReachRadius = 0.44f;
+        [Tooltip("Minimum horizontal distance from robot base to initial ground object spawn.")]
+        [SerializeField] private float minReachRadius = 0.22f;
+        [Tooltip("Maximum horizontal distance from robot base to initial ground object spawn.")]
+        [SerializeField] private float maxReachRadius = 0.52f;
+        [Tooltip("Minimum azimuth angle (radians) for initial ground object spawn.")]
+        [SerializeField] private float minStartAzimuth = -0.75f;
+        [Tooltip("Maximum azimuth angle (radians) for initial ground object spawn.")]
+        [SerializeField] private float maxStartAzimuth = 0.75f;
         [SerializeField] private float minTargetHeight = 0.24f;
         [SerializeField] private float maxTargetHeight = 0.38f;
 
@@ -167,16 +176,19 @@ namespace SPWM.Robotics
         /// <summary>
         /// Deterministically computes the episode payload specification for a given seed and base origin.
         /// Used by both physical simulation and offline trajectory visualization.
+        /// Wildly varies the initial distance (radius) and approach azimuth to break predictor temporal timing memorization.
         /// </summary>
         public static SpawnedPayloadSpec GenerateDeterministicSpec(
             int episodeSeed,
             Vector3 baseOrigin,
-            float minRadius = 0.30f,
-            float maxRadius = 0.44f,
+            float minRadius = 0.22f,
+            float maxRadius = 0.52f,
             float minHeight = 0.24f,
             float maxHeight = 0.38f,
             float minMass = 1.20f,
-            float maxMass = 4.50f)
+            float maxMass = 4.50f,
+            float minStartAzimuth = -0.75f,
+            float maxStartAzimuth = 0.75f)
         {
             System.Random rng = new System.Random(episodeSeed * 7919 + 104729);
 
@@ -219,11 +231,12 @@ namespace SPWM.Robotics
             }
 
             // 2. Starting (x, y, z) sitting directly on the ground plane (y = baseOrigin.y + halfHeightOnGround)
+            // Wildly varied distance and azimuth from the base
             float startRadius = Mathf.Lerp(minRadius, maxRadius, (float)rng.NextDouble());
-            float startAzimuth = Mathf.Lerp(-0.55f, 0.55f, (float)rng.NextDouble());
-            if (Mathf.Abs(startAzimuth) < 0.18f)
+            float startAzimuth = Mathf.Lerp(minStartAzimuth, maxStartAzimuth, (float)rng.NextDouble());
+            if (Mathf.Abs(startAzimuth) < 0.12f)
             {
-                startAzimuth = startAzimuth >= 0f ? 0.24f : -0.24f;
+                startAzimuth = startAzimuth >= 0f ? 0.18f : -0.18f;
             }
 
             Vector3 startPos = baseOrigin + new Vector3(
@@ -323,7 +336,9 @@ namespace SPWM.Robotics
                 minTargetHeight,
                 maxTargetHeight,
                 minPayloadMassKg,
-                maxPayloadMassKg
+                maxPayloadMassKg,
+                minStartAzimuth,
+                maxStartAzimuth
             );
 
             PrimitiveType unityPrimitive;

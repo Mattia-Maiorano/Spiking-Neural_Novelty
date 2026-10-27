@@ -42,9 +42,9 @@ namespace SPWM.Robotics
     {
         [Header("PD Control & Physics Parameters")]
         [SerializeField] private ActionControlMode controlMode = ActionControlMode.MotorTargetPD;
-        [SerializeField] private float proportionalGainKp = 0.85f;
-        [SerializeField] private float derivativeGainKd = 0.18f;
-        [SerializeField] private float viscousJointDamping = 0.15f;
+        [SerializeField] private float proportionalGainKp = 0.35f;
+        [SerializeField] private float derivativeGainKd = 0.08f;
+        [SerializeField] private float viscousJointDamping = 0.25f;
         [SerializeField] private float maxMotorTorque = 240.0f;
         [SerializeField] private float targetAngleScaleRad = ArticulatedRobotRig.MaxJointAngleRad;
         [SerializeField] private Vector3 gravityVector = new Vector3(0f, -9.81f, 0f);
@@ -54,14 +54,40 @@ namespace SPWM.Robotics
         [SerializeField] private int blindApproachSteps = 34;
         [SerializeField] private int sensoryHeftSteps = 12;
 
+        [Header("Temporal & Controller Randomization (Anti-Memorization)")]
+        [Tooltip("If enabled, wildly varies approach duration and PD parameters per episode so the predictor cannot memorize timing.")]
+        [SerializeField] private bool enableTemporalRandomization = true;
+        [Tooltip("Minimum approach steps (earliest lift onset ~ step 15).")]
+        [SerializeField] private int minApproachSteps = 14;
+        [Tooltip("Maximum approach steps (latest lift onset ~ step 60).")]
+        [SerializeField] private int maxApproachSteps = 58;
+        [Tooltip("Minimum proportional gain (stiffness) multiplier during approach.")]
+        [SerializeField] private float minApproachKpMult = 0.65f;
+        [Tooltip("Maximum proportional gain (stiffness) multiplier during approach.")]
+        [SerializeField] private float maxApproachKpMult = 1.45f;
+        [Tooltip("Minimum derivative gain (damping) multiplier during approach.")]
+        [SerializeField] private float minApproachKdMult = 0.65f;
+        [Tooltip("Maximum derivative gain (damping) multiplier during approach.")]
+        [SerializeField] private float maxApproachKdMult = 1.45f;
+
         [Header("Sensory Heft Sharp Upward Lift")]
         [SerializeField] private float heftLiftMeters = 0.12f;
         [SerializeField] private Vector3 heftWristTwistRad = new Vector3(0.24f, -0.28f, 0.36f);
-        [SerializeField] private float heftAccelerationBoost = 2.2f;
+        [SerializeField] private float heftAccelerationBoost = 1.15f;
 
         private ArticulatedRobotRig _rig;
         private ProceduralObjectSpawner _spawner;
         private float[] _currentActionVector;
+        private float[] _currentVelTarget;   // reference joint velocity (rad/s) fed to the drive
+        private float _stiffnessMult = 1f;   // per-phase/episode multiplier on drive stiffness
+        private float _dampingMult = 1f;     // per-phase/episode multiplier on drive damping
+        private float[] _baseStiffness;
+        private float[] _baseDamping;
+
+        // Per-episode randomized approach duration and PD parameters
+        private int _activeBlindApproachSteps;
+        private float _activeApproachKp;
+        private float _activeApproachKd;
 
         private float[] _qNeutral;
         private float[] _qGrasp;
@@ -75,6 +101,8 @@ namespace SPWM.Robotics
         public GraspTrajectoryPhase CurrentPhase => _currentPhase;
         public int CurrentPhaseFlag => (int)_currentPhase;
         public SpawnedPayloadSpec ActiveEpisodeSpec => _activeEpisodeSpec;
+        public int ActiveBlindApproachSteps => _activeBlindApproachSteps;
+        public int ActiveGraspLockStep => setupHoldSteps + _activeBlindApproachSteps;
 
         private void Awake()
         {
@@ -94,8 +122,18 @@ namespace SPWM.Robotics
         /// </summary>
         public void InitializeControllerState(int seed, SpawnedPayloadSpec? payloadSpec = null)
         {
+            if (_rig == null)
+            {
+                _rig = GetComponent<ArticulatedRobotRig>();
+            }
+            if (_spawner == null)
+            {
+                _spawner = GetComponent<ProceduralObjectSpawner>();
+            }
+
             int dof = _rig != null && _rig.JointCount > 0 ? _rig.JointCount : ArticulatedRobotRig.CanonicalJointCount;
             _currentActionVector = new float[dof];
+            _currentVelTarget = new float[dof];
             _currentPhase = GraspTrajectoryPhase.BlindApproach;
             targetAngleScaleRad = ArticulatedRobotRig.MaxJointAngleRad;
 
@@ -116,6 +154,23 @@ namespace SPWM.Robotics
                 spec = ProceduralObjectSpawner.GenerateDeterministicSpec(seed, baseOrigin);
             }
             _activeEpisodeSpec = spec;
+
+            // Compute per-episode temporal timing and PD stiffness/damping parameters
+            if (enableTemporalRandomization)
+            {
+                System.Random rng = new System.Random(seed * 3571 + 65537);
+                _activeBlindApproachSteps = rng.Next(minApproachSteps, maxApproachSteps + 1);
+                float kpMult = Mathf.Lerp(minApproachKpMult, maxApproachKpMult, (float)rng.NextDouble());
+                float kdMult = Mathf.Lerp(minApproachKdMult, maxApproachKdMult, (float)rng.NextDouble());
+                _activeApproachKp = proportionalGainKp * kpMult;
+                _activeApproachKd = derivativeGainKd * kdMult;
+            }
+            else
+            {
+                _activeBlindApproachSteps = blindApproachSteps;
+                _activeApproachKp = proportionalGainKp;
+                _activeApproachKd = derivativeGainKd;
+            }
 
             // 1. Approach Waypoint: End-effector tip reaches the exact top surface of the ground object
             Vector3 graspPoint = spec.GraspPoint;
@@ -158,23 +213,32 @@ namespace SPWM.Robotics
         /// Evaluates the sequential waypoint PD controller at discrete step t of totalSteps,
         /// updating the phase flag (0 = BlindApproach, 1 = SensoryHeft, 2 = BlindTransport),
         /// triggering the instant rigid FixedJoint lock at the onset of Phase 1.5, and returning u_t in [-1, 1]^6.
+        /// Temporal approach steps and PD stiffness vary widely across episodes to prevent timing memorization.
         /// </summary>
         public float[] StepWaypointController(int stepIndex, int totalSteps, float dt)
         {
-            int dof = _rig.JointCount;
+            if (_rig == null)
+            {
+                _rig = GetComponent<ArticulatedRobotRig>();
+            }
+
+            int dof = _rig != null ? _rig.JointCount : ArticulatedRobotRig.CanonicalJointCount;
             if (_currentActionVector == null || _currentActionVector.Length != dof)
             {
                 InitializeControllerState(seed: 42);
             }
 
-            float[] q = _rig.GetJointPositions();
-            float[] p = _rig.GetJointVelocities();
+            float[] q = _rig != null ? _rig.GetJointPositions() : new float[dof];
+            float[] p = _rig != null ? _rig.GetJointVelocities() : new float[dof];
             float[] qDes = new float[dof];
             float[] dqDes = new float[dof];
 
-            int approachEnd = setupHoldSteps + blindApproachSteps;
+            int curApproachSteps = Mathf.Max(1, _activeBlindApproachSteps > 0 ? _activeBlindApproachSteps : blindApproachSteps);
+            int approachEnd = setupHoldSteps + curApproachSteps;
             int heftEnd = approachEnd + sensoryHeftSteps;
             float gainMultiplier = 1.0f;
+            float curKp = _activeApproachKp > 0f ? _activeApproachKp : proportionalGainKp;
+            float curKd = _activeApproachKd > 0f ? _activeApproachKd : derivativeGainKd;
 
             if (stepIndex < setupHoldSteps)
             {
@@ -186,9 +250,9 @@ namespace SPWM.Robotics
             {
                 // Phase 1 (The Approach): Deliberate minimum-jerk sweep to the ground object's top grasp surface
                 _currentPhase = GraspTrajectoryPhase.BlindApproach;
-                float tau = Mathf.Clamp01((float)(stepIndex - setupHoldSteps + 1) / Mathf.Max(1, blindApproachSteps));
+                float tau = Mathf.Clamp01((float)(stepIndex - setupHoldSteps + 1) / curApproachSteps);
                 float s = SmoothStepMinimumJerk(tau);
-                float ds = SmoothStepMinimumJerkDerivative(tau) / Mathf.Max(dt * blindApproachSteps, 1e-3f);
+                float ds = SmoothStepMinimumJerkDerivative(tau) / Mathf.Max(dt * curApproachSteps, 1e-3f);
                 for (int i = 0; i < dof; i++)
                 {
                     qDes[i] = Mathf.Lerp(_qNeutral[i], _qGrasp[i], s);
@@ -212,6 +276,8 @@ namespace SPWM.Robotics
                     ? (SmoothStepMinimumJerkDerivative(fastTau) * 1.35f / Mathf.Max(dt * sensoryHeftSteps, 1e-3f))
                     : 0.0f;
                 gainMultiplier = heftAccelerationBoost;
+                curKp = proportionalGainKp;
+                curKd = derivativeGainKd;
 
                 for (int i = 0; i < dof; i++)
                 {
@@ -234,6 +300,8 @@ namespace SPWM.Robotics
                 float tau = Mathf.Clamp01((float)(stepIndex - heftEnd + 1) / transportSteps);
                 float s = SmoothStepMinimumJerk(tau);
                 float ds = SmoothStepMinimumJerkDerivative(tau) / Mathf.Max(dt * transportSteps, 1e-3f);
+                curKp = proportionalGainKp;
+                curKd = derivativeGainKd;
 
                 for (int i = 0; i < dof; i++)
                 {
@@ -242,14 +310,18 @@ namespace SPWM.Robotics
                 }
             }
 
+            // The ArticulationBody drive IS the PD controller: command the reference directly
+            // (no outer PD on top, which previously produced loop gain < -1 and a Nyquist oscillation).
+            // Kp/Kd randomization is applied to the drive's stiffness/damping instead.
+            _stiffnessMult = gainMultiplier * curKp / Mathf.Max(1e-6f, proportionalGainKp);
+            _dampingMult = curKd / Mathf.Max(1e-6f, derivativeGainKd);
+
             float invScale = 1.0f / Mathf.Max(0.1f, targetAngleScaleRad);
             float[] u = new float[dof];
             for (int i = 0; i < dof; i++)
             {
-                float posErr = qDes[i] - q[i];
-                float velErr = dqDes[i] - p[i];
-                float pdTargetRad = qDes[i] + gainMultiplier * (proportionalGainKp * posErr + derivativeGainKd * velErr);
-                u[i] = Mathf.Clamp(pdTargetRad * invScale, -1.0f, 1.0f);
+                u[i] = Mathf.Clamp(qDes[i] * invScale, -1.0f, 1.0f);
+                _currentVelTarget[i] = dqDes[i];
             }
 
             SetActionVector(u);
@@ -294,9 +366,30 @@ namespace SPWM.Robotics
         /// </summary>
         public void ApplyActionsToJoints()
         {
+            if (_rig == null)
+            {
+                _rig = GetComponent<ArticulatedRobotRig>();
+            }
+            if (_rig == null) return;
+
             IReadOnlyList<ArticulationBody> joints = _rig.ActuatedJoints;
             float[] q = _rig.GetJointPositions();
             float[] p = _rig.GetJointVelocities();
+
+            if (_baseStiffness == null || _baseStiffness.Length != joints.Count)
+            {
+                _baseStiffness = new float[joints.Count];
+                _baseDamping = new float[joints.Count];
+                for (int i = 0; i < joints.Count; i++)
+                {
+                    _baseStiffness[i] = joints[i].xDrive.stiffness;
+                    _baseDamping[i] = joints[i].xDrive.damping;
+                }
+            }
+            if (_currentVelTarget == null || _currentVelTarget.Length != joints.Count)
+            {
+                _currentVelTarget = new float[joints.Count];
+            }
 
             for (int i = 0; i < joints.Count; i++)
             {
@@ -308,7 +401,9 @@ namespace SPWM.Robotics
                     var drive = joint.xDrive;
                     float targetRad = u_i * targetAngleScaleRad;
                     drive.target = targetRad * Mathf.Rad2Deg;
-                    drive.targetVelocity = -viscousJointDamping * p[i] * Mathf.Rad2Deg;
+                    drive.targetVelocity = _currentVelTarget[i] * Mathf.Rad2Deg;
+                    drive.stiffness = _baseStiffness[i] * _stiffnessMult;
+                    drive.damping = _baseDamping[i] * _dampingMult;
                     joint.xDrive = drive;
                 }
                 else

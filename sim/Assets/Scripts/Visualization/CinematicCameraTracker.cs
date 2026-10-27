@@ -41,6 +41,15 @@ namespace SPWM.Visualization
         private float _distance, _distanceVel;
         private bool _initialised;
 
+        private Camera Cam
+        {
+            get
+            {
+                if (_cam == null) _cam = GetComponent<Camera>();
+                return _cam;
+            }
+        }
+
         private void Awake()
         {
             _cam = GetComponent<Camera>();
@@ -60,6 +69,7 @@ namespace SPWM.Visualization
 
         private void LateUpdate()
         {
+            if (_cam == null) _cam = GetComponent<Camera>();
             if (!TryGetFraming(out Vector3 com, out float radius)) return;
 
             Quaternion orbit = Quaternion.Euler(elevationDeg, azimuthDeg, 0f);

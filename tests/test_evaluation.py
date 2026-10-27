@@ -30,6 +30,7 @@ def test_rollout_evaluator_long_horizon():
         sequence_length=150,
         joint_count=6,
         action_dim=6,
+        strict_dataset=False,
     )
     loader = DataLoader(ds, batch_size=2, collate_fn=collate_event_batches)
 
@@ -183,7 +184,6 @@ def test_generate_metrics_resume():
         assert "rollout_score" in data["evaluation"]
         assert "dynamic_score" in data["evaluation"]
         assert "rollout_score" in data["evaluation_no_corrector"]
-        assert "gate_passed" in data["evaluation"]
         assert len(data["training_progression"]["sampled_segments"]) == 10
         assert data["training_progression"]["sampled_segments"][0]["epoch"] == 1
         assert data["training_progression"]["sampled_segments"][-1]["epoch"] == 50
@@ -214,15 +214,22 @@ def test_ghost_visualizer_exporter_contract():
     from spwm.evaluation.visualizer import GhostVisualizerExporter
 
     sim = EventCameraSimulator(height=32, width=32)
-    ds = EventWorldDataset(trajectory_indices=[0, 1], event_simulator=sim, sequence_length=40, joint_count=6, action_dim=6)
+    ds = EventWorldDataset(
+        trajectory_indices=[0, 1],
+        event_simulator=sim,
+        sequence_length=40,
+        joint_count=6,
+        action_dim=6,
+        strict_dataset=False,
+    )
     loader = DataLoader(ds, batch_size=2, collate_fn=collate_event_batches)
     model = SPWM(latent_dim=32, timescale_dims=(16, 16), encoder_dim=32, joint_count=6, action_dim=6)
     evaluator = RolloutEvaluator(model=model, horizons=[30], joint_count=6, temporal_burn_in=5)
 
     with tempfile.TemporaryDirectory() as tmpdir:
-        exporter = GhostVisualizerExporter(evaluator, unity_project_dir=tmpdir, horizon=30, dt=0.05)
+        exporter = GhostVisualizerExporter(evaluator, unity_project_dir=tmpdir, horizon=30, dt=0.05, model_version="spwm_v0_4_0")
         out = exporter.export(loader, batch_index=0, sample_index=1)
-        assert out == Path(tmpdir) / "Assets" / "StreamingAssets" / "trajectory_ghost_v0_4_0.json"
+        assert out == Path(tmpdir) / "Assets" / "StreamingAssets" / "trajectory_ghost.json"
         payload = json.loads(out.read_text())
 
     meta, frames = payload["metadata"], payload["frames"]

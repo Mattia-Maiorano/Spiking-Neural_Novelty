@@ -877,7 +877,7 @@ MonoBehaviour:
   ghostOffset: {x: 0, y: 0, z: 0}
   forceSagittalAxis: 0
   angleScale: 1
-  graspLockFrameIndex: 35
+  graspLockFrameIndex: 20
   payloadDimensions: {x: 0.11, y: 0.07, z: 0.09}
   playOnStart: 1
   startDelaySeconds: 1

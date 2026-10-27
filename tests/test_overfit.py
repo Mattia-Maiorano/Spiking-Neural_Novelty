@@ -27,6 +27,7 @@ def test_tiny_overfit_and_gradient_flow():
         joint_count=4,
         action_dim=4,
         cache_data=True,
+        strict_dataset=False,
     )
     dataloader = DataLoader(dataset, batch_size=8, shuffle=False, collate_fn=collate_event_batches)
 

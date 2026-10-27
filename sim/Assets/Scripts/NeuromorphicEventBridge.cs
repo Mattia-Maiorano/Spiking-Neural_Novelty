@@ -50,7 +50,12 @@ namespace SPWM.Robotics
 
             ReleaseBuffers();
 
-            _frameRenderTexture = new RenderTexture(sensorWidth, sensorHeight, 24, RenderTextureFormat.ARGBFloat);
+            if (_sensorCamera == null)
+            {
+                _sensorCamera = GetComponent<Camera>();
+            }
+
+            _frameRenderTexture = new RenderTexture(sensorWidth, sensorHeight, 24, RenderTextureFormat.ARGB32);
             _frameRenderTexture.Create();
 
             _prevLogIntensityTexture = new RenderTexture(sensorWidth, sensorHeight, 0, RenderTextureFormat.RFloat)
@@ -60,7 +65,7 @@ namespace SPWM.Robotics
             _prevLogIntensityTexture.Create();
 
             _denseEventBuffer = new ComputeBuffer(2 * sensorWidth * sensorHeight, sizeof(float));
-            _cpuReadbackTexture = new Texture2D(sensorWidth, sensorHeight, TextureFormat.RGBAFloat, false);
+            _cpuReadbackTexture = new Texture2D(sensorWidth, sensorHeight, TextureFormat.RGBA32, false);
             _prevCpuLogIntensity = new float[sensorWidth * sensorHeight];
             _isFirstFrame = true;
 
@@ -85,6 +90,15 @@ namespace SPWM.Robotics
         /// </summary>
         public (float[] denseEvents, float[] grayscaleFrame) CaptureStep()
         {
+            if (_sensorCamera == null)
+            {
+                _sensorCamera = GetComponent<Camera>();
+                if (_sensorCamera != null && _sensorCamera.targetTexture == null)
+                {
+                    _sensorCamera.targetTexture = _frameRenderTexture;
+                }
+            }
+
             if (_sensorCamera != null)
             {
                 _sensorCamera.Render();

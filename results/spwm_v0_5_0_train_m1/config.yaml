@@ -25,6 +25,7 @@ data:
   - 2.0
   num_workers: 0
   cache_data: true
+  strict_dataset: true
 model:
   type: spwm
   num_keypoints: 16
@@ -58,7 +59,7 @@ memory:
 training:
   mode: train_m1
   epochs: 200
-  early_stopping_patience: 20
+  early_stopping_patience: 10
   batch_size: 32
   weight_decay: 0.0005
   grad_clip_norm: 0.8
@@ -74,10 +75,11 @@ loss:
   lambda_latent: 1.0
   lambda_sensory: 1.0
   lambda_position: 1.0
-  lambda_velocity: 1.0
+  lambda_velocity: 1.5
   lambda_kinematic: 5.0
   lambda_derivative: 1.0
   lambda_smoothness: 1.0
+  velocity_loss_scale: 10.0
 evaluation:
   rollout_horizons: !!python/tuple
   - 1

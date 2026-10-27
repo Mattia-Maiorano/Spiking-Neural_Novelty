@@ -107,6 +107,7 @@ class DataConfig:
     extrapolation_velocity_range: Tuple[float, float] = (-2.0, 2.0)  #: Extrapolation joint angular velocity range.
     num_workers: int = 0                            #: Number of subprocesses used by PyTorch DataLoaders.
     cache_data: bool = True                         #: Whether to cache rendered event frames in RAM to accelerate training epochs.
+    strict_dataset: bool = True                     #: Whether to strictly require real exported Unity trajectories (fail if missing).
 
     def __post_init__(self) -> None:
         if self.joint_count <= 0:
@@ -198,7 +199,7 @@ class TrainingConfig:
     """
     mode: str = "train_m1"                           #: Active training stage: "train_representation" or "train_m1".
     epochs: int = 100                                #: Total number of training epochs to execute for the active phase.
-    early_stopping_patience: int = 20                #: Epochs without validation improvement before stopping.
+    early_stopping_patience: int = 10                #: Epochs without validation improvement before stopping.
     batch_size: int = 32                             #: Mini-batch size per optimization step.
     weight_decay: float = 0.0005                     #: Base L2 weight decay penalty applied to Adam optimizer across active submodules.
     grad_clip_norm: float = 0.8                      #: Maximum L2 gradient norm threshold for torch.nn.utils.clip_grad_norm_.
@@ -234,10 +235,11 @@ class LossConfig:
     lambda_latent: float = 1.0      #: Weight of overall latent trajectory MSE loss.
     lambda_sensory: float = 1.0     #: Weight of top-down sensory prediction MSE loss.
     lambda_position: float = 1.0    #: Weight of coordinate/position (q) subspace MSE in latent rollout losses.
-    lambda_velocity: float = 1.0    #: Weight of momentum/velocity (p) subspace MSE in latent rollout losses.
+    lambda_velocity: float = 1.5    #: Weight of momentum/velocity (p) subspace MSE in latent rollout losses.
     lambda_kinematic: float = 5.0   #: Weight of physical decoder joint kinematic MSE loss in Phase 0.
     lambda_derivative: float = 1.0  #: Weight of strict phase-space derivative constraint (q_{t+1}-q_t - dt*p_t) MSE.
     lambda_smoothness: float = 1.0  #: Weight of ALIF momentum smoothness MSE loss in Phase 0.
+    velocity_loss_scale: float = 10.0 #: Normalization scale for angular velocities (rad/s) in kinematic loss (L_vel / s^2).
 
 
 @dataclass(frozen=True)

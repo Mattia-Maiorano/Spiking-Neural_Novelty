@@ -40,6 +40,7 @@ def create_dummy_dataloader(sequence_length=35, batch_size=2, total_traj=4):
         joint_count=6,
         action_dim=6,
         cache_data=True,
+        strict_dataset=False,
     )
     return DataLoader(dataset, batch_size=batch_size, shuffle=False, collate_fn=collate_event_batches)
 

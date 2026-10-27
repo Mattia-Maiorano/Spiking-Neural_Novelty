@@ -123,6 +123,7 @@ def _evaluate_and_save_phase_artifacts(
         num_workers=cfg.data.num_workers,
         cache_data=cfg.data.cache_data,
         dataset_dir=cfg.data.dataset_dir,
+        strict_dataset=cfg.data.strict_dataset,
     )
 
     evaluator = RolloutEvaluator(
@@ -292,6 +293,7 @@ def main() -> None:
         num_workers=cfg.data.num_workers,
         cache_data=cfg.data.cache_data,
         dataset_dir=cfg.data.dataset_dir,
+        strict_dataset=cfg.data.strict_dataset,
     )
 
     model = SPWM.from_config(cfg).to(device)

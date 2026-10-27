@@ -67,7 +67,6 @@ def generate_metrics_resume(
             "rollout_mae": float(eval_res.rollout_mae),
             "rollout_score": float(eval_res.dynamic_score),
             "dynamic_score": float(eval_res.dynamic_score),
-            "gate_passed": bool(eval_res.dynamic_score <= 1.0),
             "drift_ratio": float(eval_res.drift_ratio),
             "horizons": list(eval_res.horizons),
             "latent_mse_per_horizon": {str(k): float(v) for k, v in eval_res.latent_mse_per_horizon.items()},

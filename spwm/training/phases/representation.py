@@ -57,7 +57,10 @@ class RepresentationPhaseStrategy(PhaseStrategy):
         # 1. L_kinematic: Supervised loss decoding complex joint angles q* and angular velocities p*
         pos_pred = self.model.physical_decoder.decode_pos(q)
         vel_pred = self.model.physical_decoder.decode_vel(p)
-        l_kinematic = F.mse_loss(pos_pred, joint_pos_true) + F.mse_loss(vel_pred, joint_vel_true)
+        loss_pos_kin = F.mse_loss(pos_pred, joint_pos_true)
+        vel_scale = max(1e-3, float(self.cfg.loss.velocity_loss_scale))
+        loss_vel_kin = F.mse_loss(vel_pred, joint_vel_true) / (vel_scale ** 2)
+        l_kinematic = loss_pos_kin + loss_vel_kin
 
         # 2. L_derivative: Strict phase-space factorization constraint
         dt = float(self.cfg.environment.dt)
@@ -91,6 +94,8 @@ class RepresentationPhaseStrategy(PhaseStrategy):
         metrics = {
             "loss": float(total_loss.item()),
             "loss_kinematic": float(l_kinematic.item()),
+            "loss_position": float(loss_pos_kin.item()),
+            "loss_velocity": float(loss_vel_kin.item()),
             "loss_derivative": float(l_derivative.item()),
             "loss_smoothness": float(l_smoothness.item()),
             "loss_sensory": float(l_sensory.item()),

@@ -35,18 +35,32 @@ def partition_trajectories(
     }
 
 
-def _compute_default_phase_schedule(length: int) -> Tuple[int, int, int, np.ndarray]:
+def _compute_default_phase_schedule(
+    length: int, rng: Optional[np.random.Generator] = None
+) -> Tuple[int, int, int, np.ndarray]:
     """
     Computes phase boundaries and integer phase flags [T] in {0, 1, 2}:
       - 0: Blind Approach (includes Phase 0 neutral setup + Phase 1 approach)
       - 1: Sensory Heft (Phase 1.5 high-acceleration micro-movement after grasp attachment)
       - 2: Blind Transport (Phase 2 loaded transport with active wrist rotation)
-    Ensures all 3 phases are represented even for short test sequences.
+
+    When rng is provided, wildly randomizes approach duration (~12 to ~56 steps)
+    so the predictor cannot memorize a fixed lift tick and is forced to obey u_t.
     """
-    setup_steps = max(1, min(4, length // 12))
-    approach_end = max(setup_steps + 1, int(round(0.38 * length)))
-    heft_steps = max(2, min(12, int(round(0.14 * length))))
-    heft_end = min(length - 1, approach_end + heft_steps)
+    if rng is not None:
+        setup_steps = int(rng.integers(3, 8))
+        # Wildly varied approach duration matching C# [minApproachSteps=14, maxApproachSteps=58]
+        max_allowed_approach = max(setup_steps + 15, length - 28)
+        min_allowed_approach = min(setup_steps + 12, max_allowed_approach - 5)
+        approach_end = int(rng.integers(min_allowed_approach, max_allowed_approach + 1))
+        heft_steps = int(rng.integers(8, 15))
+        heft_end = min(length - 1, approach_end + heft_steps)
+    else:
+        setup_steps = max(1, min(4, length // 12))
+        approach_end = max(setup_steps + 1, int(round(0.38 * length)))
+        heft_steps = max(2, min(12, int(round(0.14 * length))))
+        heft_end = min(length - 1, approach_end + heft_steps)
+
     if heft_end <= approach_end:
         approach_end = max(1, length // 3)
         heft_end = max(approach_end + 1, (2 * length) // 3)
@@ -155,10 +169,11 @@ def simulate_articulated_trajectory(
     payload_mass = float(rng.uniform(1.20, 4.50))
     half_height = 0.035
 
-    start_radius = float(rng.uniform(0.32, 0.43))
-    start_azimuth = float(rng.uniform(-0.55, 0.55))
-    if abs(start_azimuth) < 0.20:
-        start_azimuth = 0.26 if start_azimuth >= 0.0 else -0.26
+    # Wildly varied distance and azimuth matching C# spawner [minReachRadius=0.22, maxReachRadius=0.52]
+    start_radius = float(rng.uniform(0.22, 0.52))
+    start_azimuth = float(rng.uniform(-0.75, 0.75))
+    if abs(start_azimuth) < 0.12:
+        start_azimuth = 0.18 if start_azimuth >= 0.0 else -0.18
 
     grasp_point = np.array(
         [
@@ -213,7 +228,7 @@ def simulate_articulated_trajectory(
         dtype=np.float32,
     )
 
-    setup_steps, approach_end, heft_end, phase_flags = _compute_default_phase_schedule(length)
+    setup_steps, approach_end, heft_end, phase_flags = _compute_default_phase_schedule(length, rng=rng)
 
     q = q_neutral.copy()
     p = np.zeros((joint_count,), dtype=np.float32)
@@ -223,8 +238,9 @@ def simulate_articulated_trajectory(
     u_steps = np.zeros((length, action_dim), dtype=np.float32)
     times = np.arange(length, dtype=np.float32) * float(dt)
 
-    kp = 0.85
-    kd = 0.18
+    # Randomized PD stiffness and damping parameters during approach matching C# controller
+    approach_kp = float(0.85 * rng.uniform(0.65, 1.45))
+    approach_kd = float(0.18 * rng.uniform(0.65, 1.45))
     drive_stiffness = 16.5 * v_scale
     gravity_scale = 0.22
 
@@ -275,7 +291,9 @@ def simulate_articulated_trajectory(
             eff_inertia = unloaded_inertia + payload_inertia
             eff_gravity = gravity_scale * (1.0 + 0.42 * payload_mass)
 
-        raw_target_rad = q_des + gain_boost * (kp * (q_des - q) + kd * (dq_des - p))
+        cur_kp = approach_kp if flag == 0 else 0.85
+        cur_kd = approach_kd if flag == 0 else 0.18
+        raw_target_rad = q_des + gain_boost * (cur_kp * (q_des - q) + cur_kd * (dq_des - p))
         u_t = np.zeros((action_dim,), dtype=np.float32)
         common_d = min(joint_count, action_dim)
         u_t[:common_d] = np.clip(raw_target_rad[:common_d] / max_joint_angle, -1.0, 1.0)
@@ -435,10 +453,14 @@ def parse_unity_trajectory_file(
 
         gray = None
         if steps and "grayscale_frame" in steps[0] and steps[0]["grayscale_frame"]:
-            gray = np.array([s["grayscale_frame"] for s in steps], dtype=np.float32).reshape(len(steps), H, W)
+            gray_arr = np.array([s["grayscale_frame"] for s in steps], dtype=np.float32).reshape(len(steps), H, W)
+            if float(np.sum(gray_arr)) > 0.0:
+                gray = gray_arr
         ev = None
         if steps and "dense_events" in steps[0] and steps[0]["dense_events"]:
-            ev = np.array([s["dense_events"] for s in steps], dtype=np.float32).reshape(len(steps), 2, H, W)
+            ev_arr = np.array([s["dense_events"] for s in steps], dtype=np.float32).reshape(len(steps), 2, H, W)
+            if float(np.sum(ev_arr)) > 0.0:
+                ev = ev_arr
 
     if sequence_length is not None and q.shape[0] > sequence_length:
         q = q[:sequence_length]
@@ -485,6 +507,7 @@ class EventWorldDataset(Dataset):
         velocity_range: Tuple[float, float] = (-1.0, 1.0),
         dt: float = 0.05,
         cache_data: bool = True,
+        strict_dataset: bool = True,
     ) -> None:
         super().__init__()
         self.trajectory_indices = list(trajectory_indices)
@@ -496,6 +519,29 @@ class EventWorldDataset(Dataset):
         self.velocity_range = velocity_range
         self.dt = float(dt)
         self.cache_data = cache_data
+        self.strict_dataset = strict_dataset
+
+        if self.strict_dataset:
+            if self.dataset_dir is None:
+                raise FileNotFoundError(
+                    "Strict dataset validation error: `dataset_dir` is None. "
+                    "SPWM contracts require exported Unity trajectories (e.g. at 'sim/ExportedTrajectories'). "
+                    "Synthetic simulation fallback is disabled."
+                )
+            if not self.dataset_dir.is_dir():
+                raise FileNotFoundError(
+                    f"Strict dataset validation error: `dataset_dir` '{self.dataset_dir}' does not exist. "
+                    "Please generate the real Unity trajectory dataset using the Unity physics simulation batch export."
+                )
+            missing = [tid for tid in self.trajectory_indices if self._resolve_unity_file(tid) is None]
+            if missing:
+                missing_preview = missing[:10]
+                suffix = "..." if len(missing) > 10 else ""
+                raise FileNotFoundError(
+                    f"Strict dataset validation error: Missing {len(missing)} Unity trajectory files in '{self.dataset_dir}'. "
+                    f"Sample missing IDs: {missing_preview}{suffix}. "
+                    "Ensure Unity batch export has run for all requested trajectory IDs."
+                )
 
         self._cache: Dict[int, Dict[str, Any]] = {}
         if cache_data:
@@ -616,6 +662,7 @@ def create_dataloaders(
     dt: float = 0.05,
     num_workers: int = 0,
     cache_data: bool = True,
+    strict_dataset: bool = True,
 ) -> Dict[str, DataLoader]:
     """
     Creates train, val, test, and extrapolation DataLoaders with strict trajectory-level partitioning.
@@ -624,7 +671,8 @@ def create_dataloaders(
     train_ids = list(range(splits["train"][0], splits["train"][1]))
     val_ids = list(range(splits["val"][0], splits["val"][1]))
     test_ids = list(range(splits["test"][0], splits["test"][1]))
-    extrap_ids = list(range(total_trajectories, total_trajectories + 100))
+    # For extrapolation evaluation, use the test partition IDs if dataset files are bounded to total_trajectories
+    extrap_ids = test_ids[:min(len(test_ids), 100)] if (strict_dataset and dataset_dir is not None) else list(range(total_trajectories, total_trajectories + 100))
 
     event_sim = EventCameraSimulator(height=height, width=width, event_threshold=event_threshold)
 
@@ -638,6 +686,7 @@ def create_dataloaders(
         velocity_range=standard_velocity_range,
         dt=dt,
         cache_data=cache_data,
+        strict_dataset=strict_dataset,
     )
     val_ds = EventWorldDataset(
         trajectory_indices=val_ids,
@@ -649,6 +698,7 @@ def create_dataloaders(
         velocity_range=standard_velocity_range,
         dt=dt,
         cache_data=cache_data,
+        strict_dataset=strict_dataset,
     )
     test_ds = EventWorldDataset(
         trajectory_indices=test_ids,
@@ -660,6 +710,7 @@ def create_dataloaders(
         velocity_range=standard_velocity_range,
         dt=dt,
         cache_data=cache_data,
+        strict_dataset=strict_dataset,
     )
     extrap_ds = EventWorldDataset(
         trajectory_indices=extrap_ids,
@@ -671,6 +722,7 @@ def create_dataloaders(
         velocity_range=extrapolation_velocity_range,
         dt=dt,
         cache_data=cache_data,
+        strict_dataset=strict_dataset,
     )
 
     return {

@@ -58,6 +58,7 @@ namespace SPWM.Visualization
         public int sample_index;
         public int trajectory_id;
         public int batch_index;
+        public int grasp_lock_frame_index = -1;
         public string exported_at;
         public GhostSummary summary;
     }
@@ -93,6 +94,11 @@ namespace SPWM.Visualization
             GhostTrajectoryData data = JsonUtility.FromJson<GhostTrajectoryData>(json);
             data.Validate();
             return data;
+        }
+
+        public static GhostTrajectoryData FromJson(string json)
+        {
+            return Parse(json);
         }
 
         public void Validate()

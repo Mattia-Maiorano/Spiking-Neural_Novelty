@@ -83,6 +83,7 @@ def main() -> None:
         event_threshold=cfg.environment.event_threshold,
         dt=cfg.environment.dt,
         dataset_dir=cfg.data.dataset_dir,
+        strict_dataset=cfg.data.strict_dataset,
     )
 
     evaluator = RolloutEvaluator(

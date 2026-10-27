@@ -176,6 +176,8 @@ namespace SPWM.Robotics
                 ab.jointFriction = spec.JointFriction > 0f ? spec.JointFriction : globalJointFriction;
                 ab.useGravity = true;
                 ab.collisionDetectionMode = CollisionDetectionMode.Continuous;
+                ab.solverIterations = 24;
+                ab.solverVelocityIterations = 8;
 
                 if (isRoot)
                 {
@@ -501,8 +503,8 @@ namespace SPWM.Robotics
                     AngularDamping = 0.25f,
                     LowerLimitDeg = -170f,
                     UpperLimitDeg = 170f,
-                    DriveStiffness = 1200f,
-                    DriveDamping = 140f,
+                    DriveStiffness = 300f,
+                    DriveDamping = 75f,
                     MaxForceLimit = 600f,
                     AxisRotationEuler = new Vector3(0f, 0f, 90f)
                 },
@@ -517,8 +519,8 @@ namespace SPWM.Robotics
                     AngularDamping = 0.25f,
                     LowerLimitDeg = -150f,
                     UpperLimitDeg = 150f,
-                    DriveStiffness = 1200f,
-                    DriveDamping = 140f,
+                    DriveStiffness = 320f,
+                    DriveDamping = 80f,
                     MaxForceLimit = 600f,
                     AxisRotationEuler = new Vector3(0f, 0f, 0f)
                 },
@@ -533,8 +535,8 @@ namespace SPWM.Robotics
                     AngularDamping = 0.25f,
                     LowerLimitDeg = -160f,
                     UpperLimitDeg = 160f,
-                    DriveStiffness = 1000f,
-                    DriveDamping = 120f,
+                    DriveStiffness = 260f,
+                    DriveDamping = 65f,
                     MaxForceLimit = 500f,
                     AxisRotationEuler = new Vector3(0f, 0f, 0f)
                 },
@@ -549,8 +551,8 @@ namespace SPWM.Robotics
                     AngularDamping = 0.25f,
                     LowerLimitDeg = -165f,
                     UpperLimitDeg = 165f,
-                    DriveStiffness = 800f,
-                    DriveDamping = 90f,
+                    DriveStiffness = 200f,
+                    DriveDamping = 50f,
                     MaxForceLimit = 350f,
                     AxisRotationEuler = new Vector3(0f, 0f, 0f)
                 },
@@ -565,8 +567,8 @@ namespace SPWM.Robotics
                     AngularDamping = 0.25f,
                     LowerLimitDeg = -165f,
                     UpperLimitDeg = 165f,
-                    DriveStiffness = 700f,
-                    DriveDamping = 80f,
+                    DriveStiffness = 180f,
+                    DriveDamping = 45f,
                     MaxForceLimit = 300f,
                     AxisRotationEuler = new Vector3(0f, 90f, 0f)
                 },
@@ -581,8 +583,8 @@ namespace SPWM.Robotics
                     AngularDamping = 0.25f,
                     LowerLimitDeg = -180f,
                     UpperLimitDeg = 180f,
-                    DriveStiffness = 600f,
-                    DriveDamping = 70f,
+                    DriveStiffness = 150f,
+                    DriveDamping = 40f,
                     MaxForceLimit = 250f,
                     AxisRotationEuler = new Vector3(0f, 0f, 90f)
                 }

@@ -55,13 +55,36 @@ namespace SPWM.Robotics
         [SerializeField] private ProceduralObjectSpawner objectSpawner;
         [SerializeField] private NeuromorphicEventBridge eventBridge;
         [SerializeField] private string exportDirectory = "ExportedTrajectories";
-        [SerializeField] private int totalTrajectoriesToExport = 100;
+        [SerializeField] private int totalTrajectoriesToExport = 4000;
         [SerializeField] private int sequenceLength = 105;
         [SerializeField] private float physicsDt = 0.05f;
 
+        [SerializeField] private int physicsSubSteps = 5;
+
+        [Header("Stability Guard")]
+        [Tooltip("A step-to-step joint change above this (rad) that also reverses direction counts as an oscillation flip.")]
+        [SerializeField] private float flipDeltaThresholdRad = 0.15f;
+        [Tooltip("Max allowed oscillation flips per trajectory before it is rejected.")]
+        [SerializeField] private int maxAllowedFlips = 3;
+        [Tooltip("Max allowed |dq| of any joint in one step (rad).")]
+        [SerializeField] private float maxJointStepRad = 0.6f;
+        [SerializeField] private int maxRetries = 5;
+
+        public int TotalTrajectoriesToExport
+        {
+            get => totalTrajectoriesToExport;
+            set => totalTrajectoriesToExport = value;
+        }
+
+        public string ExportDirectory
+        {
+            get => exportDirectory;
+            set => exportDirectory = value;
+        }
+
         private void Awake()
         {
-            Time.fixedDeltaTime = physicsDt;
+            Time.fixedDeltaTime = physicsDt / Mathf.Max(1, physicsSubSteps);
             if (objectSpawner == null && robotRig != null)
             {
                 objectSpawner = robotRig.GetComponent<ProceduralObjectSpawner>();
@@ -74,13 +97,73 @@ namespace SPWM.Robotics
         /// </summary>
         public ExportedUnityTrajectory RecordAndExportTrajectory(int trajectoryId)
         {
-            robotRig.ResetToDeterministicPose(seed: trajectoryId);
+            ExportedUnityTrajectory trajectory = null;
+            for (int attempt = 0; attempt <= maxRetries; attempt++)
+            {
+                // Attempt 0 uses the canonical seed; retries perturb the seed (episode content/timing) only.
+                int seed = trajectoryId + attempt * 100003;
+                trajectory = RunRollout(trajectoryId, seed);
+                if (IsTrajectoryStable(trajectory, out string reason))
+                {
+                    break;
+                }
+                Debug.LogWarning($"[RoboticTelemetryLogger] Trajectory {trajectoryId} (seed {seed}) rejected: {reason}. " +
+                                 (attempt < maxRetries ? "Retrying with a new seed." : "Retries exhausted; exporting last attempt."));
+            }
+
+            WriteTrajectoryToDisk(trajectory);
+            return trajectory;
+        }
+
+        /// <summary>
+        /// Detects unstable rollouts: NaN/Inf, excessive per-step joint jumps, or repeated sign-alternating
+        /// large steps (Nyquist-frequency oscillation).
+        /// </summary>
+        public bool IsTrajectoryStable(ExportedUnityTrajectory traj, out string reason)
+        {
+            reason = null;
+            int flips = 0;
+            for (int t = 1; t < traj.steps.Count; t++)
+            {
+                float[] q = traj.steps[t].joint_positions;
+                float[] qp = traj.steps[t - 1].joint_positions;
+                float[] qpp = t >= 2 ? traj.steps[t - 2].joint_positions : null;
+                for (int j = 0; j < q.Length; j++)
+                {
+                    float d = q[j] - qp[j];
+                    if (float.IsNaN(d) || float.IsInfinity(d))
+                    {
+                        reason = $"non-finite joint {j} at step {t}";
+                        return false;
+                    }
+                    if (Mathf.Abs(d) > maxJointStepRad)
+                    {
+                        reason = $"joint {j} jumped {d:F2} rad at step {t}";
+                        return false;
+                    }
+                    if (qpp != null)
+                    {
+                        float dPrev = qp[j] - qpp[j];
+                        if (d * dPrev < 0f && Mathf.Abs(d) > flipDeltaThresholdRad && ++flips > maxAllowedFlips)
+                        {
+                            reason = $"oscillation ({flips} flips, last joint {j} step {t})";
+                            return false;
+                        }
+                    }
+                }
+            }
+            return true;
+        }
+
+        private ExportedUnityTrajectory RunRollout(int trajectoryId, int seed)
+        {
+            robotRig.ResetToDeterministicPose(seed: seed);
             SpawnedPayloadSpec? payloadSpec = null;
             if (objectSpawner != null)
             {
-                payloadSpec = objectSpawner.SpawnEpisodePayload(episodeSeed: trajectoryId, rig: robotRig);
+                payloadSpec = objectSpawner.SpawnEpisodePayload(episodeSeed: seed, rig: robotRig);
             }
-            controller.InitializeControllerState(seed: trajectoryId, payloadSpec: payloadSpec);
+            controller.InitializeControllerState(seed: seed, payloadSpec: payloadSpec);
             eventBridge.ResetSensorBaseline();
 
             var trajectory = new ExportedUnityTrajectory
@@ -99,7 +182,10 @@ namespace SPWM.Robotics
                 phase_flags = new int[sequenceLength]
             };
 
-            Physics.autoSimulation = false;
+            Physics.simulationMode = SimulationMode.Script;
+            int subSteps = Mathf.Max(1, physicsSubSteps);
+            float subStepDt = physicsDt / subSteps;
+
             for (int t = 0; t < sequenceLength; t++)
             {
                 float currentTime = t * physicsDt;
@@ -124,11 +210,13 @@ namespace SPWM.Robotics
                     dense_events = denseEvents
                 });
 
-                Physics.Simulate(physicsDt);
+                for (int s = 0; s < subSteps; s++)
+                {
+                    Physics.Simulate(subStepDt);
+                }
             }
-            Physics.autoSimulation = true;
+            Physics.simulationMode = SimulationMode.FixedUpdate;
 
-            WriteTrajectoryToDisk(trajectory);
             return trajectory;
         }
 
@@ -143,6 +231,27 @@ namespace SPWM.Robotics
             string json = JsonUtility.ToJson(trajectory, prettyPrint: false);
             File.WriteAllText(filePath, json);
             return filePath;
+        }
+
+        /// <summary>
+        /// Sequentially runs and exports all totalTrajectoriesToExport trajectories
+        /// with procedural temporal and distance randomization.
+        /// </summary>
+        [ContextMenu("Export Full Dataset Batch")]
+        public void ExportBatchTrajectories()
+        {
+            Debug.Log($"[RoboticTelemetryLogger] Starting batch export of {totalTrajectoriesToExport} trajectories into '{exportDirectory}'...");
+            float startRealTime = Time.realtimeSinceStartup;
+            for (int id = 0; id < totalTrajectoriesToExport; id++)
+            {
+                RecordAndExportTrajectory(id);
+                if ((id + 1) % 50 == 0 || id == totalTrajectoriesToExport - 1)
+                {
+                    Debug.Log($"[RoboticTelemetryLogger] Exported {id + 1}/{totalTrajectoriesToExport} trajectories.");
+                }
+            }
+            float elapsed = Time.realtimeSinceStartup - startRealTime;
+            Debug.Log($"[RoboticTelemetryLogger] Successfully exported {totalTrajectoriesToExport} trajectories in {elapsed:F1}s.");
         }
     }
 }

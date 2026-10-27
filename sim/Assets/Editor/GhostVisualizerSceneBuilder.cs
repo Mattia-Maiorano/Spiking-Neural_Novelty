@@ -191,6 +191,202 @@ namespace SPWM.Editor
             rect.anchoredPosition = pos;
             rect.sizeDelta = size;
         }
+        [MenuItem("SPWM/Export Dataset from Scene", priority = 20)]
+        public static void ExportDatasetFromScene()
+        {
+            var logger = EnsureSimulationRig();
+            logger.ExportBatchTrajectories();
+        }
+
+        /// <summary>
+        /// Entry point for headless command-line execution:
+        /// /Applications/Unity/Hub/Editor/6000.5.7f1/Unity.app/Contents/MacOS/Unity -batchmode -projectPath ... -executeMethod SPWM.Editor.GhostVisualizerSceneBuilder.HeadlessBatchExport -quit
+        /// </summary>
+        public static void HeadlessBatchExport()
+        {
+            Debug.Log("[SPWM.HeadlessBatchExport] Initializing headless physics simulation environment...");
+            var logger = EnsureSimulationRig();
+
+            // Check if count or output dir passed via CLI args, e.g.: -totalTrajectories 4000 -exportDir ExportedTrajectories
+            string[] args = System.Environment.GetCommandLineArgs();
+            for (int i = 0; i < args.Length - 1; i++)
+            {
+                if (args[i] == "-totalTrajectories" && int.TryParse(args[i + 1], out int count))
+                {
+                    logger.TotalTrajectoriesToExport = count;
+                }
+                else if (args[i] == "-exportDir")
+                {
+                    logger.ExportDirectory = args[i + 1];
+                }
+            }
+
+            Debug.Log($"[SPWM.HeadlessBatchExport] Starting batch export of {logger.TotalTrajectoriesToExport} trajectories into '{logger.ExportDirectory}'...");
+            logger.ExportBatchTrajectories();
+            Debug.Log("[SPWM.HeadlessBatchExport] Finished batch export successfully.");
+        }
+
+        /// <summary>
+        /// Renders camera frames directly from Unity's scene for 100% fidelity video generation:
+        /// Unity -batchmode -projectPath ... -executeMethod SPWM.Editor.GhostVisualizerSceneBuilder.HeadlessRenderVideo -framesDir <dir> -trajectoryJson <path> -width 1280 -height 720 -quit
+        /// </summary>
+        public static void HeadlessRenderVideo()
+        {
+            Debug.Log("[SPWM.HeadlessRenderVideo] Starting Unity simulation direct frame capture...");
+            string framesDir = "results/videos/unity_frames";
+            string trajJsonPath = "sim/Assets/StreamingAssets/trajectory_ghost.json";
+            int width = 1280;
+            int height = 720;
+
+            string[] args = System.Environment.GetCommandLineArgs();
+            for (int i = 0; i < args.Length - 1; i++)
+            {
+                if (args[i] == "-framesDir") framesDir = args[i + 1];
+                else if (args[i] == "-trajectoryJson") trajJsonPath = args[i + 1];
+                else if (args[i] == "-width" && int.TryParse(args[i + 1], out int w)) width = w;
+                else if (args[i] == "-height" && int.TryParse(args[i + 1], out int h)) height = h;
+            }
+
+            if (!System.IO.File.Exists(trajJsonPath))
+            {
+                Debug.LogError($"[SPWM.HeadlessRenderVideo] Trajectory file not found: {trajJsonPath}");
+                return;
+            }
+
+            System.IO.Directory.CreateDirectory(framesDir);
+
+            // Load visualization scene
+            if (System.IO.File.Exists(SceneSavePath))
+            {
+                EditorSceneManager.OpenScene(SceneSavePath, OpenSceneMode.Single);
+            }
+            else
+            {
+                BuildScene();
+            }
+
+            var playback = Object.FindFirstObjectByType<GhostPlaybackManager>();
+            if (playback == null)
+            {
+                Debug.LogError("[SPWM.HeadlessRenderVideo] GhostPlaybackManager not found in scene!");
+                return;
+            }
+
+            playback.LoadTrajectory(trajJsonPath);
+
+            var camObj = GameObject.FindWithTag("MainCamera");
+            if (camObj == null) camObj = GameObject.Find("Main Camera");
+            var cam = camObj != null ? camObj.GetComponent<Camera>() : Camera.main;
+            if (cam == null)
+            {
+                Debug.LogError("[SPWM.HeadlessRenderVideo] Camera not found!");
+                return;
+            }
+
+            // Set up RenderTexture for direct camera grab
+            RenderTexture rt = new RenderTexture(width, height, 24, RenderTextureFormat.ARGB32);
+            rt.antiAliasing = 4;
+            cam.targetTexture = rt;
+            Texture2D tex = new Texture2D(width, height, TextureFormat.RGB24, false);
+
+            int totalFrames = playback.FrameCount;
+            var tracker = camObj != null ? camObj.GetComponent<CinematicCameraTracker>() : null;
+            var telemetry = Object.FindFirstObjectByType<TelemetryDisplay>();
+
+            // Warm up camera tracking
+            var lateUpdateMethod = typeof(CinematicCameraTracker).GetMethod("LateUpdate", System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance);
+            var refreshMethod = typeof(TelemetryDisplay).GetMethod("Refresh", System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance);
+            var applyPoseMethod = typeof(GhostPlaybackManager).GetMethod("ApplyPose", System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance);
+
+            Debug.Log($"[SPWM.HeadlessRenderVideo] Capturing {totalFrames} frames ({width}x{height}) to {framesDir}...");
+
+            for (int f = 0; f < totalFrames; f++)
+            {
+                if (applyPoseMethod != null)
+                {
+                    applyPoseMethod.Invoke(playback, new object[] { (float)f });
+                }
+
+                if (tracker != null && lateUpdateMethod != null)
+                {
+                    lateUpdateMethod.Invoke(tracker, null);
+                }
+
+                if (telemetry != null && refreshMethod != null)
+                {
+                    refreshMethod.Invoke(telemetry, new object[] { true });
+                }
+
+                RenderTexture.active = rt;
+                cam.Render();
+                tex.ReadPixels(new Rect(0, 0, width, height), 0, 0);
+                tex.Apply();
+
+                byte[] pngBytes = tex.EncodeToPNG();
+                string framePath = System.IO.Path.Combine(framesDir, $"frame_{f:D5}.png");
+                System.IO.File.WriteAllBytes(framePath, pngBytes);
+            }
+
+            RenderTexture.active = null;
+            cam.targetTexture = null;
+            Object.DestroyImmediate(rt);
+            Object.DestroyImmediate(tex);
+
+            Debug.Log($"[SPWM.HeadlessRenderVideo] Successfully rendered {totalFrames} frames to {framesDir}.");
+        }
+
+        public static SPWM.Robotics.RoboticTelemetryLogger EnsureSimulationRig()
+        {
+            var logger = Object.FindFirstObjectByType<SPWM.Robotics.RoboticTelemetryLogger>();
+            if (logger != null) return logger;
+
+            // Build deterministic physics simulation rig in scene if not already present
+            var rootGo = new GameObject("SimulationRig_Physics");
+            var robotRig = rootGo.AddComponent<SPWM.Robotics.ArticulatedRobotRig>();
+            robotRig.BuildProceduralRig(SPWM.Robotics.RobotArchetype.ManipulatorArm);
+
+            var spawner = rootGo.AddComponent<SPWM.Robotics.ProceduralObjectSpawner>();
+            var controller = rootGo.AddComponent<SPWM.Robotics.ActionConditionedController>();
+
+            // Sensor Camera with NeuromorphicEventBridge
+            var camGo = new GameObject("NeuromorphicCamera");
+            camGo.transform.SetParent(rootGo.transform, false);
+            camGo.transform.localPosition = new Vector3(0.40f, 0.45f, 0.55f);
+            camGo.transform.LookAt(new Vector3(0.20f, 0.15f, 0.10f));
+            var cam = camGo.AddComponent<Camera>();
+            cam.fieldOfView = 50f;
+            cam.nearClipPlane = 0.05f;
+            cam.farClipPlane = 50f;
+            cam.clearFlags = CameraClearFlags.SolidColor;
+            cam.backgroundColor = new Color(0.08f, 0.10f, 0.14f, 1f);
+
+            // Directional Light for 3D visual perception
+            var lightGo = new GameObject("SensorDirectionalLight");
+            lightGo.transform.SetParent(rootGo.transform, false);
+            var light = lightGo.AddComponent<Light>();
+            light.type = LightType.Directional;
+            light.color = Color.white;
+            light.intensity = 1.25f;
+            lightGo.transform.rotation = Quaternion.Euler(50f, -30f, 0f);
+
+            var eventBridge = camGo.AddComponent<SPWM.Robotics.NeuromorphicEventBridge>();
+            eventBridge.InitializeBuffers(32, 32);
+
+            logger = rootGo.AddComponent<SPWM.Robotics.RoboticTelemetryLogger>();
+            var so = new SerializedObject(logger);
+            so.FindProperty("robotRig").objectReferenceValue = robotRig;
+            so.FindProperty("controller").objectReferenceValue = controller;
+            so.FindProperty("objectSpawner").objectReferenceValue = spawner;
+            so.FindProperty("eventBridge").objectReferenceValue = eventBridge;
+            so.FindProperty("exportDirectory").stringValue = "ExportedTrajectories";
+            so.FindProperty("totalTrajectoriesToExport").intValue = 4000;
+            so.FindProperty("sequenceLength").intValue = 105;
+            so.FindProperty("physicsDt").floatValue = 0.05f;
+            so.ApplyModifiedPropertiesWithoutUndo();
+
+            return logger;
+        }
     }
 }
 #endif
+

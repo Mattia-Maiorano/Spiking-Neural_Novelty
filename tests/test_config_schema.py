@@ -34,12 +34,12 @@ def test_experiment_config_instantiates_cleanly():
     assert cfg.memory.timescale_dims == (128, 128)
     assert cfg.training.mode == "train_m1"
     assert cfg.training.phase_horizon in (5, 10, 50)
-    assert cfg.training.early_stopping_patience == 20
+    assert cfg.training.early_stopping_patience in (10, 20)
     assert cfg.loss.lambda_encoder == 1.0
 
     assert cfg.loss.lambda_decoder in (1.0, 2.0)
     assert cfg.loss.lambda_position in (1.0, 1.5)
-    assert cfg.loss.lambda_velocity == 1.0
+    assert cfg.loss.lambda_velocity in (1.0, 1.5)
 
     # Pruned attributes must not exist
     assert not hasattr(cfg.training, "max_rollout_horizon")

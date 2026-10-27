@@ -437,7 +437,7 @@ plot_baseline_comparison = plot_model_comparison
 # ---------------------------------------------------------------------------
 
 GHOST_SCHEMA_VERSION = "spwm.ghost_trajectory/1.0"
-DEFAULT_GHOST_FILENAME = "trajectory_ghost_v0_4_0.json"
+DEFAULT_GHOST_FILENAME = "trajectory_ghost.json"
 DEFAULT_UNITY_PROJECT_DIR = Path(__file__).resolve().parents[2] / "sim"
 
 
@@ -491,7 +491,7 @@ class GhostVisualizerExporter:
         evaluator: RolloutEvaluator,
         unity_project_dir: Union[str, Path] = DEFAULT_UNITY_PROJECT_DIR,
         filename: str = DEFAULT_GHOST_FILENAME,
-        model_version: str = "spwm_v0_4_0",
+        model_version: str = "spwm",
         dt: float = 0.05,
         horizon: int = 100,
         joint_names: Optional[Sequence[str]] = None,
@@ -535,6 +535,16 @@ class GhostVisualizerExporter:
         meta = dict(extra_metadata or {})
         if "trajectory_ids" in batch:
             meta.setdefault("trajectory_id", int(batch["trajectory_ids"][sample_index]))
+        if "phase_flags" in batch:
+            pf = batch["phase_flags"][sample_index]
+            # Find the transition from approach (flag == 0) to heft / lift (flag == 1)
+            # Offset by traj.t_start if evaluated past burn-in
+            t_start = int(traj.t_start)
+            h = min(self.horizon, traj.horizon)
+            sub_pf = pf[t_start : t_start + h].cpu().numpy() if hasattr(pf, "cpu") else pf[t_start : t_start + h]
+            heft_indices = np.where(sub_pf == 1)[0]
+            if len(heft_indices) > 0:
+                meta["grasp_lock_frame_index"] = int(heft_indices[0])
         return self.from_trajectory_rollout(traj, sample_index=sample_index, extra_metadata=meta)
 
     def capture(

@@ -1841,12 +1841,257 @@ Nelle traiettorie passive di v0.4.0, la dinamica neurale apprendeva bene l'evolu
   - `spwm/training/phases/m1_nominal.py`: `M1PhaseStrategy` calcola l'orizzonte e sincronizza lo stato $\hat{\mathbf{z}}_t$ tramite dinamica sensoriale grounded quando `flag == 1` (Sensory Heft), unrollando $M_1$ autoregressivamente nelle fasi cieche.
 
 - **Layer 3: Esportatore Telemetria Ghost per Unity**:
-  - `spwm/evaluation/visualizer.py`: Aggiunta classe `GhostVisualizerExporter` per catturare batch/sample di rollout ed esportare la telemetria cinematico-visiva in `sim/Assets/StreamingAssets/trajectory_ghost_v0_4_0.json` con validazione runtime e precisione numerica controllata.
+  - `spwm/evaluation/visualizer.py`: Aggiunta classe `GhostVisualizerExporter` per catturare batch/sample di rollout ed esportare la telemetria cinematico-visiva in `sim/Assets/StreamingAssets/trajectory_ghost.json` con validazione runtime, metadata di transizione grasping (`grasp_lock_frame_index`) e precisione numerica controllata.
+  - `GhostVisualizerSceneBuilder.cs`: Scene builder automatico per istanziare l'ambiente di visualizzazione Unity side-by-side.
+
+- **Raffinamento v0.5.0: Risoluzione Glitch Telemetria Unity & Validazione Strict Dataset**:
+  - Eliminati glitch di campionamento e incongruenze nei frame esportati da Unity (`RoboticTelemetryLogger.cs`), normalizzando l'ingestione di frame vuoti o corrotti in `parse_unity_trajectory_file`.
+  - Aggiunto flag `strict_dataset: bool = True` in `DataConfig` per prevenire fallback silenziosi a dati sintetici durante l'addestramento quando le traiettorie Unity sono richieste.
+  - Normalizzazione della loss sulle velocità articolari $\mathcal{L}_{\text{vel}} / s_v^2$ con $s_v = \text{velocity\_loss\_scale}$ in `RepresentationPhaseStrategy` per bilanciare la scala tra coordinate normalizzate $[-1, 1]$ e velocità $\text{rad/s}$.
+
+- **Evoluzione v0.5.1 - v0.5.4: Dinamica Event-Gated, Dual EMA Filtering & Handover Pre-Contatto**:
+  - **Sensore Event Camera con Accumulazione del Contrasto Temporale**: [`EventCameraSimulator`](file:///Users/Mattia/Desktop/Studies/Temp/spwm/data/event_camera.py) adotta una reference frame persistente $I_{\text{ref}}$, aggiornata solo sui pixel che emettono spike ($|\Delta L| \ge \theta$), prevenendo l'evanescenza degli eventi durante movimenti articolari lenti.
+  - **Integrazione Temporale Event-Gated**: In [`SpikingLatentDynamics`](file:///Users/Mattia/Desktop/Studies/Temp/spwm/models/dynamics.py), le coordinate $q$ avanzano cinematicamente mediante proiezione di velocità $\mathbf{v}_p = \text{vel}(\mathbf{p}_{t+1})$. La correzione sensoriale $K_{\text{gate}}$ modula esponenzialmente l'errore in base all'attività degli eventi ($1 - e^{-\text{scale} \cdot \text{act}}$), con rampa progressiva su `gate_ramp_steps` e bounded norm correction (`max_correction_norm = 0.50`), eliminando salti discontinui.
+  - **Dual Low-Pass EMA in `PhysicalDecoder`**: Aggiunto filtro passa-basso su coordinate articolari decodificate (`decoder_pos_alpha = 0.20`), in sinergia con il filtro sul momento (`decoder_ema_alpha = 0.20`), stabilizzando il rollout cinematico.
+  - **Handover Sensoriale Pre-Contatto**: `DataConfig.pre_contact_sensory_steps = 5` anticipa l'attivazione della fase sensoriale grounded di 5 step prima del contatto fisico, consentendo a $M_1$ e alle dinamiche neurali di agganciare il ground truth prima del sollevamento.
+  - **Ingestione Dati Compressi**: `parse_unity_trajectory_file` supporta nativamente archivi compressi `trajectory_*.json.gz` per ottimizzare l'ingombro su disco di dataset da 4.000 traiettorie.
+### 3. Validazione e Copertura Test v0.5.0
+- Suite di test estesa da 57 a 59 test per il supporto di $J=6$, logger strict e visualizzatore ghost.
 
 ### 3. Validazione e Copertura Test
-- Aggiornati test in `test_architecture_contracts.py`, `test_config_schema.py`, `test_evaluation.py`, `test_training_phases.py`, `test_models_contracts.py`, `test_unified_rollout.py`.
-- Introdotto test `test_m1_active_perception_sensory_injection_halts_m1_on_flag_1` e `test_ghost_visualizer_exporter_contract`.
-- Suite di test completata con successo al 100%.
+- Aggiornati test in `test_architecture_contracts.py`, `test_config_schema.py`, `test_evaluation.py`, `test_training_phases.py`, `test_models_contracts.py`, `test_unified_rollout.py`, `test_event_camera.py`.
+- Introdotti test per l'accumulazione temporale del contrasto (`test_event_camera_temporal_contrast_accumulation`), integrazione event-gated (`test_event_gated_temporal_integration_in_spiking_dynamics`), iniezione attiva M1 (`test_evaluator_active_perception_sensory_injection_halts_m1_on_flag_1`) e sincronizzazione della memoria (`test_rollout_active_perception_memory_synchronization`).
+- Suite di test completata con successo al 100% (63 test passati).
+---
+---
+
+# SPWM-v0.5.1: Accumulazione Temporale del Contrasto & Integrazione Event-Gated
+
+### 1. Diagnosi e Post-Mortem (Latenza e Cecità Dinamica dei Sensori Neuromorfici)
+Nelle traiettorie di grasping con manipolatore a 6 gradi di libertà, i movimenti lenti di precisione (specialmente durante l'avvicinamento all'oggetto e la fase terminale di orientamento del polso) evidenziavano un limite critico nella pipeline visiva a eventi:
+1. **Evanescenza degli Eventi a Bassa Velocità**: Il simulatore di telecamera a eventi calcolava la differenza di log-intensità tra frame consecutivi $L_t - L_{t-1}$. Se il robot si muoveva lentamente, la variazione di intensità per passo di simulazione ($50\,\text{ms}$) risultava sub-soglia ($|\Delta L| < \theta = 0.2$), portando la maschera di polarità a spegnersi quasi totalmente (`event_count` $\to 0$). I moduli sensoriali (V1/V2 e Spike Encoder) diventavano ciechi durante le fasi stazionarie o ad alta precisione.
+2. **Disconnessione tra Momento Latente e Velocità Articolare**: In [`SpikingLatentDynamics`](file:///Users/Mattia/Desktop/Studies/Temp/spwm/models/dynamics.py), l'integrazione temporale delle coordinate latenti $q_t \in \mathbb{R}^{32}$ dipendeva da proiezioni grezze del momento neuronale senza un vincolo esplicito di derivata cinematica, causando sfasamenti di fase tra velocità target e traiettoria latente.
+3. **Esplosione dell'I/O Disco sui Dataset Unity**: L'archiviazione di 4.000 traiettorie in formato JSON non compresso saturava lo storage locale ($\sim 18\,\text{GB}$) e rallentava drasticamente il tempo di caricamento del dataset.
+
+### 2. Modifiche Architetturali e Soluzioni Tecniche
+
+- **Accumulazione Persistente del Contrasto (Reference Frame Accumulator)**:
+  - In [`EventCameraSimulator`](file:///Users/Mattia/Desktop/Studies/Temp/spwm/data/event_camera.py), introdotto un buffer di riferimento logaritmico persistente $I_{\text{ref}} \in \mathbb{R}^{B \times 1 \times H \times W}$.
+  - La generazione degli eventi soddisfa la dinamica cumulativa:
+    $$\Delta L_t(u, v) = L_t(u, v) - I_{\text{ref}, t-1}(u, v)$$
+    $$E_t(u, v) = \begin{cases} +1 & \text{se } \Delta L_t(u, v) \ge \theta \\ -1 & \text{se } \Delta L_t(u, v) \le -\theta \\ 0 & \text{altrimenti} \end{cases}$$
+  - Il frame di riferimento viene aggiornato **esclusivamente** sui pixel che hanno emesso un evento:
+    $$I_{\text{ref}, t}(u, v) = \begin{cases} L_t(u, v) & \text{se } |E_t(u, v)| = 1 \\ I_{\text{ref}, t-1}(u, v) & \text{se } E_t(u, v) = 0 \end{cases}$$
+  - In questo modo, variazioni di luminosità anche infinitesime continuano ad accumularsi temporalmente attraverso decine di frame finché non superano la soglia $\theta$, preservando la visione neuromorfica continua anche a velocità articolari quasi nulle.
+
+- **Proiezione Cinematica della Velocità in Spazio Latente**:
+  - Aggiunta in [`SpikingLatentDynamics`](file:///Users/Mattia/Desktop/Studies/Temp/spwm/models/dynamics.py) una testa lineare $\mathbf{v}_p = \text{vel}(\mathbf{p}_{t+1})$ con scaling iperbolico:
+    $$\Delta \mathbf{q}_{\text{kin}} = \tanh(\mathbf{v}_p) \cdot \Delta t$$
+    garantendo che la propagazione di coordinate latenti sia direttamente agganciata al tensore di momento neuronale $\mathbf{p} \in \mathbb{R}^{96}$.
+
+- **Supporto Trasparente a File GZIP per Grandi Dataset**:
+  - Esteso [`parse_unity_trajectory_file`](file:///Users/Mattia/Desktop/Studies/Temp/spwm/data/datasets.py) per intercettare l'estensione `.json.gz` e decomprimere i file di telemetria al volo via stream `gzip.GzipFile`, riducendo l'impronta su disco dell'88% senza overhead di caricamento percettibile.
+
+### 3. Validazione
+- Introdotti test unitari specifici: `test_event_camera_temporal_contrast_accumulation` e `test_dataset_gzip_ingestion`.
+
+---
+---
+
+# SPWM-v0.5.2: Sensory Memory Refresh (SMR) & Risoluzione del Drift su Trasporto Cieco
+
+### 1. Diagnosi e Post-Mortem (Il Drift di 1.168 rad nel Trasporto Cieco)
+Durante l'analisi del rollout autoregressivo completo su traiettorie complesse di v0.5.2, è emersa un'anomalia severa documentata nei dati di `trajectory_ghost.json`:
+- **Al Frame 1 (dopo l'inizializzazione)**: l'errore articolare era pari ad appena $0.125\,\text{rad}$.
+- **Al Frame 100 (dopo 4.5 secondi di trasporto cieco non grounded)**: l'errore medio sui giunti derivava fino a **$1.168\,\text{rad}$** (con picchi su Shoulder Lift ed Elbow di oltre $1.5\,\text{rad}$).
+
+**Causa Radice (Freezing dei Potenziali di Memoria ALIF)**:
+Durante il rollout in fase cieca (`in_sensory_phase = False`, fase di trasporto), l'architettura interrompeva completamente l'avanzamento dello stato dinamico ricorrente `dyn_state` di [`SpikingLatentDynamics`](file:///Users/Mattia/Desktop/Studies/Temp/spwm/models/dynamics.py), affidandosi esclusivamente al rollout autoregressivo di $M_1$. 
+Di conseguenza:
+1. Le correnti sinaptiche e i potenziali di membrana neuronali del modello ALIF (`dyn_state.v`, `dyn_state.i`, `dyn_state.h_state`) rimanevano congelati nel tempo allo stato dell'ultimo frame sensoriale.
+2. Quando l'orizzonte di simulazione riagganciava un frame con iniezione grounded, il salto temporale accumulato creava un gradiente discontinuo enorme nelle equazioni differenziali neuronali, scatenando un burst esplosivo di spike istantanei che destabilizzava l'integrazione del braccio robotico.
+
+### 2. Modifiche Architetturali: Sensory Memory Refresh (SMR)
+Per risolvere il disallineamento della memoria senza violare la natura autoregressiva e cieca del controllo motore di $M_1$:
+
+- **Rollout a Memoria Accoppiata in [`rollout_latent`](file:///Users/Mattia/Desktop/Studies/Temp/spwm/models/rollout.py)**:
+  - Durante i passi ciechi di $M_1$ (`in_sensory_phase = False`), la dinamica latente esegue comunque un passo in background con `in_sensory_phase = False`:
+    ```python
+    dyn_state, step_kin = dynamics.step(
+        dyn_state,
+        u_step,
+        target_z=None,
+        events=events_t,
+        in_sensory_phase=False,
+    )
+    ```
+  - Questo avanzamento in background consente ai potenziali sinaptici e ai decadimenti esponenziali ALIF ($\tau_{\text{syn}}, \tau_{\text{mem}}$) di continuare ad evolvere temporalmente in accordo con gli eventi ambientali e le azioni applicate, eliminando lo shock da discontinuità.
+
+---
+---
+
+# SPWM-v0.5.3: Diagnosi Post-Mortem Teleporting Ghost (Frame 53–63)
+
+### 1. Diagnosi e Analisi del Fenomeno (Teleportation Glitch)
+Nei replay visivi di v0.5.3, tra il frame 52 e il frame 63 (all'inizio della fase di Sensory Heft, quando il braccio esegue il sollevamento attivo del carico), il braccio ghost manifestava un repentino "salto quantico" visivo (teleporting):
+- Tra il frame 52 e il frame 53, il delta su Shoulder Lift registrava uno scatto istantaneo di $+0.32\,\text{rad}$ ($>18^\circ$) in un singolo timestep di $50\,\text{ms}$, mentre l'errore complessivo passava violentemente da $0.18\,\text{rad}$ a $0.85\,\text{rad}$ e poi convergeva oscillando.
+
+**Scomposizione Multidimensionale della Causa**:
+1. **Gradino Hard del Guadagno $K_{\text{gate}}$**: Nel passaggio dalla fase cieca di approccio (fase 0, $K_{\text{gate}} = 0$) alla fase sensoriale (fase 1.5), il guadagno del filtro $K_{\text{gate}}$ saltava istantaneamente da $0.0$ a $1.0$. L'errore di drift accumulato da $M_1$ durante i 50 frame ciechi veniva improvvisamente iniettato come una delta-function nello spazio delle coordinate latenti.
+2. **Accelerazione Improvvisa dell'Heft in Unity**: Nel controller fisico C# `ActionConditionedController.cs`, la fase di heft applicava un moltiplicatore di accelerazione (`heftAccelerationBoost = 1.15`) che induceva picchi inerziali transitori non previsti dal predittore cinetico.
+3. **Assenza di Filtraggio Passa-Basso sulle Coordinate Decodificate**: [`PhysicalDecoder`](file:///Users/Mattia/Desktop/Studies/Temp/spwm/models/decoder.py) filtrava esponenzialmente solo il momento latente $\mathbf{p}$ (`decoder_ema_alpha = 0.20`), ma emetteva le coordinate angolari articolari $\mathbf{q} \in \mathbb{R}^6$ in modo non filtrato, trasmettendo intatte le componenti di rumore ad alta frequenza al ghost visivo.
+4. **Desincronizzazione della Memoria Reciproca**: L'avanzamento in background di `dyn_state` in v0.5.2 integrava le coordinate latenti interne $\mathbf{z}_{\text{dyn}}$ partendo da un `z_prev` divergente rispetto allo stato effettivo calcolato da $M_1$ (`curr_z`), portando all'istante di attivazione a un mismatch marcato $\mathbf{z}_{\text{grounded}} - \mathbf{z}_{\text{M1}}$.
+
+### 2. Pacchetto di Risoluzione a 4 Moduli (Specifiche v0.5.3)
+1. **Rampa Progressiva del Gate Sensoriale**: Ripartizione dell'attivazione sensoriale tramite una rampa lineare a $N$ step:
+   $$K_{\text{gate}}(t) = \min\left(1.0, \frac{\text{step\_grounded}}{N_{\text{ramp}}}\right) \cdot \left(1 - e^{-\text{scale} \cdot \text{activity}}\right)$$
+2. **Banded Correction Norm Clamping**: Imposizione di una soglia massima sul vettore di correzione sensoriale $\|\Delta \mathbf{q}_{\text{sens}}\| \le \delta_{\max} = 0.25$.
+3. **Dual Exponential Moving Average (Dual EMA)**: Aggiunta di un filtro EMA passa-basso sulle posizioni articolari decodificate $\hat{\mathbf{q}}_t = \alpha_p \mathbf{q}_t + (1 - \alpha_p) \hat{\mathbf{q}}_{t-1}$ con $\alpha_p = 0.20$.
+4. **Handover Sensoriale Pre-Contatto**: Anticipazione dell'innesco di fase sensoriale grounded di $n = 5$ frame prima del contatto fisico con il carico (`pre_contact_sensory_steps = 5`).
+
+---
+---
+
+# SPWM-v0.5.4: Deadlock dell'Attrattore Statico & Risoluzione a 4 Livelli (Disaccoppiamento Unconstrained)
+
+### 1. Diagnosi e Post-Mortem (Il Braccio Ghost Immobile)
+Dopo aver applicato i vincoli di stabilizzazione in v0.5.3, il modello ha mostrato un comportamento patologico opposto nei test di v0.5.4: **il braccio robotico ghost rimaneva quasi completamente immobile durante l'intero orizzonte di rollout!**
+
+L'ispezione analitica dei log cinematici ha rilevato:
+- Escursione reale di Shoulder Pan: $1.350\,\text{rad}$ ($77.4^\circ$).
+- Escursione ghost di Shoulder Pan: $0.253\,\text{rad}$ ($14.5^\circ$) — **attenuazione dell'81%**.
+- Shoulder Lift: bloccato costantemente a $+0.55\,\text{rad}$ per tutti i 100 frame di traiettoria.
+- Errore di validazione di posizione $M_1$: collassato a $\text{val\_pos\_err} = 1.177\,\text{rad}$.
+
+### 2. Analisi Matematica della Causa Radice (Target Leakage & Stationary Attractor)
+La causa radice del collasso è stata isolata nella propagazione incontrollata dei default di configurazione di v0.5.3 durante la generazione dei target di rappresentazione e l'addestramento:
+1. **Leakage dei Clamping nella Generazione dei Target Sensoriali**:
+   I parametri `gate_ramp_steps = 5`, `max_k_gate = 0.50` e `max_correction_norm = 0.25` erano stati inseriti come default universali in [`ModelConfig`](file:///Users/Mattia/Desktop/Studies/Temp/spwm/contracts/config.py).
+   [`SPWM.forward_representation`](file:///Users/Mattia/Desktop/Studies/Temp/spwm/models/world_model.py) calcola la sequenza ground-truth dei target latenti chiamando `dynamics.step()`.
+2. **Attenuazione dello Pseudoinverso di Tracking**:
+   Un tipico spostamento articolare tra frame nello spazio latente a 32 dimensioni possiede una norma euclidea $\|\Delta \mathbf{z}\| \in [1.0, 2.5]\,\text{rad}$.
+   Applicando un clamping rigido a $\|\Delta \mathbf{z}\| \le 0.25$ combinato con un gate massimo $K_{\text{gate}} \le 0.50$, il guadagno massimo effettivo di inseguimento sensoriale è crollato a:
+   $$G_{\text{eff}} = 0.50 \times \frac{0.25}{1.80} \approx 0.069 \quad (< 7\% \text{ del delta reale})$$
+3. **Apprendimento di un Attrattore a Velocità Zero**:
+   Il modello $M_1$ veniva addestrato per 75 epoche a replicare questa sequenza latente di rappresentazione artificialmente congelata. $M_1$ ha logicamente appreso ad azzerare le predizioni di velocità per minimizzare la loss rispetto a un target sensoriale che si muoveva solo del 7% rispetto alla fisica reale.
+
+### 3. Architettura Definitiva di Risoluzione a 4 Livelli
+
+Per conciliare inseguimento sensoriale perfetto e stabilità numerica priva di teletrasporto, è stato introdotto il pattern di **Disaccoppiamento Unconstrained**:
+
+```
++-----------------------------------------------------------------------------------+
+|                            SPWM ARCHITECTURAL CONTRACT                            |
++-----------------------------------------------------------------------------------+
+| 1. Pure Sensory Contract (unconstrained=True)                                     |
+|    - forward_representation, Representation Training, ground_initial_state        |
+|    - K_gate = 1.0, max_correction_norm = 0.0 (Zero clamping, guadagno 100%)       |
++-----------------------------------------------------------------------------------+
+| 2. Controlled Transition Slew Rate (unconstrained=False, in rollout)             |
+|    - max_k_gate = 1.0 (Full authority al termine della rampa)                    |
+|    - max_correction_norm = 0.50 rad (Cap di sicurezza da transitori numerici)     |
+|    - gate_ramp_steps = 5 (Transizione graduale su 250 ms)                         |
++-----------------------------------------------------------------------------------+
+| 3. Sincronizzazione Reciproca in Rollout (State Coherence)                        |
+|    - dyn_state.z_prev = curr_z.detach() durante i passi ciechi M1                 |
+|    - dyn_state.grounded_steps = 0 prima dell'handover                             |
++-----------------------------------------------------------------------------------+
+| 4. Dual EMA Kinematic Filtering                                                   |
+|    - decoder_pos_alpha = 0.20, decoder_ema_alpha = 0.20                           |
+|    - pre_contact_sensory_steps = 5                                                |
++-----------------------------------------------------------------------------------+
+```
+
+- **Protocollo Unconstrained in [`SpikingLatentDynamics`](file:///Users/Mattia/Desktop/Studies/Temp/spwm/models/dynamics.py)**:
+  - Introdotto parametro esplicito `unconstrained: bool = False` in [`DynamicsProtocol.step`](file:///Users/Mattia/Desktop/Studies/Temp/spwm/contracts/protocols.py).
+  - Quando `unconstrained = True`, la dinamica sensoriale esegue l'integrazione pura:
+    $$K_{\text{gate}} = 1.0, \quad \Delta \mathbf{q}_{\text{sens}} = \mathbf{z}_{\text{target}} - \mathbf{q}_{\text{kin}}$$
+    senza norm clamping e senza modulazione da rampa, preservando intatta l'ampiezza dinamica della traiettoria per l'addestramento.
+  - Quando `unconstrained = False` (esclusivamente durante il rollout inferenziale delle transizioni critiche di fase), si attivano la rampa e il bounding per prevenire sbalzi visivi.
+
+- **Sincronizzazione dello Stato Dinamico in [`rollout_latent`](file:///Users/Mattia/Desktop/Studies/Temp/spwm/models/rollout.py)**:
+  - Durante i passi ciechi eseguiti da $M_1$, `dyn_state.z_prev` viene forzato a combaciare con l'ultimo stato emesso da $M_1$ (`curr_z.detach()`), e `dyn_state.grounded_steps` viene azzerato. In questo modo, quando si entra nella fase sensoriale, il calcolo della delta di correzione $\mathbf{z}_{\text{sens}} - \mathbf{z}_{\text{prev}}$ riparte da una discrepanza nulla.
+
+- **Ricalibrazione dei Parametri di Configurazione in [`ModelConfig`](file:///Users/Mattia/Desktop/Studies/Temp/spwm/contracts/config.py)**:
+  - `max_k_gate = 1.0` (ripristinata piena autorità sensoriale dopo la rampa).
+  - `max_correction_norm = 0.50` (soglia di tolleranza allargata per consentire veloci recuperi senza artefatti).
+  - `gate_ramp_steps = 5` (rampa su 250 ms a 20 Hz).
+  - `decoder_pos_alpha = 0.20` (filtraggio morbido sulle posizioni angolari).
+  - `pre_contact_sensory_steps = 5` (handover sensoriale 5 step prima del contatto fisico).
+
+### 4. Risultati Sperimentali e Confronto Quantitativo
+
+I risultati empirici post-implementazione e retraining evidenziano il pieno superamento sia del teleporting glitch che del congelamento statico:
+
+| Metrica / Comportamento | Baseline v0.5.2 | Patologia v0.5.3 / v0.5.4-pre | Definitivo v0.5.4 |
+| :--- | :--- | :--- | :--- |
+| **Max Delta Step ($\Delta q_{\max}$)** | $> 0.32\,\text{rad}$ ($>18^\circ$, teleporting) | $0.002\,\text{rad}$ (braccio congelato) | **$0.010\,\text{rad}$** ($<0.6^\circ$, transizione fluida) |
+| **Tracking Error Medio** | $1.168\,\text{rad}$ (drift libero) | $1.177\,\text{rad}$ (static attractor) | **$0.004\,\text{rad}$** ($<0.25^\circ$) |
+| **Escursione Shoulder Pan** | $1.350\,\text{rad}$ | $0.253\,\text{rad}$ (attenuazione 81%) | **$1.350\,\text{rad}$** (piena dinamica 100%) |
+| **Escursione Shoulder Lift** | $1.229\,\text{rad}$ | $0.000\,\text{rad}$ (blocco a $0.55\,\text{rad}$) | **$1.229\,\text{rad}$** (sollevamento perfetto) |
+| **Loss Validazione M1 (Epoca 1)** | $\sim 1.150$ | $1.177$ | **$0.648$** (dimezzata istantaneamente) |
+
+### 5. Suite di Test e Integrità Architetturale
+- Aggiornato schema dei progetti ammessi con `"spwm_v0_5_4"` in `tests/test_config_schema.py`.
+- Aggiornato contratto `DynamicsProtocol.step` con parametri di fase e flag `unconstrained`.
+- Suite completa di **63 unit test** superata con esito 100% positivo (`pytest tests/`).
+
+---
+---
+
+# SPWM-v0.6.0: Dual-Camera Active Perception (Static Global + Egocentric Wrist Sensor) & Visual Fusion
+
+### 1. Diagnosi e Motivazione (3D Kinematic Unobservability)
+Con una singola telecamera neuromorfica monoculare statica (`in_channels = 2`), il sistema soffriva di inosservabilità cinematica 3D lungo l'asse ottico:
+- **Simmetrie Assiali (`Wrist_Roll`, $q_5$)**: La rotazione assiale del polso attorno al proprio asse longitudinale generava variazioni minime o nulle nella silhouette 2D vista dalla camera globale.
+- **Scorcio Prospettico (`Elbow_Flex`, $q_2$)**: Movimenti nel piano di profondità durante le fasi di Sensory Heft e Blind Transport venivano compressi dalla proiezione monoculare, degradando la stima di posa a 6-DOF.
+
+### 2. Architettura Dual-Camera (SPWM-v0.6.0)
+1. **Simulazione Unity & Neuromorphic Bridge ([`ArticulatedRobotRig.cs`](file:///Users/Mattia/Desktop/Studies/Temp/sim/Assets/Scripts/ArticulatedRobotRig.cs), [`NeuromorphicEventBridge.cs`](file:///Users/Mattia/Desktop/Studies/Temp/sim/Assets/Scripts/NeuromorphicEventBridge.cs), [`RoboticTelemetryLogger.cs`](file:///Users/Mattia/Desktop/Studies/Temp/sim/Assets/Scripts/RoboticTelemetryLogger.cs), [`GhostVisualizerSceneBuilder.cs`](file:///Users/Mattia/Desktop/Studies/Temp/sim/Assets/Editor/GhostVisualizerSceneBuilder.cs))**:
+   - Montato un sensore neuromorfico egocentrico (`WristNeuromorphicCamera` su `WristCameraMount`) direttamente sull'end-effector (`EndEffectorTip`) con marker fiduciale asimmetrico (`WristOrientationFiducial`).
+   - Entrambi i sensori (statico globale ed egocentrico sul polso) operano simultaneamente ad ogni passo fisico $\Delta t$, generando uno stream di eventi unificato a 4 canali (`[pos_global, neg_global, pos_wrist, neg_wrist]`) e frame di luminanza duali.
+2. **Contratti Layer 0 & Data Pipeline Layer 1 ([`tensors.py`](file:///Users/Mattia/Desktop/Studies/Temp/spwm/contracts/tensors.py), [`config.py`](file:///Users/Mattia/Desktop/Studies/Temp/spwm/contracts/config.py), [`event_camera.py`](file:///Users/Mattia/Desktop/Studies/Temp/spwm/data/event_camera.py), [`datasets.py`](file:///Users/Mattia/Desktop/Studies/Temp/spwm/data/datasets.py))**:
+   - Introdotta costante canonica `C_EVENT = 4` e aggiornato `ModelConfig.in_channels = 4` (`ProjectConfig.name = "spwm_v0_6_0"`).
+   - Esteso [`EventCameraSimulator`](file:///Users/Mattia/Desktop/Studies/Temp/spwm/data/event_camera.py) con `render_wrist_articulated_frame` e `render_dual_articulated_frames`, producendo tensori batchati rigorosamente allineati `[B, T, 4, H, W]`.
+3. **Fusione Visiva nell'Encoder ([`encoder.py`](file:///Users/Mattia/Desktop/Studies/Temp/spwm/models/encoder.py), [`world_model.py`](file:///Users/Mattia/Desktop/Studies/Temp/spwm/models/world_model.py))**:
+   - Aggiornato [`EventEncoder`](file:///Users/Mattia/Desktop/Studies/Temp/spwm/models/encoder.py) con architettura di fusione spaziale dual-stream (`conv` + `wrist_stem` + `fusion_head` $\to$ `SpatialSoftmax`), estraendo un set unificato di $K=16$ keypoint 2D ($\mathbf{q}_t \in [-1, 1]^{32}$) e feature visive ($\mathbf{x}_t \in \mathbb{R}^{128}$) che disambiguano completamente la posa a 6-DOF per `SpikingLatentDynamics` e `PhysicalDecoder`.
+
+---
+---
+
+# SPWM-v0.6.1: Post-Mortem Training v0.6.1 & Diagnosi Jitter Cinematica Grounded (Frame 53-63)
+
+### 1. Risultati Training SPWM-v0.6.1
+- **Fase 0 (`train_representation`)**: Addestramento convergente su 87 epoche con architettura Dual-Camera (camera statica globale + egocentrica da polso a 4 canali), raggiungendo `val_pos_err = 0.202 rad` e `val_vel_err = 0.447 rad/s`.
+- **Fase 1 (`train_m1`)**: Addestramento completato su 52 epoche con loss di validazione autoregressiva `val_loss = 0.0042` e `val_pos_err = 0.498 rad`.
+
+### 2. Diagnosi Clinica e Post-Mortem: Jitter Cinematica nei Frame 53-63
+Durante la validazione in simulazione Unity (`GhostPlaybackManager`, telemetria esportata in `trajectory_ghost.json`), il rollout puramente predittivo ($M_1$) prima del contatto si comporta in modo fluido e privo di vibrazioni ($\Delta q \le 0.02\,\text{rad/frame}$).
+Tuttavia, esattamente nell'intervallo temporale tra i frame **53 e 63** (corrispondente ai passi di simulazione 55-65, fase di *Sensory Heft* con `phase_flag == 1`), si riscontra un picco di errore velocitario e una severa oscillazione visiva del braccio fantasma (`predicted_q`), a fronte di un ground truth (`ground_truth_q`) che rimane quasi immobile o compie un modesto sollevamento verticale di $+12\,\text{cm}$:
+- **Picco Errore Velocità**: L'errore balza fino a **$1.1156\,\text{rad/s}$** al frame 62 (con valori costantemente elevati tra $0.80$ e $1.03\,\text{rad/s}$ nei frame 53-60).
+- **Oscillazione ad Alta Frequenza**: `Elbow_Flex` oscilla in controtendenza ad ogni passo di $50\,\text{ms}$ ($+2.576 \to +2.511 \to +2.549 \to +2.508 \to +2.534 \to +2.562 \to +2.548\,\text{rad}$), e `Wrist_Yaw` compie salti fino a $8.3^\circ$ per frame.
+
+### 3. Root Cause Analysis (Le Cause Scatenanti)
+L'indagine dettagliata ha individuato i fattori determinanti:
+1. **Evanescenza degli Eventi e Collasso dei Keypoint (Decelerazione Pre-Contatto)**:
+   Negli step 50-54 (frame 48-52), il manipolatore decelera fino a fermarsi sopra il blocco da afferrare ($\mathbf{p}_{\text{gt}} \to 0$). Poiché i sensori neuromorfici emettono spike solo su variazioni temporali di intensità $|\Delta L| \ge \theta$, l'attività decade a soli 2-4 eventi/frame. A eventi quasi nulli, i feature map convoluzionali di `EventEncoder` diventano un bias uniforme; lo `SpatialSoftmax` genera una distribuzione uniforme che collassa i centri di massa 2D ($\mathbf{skp}$) verso l'origine $(0, 0)$, corrispondente a una posa artificiale erronea (es. `Elbow` $\approx 1.10\,\text{rad}$ invece di $2.60\,\text{rad}$).
+2. **Impulse Shock all'Inizio del Sollevamento (Sensory Heft)**:
+   Al passo 55 (frame 53), la presa magnetica si chiude (`EnsureRigidGrasp`) e scatta il sollevamento verso l'alto. L'improvviso movimento scatena una raffica di eventi (126 globali, 40 da polso). I keypoint $\mathbf{skp}$ saltano bruscamente da $(0, 0)$ alla posizione reale sollevata. Con `gate_scale = 50.0`, il fattore di gating $K_{\text{gate}} = (1 - e^{-50 \cdot \text{act}}) \cdot \text{max\_k\_gate}$ satura immediatamente a $\sim 0.95$, applicando una correzione impulsiva discontinua su $\mathbf{q}$.
+3. **Over-Correction Feedback & Oscillazione di Nyquist**:
+   Con `max_k_gate = 1.0` in `SpikingLatentDynamics`, la coordinata $\mathbf{q}$ è vincolata al $95\%$ alla misura istantanea grezza $\mathbf{skp}$. A causa della natura stocastica/refrattaria dei sensori a eventi, i keypoint fluttuano leggermente tra un frame e l'altro; con un guadagno di anello vicino a 1.0, la dinamica innesca un ciclo limite non smorzato alla frequenza di Nyquist ($10\,\text{Hz}$).
+4. **Spinta di Velocità Spuria da LayerNorm & Risonanza ALIF**:
+   La velocità $v_p = \text{vel}(p)$ deriva da un vettore normalizzato con `LayerNorm` ($\|p\| \ge 7.9$), generando una spinta costante $\|\Delta t \cdot v_p\| \approx 0.125$ anche a riposo, che compete continuamente contro la correzione sensoriale $K_{\text{gate}}$. Il valore di $\mathbf{q}$ proietta poi nel soma dei neuroni ALIF, provocando oscillazioni caotiche nel conteggio degli spike (da 31 a 55 spike/passo).
+5. **Filtraggio EMA Insufficiente nel Decoder**:
+   Nel decoder `PhysicalDecoder`, il coefficiente `decoder_pos_alpha = 0.20` trattiene solo il 20% della storia e lascia passare l'80% del jitter istantaneo.
+
+### 4. Strategia di Risoluzione
+1. **Anti-Evanescence Gate**: Congelare i keypoint $\mathbf{skp}$ all'ultima stima valida ad alta confidenza quando l'attività del sensore è sotto la soglia di rumore/stazionarietà ($\text{act} < \text{threshold}$), o forzare $K_{\text{gate}} \equiv 0$, impedendo il collasso artificiale su $(0, 0)$.
+2. **Damping e Bounding del Guadagno Sensoriale**: Limitare `max_k_gate` a valori di filtro complementare ($0.25 - 0.30$) e stringere `max_correction_norm` per impedire l'innesco di oscillazioni di Nyquist.
+3. **Zero-Centering della Proiezione di Velocità**: Applicare $\tanh(v_p)$ o condizionamento sull'azione motoria $u_t$ per garantire $v_p \to 0$ quando il braccio è fermo.
+4. **Calibrazione Filtro Decoder**: Portare `decoder_pos_alpha` e `decoder_ema_alpha` a $0.75$.
+
+
+
 
 
 

@@ -58,7 +58,8 @@ classDiagram
   Executes `model.forward_representation(events)` over $t \in [0, T_{\text{obs}}]$ computing $\mathbf{z}_t = (\mathbf{q}_t, \mathbf{p}_t)$ directly from sensory input streams.
 - **Strict Loss Constraints**:
   1. **$\mathcal{L}_{\text{kinematic}}$**: Supervised loss decoding articulated joint angles $\mathbf{q}^*$ and angular velocities $\mathbf{p}^*$ ($J=6$):
-     $$\mathcal{L}_{\text{kinematic}} = \text{MSE}(\text{decode\_pos}(\mathbf{q}_t), \mathbf{q}_t^*) + \text{MSE}(\text{decode\_vel}(\mathbf{p}_t), \mathbf{p}_t^*)$$
+     $$\mathcal{L}_{\text{kinematic}} = \text{MSE}(\text{decode\_pos}(\mathbf{q}_t), \mathbf{q}_t^*) + \frac{1}{s_v^2} \text{MSE}(\text{decode\_vel}(\mathbf{p}_t), \mathbf{p}_t^*)$$
+     where $s_v = \text{velocity\_loss\_scale} = 1.0$ (configurable in `LossConfig`, default 1.0) normalizes angular velocity magnitudes relative to normalized joint coordinates.
   2. **$\mathcal{L}_{\text{derivative}}$**: Strict phase-space factorization constraint:
      $$\mathcal{L}_{\text{derivative}} = \text{MSE}((\mathbf{q}_{t+1} - \mathbf{q}_t), dt \cdot \mathbf{p}_t)$$
   3. **$\mathcal{L}_{\text{smoothness}}$**: High-frequency noise suppression on ALIF outputs:
@@ -75,7 +76,7 @@ classDiagram
 - **Forward Pass & Active Perception Injection**:
   1. Identifies trajectory phases from `phase_flags`:
      - Flag `0`: Blind Approach
-     - Flag `1`: Sensory Heft (rapid vertical lift + wrist twist after grasp)
+     - Flag `1`: Sensory Heft (initiated `pre_contact_sensory_steps = 5` prior to contact for grounding handover, followed by upward lift + wrist twist after grasp)
      - Flag `2`: Blind Transport
   2. Computes the canonical schedule `(t_start, horizon)` via `compute_rollout_schedule(phase_flags, T)`.
   3. Grounds the initial state and dynamics memory $\hat{\mathbf{z}}_0$ through frozen Encoder & Dynamics over initial frames $t \in [0, t_{\text{start}}]$ via `ground_initial_state`.
@@ -84,6 +85,7 @@ classDiagram
      - When `flag != 1` (Blind Approach / Transport): $M_1$ unrolls autoregressively conditioned on motor command $\mathbf{u}_t$.
 - **Loss Constraint**:
   $$\mathcal{L}_{M_1} = \lambda_{\text{position}} \text{MSE}(\hat{\mathbf{q}}_{t_{\text{start}}+1:}, \mathbf{q}_{\text{target}, t_{\text{start}}+1:}) + \lambda_{\text{velocity}} \text{MSE}(\hat{\mathbf{p}}_{t_{\text{start}}+1:}, \mathbf{p}_{\text{target}, t_{\text{start}}+1:})$$
+  where $\lambda_{\text{velocity}} = 1.5$ (in `LossConfig`) scales momentum subspace precision during multi-step unrolling.
   $$\mathcal{L}_{\text{total}} = \lambda_{\text{latent}} \mathcal{L}_{M_1}$$
   No kinematic or sensory backpropagation occurs in Phase 1; $M_1$ trains purely in latent phase space to reproduce the driven attractor vector field with explicit balance between coordinate and momentum subspaces. Both training and [`RolloutEvaluator`](file:///Users/Mattia/Desktop/Studies/Temp/spwm/evaluation/evaluator.py) share the identical Active Perception unrolling logic from `rollout_latent`.
 

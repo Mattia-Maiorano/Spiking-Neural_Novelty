@@ -97,6 +97,7 @@ def main() -> None:
         width=base_cfg.environment.width,
         joint_count=base_cfg.environment.joint_count,
         action_dim=base_cfg.environment.action_dim,
+        in_channels=base_cfg.model.in_channels,
         dataset_dir=base_cfg.data.dataset_dir,
     )
 

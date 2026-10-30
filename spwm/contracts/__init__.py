@@ -16,6 +16,7 @@ from spwm.contracts.config import (
     ExperimentConfig,
 )
 from spwm.contracts.tensors import (
+    C_EVENT,
     J,
     assert_tensor_contract,
     assert_phase_space_contract,
@@ -45,6 +46,7 @@ from spwm.contracts.protocols import (
 )
 
 __all__ = [
+    "C_EVENT",
     "J",
     "ProjectConfig",
     "EnvironmentConfig",

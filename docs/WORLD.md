@@ -1,6 +1,6 @@
 # Simulation Environment & Event Camera Specification (`WORLD.md`)
 
-This document provides the authoritative mathematical and computational specification of the simulation environment and neuromorphic sensor pipeline utilized to train and benchmark **SPWM-v0.5.0 (6-DOF Active Perception Grasping & Spiking Predictive World Model for 3D Articulated Manipulation)**.
+This document provides the authoritative mathematical and computational specification of the simulation environment and dual-camera neuromorphic sensor pipeline utilized to train and benchmark **SPWM-v0.6.0 (Dual-Camera 6-DOF Active Perception Grasping & Spiking Predictive World Model for 3D Articulated Manipulation)**.
 
 All code implementations reside in Layer 1 of the architecture ([`spwm/data/`](file:///Users/Mattia/Desktop/Studies/Temp/spwm/data/__init__.py)) and Unity C# physics assets ([`sim/Assets/Scripts/`](file:///Users/Mattia/Desktop/Studies/Temp/sim/Assets/Scripts/ArticulatedRobotRig.cs)), governed strictly by Layer 0 contracts ([`spwm/contracts/config.py`](file:///Users/Mattia/Desktop/Studies/Temp/spwm/contracts/config.py)).
 
@@ -64,8 +64,8 @@ At discrete time index $t \in \{0, 1, \dots, T-1\}$ with physics step $\Delta t 
 - **Joint Angular Velocities (Generalized Momenta)**: $\mathbf{p}_t^* \in \mathbb{R}^J$ ($J=6$)
 - **Applied Motor Action Vector**: $\mathbf{u}_t \in [-1.0, 1.0]^{D_u}$ ($D_u = \text{action\_dim} = 6$)
 - **Execution Phase Flags** (`phase_flag`): Discrete tag identifying sensory-motor regime:
-  - `0 = BlindApproach`: Neutral setup followed by smooth interpolation to grasp coordinates.
-  - `1 = SensoryHeft`: Collision-triggered rigid attachment followed by a sharp, high-acceleration micro-movement (5 cm vertical lift + wrist twist) generating informative event transients and velocity responses proportional to payload mass and inertia.
+  - `0 = BlindApproach`: Neutral setup followed by smooth minimum-jerk trajectory toward grasp coordinates.
+  - `1 = SensoryHeft`: Activated $N$ steps prior to contact (`pre_contact_sensory_steps = 5`) for sensory grounding, followed by collision-triggered rigid attachment and an upward micro-movement (+12 cm lift with wrist twist) generating informative event transients and velocity responses proportional to payload mass and inertia.
   - `2 = BlindTransport`: Smooth trajectory interpolation to the 6D target pose with wrist orientation variations to stress rotational inertia predictions.
 
 ### 2.2 Procedural Object Spawner & Rigid Grasp Attachment
@@ -98,18 +98,21 @@ The neuromorphic visual pipeline captures dynamic scene motion without emitting 
    - Supports direct ingestion of Unity pre-rendered event tensors or high-FPS grayscale luminance sequences.
    - For standalone testing and synthetic benchmarking, generates forward-kinematic projected articulated link intensities across normalized coordinates $(u, v) \in [-1, 1]^2$.
 
-### 3.2 Temporal Log-Intensity Differencing & Event Generation
+### 3.2 Temporal Contrast Accumulation & Event Generation
 
-Events are triggered when temporal changes exceed the contrast sensitivity threshold $\theta$:
-$$\Delta L(u, v; t) = L(u, v; t) - L(u, v; t - \Delta t)$$
+Rather than naive frame-to-frame subtraction (which causes event dropout during slow articulated motions), [`EventCameraSimulator`](file:///Users/Mattia/Desktop/Studies/Temp/spwm/data/event_camera.py) implements **temporal contrast accumulation** with a persistent reference intensity state $I_{\text{ref}}(u, v)$:
+$$\Delta L(u, v; t) = I(u, v; t) - I_{\text{ref}}(u, v; t)$$
 $$S_{\text{pos}}(u, v; t) = \mathbb{I}\left( \Delta L(u, v; t) > \theta \right) \quad (\text{Channel 0: Brightening})$$
 $$S_{\text{neg}}(u, v; t) = \mathbb{I}\left( \Delta L(u, v; t) < -\theta \right) \quad (\text{Channel 1: Dimming})$$
+
+When either polarity condition is triggered, the reference intensity is updated exclusively for the spiking pixel:
+$$I_{\text{ref}}(u, v; t + 1) = \begin{cases} I(u, v; t) & \text{if } S_{\text{pos}}(u, v; t) \lor S_{\text{neg}}(u, v; t) \\ I_{\text{ref}}(u, v; t) & \text{otherwise} \end{cases}$$
 Default threshold $\theta = \text{event\_threshold} = 0.08$.
 
 ### 3.3 Event Stream Formats
 
-- **Dense Event Tensor** (`dense_events`): $\mathbf{E} \in \{0, 1\}^{B \times T \times 2 \times H \times W}$ ($H=W=32$ by default).
-- **Sparse Event List** (`sparse_events`): Tuples of $(t, p, y, x)$ for neuromorphic backends.
+- **Dense Event Tensor** (`dense_events`): $\mathbf{E} \in \{0, 1\}^{B \times T \times 4 \times H \times W}$ ($C=4$: channels `0..1` static global ON/OFF, channels `2..3` egocentric wrist-mounted ON/OFF; $H=W=32$ by default).
+- **Sparse Event List** (`sparse_events`): Tuples of $(t, c, y, x)$ for neuromorphic backends.
 
 ---
 
@@ -117,7 +120,7 @@ Default threshold $\theta = \text{event\_threshold} = 0.08$.
 
 ### 4.1 Strict Trajectory-Level Partitioning
 
-To strictly prevent temporal leakage, partitioning is performed strictly at the **trajectory index** level via [`partition_trajectories`](file:///Users/Mattia/Desktop/Studies/Temp/spwm/data/datasets.py):
+To strictly prevent temporal leakage, partitioning is performed strictly at the **trajectory index** level via [`partition_trajectories`](file:///Users/Mattia/Desktop/Studies/Temp/spwm/data/datasets.py), supporting gzip-compressed Unity logs (`trajectory_*.json.gz`), uncompressed JSON (`trajectory_*.json`), and pre-rendered NPZ (`trajectory_*.npz`):
 
 | Split | Trajectory ID Range | Default Fraction | Trajectory Count (out of 4,000) | Dynamics Regime |
 | :--- | :--- | :--- | :--- | :--- |
@@ -151,7 +154,7 @@ Defined in [`spwm/contracts/config.py`](file:///Users/Mattia/Desktop/Studies/Tem
 
 | Parameter | Type | Default | Description |
 | :--- | :--- | :--- | :--- |
-| `dataset_dir` | `str` | `"sim/ExportedTrajectories"` | Path to exported Unity robotic trajectory JSON files |
+| `dataset_dir` | `str` | `"sim/ExportedTrajectories"` | Path to exported Unity robotic trajectory JSON / JSON.GZ files |
 | `joint_count` | `int` | `6` | Articulated joint count expected in dataset trajectories ($J=6$) |
 | `action_dim` | `int` | `6` | Motor action vector dimensionality ($D_u=6$) |
 | `total_trajectories` | `int` | `4000` | Total number of trajectories generated across all splits |
@@ -162,6 +165,8 @@ Defined in [`spwm/contracts/config.py`](file:///Users/Mattia/Desktop/Studies/Tem
 | `standard_velocity_range` | `(float, float)`| `(-1.0, 1.0)` | Joint angular velocity scaling range for standard trajectories |
 | `extrapolation_velocity_range` | `(float, float)`| `(-2.0, 2.0)` | Velocity range for out-of-distribution stress testing |
 | `cache_data` | `bool` | `True` | Whether to pre-render and cache event tensors in memory |
+| `strict_dataset` | `bool` | `True` | Whether to strictly require real exported Unity trajectories (fail if missing) |
+| `pre_contact_sensory_steps` | `int` | `5` | Number of approach steps before physical contact where Phase 1.5 sensory grounding begins |
 
 ---
 
@@ -171,7 +176,7 @@ Each item returned by [`EventWorldDataset`](file:///Users/Mattia/Desktop/Studies
 
 | Key | Tensor Shape | Dtype | Semantic Meaning |
 | :--- | :--- | :--- | :--- |
-| `"events"` | `[B, T, 2, H, W]` | `torch.float32` | Sparse binary event frames (Channel 0: $+$, Channel 1: $-$) |
+| `"events"` | `[B, T, 4, H, W]` | `torch.float32` | Dual-camera sparse binary event frames (Ch 0..1: Global $+$/$-$, Ch 2..3: Egocentric Wrist $+$/$-$) |
 | `"positions"` | `[B, T, joint_count]` | `torch.float32` | Ground-truth joint angles $\mathbf{q}^*$ ($J=6$) in radians / normalized |
 | `"velocities"` | `[B, T, joint_count]` | `torch.float32` | Ground-truth joint angular velocities $\mathbf{p}^*$ ($J=6$) |
 | `"actions"` | `[B, T, action_dim]` | `torch.float32` | Motor action commands $\mathbf{u}_t$ ($D_u=6$) |

@@ -1,12 +1,36 @@
-[2026-10-27T12:57:10.671Z][INFO] Command-line: /Applications/Unity/Hub/Editor/6000.5.7f1/Unity.app/Contents/Helpers/PackageManager/Server/UnityPackageManager server -s 50126 --ipc-path /tmp/Unity-Upm-50126.sock -l 2 --log-file /Users/Mattia/Desktop/Studies/Temp/sim/Logs/upm.log
-[2026-10-27T12:57:10.678Z][INFO] Detected environment variables:
-  GIT_ASKPASS=/Applications/Antigravity IDE.app/Contents/Resources/app/extensions/git/dist/askpass.sh
-[2026-10-27T12:57:10.692Z][INFO] IPC server started (IPC path=/tmp/Unity-Upm-50126.sock).
-[2026-10-27T12:57:10.692Z][INFO] Hint: To connect to this UPM instance, launch Unity with the command-line parameter -upmIpcPath Upm-50126.
-[2026-10-27T12:57:11.683Z][INFO] project:list-packages <-- Request received
+[2026-10-29T13:41:23.781Z][INFO] Command-line: /Applications/Unity/Hub/Editor/6000.5.7f1/Unity.app/Contents/Helpers/PackageManager/Server/UnityPackageManager server -s 45604 --ipc-path /tmp/Unity-Upm-45604.sock -l 2 --log-file /Users/Mattia/Desktop/Studies/Temp/sim/Logs/upm.log
+[2026-10-29T13:41:23.801Z][INFO] IPC server started (IPC path=/tmp/Unity-Upm-45604.sock).
+[2026-10-29T13:41:23.801Z][INFO] Hint: To connect to this UPM instance, launch Unity with the command-line parameter -upmIpcPath Upm-45604.
+[2026-10-29T13:41:25.025Z][INFO] project:list-packages <-- Request received
 params: {}
-[2026-10-27T12:57:11.755Z][INFO] project:list-packages --> 200 (72 ms)
-[2026-10-27T12:57:13.919Z][INFO] project:list-packages <-- Request received
+[2026-10-29T13:41:25.124Z][INFO] project:list-packages --> 200 (99 ms)
+[2026-10-29T13:41:25.147Z][INFO] project:list-packages <-- Request received
 params: {}
-[2026-10-27T12:57:13.949Z][INFO] project:list-packages --> 200 (30 ms)
-[2026-10-27T12:57:18.900Z][INFO] Received shutdown request (SIGTERM), shutting down Unity Package Manager
+[2026-10-29T13:41:25.158Z][INFO] config:project:get-registries <-- Request received
+params: {}
+[2026-10-29T13:41:25.165Z][INFO] config:project:get-registries --> 200 (7 ms)
+[2026-10-29T13:41:25.200Z][INFO] project:list-packages --> 200 (53 ms)
+[2026-10-29T13:41:28.151Z][INFO] project:list-packages <-- Request received
+params: {}
+[2026-10-29T13:41:28.165Z][INFO] project:list-packages <-- Request received
+params: {}
+[2026-10-29T13:41:28.281Z][INFO] project:list-packages --> 200 (116 ms)
+[2026-10-29T13:41:28.291Z][INFO] project:list-packages --> 200 (141 ms)
+[2026-10-29T13:41:29.554Z][INFO] config:project:get-registries <-- Request received
+params: {}
+[2026-10-29T13:41:30.697Z][INFO] config:project:get-registries --> 200 (1143 ms)
+[2026-10-29T13:41:32.827Z][INFO] project:list-packages <-- Request received
+params: {}
+[2026-10-29T13:41:32.890Z][INFO] project:list-packages --> 200 (64 ms)
+[2026-10-29T13:41:35.634Z][INFO] project:list-packages <-- Request received
+params: {}
+[2026-10-29T13:41:36.114Z][INFO] Downloading package [com.unity.package-manager.metadata-6000.5@0.0.105] from registry 'https://packages.unity.com'
+[2026-10-29T13:41:36.718Z][INFO] Finished downloading package [com.unity.package-manager.metadata-6000.5@0.0.105] from registry 'https://packages.unity.com' (size: 11.5 kB, time: 603ms)
+[2026-10-29T13:41:37.578Z][INFO] project:list-packages --> 200 (1946 ms)
+[2026-10-29T13:41:45.798Z][INFO] project:list-packages <-- Request received
+params: {}
+[2026-10-29T13:41:45.836Z][INFO] project:list-packages --> 200 (38 ms)
+[2026-10-29T13:41:45.875Z][INFO] config:project:get-registries <-- Request received
+params: {}
+[2026-10-29T13:41:45.876Z][INFO] config:project:get-registries --> 200 (1 ms)
+[2026-10-29T13:43:20.724Z][INFO] Received shutdown request (SIGTERM), shutting down Unity Package Manager

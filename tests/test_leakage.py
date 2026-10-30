@@ -9,7 +9,7 @@ def test_no_temporal_leakage_from_future():
     Modifying the input events at future timesteps t' > t
     MUST have ZERO impact on latent states and predictions at time <= t.
     """
-    B, T, C, H, W = 1, 10, 2, 32, 32
+    B, T, C, H, W = 1, 10, 4, 32, 32
     model = SPWM(
         in_channels=C,
         height=H,

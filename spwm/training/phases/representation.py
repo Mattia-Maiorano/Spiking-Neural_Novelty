@@ -1,6 +1,6 @@
 """Phase 0 Training Strategy: Grounded Articulated State Estimation (`train_representation`)."""
 from __future__ import annotations
-from typing import Dict, Tuple
+from typing import Dict, Optional, Tuple
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
@@ -42,11 +42,14 @@ class RepresentationPhaseStrategy(PhaseStrategy):
                 raise AssertionError(f"Gradient leak! Parameter '{name}' has requires_grad=True in representation mode.")
 
     def _compute_representation_objectives(
-        self, events: torch.Tensor, flat_kin: torch.Tensor
+        self,
+        events: torch.Tensor,
+        flat_kin: torch.Tensor,
+        actions: Optional[torch.Tensor] = None,
     ) -> Tuple[torch.Tensor, Dict[str, float]]:
         joint_count = self.model.joint_count
         assert_tensor_contract(flat_kin, (None, None, 2 * joint_count), "RepresentationPhaseStrategy.flat_kin")
-        latents, error_neurons = self.model.forward_representation(events)
+        latents, error_neurons = self.model.forward_representation(events, actions=actions)
         q_dim = self.model.q_dim
         q = latents[..., :q_dim]
         p = latents[..., q_dim:]
@@ -57,9 +60,9 @@ class RepresentationPhaseStrategy(PhaseStrategy):
         # 1. L_kinematic: Supervised loss decoding complex joint angles q* and angular velocities p*
         pos_pred = self.model.physical_decoder.decode_pos(q)
         vel_pred = self.model.physical_decoder.decode_vel(p)
-        loss_pos_kin = F.mse_loss(pos_pred, joint_pos_true)
+        loss_pos_kin = F.mse_loss(pos_pred, joint_pos_true, reduction="none").sum(dim=-1).mean()
         vel_scale = max(1e-3, float(self.cfg.loss.velocity_loss_scale))
-        loss_vel_kin = F.mse_loss(vel_pred, joint_vel_true) / (vel_scale ** 2)
+        loss_vel_kin = F.mse_loss(vel_pred, joint_vel_true, reduction="none").sum(dim=-1).mean() / (vel_scale ** 2)
         l_kinematic = loss_pos_kin + loss_vel_kin
 
         # 2. L_derivative: Strict phase-space factorization constraint
@@ -67,13 +70,13 @@ class RepresentationPhaseStrategy(PhaseStrategy):
         delta_q = q[:, 1:] - q[:, :-1]
         p_t = p[:, :-1]
         p_mapped = p_t[..., :q_dim] if p_t.shape[-1] != q_dim else p_t
-        l_derivative = F.mse_loss(delta_q, dt * p_mapped)
+        l_derivative = F.mse_loss(delta_q, dt * p_mapped, reduction="none").sum(dim=-1).mean()
 
-        # 3. L_smoothness: High-frequency noise suppression on ALIF outputs
-        l_smoothness = F.mse_loss(p[:, 1:], p[:, :-1])
+        # 3. L_smoothness: High-frequency noise suppression with Huber loss on ALIF outputs
+        l_smoothness = F.smooth_l1_loss(p[:, 1:], p[:, :-1], beta=0.1, reduction="none").sum(dim=-1).mean()
 
         # 4. L_sensory: Top-down sensory prediction reconstruction loss
-        l_sensory = F.mse_loss(error_neurons, torch.zeros_like(error_neurons))
+        l_sensory = F.mse_loss(error_neurons, torch.zeros_like(error_neurons), reduction="none").sum(dim=-1).mean()
 
         lambda_1 = float(self.cfg.loss.lambda_kinematic)
         lambda_2 = float(self.cfg.loss.lambda_derivative)
@@ -119,7 +122,8 @@ class RepresentationPhaseStrategy(PhaseStrategy):
 
         events = batch["events"].to(self.device)
         flat_kin = batch["flat_kinematics"].to(self.device)
-        total_loss, m = self._compute_representation_objectives(events, flat_kin)
+        actions = batch["actions"].to(self.device) if "actions" in batch and batch["actions"] is not None else None
+        total_loss, m = self._compute_representation_objectives(events, flat_kin, actions=actions)
         total_loss.backward()
         trainable = [p for p in self.model.parameters() if p.requires_grad]
         nn.utils.clip_grad_norm_(trainable, self.cfg.training.grad_clip_norm)
@@ -131,5 +135,6 @@ class RepresentationPhaseStrategy(PhaseStrategy):
         self.model.eval()
         events = batch["events"].to(self.device)
         flat_kin = batch["flat_kinematics"].to(self.device)
-        _, m = self._compute_representation_objectives(events, flat_kin)
+        actions = batch["actions"].to(self.device) if "actions" in batch and batch["actions"] is not None else None
+        _, m = self._compute_representation_objectives(events, flat_kin, actions=actions)
         return {f"val_{k}": v for k, v in m.items()}

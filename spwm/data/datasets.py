@@ -6,6 +6,7 @@ strict trajectory-level partitioning to prevent temporal leakage.
 """
 
 from __future__ import annotations
+import gzip
 import json
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple, Union
@@ -13,7 +14,7 @@ import numpy as np
 import torch
 from torch.utils.data import DataLoader, Dataset
 
-from spwm.contracts.tensors import J, assert_tensor_contract
+from spwm.contracts.tensors import C_EVENT, J, assert_tensor_contract
 from spwm.data.event_camera import EventBatch, EventCameraSimulator, RoboticTrajectory
 
 
@@ -36,12 +37,15 @@ def partition_trajectories(
 
 
 def _compute_default_phase_schedule(
-    length: int, rng: Optional[np.random.Generator] = None
+    length: int,
+    rng: Optional[np.random.Generator] = None,
+    pre_contact_steps: int = 5,
 ) -> Tuple[int, int, int, np.ndarray]:
     """
     Computes phase boundaries and integer phase flags [T] in {0, 1, 2}:
-      - 0: Blind Approach (includes Phase 0 neutral setup + Phase 1 approach)
-      - 1: Sensory Heft (Phase 1.5 high-acceleration micro-movement after grasp attachment)
+      - 0: Blind Approach (Phase 0 neutral setup + early Phase 1 approach)
+      - 1: Sensory Heft (Phase 1.5 entered n steps before contact for full ground truth injection,
+           followed by rigid lock and smooth upward heft lift)
       - 2: Blind Transport (Phase 2 loaded transport with active wrist rotation)
 
     When rng is provided, wildly randomizes approach duration (~12 to ~56 steps)
@@ -57,16 +61,18 @@ def _compute_default_phase_schedule(
         heft_end = min(length - 1, approach_end + heft_steps)
     else:
         setup_steps = max(1, min(4, length // 12))
-        approach_end = max(setup_steps + 1, int(round(0.38 * length)))
+        approach_end = max(setup_steps + 2, int(round(0.38 * length)))
         heft_steps = max(2, min(12, int(round(0.14 * length))))
         heft_end = min(length - 1, approach_end + heft_steps)
 
     if heft_end <= approach_end:
-        approach_end = max(1, length // 3)
+        approach_end = max(2, length // 3)
         heft_end = max(approach_end + 1, (2 * length) // 3)
 
+    heft_start = max(setup_steps + 1, approach_end - pre_contact_steps)
+
     flags = np.zeros((length,), dtype=np.int64)
-    flags[approach_end:heft_end] = 1
+    flags[heft_start:heft_end] = 1
     flags[heft_end:] = 2
     return setup_steps, approach_end, heft_end, flags
 
@@ -254,8 +260,9 @@ def simulate_articulated_trajectory(
             dq_des = np.zeros((joint_count,), dtype=np.float32)
             eff_inertia = unloaded_inertia
             eff_gravity = gravity_scale
-        elif flag == 0:
+        elif t < approach_end:
             # Phase 1 (The Approach): Smooth minimum-jerk sweep to ground object's top grasp surface
+            # Note: flag is 1 for t in [heft_start, approach_end) to pre-inject sensory ground truth before contact!
             span = max(1, approach_end - setup_steps)
             tau = float(np.clip((t - setup_steps + 1) / float(span), 0.0, 1.0))
             s = (tau ** 3) * (10.0 + tau * (-15.0 + 6.0 * tau))
@@ -264,20 +271,16 @@ def simulate_articulated_trajectory(
             dq_des = (q_grasp - q_neutral) * ds
             eff_inertia = unloaded_inertia
             eff_gravity = gravity_scale
-        elif flag == 1:
-            # Phase 1.5 (The "Heft"): Rigid FixedJoint lock + sharp, monotonic upward lift (+12 cm)
+        elif t < heft_end:
+            # Phase 1.5 (The "Heft" Lift): Rigid FixedJoint lock + softened upward lift (+12 cm)
+            # Softened minimum jerk profile without 1.35x harsh compression (Fix 4)
             span = max(1, heft_end - approach_end)
-            tau = float(np.clip((t - approach_end + 1) / float(span), 0.0, 1.0))
-            fast_tau = float(np.clip(tau * 1.35, 0.0, 1.0))
-            lift_progress = (fast_tau ** 3) * (10.0 + fast_tau * (-15.0 + 6.0 * fast_tau))
-            dlift = (
-                30.0 * (fast_tau ** 2) * ((1.0 - fast_tau) ** 2) * 1.35 / max(float(dt) * span, 1e-3)
-                if (tau * 1.35 <= 1.0)
-                else 0.0
-            )
+            tau = float(np.clip((t - approach_end) / float(span), 0.0, 1.0))
+            lift_progress = (tau ** 3) * (10.0 + tau * (-15.0 + 6.0 * tau))
+            dlift = 30.0 * (tau ** 2) * ((1.0 - tau) ** 2) / max(float(dt) * span, 1e-3)
             q_des = q_grasp + (q_heft_peak - q_grasp) * lift_progress
             dq_des = (q_heft_peak - q_grasp) * dlift
-            gain_boost = 2.2
+            gain_boost = 1.2
             eff_inertia = unloaded_inertia + payload_inertia
             eff_gravity = gravity_scale * (1.0 + 0.42 * payload_mass)
         else:
@@ -291,8 +294,8 @@ def simulate_articulated_trajectory(
             eff_inertia = unloaded_inertia + payload_inertia
             eff_gravity = gravity_scale * (1.0 + 0.42 * payload_mass)
 
-        cur_kp = approach_kp if flag == 0 else 0.85
-        cur_kd = approach_kd if flag == 0 else 0.18
+        cur_kp = approach_kp if t < approach_end else 0.85
+        cur_kd = approach_kd if t < approach_end else 0.18
         raw_target_rad = q_des + gain_boost * (cur_kp * (q_des - q) + cur_kd * (dq_des - p))
         u_t = np.zeros((action_dim,), dtype=np.float32)
         common_d = min(joint_count, action_dim)
@@ -359,6 +362,8 @@ def export_unity_trajectory_file(
         }
         if trajectory.grayscale_frames is not None:
             payload["grayscale_frames"] = trajectory.grayscale_frames.astype(np.float32)
+        if trajectory.wrist_grayscale_frames is not None:
+            payload["wrist_grayscale_frames"] = trajectory.wrist_grayscale_frames.astype(np.float32)
         if trajectory.dense_events is not None:
             payload["dense_events"] = trajectory.dense_events.astype(np.float32)
         np.savez_compressed(path, **payload)
@@ -375,7 +380,13 @@ def export_unity_trajectory_file(
             "actions": trajectory.actions[t].tolist(),
         }
         if trajectory.grayscale_frames is not None:
-            step_rec["grayscale_frame"] = trajectory.grayscale_frames[t].reshape(-1).tolist()
+            if trajectory.grayscale_frames.ndim == 4 and trajectory.grayscale_frames.shape[1] == 2:
+                step_rec["grayscale_frame"] = trajectory.grayscale_frames[t, 0].reshape(-1).tolist()
+                step_rec["wrist_grayscale_frame"] = trajectory.grayscale_frames[t, 1].reshape(-1).tolist()
+            else:
+                step_rec["grayscale_frame"] = trajectory.grayscale_frames[t].reshape(-1).tolist()
+        if trajectory.wrist_grayscale_frames is not None and "wrist_grayscale_frame" not in step_rec:
+            step_rec["wrist_grayscale_frame"] = trajectory.wrist_grayscale_frames[t].reshape(-1).tolist()
         if trajectory.dense_events is not None:
             step_rec["dense_events"] = trajectory.dense_events[t].reshape(-1).tolist()
         steps.append(step_rec)
@@ -388,6 +399,11 @@ def export_unity_trajectory_file(
         "sequence_length": int(T),
         "joint_count": int(trajectory.joint_count),
         "action_dim": int(trajectory.action_dim),
+        "sensor_channels": int(
+            trajectory.dense_events.shape[1]
+            if trajectory.dense_events is not None and trajectory.dense_events.ndim == 4
+            else C_EVENT
+        ),
         "sensor_height": int(sensor_height),
         "sensor_width": int(sensor_width),
         "dt": float(dt),
@@ -406,7 +422,7 @@ def parse_unity_trajectory_file(
     sensor_height: int = 32,
     sensor_width: int = 32,
 ) -> RoboticTrajectory:
-    """Parses an exported Unity trajectory (.json or .npz) into a RoboticTrajectory."""
+    """Parses an exported Unity trajectory (.json, .json.gz, or .npz) into a RoboticTrajectory."""
     path = Path(file_path)
     if not path.is_file():
         raise FileNotFoundError(f"Unity trajectory file not found: {path}")
@@ -427,10 +443,15 @@ def parse_unity_trajectory_file(
                 else _compute_default_phase_schedule(len(q))[3]
             )
             gray = data["grayscale_frames"].astype(np.float32) if "grayscale_frames" in data else None
+            wrist_gray = data["wrist_grayscale_frames"].astype(np.float32) if "wrist_grayscale_frames" in data else None
             ev = data["dense_events"].astype(np.float32) if "dense_events" in data else None
     else:
-        with open(path, "r", encoding="utf-8") as f:
-            doc = json.load(f)
+        if path.suffix.lower() == ".gz" or str(path).lower().endswith(".json.gz"):
+            with gzip.open(path, "rt", encoding="utf-8") as f:
+                doc = json.load(f)
+        else:
+            with open(path, "r", encoding="utf-8") as f:
+                doc = json.load(f)
         traj_id = int(doc["trajectory_id"])
         H = int(doc.get("sensor_height", sensor_height))
         W = int(doc.get("sensor_width", sensor_width))
@@ -452,13 +473,29 @@ def parse_unity_trajectory_file(
             phase_flags = _compute_default_phase_schedule(len(steps))[3]
 
         gray = None
+        wrist_gray = None
         if steps and "grayscale_frame" in steps[0] and steps[0]["grayscale_frame"]:
-            gray_arr = np.array([s["grayscale_frame"] for s in steps], dtype=np.float32).reshape(len(steps), H, W)
-            if float(np.sum(gray_arr)) > 0.0:
-                gray = gray_arr
+            raw_gray = np.array([s["grayscale_frame"] for s in steps], dtype=np.float32)
+            if raw_gray.shape[-1] == 2 * H * W:
+                dual_gray = raw_gray.reshape(len(steps), 2, H, W)
+                if float(np.sum(dual_gray)) > 0.0:
+                    gray = dual_gray[:, 0]
+                    wrist_gray = dual_gray[:, 1]
+            else:
+                gray_arr = raw_gray.reshape(len(steps), H, W)
+                if float(np.sum(gray_arr)) > 0.0:
+                    gray = gray_arr
+
+        if steps and "wrist_grayscale_frame" in steps[0] and steps[0]["wrist_grayscale_frame"]:
+            wrist_arr = np.array([s["wrist_grayscale_frame"] for s in steps], dtype=np.float32).reshape(len(steps), H, W)
+            if float(np.sum(wrist_arr)) > 0.0:
+                wrist_gray = wrist_arr
+
         ev = None
         if steps and "dense_events" in steps[0] and steps[0]["dense_events"]:
-            ev_arr = np.array([s["dense_events"] for s in steps], dtype=np.float32).reshape(len(steps), 2, H, W)
+            raw_ev = np.array([s["dense_events"] for s in steps], dtype=np.float32)
+            ev_channels = max(2, int(raw_ev.shape[-1] // max(1, H * W)))
+            ev_arr = raw_ev.reshape(len(steps), ev_channels, H, W)
             if float(np.sum(ev_arr)) > 0.0:
                 ev = ev_arr
 
@@ -470,6 +507,8 @@ def parse_unity_trajectory_file(
         phase_flags = phase_flags[:sequence_length]
         if gray is not None:
             gray = gray[:sequence_length]
+        if wrist_gray is not None:
+            wrist_gray = wrist_gray[:sequence_length]
         if ev is not None:
             ev = ev[:sequence_length]
 
@@ -485,6 +524,7 @@ def parse_unity_trajectory_file(
         payload_mass=payload_mass,
         payload_shape=payload_shape,
         grayscale_frames=gray,
+        wrist_grayscale_frames=wrist_gray,
         dense_events=ev,
     )
 
@@ -552,8 +592,10 @@ class EventWorldDataset(Dataset):
         if self.dataset_dir is None or not self.dataset_dir.is_dir():
             return None
         for candidate in (
+            self.dataset_dir / f"trajectory_{traj_id:05d}.json.gz",
             self.dataset_dir / f"trajectory_{traj_id:05d}.npz",
             self.dataset_dir / f"trajectory_{traj_id:05d}.json",
+            self.dataset_dir / f"trajectory_{traj_id}.json.gz",
             self.dataset_dir / f"trajectory_{traj_id}.npz",
             self.dataset_dir / f"trajectory_{traj_id}.json",
         ):
@@ -594,6 +636,12 @@ class EventWorldDataset(Dataset):
         phase_flags_tensor = torch.from_numpy(np.asarray(phase_flags_np, dtype=np.int64)).long()
 
         T_actual = q_tensor.shape[0]
+        assert_tensor_contract(
+            event_batch.dense_events,
+            (T_actual, self.event_simulator.in_channels, self.event_simulator.height, self.event_simulator.width),
+            "EventWorldDataset.events",
+            check_finite=True,
+        )
         assert_tensor_contract(q_tensor, (T_actual, self.joint_count), "EventWorldDataset.joint_positions", check_finite=True)
         assert_tensor_contract(p_tensor, (T_actual, self.joint_count), "EventWorldDataset.joint_velocities", check_finite=True)
         assert_tensor_contract(u_tensor, (T_actual, self.action_dim), "EventWorldDataset.actions", check_finite=True)
@@ -601,7 +649,7 @@ class EventWorldDataset(Dataset):
         assert_tensor_contract(phase_flags_tensor, (T_actual,), "EventWorldDataset.phase_flags")
 
         return {
-            "events": event_batch.dense_events,      # [T, 2, H, W]
+            "events": event_batch.dense_events,      # [T, 4, H, W] (dual-camera: global + wrist)
             "joint_positions": q_tensor,             # [T, joint_count] (q^*)
             "joint_velocities": p_tensor,            # [T, joint_count] (p^*)
             "positions": q_tensor,                   # [T, joint_count]
@@ -655,6 +703,7 @@ def create_dataloaders(
     width: int = 32,
     joint_count: int = J,
     action_dim: int = J,
+    in_channels: int = C_EVENT,
     dataset_dir: Optional[Union[str, Path]] = None,
     standard_velocity_range: Tuple[float, float] = (-1.0, 1.0),
     extrapolation_velocity_range: Tuple[float, float] = (-2.0, 2.0),
@@ -674,7 +723,12 @@ def create_dataloaders(
     # For extrapolation evaluation, use the test partition IDs if dataset files are bounded to total_trajectories
     extrap_ids = test_ids[:min(len(test_ids), 100)] if (strict_dataset and dataset_dir is not None) else list(range(total_trajectories, total_trajectories + 100))
 
-    event_sim = EventCameraSimulator(height=height, width=width, event_threshold=event_threshold)
+    event_sim = EventCameraSimulator(
+        height=height,
+        width=width,
+        event_threshold=event_threshold,
+        in_channels=in_channels,
+    )
 
     train_ds = EventWorldDataset(
         trajectory_indices=train_ids,

@@ -12,7 +12,7 @@ import sys
 from typing import Any, Dict, Optional, Tuple, Type, TypeVar, Union, get_type_hints
 import yaml
 
-from spwm.contracts.tensors import J, assert_phase_space_contract
+from spwm.contracts.tensors import C_EVENT, J, assert_phase_space_contract
 
 T = TypeVar("T")
 
@@ -60,7 +60,7 @@ def _strict_dict_to_dataclass(cls: Type[T], data: Dict[str, Any], context: str =
 @dataclass(frozen=True)
 class ProjectConfig:
     """Project-level identity, tracking tags, and pseudo-random reproducibility configuration."""
-    name: str = "spwm_v0_5_0"  #: Unique identifier/tag for the project and run artifacts.
+    name: str = "spwm_v0_6_1"  #: Unique identifier/tag for the project and run artifacts.
     seed: int = 42             #: Global pseudo-random seed for PyTorch, NumPy, and trajectory generation.
 
 
@@ -108,6 +108,7 @@ class DataConfig:
     num_workers: int = 0                            #: Number of subprocesses used by PyTorch DataLoaders.
     cache_data: bool = True                         #: Whether to cache rendered event frames in RAM to accelerate training epochs.
     strict_dataset: bool = True                     #: Whether to strictly require real exported Unity trajectories (fail if missing).
+    pre_contact_sensory_steps: int = 5              #: Number of approach steps before physical contact where Phase 1.5 sensory grounding begins.
 
     def __post_init__(self) -> None:
         if self.joint_count <= 0:
@@ -137,7 +138,11 @@ class ModelConfig:
     predictor_hidden_dim: int = 256                   #: Hidden layer dimensionality of the predictor residual MLP network.
     ema_decay: float = 0.9                            #: Exponential moving average decay for tracking latent spike statistics.
     decoder_ema_alpha: float = 0.2                    #: EMA filter smoothing coefficient for PhysicalDecoder momentum readout.
-    in_channels: int = 2                              #: Event camera input polarity channels (positive and negative spikes).
+    decoder_pos_alpha: float = 0.2                    #: EMA filter smoothing coefficient for PhysicalDecoder position readout (0.0 to disable).
+    gate_ramp_steps: int = 5                          #: Number of transition steps for smooth sensory gate ramp.
+    max_k_gate: float = 1.0                           #: Maximum sensory injection gate weight to maintain inertial damping.
+    max_correction_norm: float = 0.50                 #: Maximum Euclidean norm of single-step sensory correction in coordinate space.
+    in_channels: int = C_EVENT                        #: Dual-camera event input polarity channels (4 = 2 static global + 2 egocentric wrist).
     symplectic: bool = True                           #: Whether to use dissipative phase-space integration for M1.
 
     def __post_init__(self) -> None:
@@ -147,6 +152,10 @@ class ModelConfig:
             p_dim=self.p_dim,
             num_keypoints=self.num_keypoints,
         )
+        if self.in_channels not in (2, C_EVENT):
+            raise ValueError(
+                f"in_channels must be 2 (monocular) or {C_EVENT} (dual-camera global+wrist), got {self.in_channels}"
+            )
         if len(self.encoder_conv_channels) != 2:
             raise ValueError(
                 f"encoder_conv_channels must specify exactly 2 channel depths, got {self.encoder_conv_channels}"
@@ -238,8 +247,8 @@ class LossConfig:
     lambda_velocity: float = 1.5    #: Weight of momentum/velocity (p) subspace MSE in latent rollout losses.
     lambda_kinematic: float = 5.0   #: Weight of physical decoder joint kinematic MSE loss in Phase 0.
     lambda_derivative: float = 1.0  #: Weight of strict phase-space derivative constraint (q_{t+1}-q_t - dt*p_t) MSE.
-    lambda_smoothness: float = 1.0  #: Weight of ALIF momentum smoothness MSE loss in Phase 0.
-    velocity_loss_scale: float = 10.0 #: Normalization scale for angular velocities (rad/s) in kinematic loss (L_vel / s^2).
+    lambda_smoothness: float = 0.1  #: Weight of ALIF momentum smoothness loss in Phase 0.
+    velocity_loss_scale: float = 1.0 #: Normalization scale for angular velocities (rad/s) in kinematic loss (L_vel / s^2).
 
 
 @dataclass(frozen=True)

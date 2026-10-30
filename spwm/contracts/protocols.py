@@ -56,6 +56,10 @@ class DynamicsProtocol(Protocol):
         sensory_input: torch.Tensor,
         state: Optional[DynamicsState] = None,
         sensory_keypoints: Optional[torch.Tensor] = None,
+        event_activity: Optional[torch.Tensor] = None,
+        in_sensory_phase: bool = True,
+        unconstrained: bool = False,
+        action: Optional[torch.Tensor] = None,
     ) -> Tuple[torch.Tensor, DynamicsState]:
         ...
 
@@ -64,6 +68,8 @@ class DynamicsProtocol(Protocol):
         sensory_sequence: torch.Tensor,
         initial_state: Optional[DynamicsState] = None,
         sensory_keypoints: Optional[torch.Tensor] = None,
+        event_activity: Optional[torch.Tensor] = None,
+        actions: Optional[torch.Tensor] = None,
     ) -> Tuple[DynamicsOutput, DynamicsState]:
         ...
 

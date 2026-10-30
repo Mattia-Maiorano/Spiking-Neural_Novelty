@@ -1,6 +1,8 @@
 using System;
 using System.Collections.Generic;
 using System.IO;
+using System.IO.Compression;
+using System.Text;
 using UnityEngine;
 
 namespace SPWM.Robotics
@@ -14,8 +16,9 @@ namespace SPWM.Robotics
         public float[] joint_positions;   // q* in R^6
         public float[] joint_velocities;  // p* in R^6
         public float[] actions;           // u_t in R^6
-        public float[] grayscale_frame;   // Flattened [H * W] intensity frame
-        public float[] dense_events;      // Flattened [2 * H * W] ON/OFF binary spikes
+        public float[] grayscale_frame;       // Flattened [H * W] static global intensity frame
+        public float[] wrist_grayscale_frame; // Flattened [H * W] egocentric wrist-mounted intensity frame
+        public float[] dense_events;          // Flattened [4 * H * W] dual-sensor ON/OFF binary spikes
     }
 
     [Serializable]
@@ -28,6 +31,7 @@ namespace SPWM.Robotics
         public int sequence_length;
         public int joint_count;
         public int action_dim;
+        public int sensor_channels;
         public int sensor_height;
         public int sensor_width;
         public float dt;
@@ -37,14 +41,14 @@ namespace SPWM.Robotics
     }
 
     /// <summary>
-    /// Ground-Truth Telemetry & Neuromorphic Sensor Exporter for SPWM-v0.5.0 (6-DOF Active Perception Grasping).
+    /// Ground-Truth Telemetry & Dual-Camera Neuromorphic Sensor Exporter for SPWM-v0.6.0 (6-DOF Active Perception Grasping).
     /// Orchestrates 6-DOF manipulator trajectory rollouts in Unity, recording per-timestep:
     ///   - trajectory_id
     ///   - phase_flag (0 = Blind Approach, 1 = Sensory Heft, 2 = Blind Transport)
     ///   - joint_positions (q* in R^6)
     ///   - joint_velocities (p* in R^6)
     ///   - applied motor actions (u_t in R^6)
-    ///   - neuromorphic dense event frames / grayscale image sequences
+    ///   - dual-sensor neuromorphic dense event frames ([4 * H * W]) and global + wrist grayscale sequences ([H * W] each)
     /// Serializes trajectories to JSON files consumable by spwm.data.datasets.EventWorldDataset.
     /// </summary>
     public class RoboticTelemetryLogger : MonoBehaviour
@@ -54,10 +58,15 @@ namespace SPWM.Robotics
         [SerializeField] private ActionConditionedController controller;
         [SerializeField] private ProceduralObjectSpawner objectSpawner;
         [SerializeField] private NeuromorphicEventBridge eventBridge;
+        [SerializeField] private NeuromorphicEventBridge wristEventBridge;
         [SerializeField] private string exportDirectory = "ExportedTrajectories";
         [SerializeField] private int totalTrajectoriesToExport = 4000;
         [SerializeField] private int sequenceLength = 105;
         [SerializeField] private float physicsDt = 0.05f;
+        [Tooltip("If true, compress JSON exports using GZip (.json.gz). Reduces file sizes ~22x.")]
+        [SerializeField] private bool compressGzip = true;
+        [Tooltip("If false, omits dense_events array from telemetry since it is regenerated on-the-fly by SPWM dataset.")]
+        [SerializeField] private bool includeDenseEvents = false;
 
         [SerializeField] private int physicsSubSteps = 5;
 
@@ -82,6 +91,18 @@ namespace SPWM.Robotics
             set => exportDirectory = value;
         }
 
+        public bool CompressGzip
+        {
+            get => compressGzip;
+            set => compressGzip = value;
+        }
+
+        public bool IncludeDenseEvents
+        {
+            get => includeDenseEvents;
+            set => includeDenseEvents = value;
+        }
+
         private void Awake()
         {
             Time.fixedDeltaTime = physicsDt / Mathf.Max(1, physicsSubSteps);
@@ -89,6 +110,53 @@ namespace SPWM.Robotics
             {
                 objectSpawner = robotRig.GetComponent<ProceduralObjectSpawner>();
             }
+            EnsureWristSensorAttached();
+        }
+
+        /// <summary>
+        /// Ensures an egocentric wrist-mounted NeuromorphicEventBridge is attached directly to the robot's
+        /// end-effector tip and linked to the primary global eventBridge for simultaneous dual-camera capture.
+        /// </summary>
+        public NeuromorphicEventBridge EnsureWristSensorAttached()
+        {
+            if (wristEventBridge == null && eventBridge != null && eventBridge.SecondaryWristBridge != null)
+            {
+                wristEventBridge = eventBridge.SecondaryWristBridge;
+            }
+
+            if (wristEventBridge == null && robotRig != null)
+            {
+                Transform mount = robotRig.WristCameraMountTransform;
+                if (mount != null)
+                {
+                    wristEventBridge = mount.GetComponentInChildren<NeuromorphicEventBridge>();
+                    if (wristEventBridge == null)
+                    {
+                        GameObject wristCamGo = new GameObject("WristNeuromorphicCamera");
+                        wristCamGo.transform.SetParent(mount, false);
+                        wristCamGo.transform.localPosition = Vector3.zero;
+                        wristCamGo.transform.localRotation = Quaternion.identity;
+
+                        Camera wristCam = wristCamGo.AddComponent<Camera>();
+                        wristCam.fieldOfView = 65f;
+                        wristCam.nearClipPlane = 0.02f;
+                        wristCam.farClipPlane = 25f;
+                        wristCam.clearFlags = CameraClearFlags.SolidColor;
+                        wristCam.backgroundColor = new Color(0.08f, 0.10f, 0.14f, 1f);
+
+                        wristEventBridge = wristCamGo.AddComponent<NeuromorphicEventBridge>();
+                        int w = eventBridge != null ? eventBridge.SensorWidth : 32;
+                        int h = eventBridge != null ? eventBridge.SensorHeight : 32;
+                        wristEventBridge.InitializeBuffers(w, h);
+                    }
+                }
+            }
+
+            if (eventBridge != null && wristEventBridge != null)
+            {
+                eventBridge.SecondaryWristBridge = wristEventBridge;
+            }
+            return wristEventBridge;
         }
 
         /// <summary>
@@ -164,7 +232,12 @@ namespace SPWM.Robotics
                 payloadSpec = objectSpawner.SpawnEpisodePayload(episodeSeed: seed, rig: robotRig);
             }
             controller.InitializeControllerState(seed: seed, payloadSpec: payloadSpec);
+            EnsureWristSensorAttached();
             eventBridge.ResetSensorBaseline();
+            if (wristEventBridge != null && wristEventBridge != eventBridge.SecondaryWristBridge)
+            {
+                wristEventBridge.ResetSensorBaseline();
+            }
 
             var trajectory = new ExportedUnityTrajectory
             {
@@ -175,6 +248,7 @@ namespace SPWM.Robotics
                 sequence_length = sequenceLength,
                 joint_count = robotRig.JointCount,
                 action_dim = controller.ActionDim,
+                sensor_channels = 4,
                 sensor_height = eventBridge.SensorHeight,
                 sensor_width = eventBridge.SensorWidth,
                 dt = physicsDt,
@@ -196,7 +270,7 @@ namespace SPWM.Robotics
 
                 float[] q_star = robotRig.GetJointPositions();
                 float[] p_star = robotRig.GetJointVelocities();
-                var (denseEvents, grayscale) = eventBridge.CaptureStep();
+                var (unifiedDenseEvents, globalGrayscale, wristGrayscale, _) = eventBridge.CaptureDualStep(wristEventBridge);
 
                 trajectory.steps.Add(new TimestepTelemetryRecord
                 {
@@ -206,8 +280,9 @@ namespace SPWM.Robotics
                     joint_positions = q_star,
                     joint_velocities = p_star,
                     actions = u_t,
-                    grayscale_frame = grayscale,
-                    dense_events = denseEvents
+                    grayscale_frame = globalGrayscale,
+                    wrist_grayscale_frame = wristGrayscale,
+                    dense_events = includeDenseEvents ? unifiedDenseEvents : null
                 });
 
                 for (int s = 0; s < subSteps; s++)
@@ -227,10 +302,25 @@ namespace SPWM.Robotics
                 : Path.Combine(Application.dataPath, "..", exportDirectory);
             Directory.CreateDirectory(fullDir);
 
-            string filePath = Path.Combine(fullDir, $"trajectory_{trajectory.trajectory_id:D5}.json");
             string json = JsonUtility.ToJson(trajectory, prettyPrint: false);
-            File.WriteAllText(filePath, json);
-            return filePath;
+
+            if (compressGzip)
+            {
+                string filePath = Path.Combine(fullDir, $"trajectory_{trajectory.trajectory_id:D5}.json.gz");
+                byte[] rawBytes = Encoding.UTF8.GetBytes(json);
+                using (var fileStream = File.Create(filePath))
+                using (var gzipStream = new GZipStream(fileStream, CompressionMode.Compress))
+                {
+                    gzipStream.Write(rawBytes, 0, rawBytes.Length);
+                }
+                return filePath;
+            }
+            else
+            {
+                string filePath = Path.Combine(fullDir, $"trajectory_{trajectory.trajectory_id:D5}.json");
+                File.WriteAllText(filePath, json);
+                return filePath;
+            }
         }
 
         /// <summary>

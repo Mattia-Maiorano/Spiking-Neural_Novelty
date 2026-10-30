@@ -72,12 +72,14 @@ class DynamicsState:
     memory_state: MultiTimescaleState
     z_prev: torch.Tensor      # [B, latent_dim] (concatenated q and p)
     ema_spikes: torch.Tensor  # [B, total_memory_dim] EMA of spikes
+    grounded_steps: Optional[torch.Tensor] = None  # [B, 1] count of consecutive grounded steps
 
     def detach(self) -> "DynamicsState":
         return DynamicsState(
             memory_state=self.memory_state.detach(),
             z_prev=self.z_prev.detach(),
             ema_spikes=self.ema_spikes.detach(),
+            grounded_steps=self.grounded_steps.detach() if self.grounded_steps is not None else None,
         )
 
 

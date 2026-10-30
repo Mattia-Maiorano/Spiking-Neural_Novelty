@@ -1,7 +1,9 @@
 """
-Layer 1 Continuous Convolutional Event Encoder with Spatial Softmax.
-Transforms differential event camera frames into continuous spatial feature vectors
-and analytical 2D centers of mass (keypoints) in [-1, 1]^2.
+Layer 1 Dual-Camera Visual Fusion Convolutional Event Encoder with Spatial Softmax (SPWM-v0.6.0).
+Ingests combined static global and egocentric wrist-mounted neuromorphic event streams
+([B, 4, H, W] or [B, T, 4, H, W]), fuses their spatial feature representations across sensor streams,
+and extracts a unified set of analytical 2D centers of mass (keypoints) in [-1, 1]^2.
+Eliminates 3D axial rotation drift and depth foreshortening ambiguity.
 Zero mutable side-effect attributes (`last_keypoints` removed).
 """
 
@@ -11,7 +13,7 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 
-from spwm.contracts.tensors import assert_tensor_contract, assert_euclidean_coordinates
+from spwm.contracts.tensors import C_EVENT, assert_tensor_contract, assert_euclidean_coordinates
 
 
 class SpatialSoftmax(nn.Module):
@@ -58,14 +60,16 @@ class SpatialSoftmax(nn.Module):
 
 class EventEncoder(nn.Module):
     """
-    Spatial Softmax Keypoint Event Encoder.
-    Processes [B, C, H, W] or [B, T, C, H, W] differential polarity frames into
-    structured visual features [..., out_dim] and topological keypoints [..., 2 * num_keypoints].
+    Dual-Camera Visual Fusion Event Encoder with Spatial Softmax Keypoint Bottleneck (SPWM-v0.6.0).
+    Processes [B, C, H, W] or [B, T, C, H, W] differential polarity frames (default C=4:
+    2 static global ON/OFF channels + 2 egocentric wrist ON/OFF channels) through dedicated
+    global and egocentric convolutional stems, fuses the multi-view spatial feature maps,
+    and extracts unified 2D keypoints [..., 2 * num_keypoints] and visual embeddings [..., out_dim].
     """
 
     def __init__(
         self,
-        in_channels: int = 2,
+        in_channels: int = C_EVENT,
         conv_channels: Tuple[int, int] = (16, 32),
         num_keypoints: int = 16,
         out_dim: int = 128,
@@ -80,14 +84,19 @@ class EventEncoder(nn.Module):
             raise ValueError(f"EventEncoder input_width ({input_width}) must be positive and divisible by 4")
         if len(conv_channels) != 2:
             raise ValueError(f"EventEncoder conv_channels must have length 2, got {conv_channels}")
+        if in_channels <= 0 or in_channels % 2 != 0:
+            raise ValueError(f"EventEncoder in_channels ({in_channels}) must be a positive even integer")
 
         self.in_channels = in_channels
         self.num_keypoints = num_keypoints
         self.out_dim = out_dim
         self.input_height = input_height
         self.input_width = input_width
+        self.dual_stream = in_channels == C_EVENT
 
         c1, c2 = conv_channels
+
+        # Unified convolutional backbone ingesting the single or dual-camera stream
         self.conv = nn.Sequential(
             nn.Conv2d(in_channels, c1, kernel_size=3, stride=2, padding=1),
             nn.GroupNorm(num_groups=min(4, c1), num_channels=c1),
@@ -97,6 +106,22 @@ class EventEncoder(nn.Module):
             nn.SiLU(),
             nn.Conv2d(c2, num_keypoints, kernel_size=1),
         )
+
+        # Dedicated egocentric wrist-stream branch & residual cross-stream fusion (SPWM-v0.6.0)
+        if self.dual_stream:
+            self.wrist_stem = nn.Sequential(
+                nn.Conv2d(2, c1, kernel_size=3, stride=2, padding=1),
+                nn.GroupNorm(num_groups=min(4, c1), num_channels=c1),
+                nn.SiLU(),
+                nn.Conv2d(c1, c2, kernel_size=3, stride=2, padding=1),
+                nn.GroupNorm(num_groups=min(4, c2), num_channels=c2),
+                nn.SiLU(),
+            )
+            self.fusion_head = nn.Conv2d(c2, num_keypoints, kernel_size=1)
+        else:
+            self.wrist_stem = None
+            self.fusion_head = None
+
         grid_h = input_height // 4
         grid_w = input_width // 4
         self.spatial_softmax = SpatialSoftmax(height=grid_h, width=grid_w, temperature=temperature)
@@ -105,6 +130,18 @@ class EventEncoder(nn.Module):
             nn.LayerNorm(out_dim),
             nn.SiLU(),
         )
+
+    def fuse_spatial_streams(self, event_frame: torch.Tensor) -> torch.Tensor:
+        """
+        Extracts and fuses spatial feature maps [B, num_keypoints, H//4, W//4] from the
+        combined global and egocentric wrist event streams.
+        """
+        base_feat = self.conv(event_frame)
+        if self.dual_stream and self.wrist_stem is not None and self.fusion_head is not None:
+            wrist_events = event_frame[:, 2:4]
+            wrist_feat = self.fusion_head(self.wrist_stem(wrist_events))
+            return base_feat + wrist_feat
+        return base_feat
 
     def encode_step(self, event_frame: torch.Tensor) -> Tuple[torch.Tensor, torch.Tensor]:
         """
@@ -117,7 +154,7 @@ class EventEncoder(nn.Module):
             (None, self.in_channels, self.input_height, self.input_width),
             "EventEncoder.event_frame",
         )
-        feat = self.conv(event_frame)
+        feat = self.fuse_spatial_streams(event_frame)
         kp = self.spatial_softmax(feat)
         out = self.proj(kp)
         return out, kp

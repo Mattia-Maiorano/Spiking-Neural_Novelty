@@ -16,7 +16,7 @@ from spwm.contracts.states import (
     SPWMState,
     SPWMStepOutput,
 )
-from spwm.contracts.tensors import J, assert_phase_space_contract, assert_tensor_contract
+from spwm.contracts.tensors import C_EVENT, J, assert_phase_space_contract, assert_tensor_contract
 from spwm.models.dynamics import SpikingLatentDynamics
 from spwm.models.encoder import EventEncoder
 from spwm.models.predictors import (
@@ -27,9 +27,9 @@ from spwm.models.predictors import (
 
 class SPWM(nn.Module):
     """
-    SPWM: Spiking Predictive World Model (v0.5.0).
+    SPWM: Spiking Predictive World Model (v0.6.0).
     Unified composition of:
-      1. SpatialSoftmax Keypoint EventEncoder
+      1. Dual-Camera Visual Fusion SpatialSoftmax Keypoint EventEncoder
       2. Top-down Predictive Coding sensory feedback (`sensory_predictor`)
       3. Dual-timescale ALIF SpikingLatentDynamics
       4. Action-Conditioned Latent Attractor Predictor (M1)
@@ -38,7 +38,7 @@ class SPWM(nn.Module):
 
     def __init__(
         self,
-        in_channels: int = 2,
+        in_channels: int = C_EVENT,
         height: int = 32,
         width: int = 32,
         encoder_conv_channels: Tuple[int, int] = (16, 32),
@@ -59,6 +59,10 @@ class SPWM(nn.Module):
         action_dim: int = J,
         ema_decay: float = 0.9,
         decoder_ema_alpha: float = 0.85,
+        decoder_pos_alpha: float = 0.20,
+        gate_ramp_steps: int = 5,
+        max_k_gate: float = 0.5,
+        max_correction_norm: float = 0.25,
         phase_horizon: int = 50,
         symplectic_m1: bool = True,
         dt: float = 0.05,
@@ -110,6 +114,8 @@ class SPWM(nn.Module):
             latent_dim=latent_dim,
             q_dim=resolved_q,
             p_dim=resolved_p,
+            action_dim=action_dim,
+            dt=self.dt,
             ema_decay=ema_decay,
             timescale_dims=timescale_dims,
             betas=betas,
@@ -118,6 +124,9 @@ class SPWM(nn.Module):
             gamma=gamma,
             surrogate_name=surrogate_name,
             surrogate_alpha=surrogate_alpha,
+            gate_ramp_steps=gate_ramp_steps,
+            max_k_gate=max_k_gate,
+            max_correction_norm=max_correction_norm,
         )
 
         # 4. Action-Conditioned Latent Attractor Predictor (M1)
@@ -139,6 +148,7 @@ class SPWM(nn.Module):
             p_dim=resolved_p,
             joint_count=joint_count,
             alpha=decoder_ema_alpha,
+            pos_alpha=decoder_pos_alpha,
         )
 
     @property
@@ -170,6 +180,10 @@ class SPWM(nn.Module):
             action_dim=cfg.environment.action_dim,
             ema_decay=cfg.model.ema_decay,
             decoder_ema_alpha=cfg.model.decoder_ema_alpha,
+            decoder_pos_alpha=cfg.model.decoder_pos_alpha,
+            gate_ramp_steps=cfg.model.gate_ramp_steps,
+            max_k_gate=cfg.model.max_k_gate,
+            max_correction_norm=cfg.model.max_correction_norm,
             phase_horizon=cfg.training.phase_horizon,
             symplectic_m1=cfg.model.symplectic,
             dt=cfg.environment.dt,
@@ -188,6 +202,7 @@ class SPWM(nn.Module):
         state: Optional[SPWMState] = None,
         action: Optional[torch.Tensor] = None,
         target_next_latent: Optional[torch.Tensor] = None,
+        unconstrained: bool = False,
     ) -> Tuple[SPWMStepOutput, SPWMState]:
         """
         Executes a single sensory-driven predictive coding step with optional action conditioning u_t.
@@ -212,11 +227,15 @@ class SPWM(nn.Module):
         z_prev = state.dynamics_state.z_prev
         predicted_x = self.sensory_predictor(z_prev)
         epsilon_t = sensory_x - predicted_x
+        event_activity = event_frame.abs().mean(dim=(1, 2, 3), keepdim=True)
 
         z_t, new_dyn_state = self.dynamics.step(
             sensory_input=epsilon_t,
             state=state.dynamics_state,
             sensory_keypoints=sensory_keypoints,
+            event_activity=event_activity,
+            unconstrained=unconstrained,
+            action=action,
         )
 
         pred_out = self.predictor(z_t, action=action)
@@ -250,10 +269,11 @@ class SPWM(nn.Module):
         self,
         event_sequence: torch.Tensor,
         initial_state: Optional[SPWMState] = None,
+        actions: Optional[torch.Tensor] = None,
     ) -> Tuple[torch.Tensor, torch.Tensor]:
         """
         Sensory-driven state estimation without predictor rollouts (Phase 0).
-        Computes z_t = (q_t, p_t) directly from sensory input streams.
+        Computes z_t = (q_t, p_t) directly from sensory input streams and optional actions.
         Returns:
             latent_states: [B, T, latent_dim]
             error_neurons: [B, T, encoder_dim]
@@ -265,6 +285,8 @@ class SPWM(nn.Module):
         )
         B, T, _, _, _ = event_sequence.shape
         device = event_sequence.device
+        if actions is not None:
+            assert_tensor_contract(actions, (B, T, self.action_dim), "SPWM.forward_representation.actions")
         state = initial_state if initial_state is not None else self.init_state(B, device=device)
 
         latent_steps = []
@@ -276,11 +298,16 @@ class SPWM(nn.Module):
             z_prev = state.dynamics_state.z_prev
             predicted_x = self.sensory_predictor(z_prev)
             epsilon_t = sensory_x - predicted_x
+            event_activity = event_frame.abs().mean(dim=(1, 2, 3), keepdim=True)
+            u_t = actions[:, t] if actions is not None else None
 
             z_t, new_dyn_state = self.dynamics.step(
                 sensory_input=epsilon_t,
                 state=state.dynamics_state,
                 sensory_keypoints=sensory_keypoints,
+                event_activity=event_activity,
+                unconstrained=True,
+                action=u_t,
             )
             state = SPWMState(encoder_states=None, dynamics_state=new_dyn_state, action=state.action)
             latent_steps.append(z_t)

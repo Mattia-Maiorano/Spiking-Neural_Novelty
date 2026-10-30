@@ -209,15 +209,23 @@ namespace SPWM.Editor
 
             // Check if count or output dir passed via CLI args, e.g.: -totalTrajectories 4000 -exportDir ExportedTrajectories
             string[] args = System.Environment.GetCommandLineArgs();
-            for (int i = 0; i < args.Length - 1; i++)
+            for (int i = 0; i < args.Length; i++)
             {
-                if (args[i] == "-totalTrajectories" && int.TryParse(args[i + 1], out int count))
+                if (args[i] == "-totalTrajectories" && i < args.Length - 1 && int.TryParse(args[i + 1], out int count))
                 {
                     logger.TotalTrajectoriesToExport = count;
                 }
-                else if (args[i] == "-exportDir")
+                else if (args[i] == "-exportDir" && i < args.Length - 1)
                 {
                     logger.ExportDirectory = args[i + 1];
+                }
+                else if (args[i] == "-compressGzip" && i < args.Length - 1 && bool.TryParse(args[i + 1], out bool gz))
+                {
+                    logger.CompressGzip = gz;
+                }
+                else if (args[i] == "-includeDenseEvents" && i < args.Length - 1 && bool.TryParse(args[i + 1], out bool inc))
+                {
+                    logger.IncludeDenseEvents = inc;
                 }
             }
 
@@ -348,7 +356,7 @@ namespace SPWM.Editor
             var spawner = rootGo.AddComponent<SPWM.Robotics.ProceduralObjectSpawner>();
             var controller = rootGo.AddComponent<SPWM.Robotics.ActionConditionedController>();
 
-            // Sensor Camera with NeuromorphicEventBridge
+            // 1. Static Global Sensor Camera with NeuromorphicEventBridge
             var camGo = new GameObject("NeuromorphicCamera");
             camGo.transform.SetParent(rootGo.transform, false);
             camGo.transform.localPosition = new Vector3(0.40f, 0.45f, 0.55f);
@@ -359,6 +367,18 @@ namespace SPWM.Editor
             cam.farClipPlane = 50f;
             cam.clearFlags = CameraClearFlags.SolidColor;
             cam.backgroundColor = new Color(0.08f, 0.10f, 0.14f, 1f);
+
+            // 2. Egocentric Wrist-Mounted Sensor Camera attached directly to the end-effector (SPWM-v0.6.0)
+            var wristCamGo = new GameObject("WristNeuromorphicCamera");
+            wristCamGo.transform.SetParent(robotRig.WristCameraMountTransform, false);
+            wristCamGo.transform.localPosition = Vector3.zero;
+            wristCamGo.transform.localRotation = Quaternion.identity;
+            var wristCam = wristCamGo.AddComponent<Camera>();
+            wristCam.fieldOfView = 65f;
+            wristCam.nearClipPlane = 0.02f;
+            wristCam.farClipPlane = 25f;
+            wristCam.clearFlags = CameraClearFlags.SolidColor;
+            wristCam.backgroundColor = new Color(0.08f, 0.10f, 0.14f, 1f);
 
             // Directional Light for 3D visual perception
             var lightGo = new GameObject("SensorDirectionalLight");
@@ -372,12 +392,17 @@ namespace SPWM.Editor
             var eventBridge = camGo.AddComponent<SPWM.Robotics.NeuromorphicEventBridge>();
             eventBridge.InitializeBuffers(32, 32);
 
+            var wristEventBridge = wristCamGo.AddComponent<SPWM.Robotics.NeuromorphicEventBridge>();
+            wristEventBridge.InitializeBuffers(32, 32);
+            eventBridge.SecondaryWristBridge = wristEventBridge;
+
             logger = rootGo.AddComponent<SPWM.Robotics.RoboticTelemetryLogger>();
             var so = new SerializedObject(logger);
             so.FindProperty("robotRig").objectReferenceValue = robotRig;
             so.FindProperty("controller").objectReferenceValue = controller;
             so.FindProperty("objectSpawner").objectReferenceValue = spawner;
             so.FindProperty("eventBridge").objectReferenceValue = eventBridge;
+            so.FindProperty("wristEventBridge").objectReferenceValue = wristEventBridge;
             so.FindProperty("exportDirectory").stringValue = "ExportedTrajectories";
             so.FindProperty("totalTrajectoriesToExport").intValue = 4000;
             so.FindProperty("sequenceLength").intValue = 105;

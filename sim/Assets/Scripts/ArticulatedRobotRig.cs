@@ -73,6 +73,7 @@ namespace SPWM.Robotics
         private ArticulationBody _rootBody;
         private readonly List<ArticulationBody> _actuatedJoints = new List<ArticulationBody>();
         private Transform _endEffectorTipTransform;
+        private Transform _wristCameraMountTransform;
         private PhysicMaterial _groundContactMaterial;
 
         public RobotArchetype Archetype => archetype;
@@ -83,6 +84,9 @@ namespace SPWM.Robotics
         public Transform EndEffectorTransform => _endEffectorTipTransform != null
             ? _endEffectorTipTransform
             : (EndEffectorBody != null ? EndEffectorBody.transform : transform);
+        public Transform WristCameraMountTransform => _wristCameraMountTransform != null
+            ? _wristCameraMountTransform
+            : EndEffectorTransform;
 
         private void Awake()
         {
@@ -115,6 +119,7 @@ namespace SPWM.Robotics
             archetype = targetArchetype;
             _actuatedJoints.Clear();
             _endEffectorTipTransform = null;
+            _wristCameraMountTransform = null;
 
             for (int i = transform.childCount - 1; i >= 0; i--)
             {
@@ -262,11 +267,28 @@ namespace SPWM.Robotics
                 plate.name = "MagneticGripperPlate";
                 DestroyImmediate(plate.GetComponent<Collider>());
                 plate.transform.SetParent(tipObj.transform, false);
-                plate.transform.localPosition = Vector3.zero;
-                plate.transform.localRotation = Quaternion.identity;
+                plate.transform.SetLocalPositionAndRotation(Vector3.zero, Quaternion.identity);
                 plate.transform.localScale = new Vector3(d.x * 1.35f, 0.008f, d.z * 1.35f);
 
+                // Asymmetric visual orientation fiducials on the gripper plate so axial Wrist_Roll (q5)
+                // is optically distinct and directly observable by both global and egocentric cameras
+                GameObject fiducial = GameObject.CreatePrimitive(PrimitiveType.Cube);
+                fiducial.name = "WristOrientationFiducial";
+                DestroyImmediate(fiducial.GetComponent<Collider>());
+                fiducial.transform.SetParent(tipObj.transform, false);
+                fiducial.transform.localPosition = new Vector3(d.x * 0.55f, 0.012f, 0f);
+                fiducial.transform.localRotation = Quaternion.identity;
+                fiducial.transform.localScale = new Vector3(0.018f, 0.016f, 0.012f);
+
+                // Egocentric wrist-mounted neuromorphic camera mount attached directly to the end-effector
+                GameObject wristCamMount = new GameObject("WristCameraMount");
+                wristCamMount.transform.SetParent(tipObj.transform, false);
+                wristCamMount.transform.localPosition = new Vector3(0f, -0.025f, 0.045f);
+                wristCamMount.transform.localRotation = Quaternion.Euler(65f, 180f, 0f);
+                wristCamMount.transform.localScale = Vector3.one;
+
                 _endEffectorTipTransform = tipObj.transform;
+                _wristCameraMountTransform = wristCamMount.transform;
             }
         }
 

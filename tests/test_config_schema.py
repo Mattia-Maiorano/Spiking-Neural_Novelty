@@ -21,11 +21,18 @@ def test_experiment_config_instantiates_cleanly():
         "spwm_v0_3_1",
         "spwm_v0_4_0",
         "spwm_v0_5_0",
+        "spwm_v0_5_1",
+        "spwm_v0_5_2",
+        "spwm_v0_5_3",
+        "spwm_v0_5_4",
+        "spwm_v0_6_0",
+        "spwm_v0_6_1",
     )
     assert cfg.environment.joint_count == 6
     assert cfg.environment.action_dim == 6
     assert cfg.data.joint_count == 6
     assert cfg.data.action_dim == 6
+    assert cfg.model.in_channels == 4
     assert cfg.model.latent_dim == 128
     assert cfg.model.q_dim == 32
     assert cfg.model.p_dim == 96

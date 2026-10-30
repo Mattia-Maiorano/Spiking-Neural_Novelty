@@ -35,10 +35,10 @@ from spwm.models.world_model import SPWM
 
 @pytest.mark.parametrize("resolution", [(16, 16), (32, 32), (64, 48)])
 def test_event_encoder_dynamic_grid_and_pure_outputs(resolution):
-    """EventEncoder must support any resolution divisible by 4 without hardcoded 8x8 SpatialSoftmax grids."""
+    """EventEncoder must support any resolution divisible by 4 and fuse 4-channel dual-camera streams."""
     H, W = resolution
     encoder = EventEncoder(
-        in_channels=2,
+        in_channels=4,
         conv_channels=(16, 32),
         num_keypoints=8,
         out_dim=64,
@@ -48,15 +48,15 @@ def test_event_encoder_dynamic_grid_and_pure_outputs(resolution):
     assert isinstance(encoder, EncoderProtocol)
     assert not hasattr(encoder, "last_keypoints"), "EventEncoder must not store mutable side-effect state!"
 
-    # Single frame encode_step
-    frame = torch.randn(3, 2, H, W)
+    # Single frame encode_step (4 channels: 2 global + 2 egocentric wrist)
+    frame = torch.randn(3, 4, H, W)
     feat, kp = encoder.encode_step(frame)
     assert feat.shape == (3, 64)
     assert kp.shape == (3, 16)
     assert torch.all(kp >= -1.0) and torch.all(kp <= 1.0)
 
     # Sequence forward
-    seq = torch.randn(3, 5, 2, H, W)
+    seq = torch.randn(3, 5, 4, H, W)
     seq_feat, seq_kp = encoder(seq, return_keypoints=True)
     assert seq_feat.shape == (3, 5, 64)
     assert seq_kp.shape == (3, 5, 16)
@@ -65,7 +65,7 @@ def test_event_encoder_dynamic_grid_and_pure_outputs(resolution):
 def test_encoder_rejects_invalid_channel_or_spatial_dimensions():
     """EventEncoder must raise ValueError immediately if input tensor violates channel or spatial contracts."""
     encoder = EventEncoder(
-        in_channels=2,
+        in_channels=4,
         conv_channels=(16, 32),
         num_keypoints=8,
         out_dim=64,
@@ -73,12 +73,12 @@ def test_encoder_rejects_invalid_channel_or_spatial_dimensions():
         input_width=32,
     )
     # Wrong channel count
-    with pytest.raises(ValueError, match="dim 1: expected 2, got 3"):
+    with pytest.raises(ValueError, match="dim 1: expected 4, got 3"):
         encoder.encode_step(torch.randn(2, 3, 32, 32))
 
     # Wrong spatial resolution
     with pytest.raises(ValueError, match="dim 2: expected 32, got 16"):
-        encoder.encode_step(torch.randn(2, 2, 16, 16))
+        encoder.encode_step(torch.randn(2, 4, 16, 16))
 
 
 def test_dynamics_strict_beta_and_tier_validation():
@@ -138,7 +138,7 @@ def test_spwm_pure_model_no_dead_buffers_and_differentiable_forward():
     assert not hasattr(model, "corrector")
     assert not hasattr(model, "m2")
 
-    events = torch.randn(2, 6, 2, 32, 32)
+    events = torch.randn(2, 6, 4, 32, 32)
     actions = torch.randn(2, 6, 6)
     rep_latents, rep_errors = model.forward_representation(events)
     assert rep_latents.shape == (2, 6, 32)
@@ -151,11 +151,58 @@ def test_spwm_pure_model_no_dead_buffers_and_differentiable_forward():
     assert out.decoded_kinematics is not None
     assert out.decoded_kinematics.shape == (2, 6, 12)
 
-    # Verify differentiability through encoder, dynamics, and physical_decoder
+    # Verify differentiability through encoder (both global & wrist stems + fusion), dynamics, and physical_decoder
     loss = out.latent_states.sum() + out.decoded_kinematics.sum()
     loss.backward()
 
-    assert any(p.grad is not None and p.grad.abs().sum() > 0 for p in model.encoder.parameters())
+    assert any(p.grad is not None and p.grad.abs().sum() > 0 for p in model.encoder.conv.parameters())
+    assert model.encoder.wrist_stem is not None
+    assert any(p.grad is not None and p.grad.abs().sum() > 0 for p in model.encoder.wrist_stem.parameters())
+    assert model.encoder.fusion_head is not None
+    assert any(p.grad is not None and p.grad.abs().sum() > 0 for p in model.encoder.fusion_head.parameters())
     assert any(p.grad is not None and p.grad.abs().sum() > 0 for p in model.dynamics.parameters())
     assert any(p.grad is not None and p.grad.abs().sum() > 0 for p in model.physical_decoder.parameters())
+
+
+def test_event_gated_temporal_integration_in_spiking_dynamics():
+    """
+    Verifies that SpikingLatentDynamics integrates velocity when events are absent (K_gate -> 0),
+    and allows sensory_keypoints to correct position when events burst (K_gate -> 1).
+    """
+    dyn = SpikingLatentDynamics(
+        input_dim=32,
+        latent_dim=32,
+        q_dim=8,
+        p_dim=24,
+        dt=0.05,
+        timescale_dims=(16, 16),
+        betas=(0.90, 0.985),
+    )
+    B = 2
+    state = dyn.init_state(B)
+    sens_input = torch.zeros(B, 32)
+    sens_kp = torch.ones(B, 8) * 5.0
+
+    # Case 1: Empty events (activity = 0)
+    z_empty, state_empty = dyn.step(
+        sensory_input=sens_input,
+        state=state,
+        sensory_keypoints=sens_kp,
+        event_activity=torch.zeros(B, 1),
+    )
+    q_empty = z_empty[:, :8]
+    # At t=0, q_prev=0, and with K_gate=0, q_next = dt * vel(p) (does NOT jump to 5.0)
+    assert not torch.allclose(q_empty, sens_kp)
+    assert torch.all(torch.abs(q_empty) < 1.0)
+
+    # Case 2: Burst of events (activity = 0.2)
+    z_burst, state_burst = dyn.step(
+        sensory_input=sens_input,
+        state=state,
+        sensory_keypoints=sens_kp,
+        event_activity=torch.full((B, 1), 0.2),
+    )
+    q_burst = z_burst[:, :8]
+    # With K_gate -> 1, q_next heavily corrects toward sens_kp (5.0)
+    assert torch.allclose(q_burst, sens_kp, atol=0.2)
 

@@ -29,7 +29,7 @@ def test_event_camera_simulator_shapes_and_sparsity():
     batch = sim.trajectory_to_events(traj, return_sparse=True)
     events = batch.dense_events
 
-    assert events.shape == (25, 2, 32, 32)
+    assert events.shape == (25, 4, 32, 32)
     # Check binary polarity: only 0.0 or 1.0 values
     unique_vals = torch.unique(events)
     assert all(val in [0.0, 1.0] for val in unique_vals.tolist())
@@ -41,6 +41,23 @@ def test_event_camera_simulator_shapes_and_sparsity():
     # Check sparsity: event camera should be sparse (< 35% of pixels firing)
     active_fraction = (events > 0).float().mean().item()
     assert 0.001 < active_fraction < 0.35, f"Unexpected active fraction: {active_fraction}"
+
+    # Verify both global (channels 0..1) and egocentric wrist (channels 2..3) streams emit events
+    assert (events[:, :2] > 0).any(), "Global static camera stream should emit events!"
+    assert (events[:, 2:4] > 0).any(), "Egocentric wrist camera stream should emit events!"
+
+
+def test_dual_camera_resolves_wrist_roll_unobservability():
+    """Verifies that pure axial wrist roll (q[5]) produces distinct egocentric wrist camera events."""
+    sim = EventCameraSimulator(height=32, width=32, event_threshold=0.08)
+    q_a = np.array([0.0, 0.35, 0.85, 0.35, 0.0, -0.80], dtype=np.float32)
+    q_b = np.array([0.0, 0.35, 0.85, 0.35, 0.0, +0.80], dtype=np.float32)
+    dual_a = sim.render_dual_articulated_frames(q_a)
+    dual_b = sim.render_dual_articulated_frames(q_b)
+    assert dual_a.shape == (2, 32, 32)
+    assert dual_b.shape == (2, 32, 32)
+    wrist_diff = float(np.abs(dual_a[1] - dual_b[1]).max())
+    assert wrist_diff > 0.25, f"Egocentric wrist camera must strongly distinguish axial wrist roll, got {wrist_diff}"
 
 
 def test_unity_telemetry_serialization_and_dataset_collation(tmp_path: Path):
@@ -74,7 +91,7 @@ def test_unity_telemetry_serialization_and_dataset_collation(tmp_path: Path):
 
     assert len(ds) == 4
     item = ds[0]
-    assert item["events"].shape == (15, 2, 24, 24)
+    assert item["events"].shape == (15, 4, 24, 24)
     assert item["flat_kinematics"].shape == (15, 12)
     assert item["actions"].shape == (15, 6)
     assert item["phase_flags"].shape == (15,)
@@ -82,8 +99,27 @@ def test_unity_telemetry_serialization_and_dataset_collation(tmp_path: Path):
 
     # Test collation
     batch = collate_event_batches([ds[0], ds[1]])
-    assert batch["events"].shape == (2, 15, 2, 24, 24)
+    assert batch["events"].shape == (2, 15, 4, 24, 24)
     assert batch["flat_kinematics"].shape == (2, 15, 12)
     assert batch["actions"].shape == (2, 15, 6)
     assert batch["phase_flags"].shape == (2, 15)
     assert batch["trajectory_ids"].shape == (2,)
+
+
+def test_event_camera_temporal_contrast_accumulation():
+    """Verifies that slow continuous contrast accumulates until exceeding threshold and fires."""
+    sim = EventCameraSimulator(height=4, width=4, event_threshold=0.1)
+    frames = np.zeros((5, 4, 4), dtype=np.float32)
+    for t in range(5):
+        frames[t, 0, 0] = t * 0.03  # t=0: 0, t=1: 0.03, t=2: 0.06, t=3: 0.09, t=4: 0.12
+
+    batch = sim.frames_to_events(frames)
+    ev = batch.dense_events.numpy()
+
+    # t=0..3: difference from ref (0.0) is < 0.1 -> no events
+    assert ev[0, 0, 0, 0] == 0.0
+    assert ev[1, 0, 0, 0] == 0.0
+    assert ev[2, 0, 0, 0] == 0.0
+    assert ev[3, 0, 0, 0] == 0.0
+    # t=4: difference is 0.12 >= 0.1 -> positive event fires and ref updates to 0.12
+    assert ev[4, 0, 0, 0] == 1.0

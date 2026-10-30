@@ -52,6 +52,8 @@ namespace SPWM.Robotics
         [Header("Phasic Waypoint Timing (Steps)")]
         [SerializeField] private int setupHoldSteps = 6;
         [SerializeField] private int blindApproachSteps = 34;
+        [Tooltip("Number of approach steps before contact to enter Phase 1.5 (sensory grounding).")]
+        [SerializeField] private int preContactSensorySteps = 5;
         [SerializeField] private int sensoryHeftSteps = 12;
 
         [Header("Temporal & Controller Randomization (Anti-Memorization)")]
@@ -73,7 +75,7 @@ namespace SPWM.Robotics
         [Header("Sensory Heft Sharp Upward Lift")]
         [SerializeField] private float heftLiftMeters = 0.12f;
         [SerializeField] private Vector3 heftWristTwistRad = new Vector3(0.24f, -0.28f, 0.36f);
-        [SerializeField] private float heftAccelerationBoost = 1.15f;
+        [SerializeField] private float heftAccelerationBoost = 1.05f;
 
         private ArticulatedRobotRig _rig;
         private ProceduralObjectSpawner _spawner;
@@ -235,6 +237,7 @@ namespace SPWM.Robotics
 
             int curApproachSteps = Mathf.Max(1, _activeBlindApproachSteps > 0 ? _activeBlindApproachSteps : blindApproachSteps);
             int approachEnd = setupHoldSteps + curApproachSteps;
+            int heftStart = Mathf.Max(setupHoldSteps + 1, approachEnd - preContactSensorySteps);
             int heftEnd = approachEnd + sensoryHeftSteps;
             float gainMultiplier = 1.0f;
             float curKp = _activeApproachKp > 0f ? _activeApproachKp : proportionalGainKp;
@@ -246,10 +249,24 @@ namespace SPWM.Robotics
                 _currentPhase = GraspTrajectoryPhase.BlindApproach;
                 Array.Copy(_qNeutral, qDes, dof);
             }
+            else if (stepIndex < heftStart)
+            {
+                // Phase 1 (The Blind Approach): Deliberate minimum-jerk sweep toward the ground object
+                _currentPhase = GraspTrajectoryPhase.BlindApproach;
+                float tau = Mathf.Clamp01((float)(stepIndex - setupHoldSteps + 1) / curApproachSteps);
+                float s = SmoothStepMinimumJerk(tau);
+                float ds = SmoothStepMinimumJerkDerivative(tau) / Mathf.Max(dt * curApproachSteps, 1e-3f);
+                for (int i = 0; i < dof; i++)
+                {
+                    qDes[i] = Mathf.Lerp(_qNeutral[i], _qGrasp[i], s);
+                    dqDes[i] = (_qGrasp[i] - _qNeutral[i]) * ds;
+                }
+            }
             else if (stepIndex < approachEnd)
             {
-                // Phase 1 (The Approach): Deliberate minimum-jerk sweep to the ground object's top grasp surface
-                _currentPhase = GraspTrajectoryPhase.BlindApproach;
+                // Phase 1.5 Pre-Contact (Sensory Grounding Approach):
+                // Enter Phase 1.5 n steps before contact to inject ground truth before reaching the object
+                _currentPhase = GraspTrajectoryPhase.SensoryHeft;
                 float tau = Mathf.Clamp01((float)(stepIndex - setupHoldSteps + 1) / curApproachSteps);
                 float s = SmoothStepMinimumJerk(tau);
                 float ds = SmoothStepMinimumJerkDerivative(tau) / Mathf.Max(dt * curApproachSteps, 1e-3f);
@@ -261,20 +278,18 @@ namespace SPWM.Robotics
             }
             else if (stepIndex < heftEnd)
             {
-                // Phase 1.5 (The "Heft"): Instant rigid lock + sharp, deliberate upward lift to feel the payload's weight
+                // Phase 1.5 Post-Contact (The "Heft" Lift):
+                // Instant rigid lock at contact (stepIndex == approachEnd) + smooth upward lift
                 _currentPhase = GraspTrajectoryPhase.SensoryHeft;
                 if (_spawner != null && !_spawner.IsPayloadGrasped)
                 {
                     _spawner.EnsureRigidGrasp(_rig);
                 }
 
-                float tau = Mathf.Clamp01((float)(stepIndex - approachEnd + 1) / Mathf.Max(1, sensoryHeftSteps));
-                // Fast, monotonic upward lift profile (completes lift in first 75% of Heft window and holds)
-                float fastTau = Mathf.Clamp01(tau * 1.35f);
-                float liftProgress = SmoothStepMinimumJerk(fastTau);
-                float dLift = (tau * 1.35f <= 1.0f)
-                    ? (SmoothStepMinimumJerkDerivative(fastTau) * 1.35f / Mathf.Max(dt * sensoryHeftSteps, 1e-3f))
-                    : 0.0f;
+                float tau = Mathf.Clamp01((float)(stepIndex - approachEnd) / Mathf.Max(1, sensoryHeftSteps));
+                // Softened minimum-jerk upward lift profile (smooth across full heft window without harsh 1.35x compression)
+                float liftProgress = SmoothStepMinimumJerk(tau);
+                float dLift = SmoothStepMinimumJerkDerivative(tau) / Mathf.Max(dt * sensoryHeftSteps, 1e-3f);
                 gainMultiplier = heftAccelerationBoost;
                 curKp = proportionalGainKp;
                 curKd = derivativeGainKd;

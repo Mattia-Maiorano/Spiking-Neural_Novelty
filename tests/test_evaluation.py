@@ -252,7 +252,7 @@ def test_evaluator_active_perception_sensory_injection_halts_m1_on_flag_1():
     model = SPWM(latent_dim=32, timescale_dims=(16, 16), encoder_dim=32, joint_count=6, action_dim=6)
     evaluator = RolloutEvaluator(model=model, horizons=[9], joint_count=6, temporal_burn_in=2)
 
-    events = torch.rand(B, T, 2, 32, 32)
+    events = torch.rand(B, T, 4, 32, 32)
     actions = torch.randn(B, T, 6)
     flat_kin = torch.randn(B, T, 12)
     # Timesteps: 0..4 Phase 1 (0), 5..7 Phase 1.5 (1), 8..11 Phase 2 (2)

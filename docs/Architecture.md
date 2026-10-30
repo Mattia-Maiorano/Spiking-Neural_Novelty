@@ -1,6 +1,6 @@
-# SPWM-v0.5.0 Master Architectural Specification
+# SPWM-v0.6.0 Master Architectural Specification
 
-This document serves as the authoritative technical reference for **SPWM-v0.5.0 (6-DOF Active Perception Grasping & Spiking Predictive World Model for 3D Articulated Manipulation)** following the transition to a **6-DOF Articulated Manipulator Arm**, **Procedural Object Spawning with Inertial Variance**, **Phasic Active Perception (Blind Approach $\to$ Sensory Heft $\to$ Blind Transport)**, **Sensory Injection in M1**, and the **4-Layer Strict Contract Architecture**. It is divided into three comprehensive sections:
+This document serves as the authoritative technical reference for **SPWM-v0.6.0 (Dual-Camera Active Perception Grasping & Spiking Predictive World Model for 3D Articulated Manipulation)** following the structural upgrade to a **Dual-Camera Neuromorphic Vision System (Static Global + Egocentric Wrist-Mounted Event Sensors, $C=4$)** resolving 3D kinematic unobservability (axial wrist roll symmetry and elbow flex depth foreshortening), alongside the **6-DOF Articulated Manipulator Arm**, **Procedural Object Spawning with Inertial Variance**, **Phasic Active Perception (Blind Approach $\to$ Sensory Heft $\to$ Blind Transport)**, **Sensory Injection in M1**, and the **4-Layer Strict Contract Architecture**. It is divided into three comprehensive sections:
 1. **The Workspace**: 4-layer directory topology, Unity simulation bridge, dependency invariants, file-level responsibilities, and CI/AST enforcement guards.
 2. **Models' Architecture**: End-to-end forward pass, tensor dimensionality contracts, and the mathematical and computational roles of `EventEncoder`, `SpikingLatentDynamics`, action-conditioned `LatentPredictor` (M1 Attractor Predictor with Active Perception sensory injection), and articulated `PhysicalDecoder`.
 3. **Loss Computation & Training Flow**: Granular breakdown of the isolated `train_representation` and `train_m1` phase strategies, action-conditioned phase-space vector field learning, exact loss formulations, and strict checkpoint scoping rules.
@@ -144,6 +144,8 @@ Given event frames $\mathbf{E}_{0:T-1} \in \mathbb{R}^{B \times T \times C \time
 2. **Top-Down Predictive Coding Error (`sensory_predictor`)**:
    $$\hat{\mathbf{x}}_t = \mathbf{W}_{\text{pred}}\mathbf{z}_{t-1}, \quad \boldsymbol{\epsilon}_t = \mathbf{x}_t - \hat{\mathbf{x}}_t \in \mathbb{R}^{B \times D_{\text{enc}}}$$
 3. **Recurrent Spiking Latent Dynamics (`SpikingLatentDynamics.step`)**:
+   Processes prediction error $\boldsymbol{\epsilon}_t$ through multi-timescale ALIF memory, updates momentum $\mathbf{p}_{t+1}$, and integrates coordinates using event-gated sensory velocity:
+   $$\mathbf{v}_p = \text{vel}(\mathbf{p}_{t+1}), \quad \mathbf{q}_{t+1} = \mathbf{q}_t + \Delta t \cdot \mathbf{v}_p + K_{\text{gate}} \cdot \text{bounded\_corr}$$
    $$\mathbf{z}_t, \mathcal{S}_t^{\text{dyn}} = \text{SpikingLatentDynamics}(\boldsymbol{\epsilon}_t, \mathcal{S}_{t-1}^{\text{dyn}}, \mathbf{k}_t), \quad \mathbf{z}_t = [\mathbf{q}_t, \mathbf{p}_t] \in \mathbb{R}^{B \times D}$$
 4. **Action-Conditioned Latent Attractor Prediction (`LatentPredictor` / `model.m1`)**:
    Conditioned on both current latent state $\mathbf{z}_t$ and motor command $\mathbf{u}_t$:
@@ -153,12 +155,12 @@ Given event frames $\mathbf{E}_{0:T-1} \in \mathbb{R}^{B \times T \times C \time
    $$\mathbf{q}_{t+1} = \mathbf{q}_t + \Delta t \cdot (\mathbf{p}_{t+1}[..., :q\_dim] + \mathbf{f}_q)$$
    $$\hat{\mathbf{z}}_{t+1} = [\mathbf{q}_{t+1}, \mathbf{p}_{t+1}] \in \mathbb{R}^{B \times D}$$
 5. **Physical Articulated Kinematic Readout (`PhysicalDecoder`)**:
-   Decodes joint angles and angular velocities via MLP heads:
+   Decodes joint angles and angular velocities via MLP heads with dual low-pass EMA filtering (position smoothing $\alpha_{\text{pos}}$ and velocity smoothing $\alpha_{\text{vel}}$):
    $$\hat{\mathbf{y}}_t = \text{PhysicalDecoder}(\mathbf{z}_t) = [\hat{\mathbf{q}}_t^*, \hat{\mathbf{p}}_t^*] \in \mathbb{R}^{B \times 2J}$$
 
 ### 2.2 Master Tensor Dimensionality Contract Matrix
 
-All tensor shapes are verified at runtime via [`assert_tensor_contract`](file:///Users/Mattia/Desktop/Studies/Temp/spwm/contracts/tensors.py) and [`assert_phase_space_contract`](file:///Users/Mattia/Desktop/Studies/Temp/spwm/contracts/tensors.py). Canonical dimensions: $C=2, H_{\text{img}}=32, W_{\text{img}}=32, K=16, D_{\text{enc}}=128, D=128, D_q=32, D_p=96, D_u=6, J=6$.
+All tensor shapes are verified at runtime via [`assert_tensor_contract`](file:///Users/Mattia/Desktop/Studies/Temp/spwm/contracts/tensors.py) and [`assert_phase_space_contract`](file:///Users/Mattia/Desktop/Studies/Temp/spwm/contracts/tensors.py). Canonical dimensions: $C=4$ (2 static global + 2 egocentric wrist polarity channels), $H_{\text{img}}=32, W_{\text{img}}=32, K=16, D_{\text{enc}}=128, D=128, D_q=32, D_p=96, D_u=6, J=6$.
 
 | Producer Component | Tensor / Variable | Consumer Component | Shape Contract | Mathematical Domain & Invariant |
 | :--- | :--- | :--- | :--- | :--- |
@@ -190,8 +192,20 @@ All tensor shapes are verified at runtime via [`assert_tensor_contract`](file://
   - **Sensory Heft (flag == 1)**: When active sensory feedback is present (the arm hefts the payload), $M_1$ predictor execution is halted. The unified rollout engine invokes `step_grounded` with real sensory events and synchronizes the recurrent dynamics state.
   - **Blind Approach & Blind Transport (flag != 1)**: $M_1$ predicts future latents autoregressively conditioned on motor actions $\mathbf{u}_t$, carrying the grasped payload with the newly perceived inertial representation.
 
-#### B. Articulated `PhysicalDecoder` ([`spwm/models/predictors.py`](file:///Users/Mattia/Desktop/Studies/Temp/spwm/models/predictors.py))
+#### B. Event-Gated `SpikingLatentDynamics` ([`spwm/models/dynamics.py`](file:///Users/Mattia/Desktop/Studies/Temp/spwm/models/dynamics.py))
+- **Continuous Kinematic Integration via Velocity Projection**:
+  Momentum $p_{t+1} \in \mathbb{R}^{D_p}$ is mapped to coordinate velocity space $\mathbb{R}^{D_q}$ via linear projection `vel_proj`: $\mathbf{v}_p = \text{vel}(\mathbf{p}_{t+1})$.
+- **Event-Gated Sensory Correction ($K_{\text{gate}}$)**:
+  Rather than direct coordinate overwriting, sensory keypoint corrections are adaptively gated:
+  $$K_{\text{gate}} = \text{ramp}(g_{\text{steps}}) \cdot (1 - e^{-\text{scale} \cdot \text{act}}) \cdot K_{\text{max}}$$
+  $$\mathbf{q}_{t+1} = \mathbf{q}_t + \Delta t \cdot \mathbf{v}_p + K_{\text{gate}} \cdot \text{bounded\_corr}$$
+  During quiescent phases (zero event activity), $K_{\text{gate}} \to 0$ and coordinates advance purely via inertial integration $\Delta t \cdot \mathbf{v}_p$. During rapid motion bursts, $K_{\text{gate}}$ opens up to bounded sensory correction, eliminating high-frequency coordinate jumps.
+
+#### C. Articulated `PhysicalDecoder` with Dual Low-Pass EMA Filtering ([`spwm/models/predictors.py`](file:///Users/Mattia/Desktop/Studies/Temp/spwm/models/predictors.py))
 - Reads out articulated joint angles $\mathbf{q}^* \in \mathbb{R}^6$ from coordinate subspace $\mathbf{q}$ and joint angular velocities $\mathbf{p}^* \in \mathbb{R}^6$ from momentum subspace $\mathbf{p}$ via 2-layer MLP projection heads with LayerNorm and SiLU.
+- **Dual Low-Pass Smoothing**:
+  - **Position Filtering**: Applies an EMA low-pass filter with smoothing factor `decoder_pos_alpha` ($\alpha_{\text{pos}} = 0.20$), suppressing single-step discrete joint jumps.
+  - **Velocity Filtering**: Applies an EMA low-pass filter with smoothing factor `decoder_ema_alpha` ($\alpha_{\text{vel}} = 0.20$) on momentum features before the velocity readout head.
 
 ---
 
@@ -211,7 +225,8 @@ The architecture focuses on two clean, decoupled training phases:
 #### Phase 0 (`train_representation`) Objective
 In [`RepresentationPhaseStrategy`](file:///Users/Mattia/Desktop/Studies/Temp/spwm/training/phases/representation.py), the spiking network is trained strictly as a continuous state estimator over sensory input streams:
 1. **Articulated Kinematic Supervision**:
-   $$\mathcal{L}_{\text{kinematic}} = \frac{1}{BT}\sum_{t=0}^{T-1} \left\|\text{decode\_pos}(\mathbf{q}_t) - \mathbf{q}_t^*\right\|_2^2 + \left\|\text{decode\_vel}(\mathbf{p}_t) - \mathbf{p}_t^*\right\|_2^2$$
+   $$\mathcal{L}_{\text{kinematic}} = \frac{1}{BT}\sum_{t=0}^{T-1} \left\|\text{decode\_pos}(\mathbf{q}_t) - \mathbf{q}_t^*\right\|_2^2 + \frac{1}{s_v^2} \left\|\text{decode\_vel}(\mathbf{p}_t) - \mathbf{p}_t^*\right\|_2^2$$
+   where $s_v = \text{velocity\_loss\_scale} = 1.0\,\text{rad/s}$ (configurable in `LossConfig`) normalizes angular velocity magnitudes relative to normalized joint coordinates.
 2. **Phase-Space Derivative Constraint**:
    $$\mathcal{L}_{\text{derivative}} = \frac{1}{B(T-1)}\sum_{t=0}^{T-2} \left\|(\mathbf{q}_{t+1} - \mathbf{q}_t) - dt \cdot \mathbf{p}_t\right\|_2^2$$
 3. **ALIF Momentum Smoothness**:
@@ -238,5 +253,5 @@ All checkpoint operations in [`spwm/training/engine.py`](file:///Users/Mattia/De
 
 - **Active Perception Inertial Estimation**: Verifies that the sensory heft micro-movement injects mass/inertia information into the latent dynamics, reducing blind transport rollout error.
 - **6-DOF Kinematic Reconstruction**: Physical decoder tracking ensures high $R^2$ / low MSE across all $J=6$ manipulator joints.
-- **Ghost Visualization Parity**: [`GhostVisualizerExporter`](file:///Users/Mattia/Desktop/Studies/Temp/spwm/evaluation/visualizer.py) exports rollout telemetry to Unity StreamingAssets (`trajectory_ghost_v0_4_0.json`) for side-by-side holographic replay via [`GhostPlaybackManager`](file:///Users/Mattia/Desktop/Studies/Temp/sim/Assets/Scripts/Visualization/GhostPlaybackManager.cs).
+- **Ghost Visualization Parity**: [`GhostVisualizerExporter`](file:///Users/Mattia/Desktop/Studies/Temp/spwm/evaluation/visualizer.py) exports rollout telemetry to Unity StreamingAssets (`trajectory_ghost.json`) for side-by-side holographic replay via [`GhostPlaybackManager`](file:///Users/Mattia/Desktop/Studies/Temp/sim/Assets/Scripts/Visualization/GhostPlaybackManager.cs).
 - **Zero Temporal Leakage**: Trajectory-level partitioning ensures validation and test splits evaluate strictly unseen robotic movement sequences.

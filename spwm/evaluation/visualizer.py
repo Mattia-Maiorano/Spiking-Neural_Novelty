@@ -496,6 +496,7 @@ class GhostVisualizerExporter:
         horizon: int = 100,
         joint_names: Optional[Sequence[str]] = None,
         precision: int = 6,
+        pre_contact_sensory_steps: int = 5,
     ) -> None:
         if horizon <= 0:
             raise ValueError(f"GhostVisualizerExporter: horizon must be positive, got {horizon}")
@@ -509,6 +510,7 @@ class GhostVisualizerExporter:
         self.horizon = int(horizon)
         self.joint_names = list(joint_names) if joint_names is not None else None
         self.precision = int(precision)
+        self.pre_contact_sensory_steps = int(pre_contact_sensory_steps)
 
     @property
     def output_path(self) -> Path:
@@ -544,7 +546,10 @@ class GhostVisualizerExporter:
             sub_pf = pf[t_start : t_start + h].cpu().numpy() if hasattr(pf, "cpu") else pf[t_start : t_start + h]
             heft_indices = np.where(sub_pf == 1)[0]
             if len(heft_indices) > 0:
-                meta["grasp_lock_frame_index"] = int(heft_indices[0])
+                first_heft = int(heft_indices[0])
+                meta["heft_start_frame_index"] = first_heft
+                contact_idx = min(first_heft + self.pre_contact_sensory_steps, int(heft_indices[-1]))
+                meta["grasp_lock_frame_index"] = contact_idx
         return self.from_trajectory_rollout(traj, sample_index=sample_index, extra_metadata=meta)
 
     def capture(

@@ -41,10 +41,14 @@ void ComputeLogIntensityEvents(uint3 id : SV_DispatchThreadID)
 
     float prevL = PrevLogIntensity[id.xy];
     float deltaL = logL - prevL;
-    PrevLogIntensity[id.xy] = logL;
 
     float posSpike = (deltaL > EventThreshold) ? 1.0f : 0.0f;
     float negSpike = (deltaL < -EventThreshold) ? 1.0f : 0.0f;
+
+    if (posSpike > 0.0f || negSpike > 0.0f)
+    {
+        PrevLogIntensity[id.xy] = logL;
+    }
 
     // Channel 0: Positive polarity (ON), Channel 1: Negative polarity (OFF)
     DenseEventBuffer[pixelIdx] = posSpike;

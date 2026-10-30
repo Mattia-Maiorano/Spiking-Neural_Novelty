@@ -22,11 +22,36 @@ def step_grounded(
     model: nn.Module,
     event_frame: torch.Tensor,
     dyn_state: DynamicsState,
+    in_sensory_phase: bool = True,
+    unconstrained: bool = False,
+    action: Optional[torch.Tensor] = None,
 ) -> Tuple[torch.Tensor, DynamicsState]:
-    """Execute a single grounded sensory-driven step using frozen encoder and dynamics."""
+    """Execute a single grounded sensory-driven step using frozen encoder and dynamics with action conditioning."""
     sx, skp = model.encoder.encode_step(event_frame)
     eps = sx - model.sensory_predictor(dyn_state.z_prev)
-    return model.dynamics.step(eps, state=dyn_state, sensory_keypoints=skp)
+    event_act = event_frame.abs().mean(dim=(1, 2, 3), keepdim=True)
+    return model.dynamics.step(
+        eps,
+        state=dyn_state,
+        sensory_keypoints=skp,
+        event_activity=event_act,
+        in_sensory_phase=in_sensory_phase,
+        unconstrained=unconstrained,
+        action=action,
+    )
+
+
+@torch.no_grad()
+def step_ungrounded(
+    model: nn.Module,
+    dyn_state: DynamicsState,
+) -> Tuple[torch.Tensor, DynamicsState]:
+    """Execute a single ungrounded recurrent step using frozen dynamics with zero prediction error."""
+    B = dyn_state.z_prev.shape[0]
+    device = dyn_state.z_prev.device
+    encoder_dim = model.encoder_dim if hasattr(model, "encoder_dim") else dyn_state.z_prev.shape[-1]
+    eps_zero = torch.zeros(B, encoder_dim, device=device, dtype=dyn_state.z_prev.dtype)
+    return model.dynamics.step(eps_zero, state=dyn_state, sensory_keypoints=None, event_activity=None)
 
 
 @torch.no_grad()
@@ -45,7 +70,7 @@ def ground_initial_state(
     curr_z = dyn_state.z_prev
     latents = []
     for t in range(t_start + 1):
-        curr_z, dyn_state = step_grounded(model, events[:, t], dyn_state)
+        curr_z, dyn_state = step_grounded(model, events[:, t], dyn_state, in_sensory_phase=True, unconstrained=True)
         latents.append(curr_z)
     z_prefix = torch.stack(latents, dim=1)
     return curr_z, dyn_state, z_prefix
@@ -146,7 +171,7 @@ def rollout_latent(
     dyn_state = initial_dynamics_state
     if dyn_state is None and events is not None and hasattr(model, "dynamics") and model.dynamics is not None:
         dyn_state = model.dynamics.init_state(B, device=z_init.device)
-        dyn_state = DynamicsState(dyn_state.memory_state, z_init.detach(), dyn_state.ema_spikes)
+        dyn_state = DynamicsState(dyn_state.memory_state, z_init.detach(), dyn_state.ema_spikes, dyn_state.grounded_steps)
 
     grad_context = contextlib.nullcontext() if with_grad else torch.no_grad()
     with grad_context:
@@ -174,25 +199,61 @@ def rollout_latent(
                 is_heft_any = bool((flag_step == 1).any())
 
                 if is_heft_all:
-                    sync_st = DynamicsState(dyn_state.memory_state, curr_z.detach(), dyn_state.ema_spikes) if dyn_state is not None else None
-                    curr_z, dyn_state = step_grounded(model, event_step, sync_st)
+                    sync_st = DynamicsState(
+                        dyn_state.memory_state,
+                        curr_z.detach(),
+                        dyn_state.ema_spikes,
+                        dyn_state.grounded_steps,
+                    ) if dyn_state is not None else None
+                    curr_z, dyn_state = step_grounded(model, event_step, sync_st, in_sensory_phase=True, action=u_step)
                     active_models.append("grounded")
                 elif is_heft_any:
                     pred_out = predictor_fn(curr_z, u_step) if u_step is not None else predictor_fn(curr_z)
                     m1_z = pred_out.predicted_latent
-                    sync_st = DynamicsState(dyn_state.memory_state, curr_z.detach(), dyn_state.ema_spikes) if dyn_state is not None else None
-                    g_z, dyn_state = step_grounded(model, event_step, sync_st)
+                    sync_st = DynamicsState(
+                        dyn_state.memory_state,
+                        curr_z.detach(),
+                        dyn_state.ema_spikes,
+                        dyn_state.grounded_steps,
+                    ) if dyn_state is not None else None
+                    g_z, dyn_state = step_grounded(model, event_step, sync_st, in_sensory_phase=True, action=u_step)
                     curr_z = torch.where((flag_step == 1).unsqueeze(-1), g_z, m1_z)
                     active_models.append("m1")
                 else:
                     pred_out = predictor_fn(curr_z, u_step) if u_step is not None else predictor_fn(curr_z)
                     curr_z = pred_out.predicted_latent
                     if dyn_state is not None:
-                        dyn_state = DynamicsState(dyn_state.memory_state, curr_z.detach(), dyn_state.ema_spikes)
+                        sync_ungrounded = DynamicsState(
+                            dyn_state.memory_state,
+                            curr_z.detach(),
+                            dyn_state.ema_spikes,
+                            grounded_steps=torch.zeros_like(dyn_state.grounded_steps) if dyn_state.grounded_steps is not None else None,
+                        )
+                        _, new_dyn = step_grounded(model, event_step, sync_ungrounded, in_sensory_phase=False, action=u_step)
+                        dyn_state = DynamicsState(
+                            new_dyn.memory_state,
+                            curr_z.detach(),
+                            new_dyn.ema_spikes,
+                            grounded_steps=torch.zeros_like(new_dyn.grounded_steps) if new_dyn.grounded_steps is not None else None,
+                        )
                     active_models.append("m1")
             else:
                 pred_out = predictor_fn(curr_z, u_step) if u_step is not None else predictor_fn(curr_z)
                 curr_z = pred_out.predicted_latent
+                if dyn_state is not None and hasattr(model, "dynamics") and model.dynamics is not None:
+                    sync_ungrounded = DynamicsState(
+                        dyn_state.memory_state,
+                        curr_z.detach(),
+                        dyn_state.ema_spikes,
+                        grounded_steps=torch.zeros_like(dyn_state.grounded_steps) if dyn_state.grounded_steps is not None else None,
+                    )
+                    _, new_dyn = step_ungrounded(model, sync_ungrounded)
+                    dyn_state = DynamicsState(
+                        new_dyn.memory_state,
+                        curr_z.detach(),
+                        new_dyn.ema_spikes,
+                        grounded_steps=torch.zeros_like(new_dyn.grounded_steps) if new_dyn.grounded_steps is not None else None,
+                    )
                 active_models.append("m1")
 
             predictions.append(curr_z)
@@ -225,6 +286,7 @@ __all__ = [
     "ground_initial_state",
     "rollout_latent",
     "step_grounded",
+    "step_ungrounded",
     "RolloutResult",
     "TelemetryContainer",
 ]

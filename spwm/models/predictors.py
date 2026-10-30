@@ -135,6 +135,7 @@ class PhysicalDecoder(nn.Module):
         joint_count: int = J,
         hidden_dim: int = 64,
         alpha: float = 0.85,
+        pos_alpha: float = 0.20,
     ) -> None:
         super().__init__()
         assert_phase_space_contract(latent_dim=latent_dim, q_dim=q_dim, p_dim=p_dim)
@@ -146,6 +147,7 @@ class PhysicalDecoder(nn.Module):
         self.p_dim = p_dim
         self.joint_count = joint_count
         self.alpha = float(alpha)
+        self.pos_alpha = float(pos_alpha)
         self.out_dim = 2 * joint_count
 
         self.pos_head = nn.Sequential(
@@ -195,7 +197,12 @@ class PhysicalDecoder(nn.Module):
             r = self.alpha * r + (1.0 - self.alpha) * p[:, t]
         return r
 
-    def forward(self, z: torch.Tensor, initial_filter_state: Optional[torch.Tensor] = None) -> torch.Tensor:
+    def forward(
+        self,
+        z: torch.Tensor,
+        initial_filter_state: Optional[torch.Tensor] = None,
+        initial_pos_filter_state: Optional[torch.Tensor] = None,
+    ) -> torch.Tensor:
         if z.dim() == 3:
             assert_tensor_contract(z, (None, None, self.latent_dim), "PhysicalDecoder.z_sequence")
         elif z.dim() == 2:
@@ -206,10 +213,23 @@ class PhysicalDecoder(nn.Module):
         q = z[..., : self.q_dim]
         p = z[..., self.q_dim :]
 
-        pos_pred = self.pos_head(q)
+        pos_raw = self.pos_head(q)
 
         if z.dim() == 3:
             B, T, _ = p.shape
+
+            # 1. Position low-pass EMA filter (Fix 3: suppresses high-frequency single-step joint jumping)
+            if self.pos_alpha > 0.0 and T > 1:
+                filtered_pos = []
+                p_st = initial_pos_filter_state if initial_pos_filter_state is not None else pos_raw[:, 0]
+                for t in range(T):
+                    p_st = self.pos_alpha * p_st + (1.0 - self.pos_alpha) * pos_raw[:, t]
+                    filtered_pos.append(p_st)
+                pos_pred = torch.stack(filtered_pos, dim=1)
+            else:
+                pos_pred = pos_raw
+
+            # 2. Velocity low-pass EMA filter
             filtered_p = []
             r = initial_filter_state if initial_filter_state is not None else torch.zeros(B, self.p_dim, device=z.device, dtype=z.dtype)
             for t in range(T):
@@ -218,6 +238,11 @@ class PhysicalDecoder(nn.Module):
             smooth_p = torch.stack(filtered_p, dim=1)
             vel_pred = self.vel_head(smooth_p)
         else:
+            if initial_pos_filter_state is not None and self.pos_alpha > 0.0:
+                pos_pred = self.pos_alpha * initial_pos_filter_state + (1.0 - self.pos_alpha) * pos_raw
+            else:
+                pos_pred = pos_raw
+
             if initial_filter_state is not None:
                 r = self.alpha * initial_filter_state + (1.0 - self.alpha) * p
                 vel_pred = self.vel_head(r)

@@ -4,11 +4,12 @@ using UnityEngine;
 namespace SPWM.Robotics
 {
     /// <summary>
-    /// Neuromorphic Vision Bridge for the 3D Unity Robotic Simulator.
-    /// Renders the scene camera view into a RenderTexture and either:
-    ///   1. Dispatches EventCameraLogDiff.compute on the GPU to yield dense [2, H, W] event frames
+    /// Neuromorphic Vision Bridge for the 3D Unity Robotic Simulator (SPWM-v0.6.0 Dual-Camera Architecture).
+    /// Supports simultaneous static global and egocentric wrist-mounted event cameras, rendering each camera view
+    /// into a RenderTexture and either:
+    ///   1. Dispatching EventCameraLogDiff.compute on the GPU to yield dense [2, H, W] (or unified [4, H, W]) event frames
     ///      using threshold theta = 0.08, or
-    ///   2. Exports high-FPS grayscale luminance frames [H, W] for Python's EventCameraSimulator.
+    ///   2. Exporting high-FPS grayscale luminance frames ([H, W] per camera, or unified [2, H, W]) for Python's EventCameraSimulator.
     /// </summary>
     [RequireComponent(typeof(Camera))]
     public class NeuromorphicEventBridge : MonoBehaviour
@@ -18,6 +19,9 @@ namespace SPWM.Robotics
         [SerializeField] private int sensorHeight = 32;
         [SerializeField] private float eventThreshold = 0.08f;
         [SerializeField] private ComputeShader eventComputeShader;
+
+        [Header("Secondary Egocentric Wrist Sensor (SPWM-v0.6.0)")]
+        [SerializeField] private NeuromorphicEventBridge secondaryWristBridge;
 
         private Camera _sensorCamera;
         private RenderTexture _frameRenderTexture;
@@ -30,6 +34,12 @@ namespace SPWM.Robotics
         public int SensorWidth => sensorWidth;
         public int SensorHeight => sensorHeight;
         public float EventThreshold => eventThreshold;
+        public int SensorChannels => secondaryWristBridge != null ? 4 : 2;
+        public NeuromorphicEventBridge SecondaryWristBridge
+        {
+            get => secondaryWristBridge;
+            set => secondaryWristBridge = value;
+        }
 
         private void Awake()
         {
@@ -82,6 +92,47 @@ namespace SPWM.Robotics
             {
                 Array.Clear(_prevCpuLogIntensity, 0, _prevCpuLogIntensity.Length);
             }
+            if (secondaryWristBridge != null && secondaryWristBridge != this)
+            {
+                secondaryWristBridge.ResetSensorBaseline();
+            }
+        }
+
+        /// <summary>
+        /// Simultaneously captures both the static global camera and the egocentric wrist-mounted camera,
+        /// returning a unified 4-channel event stream [4 * H * W] ([pos_global, neg_global, pos_wrist, neg_wrist])
+        /// alongside the individual global and wrist grayscale frames ([H * W] each) and unified [2 * H * W] grayscale array.
+        /// </summary>
+        public (float[] unifiedDenseEvents, float[] globalGrayscale, float[] wristGrayscale, float[] unifiedGrayscale) CaptureDualStep(
+            NeuromorphicEventBridge explicitWristBridge = null)
+        {
+            NeuromorphicEventBridge wrist = explicitWristBridge != null ? explicitWristBridge : secondaryWristBridge;
+            var (globalEvents, globalGray) = CaptureStep();
+            int numPixels = sensorWidth * sensorHeight;
+
+            float[] wristEvents;
+            float[] wristGray;
+            if (wrist != null && wrist != this)
+            {
+                (wristEvents, wristGray) = wrist.CaptureStep();
+            }
+            else
+            {
+                wristEvents = new float[2 * numPixels];
+                wristGray = new float[numPixels];
+                Array.Copy(globalEvents, wristEvents, 2 * numPixels);
+                Array.Copy(globalGray, wristGray, numPixels);
+            }
+
+            float[] unifiedEvents = new float[4 * numPixels];
+            Array.Copy(globalEvents, 0, unifiedEvents, 0, 2 * numPixels);
+            Array.Copy(wristEvents, 0, unifiedEvents, 2 * numPixels, 2 * numPixels);
+
+            float[] unifiedGray = new float[2 * numPixels];
+            Array.Copy(globalGray, 0, unifiedGray, 0, numPixels);
+            Array.Copy(wristGray, 0, unifiedGray, numPixels, numPixels);
+
+            return (unifiedEvents, globalGray, wristGray, unifiedGray);
         }
 
         /// <summary>
@@ -141,9 +192,23 @@ namespace SPWM.Robotics
                     else
                     {
                         float deltaL = logL - _prevCpuLogIntensity[i];
-                        _prevCpuLogIntensity[i] = logL;
-                        denseEvents[i] = (deltaL > eventThreshold) ? 1.0f : 0.0f;
-                        denseEvents[numPixels + i] = (deltaL < -eventThreshold) ? 1.0f : 0.0f;
+                        if (deltaL > eventThreshold)
+                        {
+                            denseEvents[i] = 1.0f;
+                            denseEvents[numPixels + i] = 0.0f;
+                            _prevCpuLogIntensity[i] = logL;
+                        }
+                        else if (deltaL < -eventThreshold)
+                        {
+                            denseEvents[i] = 0.0f;
+                            denseEvents[numPixels + i] = 1.0f;
+                            _prevCpuLogIntensity[i] = logL;
+                        }
+                        else
+                        {
+                            denseEvents[i] = 0.0f;
+                            denseEvents[numPixels + i] = 0.0f;
+                        }
                     }
                 }
                 _isFirstFrame = false;

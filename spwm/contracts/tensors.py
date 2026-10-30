@@ -11,6 +11,10 @@ import torch
 # Master 6-DOF Manipulator Joint & Action Dimensionality (SPWM-v0.5.0)
 J: int = 6
 
+# Dual-Camera Neuromorphic Event Stream Channels (SPWM-v0.6.0):
+# [pos_global, neg_global, pos_wrist, neg_wrist]
+C_EVENT: int = 4
+
 
 def assert_tensor_contract(
     tensor: torch.Tensor,

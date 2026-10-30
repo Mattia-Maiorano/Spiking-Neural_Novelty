@@ -44,7 +44,8 @@ data_cache/
 
 # macOS
 .DS_Store
-# Model files (large binaries)
+
+# Model files and checkpoints (large binaries)
 /models/
 *.pt
 *.pth
@@ -52,3 +53,17 @@ data_cache/
 *.ckpt
 *.bin
 *.onnx
+
+# Simulation exports, Unity caches and heavy outputs
+sim/Library/
+sim/Temp/
+sim/Logs/
+sim/ExportedTrajectories/
+sim/Assets/StreamingAssets/trajectory_*.json
+
+# Results, heavy media and logs
+results/videos/
+*.mp4
+*.avi
+*.log
+*.gz

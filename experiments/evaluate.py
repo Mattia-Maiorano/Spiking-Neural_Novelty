@@ -77,6 +77,7 @@ def main() -> None:
         width=cfg.environment.width,
         joint_count=cfg.environment.joint_count,
         action_dim=cfg.environment.action_dim,
+        in_channels=cfg.model.in_channels,
         event_threshold=cfg.environment.event_threshold,
         dt=cfg.environment.dt,
         dataset_dir=cfg.data.dataset_dir,

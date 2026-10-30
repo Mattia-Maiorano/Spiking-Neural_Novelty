@@ -247,7 +247,20 @@ namespace SPWM.Visualization
         {
             if (System.IO.File.Exists(filenameOrPath))
             {
-                string json = System.IO.File.ReadAllText(filenameOrPath);
+                string json;
+                if (filenameOrPath.EndsWith(".gz", System.StringComparison.OrdinalIgnoreCase))
+                {
+                    using (var fileStream = System.IO.File.OpenRead(filenameOrPath))
+                    using (var gzipStream = new System.IO.Compression.GZipStream(fileStream, System.IO.Compression.CompressionMode.Decompress))
+                    using (var reader = new System.IO.StreamReader(gzipStream, System.Text.Encoding.UTF8))
+                    {
+                        json = reader.ReadToEnd();
+                    }
+                }
+                else
+                {
+                    json = System.IO.File.ReadAllText(filenameOrPath);
+                }
                 _data = GhostTrajectoryData.FromJson(json);
             }
             else

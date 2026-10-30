@@ -51,7 +51,7 @@ def _make_small_config(mode: str = "train_m1") -> ExperimentConfig:
         environment=EnvironmentConfig(height=16, width=16, joint_count=6, action_dim=6),
         data=DataConfig(sequence_length=20, batch_size=2, total_trajectories=4, joint_count=6, action_dim=6),
         model=ModelConfig(
-            in_channels=2,
+            in_channels=4,
             encoder_conv_channels=(8, 16),
             encoder_dim=16,
             latent_dim=16,
@@ -85,7 +85,7 @@ def test_phase_strategy_files_under_150_lines() -> None:
 def test_representation_and_m1_isolated_phase_strategies() -> None:
     """Verify RepresentationPhaseStrategy and M1PhaseStrategy satisfy PhaseStrategy and isolate gradients."""
     B, T = 2, 20
-    events = torch.rand(B, T, 2, 16, 16)
+    events = torch.rand(B, T, 4, 16, 16)
     flat_kin = torch.randn(B, T, 12)  # 2 * 6 joints
     actions = torch.randn(B, T, 6)
     phase_flags = torch.tensor([[0, 0, 0, 0, 0, 0, 1, 1, 1, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2]] * B, dtype=torch.long)
@@ -144,7 +144,7 @@ def test_m1_active_perception_sensory_injection_halts_m1_on_flag_1() -> None:
     loss_fn = SPWMLoss.from_config(cfg.loss)
     strategy = M1PhaseStrategy(model, cfg, loss_fn, torch.device("cpu"))
 
-    events = torch.rand(B, T, 2, 16, 16)
+    events = torch.rand(B, T, 4, 16, 16)
     actions = torch.randn(B, T, 6)
     flat_kin = torch.randn(B, T, 12)
     # Timesteps: 0..1 setup, 2..4 Phase 1 (0), 5..7 Phase 1.5 (1), 8..11 Phase 2 (2)

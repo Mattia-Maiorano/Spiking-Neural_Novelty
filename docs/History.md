@@ -2090,6 +2090,111 @@ L'indagine dettagliata ha individuato i fattori determinanti:
 3. **Zero-Centering della Proiezione di Velocità**: Applicare $\tanh(v_p)$ o condizionamento sull'azione motoria $u_t$ per garantire $v_p \to 0$ quando il braccio è fermo.
 4. **Calibrazione Filtro Decoder**: Portare `decoder_pos_alpha` e `decoder_ema_alpha` a $0.75$.
 
+---
+---
+
+# SPWM-v0.6.2: Implementazione Anti-Evanescence Gate & Diagnosi Clinica delle Anomalie di Training
+
+### 1. Risultati di Addestramento e Confronto con Release Precedenti
+
+La release v0.6.2 ha introdotto l'Anti-Evanescence Gate con parametro `activity_threshold = 0.012` per sopprimere l'iniezione sensoriale rumorosa durante le fasi di manipolatore fermo o decelerato. L'addestramento è stato completato per entrambe le fasi:
+- **Fase 0 (`train_representation`)**: 96 epoche completate, miglior checkpoint all'epoca 86 con `val_loss = 2.696`, `val_pos_err = 0.205 rad` e `val_vel_err = 0.443 rad/s`.
+- **Fase 1 (`train_m1`)**: Addestramento arrestato precocemente per early stopping all'epoca 57 (miglior checkpoint epoca 47 con `val_loss = 0.00722`, `val_pos_err = 0.428 rad`, `val_vel_err = 0.537 rad/s`).
+
+| Metrica di Valutazione M1 | SPWM-v0.6.0 | SPWM-v0.6.1 | SPWM-v0.6.2 (Post-Gate) | Trend / Patologia v0.6.2 |
+| :--- | :--- | :--- | :--- | :--- |
+| **M1 Best Val Loss** | **0.00333** | **0.00423** | **0.00722** | **+71% peggiorata** rispetto a v0.6.1 (+117% vs v0.6.0) |
+| **Early Stopping M1** | Convergenza (Ep 52) | Convergenza (Ep 52) | **Stallo a Epoca 47**, stop Ep 57 | Early stopping forzato da instabilità |
+| **$H=1$ Position Error (L2)** | **$0.0965\,\text{rad}$** | **$0.2172\,\text{rad}$** | **$0.2799\,\text{rad}$** | **Quasi $3\times$ peggiore** di v0.6.0 |
+| **$H=1$ Position MSE** | **$0.00209$** | **$0.00793$** | **$0.01317$** | **Oltre $6\times$ peggiore** di v0.6.0 |
+| **$H=5$ Position Error (L2)** | $0.0801\,\text{rad}$ | $0.1524\,\text{rad}$ | $0.1866\,\text{rad}$ | Inizia discesa anomala dell'errore |
+| **$H=10$ Position Error (L2)** | $0.0948\,\text{rad}$ | $0.1425\,\text{rad}$ | **$0.1561\,\text{rad}$** | **Errore scende del 44%** rispetto a $H=1$ |
+| **$H=25$ Position Error (L2)** | $0.2884\,\text{rad}$ | $0.2768\,\text{rad}$ | $0.2489\,\text{rad}$ | Errore ancora inferiore a $H=1$ |
+| **Drift Ratio ($H_{25} / H_1$)** | $2.99$ (Drift naturale) | $1.27$ (Drift contenuto) | **$0.889$ ($< 1.0$)** | **Curva di degradazione invertita a "U"** |
+| **Rollout / Dynamic Score** | **$0.4133$** | **$0.4897$** | **$0.6997$** | **Peggior score registrato** in tutta la serie v0.6 |
+
+### 2. Root Cause Analysis: Cause Scatenanti dell'Anomalia v0.6.2
+
+L'indagine quantitativa ha individuato tre cause primarie interconnesse:
+
+1. **Soglia `activity_threshold = 0.012` Astronomicamente Eccessiva**:
+   L'analisi empirica dell'attività di eventi medi per frame sull'intero dataset ha rivelato:
+   - **Mediana dell'attività di eventi**: $0.01025$ (inferiore alla soglia!).
+   - **Percentuale di frame del dataset tagliati**: **$53.20\%$** dell'intero dataset ha $\text{act} < 0.012$.
+   - **Movimento lento ($0.01 \le v < 0.2\,\text{rad/s}$)**: Il **$94.97\%$** dei frame viene tagliato ($\text{act}_{\text{mean}} \approx 0.00577$).
+   - **Movimento normale ($v \ge 0.2\,\text{rad/s}$)**: Anche a velocità sostenute, il **$45.00\%$** dei frame scende sotto $0.012$.
+   Con la formula:
+   $$\text{act}_{\text{eff}} = \max(0, \text{act} - 0.012)$$
+   il fattore di gating $K_{\text{gate}}$ è stato forzato a **$0.0$ per oltre la metà della durata di ogni traiettoria**. Durante la Fase 0, la dinamica ha dovuto compensare l'assenza di correzione sensoriale per il 95% dei moti lenti, alterando pesantemente la sincronia fase-spazio.
+
+2. **Chattering del Gating e Reset Forzato di `g_steps`**:
+   Nel passo di dinamica:
+   $$\text{is\_active} = (\text{act} > 0.012) \implies g_{\text{steps}} = \begin{cases} g_{\text{steps}}^{\text{prev}} + 1 & \text{se active} \\ 0 & \text{altrimenti} \end{cases}$$
+   Poiché durante il moto l'attività oscilla naturalmente tra $0.010$ e $0.015$, la rampa di 5 passi è stata azzerata ripetutamente a ogni minima fluttuazione, causando un'alternanza discontinua (chattering) tra apertura parziale e chiusura totale del gate.
+
+3. **Accecamento del Burn-in Iniziale ed Esplosione dell'Errore a $H=1$**:
+   All'inizio del rollout canonico di valutazione, con flag di fase presenti, il protocollo fissa $t_{\text{start}} = 2$ (passi $t=0, 1, 2$).
+   In questi primi tre frame il braccio parte da fermo ($v \approx 0$), con attività pari a $\sim 0.0005 \ll 0.012$.
+   L'Anti-Evanescence Gate ha bloccato completamente il feedback sensoriale durante il burn-in iniziale ($K_{\text{gate}} \equiv 0$), lasciando lo stato iniziale $q$ disallineato con un errore di posa di **$0.4046\,\text{rad}$** al passo $t=2$ (contro $0.3126\,\text{rad}$ in v0.6.1).
+   Di conseguenza, al passo $H=1$ la previsione è partita da uno stato non ancorato, generando un errore di $0.2799\,\text{rad}$. Con l'avanzare dei passi ($H=5, 10$), l'attrattore simplettico di $M_1$ ha gradualmente riagganciato la traiettoria nominale corretta, facendo scendere l'errore a $0.1561\,\text{rad}$ e creando l'inversione della curva di degradazione ($H_{25}/H_1 = 0.889$).
+
+---
+---
+
+# SPWM-v0.6.3: Ricalibrazione della Soglia di Evanescenza al Rumore di Fondo Sensoriale
+
+### 1. Interventi Architetturali e di Configurazione
+1. **Ricalibrazione di `activity_threshold` a $0.001$**:
+   - Abbassata la soglia minima da $0.012$ a **$0.001$** in [`ModelConfig`](file:///Users/Mattia/Desktop/Studies/Temp/spwm/contracts/config.py), [`SpikingLatentDynamics`](file:///Users/Mattia/Desktop/Studies/Temp/spwm/models/dynamics.py) e [`SPWM`](file:///Users/Mattia/Desktop/Studies/Temp/spwm/models/world_model.py).
+   - A $0.001$ (corrispondente a circa 4 eventi per frame su una griglia $4 \times 32 \times 32$), vengono filtrati esclusivamente i frame di vera quiescenza e rumore termico a manipolatore fermo ($82.4\%$ dei frame con $v < 0.01\,\text{rad/s}$), mentre viene preservato intatto il **$96\%$ dei frame di movimento normale** e il **$45\%$ dei movimenti lenti**, eliminando l'accecamento del burn-in iniziale.
+2. **Aggiornamento Schema di Progetto (`ProjectConfig.name = "spwm_v0_6_3"`)**:
+   - Registrata l'identità di run `spwm_v0_6_3` nei contratti e nelle suite di test unitari (`tests/test_config_schema.py`).
+   - Allineato il runner pipeline [`scripts/run_pipeline.sh`](file:///Users/Mattia/Desktop/Studies/Temp/scripts/run_pipeline.sh) alla versione canonica `spwm_v0_6_3`.
+
+### 2. Risultati Sperimentali e Benchmarking v0.6.3
+
+L'addestramento completo della pipeline per v0.6.3 ha confermato il pieno recupero prestazionale rispetto alla regressione anomala di v0.6.2:
+- **Fase 0 (`train_representation`)**: 86 epoche completate, `val_loss = 2.671`, `val_pos_err = 0.201 rad`, `val_vel_err = 0.439 rad/s`.
+- **Fase 1 (`train_m1`)**: 67 epoche completate, miglior checkpoint all'epoca 57 con **`val_loss = 0.00430`** (recupero del **$-40.4\%$** rispetto a $0.00722$ di v0.6.2).
+- **Teacher Forcing MSE**: $0.00201$ (eccellente ancoraggio 1-step).
+- **Curva di Degradazione Ricomposta**: L'errore a $H=1$ scende da $0.2799\,\text{rad}$ (v0.6.2) a **$0.2090\,\text{rad}$**, con drift ratio stabilizzato a **$1.17$** (fine dell'inversione a "U" patologica).
+
+| Metrica di Valutazione M1 | SPWM-v0.6.0 | SPWM-v0.6.1 | SPWM-v0.6.2 | SPWM-v0.6.3 (Calibrato) | Delta v0.6.3 vs v0.6.2 |
+| :--- | :--- | :--- | :--- | :--- | :--- |
+| **M1 Best Val Loss** | **0.00333** | 0.00423 | 0.00722 | **0.00430** | **-40.4% (Forte recupero)** |
+| **$H=1$ Position Error (L2)** | 0.0965 rad | 0.2172 rad | 0.2799 rad | **0.2090 rad** | **-25.3%** |
+| **$H=1$ Position MSE** | 0.00209 | 0.00793 | 0.01317 | **0.00737** | **-44.0%** |
+| **$H=10$ Position Error (L2)**| 0.0948 rad | 0.1425 rad | 0.1561 rad | **0.1096 rad** | **-29.8%** |
+| **$H=25$ Position Error (L2)**| 0.2884 rad | 0.2768 rad | 0.2489 rad | **0.2445 rad** | Stabile |
+| **Drift Ratio ($H_{25} / H_1$)**| 2.99 | 1.27 | 0.889 (Patologico) | **1.170 (Sano)** | Ripristino monotonicità fisica |
+| **Dynamic Score** | 0.4133 | 0.4897 | 0.6997 | **0.4866** | Ripristino parità v0.6.1 |
+
+### 3. Post-Mortem Approfondito: L'Anomalia del Ghost Arm ai Frame 45–53
+
+Dall'ispezione visiva del video di simulazione Unity (`sim/Assets/StreamingAssets/trajectory_ghost.json`, campione 3600), tra i frame 45 e 53 (passi dataset $t=48$–$55$) il manipolatore virtuale reale decelerava fino a fermarsi completamente ($\|p^*\| \to 0$, $\Delta q^* < 0.005\,\text{rad}$), mentre il braccio ghost manifestava un'oscillazione/jiggle di oltre $7^\circ$–$11^\circ$ (in particolare Shoulder Pan che collassava da $0.735$ a $0.608\,\text{rad}$).
+
+L'analisi quantitativa a livello di tensori ha svelato tre meccanismi concettuali ed esecutivi:
+1. **Confusione concettuale tra Rampa Sensoriale e Anti-Evanescenza**:
+   - **Rampa di Sovrascrittura Parziale**: serve a modulare la transizione graduale verso l'heft ($20\% \to 40\% \to 60\% \to 80\% \to 100\%$) per evitare discontinuità. Deve avanzare monotonicamente in base alla fase e non deve mai resettarsi.
+   - **Anti-Evanescenza**: appartiene strettamente al livello percettivo (`EventEncoder` / `SpatialSoftmax`). Quando gli eventi scendono a zero perché il braccio è fermo, la scena non scompare; il visual encoder deve **trattenere i keypoint spaziali precedenti** ($\hat{\mathbf{kp}}_t = \hat{\mathbf{kp}}_{t-1}$) invece di collassare analiticamente verso $(0, 0)$.
+2. **Glitch di Reset della Rampa per Fluttuazione dell'Attività**:
+   In `dynamics.py`, il contatore `g_steps` era condizionato a runtime da `act_val > activity_threshold`. Al frame 51, l'attività del manipolatore fermo è scesa a $0.00098 < 0.0010$, azzerando forzatamente `g_steps = 0` e facendo crollare la rampa da $60\%$ a $0\%$ per poi riavviarla al $20\%$ al frame successivo, generando uno stutter meccanico.
+3. **Condizionamento da Azione Cinematica vs Dinamica**:
+   L'azione $u_t$ passata al modello comunicava il setpoint di posizione assoluta ($q_{\text{des}} \in [-1, 1]^6$) invece dell'**intensità/sforzo motore reale** ($\tau \in [-1, 1]^6$). Di conseguenza, a manipolatore fermo che compensa la gravità, la rete riceveva un segnale identico a quello di moto rapido.
+
+### 4. Decisioni Architetturali per la Release v0.7.0
+1. **Passaggio all'Intensità Motore (Full Go)**:
+   Modifica del controller Unity (`ActionConditionedController.cs`) per calcolare ed esportare lo sforzo motore effettivo normalizzato applicato dai drive PD:
+   $$u_{\text{intensity}, i} = \text{clamp}\left(\frac{\tau_i}{\tau_{\max, i}}, -1.0, 1.0\right)$$
+   dove $\tau_i = K_p (q_{\text{des}, i} - q_i) + K_d (\dot{q}_{\text{des}, i} - \dot{q}_i)$.
+2. **Anti-Evanescenza nel Livello Percettivo (`EventEncoder`)**:
+   Implementazione del buffer di persistenza keypoint in `EventEncoder`: quando $\text{act} < \tau_{\text{noise}}$, i keypoint restano congelati all'ultima posa valida anziché collassare a $(0, 0)$.
+3. **Disaccoppiamento della Rampa di Transizione**:
+   La rampa $20\% \to 100\%$ viene resa strettamente deterministica e monotona durante la finestra pre-heft, priva di reset da rumore di fondo.
+4. **Scarto della Handover Loss**:
+   Evitata l'introduzione di termini di loss artificiosi specifici sul punto di transizione per prevenire overfitting.
+
+
 
 
 

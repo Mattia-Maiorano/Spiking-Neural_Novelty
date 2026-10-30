@@ -40,6 +40,7 @@ class SpikingLatentDynamics(nn.Module):
         max_k_gate: float = 1.0,
         max_correction_norm: float = 0.0,
         action_dim: int = J,
+        activity_threshold: float = 0.001,
     ) -> None:
         super().__init__()
         assert_phase_space_contract(latent_dim=latent_dim, q_dim=q_dim, p_dim=p_dim)
@@ -55,6 +56,7 @@ class SpikingLatentDynamics(nn.Module):
         self.gate_ramp_steps = int(gate_ramp_steps)
         self.max_k_gate = float(max_k_gate)
         self.max_correction_norm = float(max_correction_norm)
+        self.activity_threshold = float(activity_threshold)
 
         if len(betas) != len(self.timescale_dims):
             raise ValueError(
@@ -106,17 +108,19 @@ class SpikingLatentDynamics(nn.Module):
     ) -> torch.Tensor:
         """
         Dynamically computes blending factor K_gate in [0, max_k_gate] conditioned on event activity.
-        When event activity is 0, K_gate -> 0 (network relies on recurrent kinematic integration).
-        When event activity spikes (burst of events), K_gate -> max_k_gate (bounded sensory correction).
+        Anti-Evanescence Gate: when event activity is below `activity_threshold` (stationary/decelerating arm),
+        K_gate is strictly 0.0, preventing the dynamics from snapping toward collapsed (0, 0) keypoints.
+        When event activity rises above the threshold, K_gate ramps smoothly up to max_k_gate.
         """
         if event_activity is not None:
             act = event_activity.view(spikes.shape[0], -1).mean(dim=-1, keepdim=True)
         else:
             act = spikes.mean(dim=-1, keepdim=True)
         act = torch.clamp(act, min=0.0)
+        act_eff = torch.clamp(act - self.activity_threshold, min=0.0)
         scale = F.softplus(self.gate_scale)
         eff_max = self.max_k_gate if max_k_gate is None else float(max_k_gate)
-        k_gate = (1.0 - torch.exp(-scale * act)) * eff_max
+        k_gate = (1.0 - torch.exp(-scale * act_eff)) * eff_max
         return torch.clamp(k_gate, min=0.0, max=eff_max)
 
     def init_state(self, batch_size: int, device: Optional[torch.device] = None) -> DynamicsState:
@@ -172,7 +176,12 @@ class SpikingLatentDynamics(nn.Module):
                 bounded_corr = raw_corr
             else:
                 prev_g = state.grounded_steps if state.grounded_steps is not None else torch.zeros(B, 1, device=device, dtype=q_prev.dtype)
-                g_steps = prev_g + 1.0
+                if event_activity is not None:
+                    act_val = event_activity.view(B, -1).mean(dim=-1, keepdim=True)
+                else:
+                    act_val = spikes.mean(dim=-1, keepdim=True)
+                is_active = (act_val > self.activity_threshold).to(dtype=prev_g.dtype)
+                g_steps = torch.where(is_active > 0, prev_g + 1.0, torch.zeros_like(prev_g))
                 ramp = torch.clamp(g_steps / float(max(1, self.gate_ramp_steps)), min=0.0, max=1.0)
                 k_gate = ramp * self.compute_k_gate(event_activity, spikes)
                 if self.max_correction_norm > 0:

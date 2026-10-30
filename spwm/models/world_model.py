@@ -63,6 +63,7 @@ class SPWM(nn.Module):
         gate_ramp_steps: int = 5,
         max_k_gate: float = 0.5,
         max_correction_norm: float = 0.25,
+        activity_threshold: float = 0.001,
         phase_horizon: int = 50,
         symplectic_m1: bool = True,
         dt: float = 0.05,
@@ -127,6 +128,7 @@ class SPWM(nn.Module):
             gate_ramp_steps=gate_ramp_steps,
             max_k_gate=max_k_gate,
             max_correction_norm=max_correction_norm,
+            activity_threshold=activity_threshold,
         )
 
         # 4. Action-Conditioned Latent Attractor Predictor (M1)
@@ -184,6 +186,7 @@ class SPWM(nn.Module):
             gate_ramp_steps=cfg.model.gate_ramp_steps,
             max_k_gate=cfg.model.max_k_gate,
             max_correction_norm=cfg.model.max_correction_norm,
+            activity_threshold=cfg.model.activity_threshold,
             phase_horizon=cfg.training.phase_horizon,
             symplectic_m1=cfg.model.symplectic,
             dt=cfg.environment.dt,

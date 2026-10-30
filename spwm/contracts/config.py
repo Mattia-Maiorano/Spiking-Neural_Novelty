@@ -60,7 +60,7 @@ def _strict_dict_to_dataclass(cls: Type[T], data: Dict[str, Any], context: str =
 @dataclass(frozen=True)
 class ProjectConfig:
     """Project-level identity, tracking tags, and pseudo-random reproducibility configuration."""
-    name: str = "spwm_v0_6_1"  #: Unique identifier/tag for the project and run artifacts.
+    name: str = "spwm_v0_6_3"  #: Unique identifier/tag for the project and run artifacts.
     seed: int = 42             #: Global pseudo-random seed for PyTorch, NumPy, and trajectory generation.
 
 
@@ -142,6 +142,7 @@ class ModelConfig:
     gate_ramp_steps: int = 5                          #: Number of transition steps for smooth sensory gate ramp.
     max_k_gate: float = 1.0                           #: Maximum sensory injection gate weight to maintain inertial damping.
     max_correction_norm: float = 0.50                 #: Maximum Euclidean norm of single-step sensory correction in coordinate space.
+    activity_threshold: float = 0.001                 #: Minimum event activity threshold below which sensory correction is suppressed (Anti-Evanescence gate).
     in_channels: int = C_EVENT                        #: Dual-camera event input polarity channels (4 = 2 static global + 2 egocentric wrist).
     symplectic: bool = True                           #: Whether to use dissipative phase-space integration for M1.
 
@@ -152,6 +153,8 @@ class ModelConfig:
             p_dim=self.p_dim,
             num_keypoints=self.num_keypoints,
         )
+        if self.activity_threshold < 0.0:
+            raise ValueError(f"activity_threshold must be non-negative, got {self.activity_threshold}")
         if self.in_channels not in (2, C_EVENT):
             raise ValueError(
                 f"in_channels must be 2 (monocular) or {C_EVENT} (dual-camera global+wrist), got {self.in_channels}"

@@ -206,3 +206,54 @@ def test_event_gated_temporal_integration_in_spiking_dynamics():
     # With K_gate -> 1, q_next heavily corrects toward sens_kp (5.0)
     assert torch.allclose(q_burst, sens_kp, atol=0.2)
 
+
+def test_anti_evanescence_gate_suppression_and_ramp():
+    """
+    Verifies that the Anti-Evanescence gate strictly clamps K_gate to 0 when event activity
+    is below the quiescence threshold, prevents coordinate corruption toward collapsed (0, 0)
+    keypoints, and holds ramp accumulation until active motion resumes.
+    """
+    dyn = SpikingLatentDynamics(
+        input_dim=32,
+        latent_dim=32,
+        q_dim=8,
+        p_dim=24,
+        dt=0.05,
+        timescale_dims=(16, 16),
+        betas=(0.90, 0.985),
+        gate_ramp_steps=5,
+        activity_threshold=0.001,
+    )
+    B = 2
+    state = dyn.init_state(B)
+    sens_input = torch.zeros(B, 32)
+    collapsed_skp = torch.zeros(B, 8)
+    state.z_prev[:, :8] = 2.5
+
+    # 1. Evanescent / quiescent frames (activity = 0.0005 < 0.001)
+    for _ in range(5):
+        k_gate_eval = dyn.compute_k_gate(torch.full((B, 1), 0.0005), state.ema_spikes)
+        assert torch.all(k_gate_eval == 0.0)
+
+        z_next, state = dyn.step(
+            sensory_input=sens_input,
+            state=state,
+            sensory_keypoints=collapsed_skp,
+            event_activity=torch.full((B, 1), 0.0005),
+        )
+        # Verify ramp did not accumulate during silence
+        assert torch.all(state.grounded_steps == 0.0)
+    # Verify q stayed centered around 2.5 and was not pulled down to collapsed 0.0
+    assert torch.all(z_next[:, :8] > 1.8)
+
+    # 2. Motion resumes (activity = 0.040 > 0.001)
+    valid_skp = torch.ones(B, 8) * 3.0
+    z_active, state_active = dyn.step(
+        sensory_input=sens_input,
+        state=state,
+        sensory_keypoints=valid_skp,
+        event_activity=torch.full((B, 1), 0.040),
+    )
+    assert torch.all(state_active.grounded_steps == 1.0)
+
+

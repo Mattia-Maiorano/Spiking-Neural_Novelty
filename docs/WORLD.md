@@ -38,19 +38,21 @@ flowchart LR
 
 ### 1.1 Robotic Kinematic Morphology & Archetype
 
-The core robotic rig ([`ArticulatedRobotRig`](file:///Users/Mattia/Desktop/Studies/Temp/sim/Assets/Scripts/ArticulatedRobotRig.cs)) is configured for:
-- **6-DOF Articulated Manipulator Arm (`RobotArchetype.ManipulatorArm`, $J=6$ actuated revolute joints)**:
-  - Root Body: Immovable heavy base ($20.0\,\text{kg}$)
-  - Joint 0: Shoulder Pan (Yaw)
-  - Joint 1: Shoulder Lift (Pitch)
-  - Joint 2: Elbow Flex (Pitch)
-  - Joint 3: Wrist Pitch
-  - Joint 4: Wrist Yaw
-  - Joint 5: Wrist Roll
+The core robotic rig ([`ArticulatedRobotRig`](file:///Users/Mattia/Desktop/Studies/Temp/sim/Assets/Scripts/ArticulatedRobotRig.cs)) and its playback replica ([`KinematicRobotRig`](file:///Users/Mattia/Desktop/Studies/Temp/sim/Assets/Scripts/Visualization/GhostPlaybackManager.cs)) are configured as an **Anthropomorphic 6-DOF Right Humanoid Arm (`RobotArchetype.ManipulatorArm`, $J=6$ actuated revolute joints, `MaxJointAngleRad = 3.14` rad)**:
+- **Root Socket (`Base_Root`)**: Immovable shoulder socket mounted at `ShoulderMountHeight = 1.25m` (`BaseHeight = 0.05m`, $20.0\,\text{kg}$) with zero vertical industrial support column beneath the shoulder.
+- **Joint 0 (`Shoulder_Pan`)**: Compact shoulder pan / internal-external yaw socket (`TurretHeight = 0.05m`, $2.5\,\text{kg}$, limits $[-120^\circ, 120^\circ]$), placing the glenohumeral joint at human shoulder height (`ShoulderElevation = 1.35m`).
+- **Joint 1 (`Shoulder_Lift`)**: Human upper arm / humerus (`UpperArmLength = 0.28m`, $2.2\,\text{kg}$, limits $[-90^\circ, 185^\circ]$), enabling the upper arm to hang naturally downward from the right shoulder (`q1 ≈ 2.92 rad` / $167^\circ$ from $+Y$ in resting pose).
+- **Joint 2 (`Elbow_Flex`)**: Human forearm / radius-ulna (`ForearmLength = 0.25m`, $1.6\,\text{kg}$, limits $[-155^\circ, 15^\circ]$, medial carrying/swivel axis `AxisRotationEuler = (0°, 56°, -16°)`), operating in an anatomical human posture ($q_2 \le 0$) where the elbow starts closed/flexed down at the right side and opens/extends diagonally toward the left target as the elbow raises and turns right.
+- **Joint 3 (`Wrist_Pitch`)**: Proximal carpal flexion/extension (`WristPitchLength = 0.04m`, $0.6\,\text{kg}$, limits $[-95^\circ, 95^\circ]$, `AxisRotationEuler = (0°, 56°, -16°)`).
+- **Joint 4 (`Wrist_Yaw`)**: Distal carpal radial/ulnar deviation (`WristYawLength = 0.04m`, $0.5\,\text{kg}$, limits $[-75^\circ, 75^\circ]$).
+- **Joint 5 (`Wrist_Roll`)**: Forearm/hand pronation-supination (`WristRollLength = 0.06m`, $0.5\,\text{kg}$, limits $[-180^\circ, 180^\circ]$ so the palm can rotate from facing down (270°) at grasp to open up-left (135°) at the end, solved in closed form by `SolveInverseKinematicsOrientedStatic` (palm normal = tip local +Z; `Wrist_Pitch`/`Wrist_Yaw` held at 0, orientation achieved by roll only); `TotalWristToolLength = 0.14m`), terminating in an anatomical **right humanoid hand** (`HumanoidPalm`, `HumanoidKnuckles`, 4 two-segment articulated fingers `HumanoidFingerProx_*` / `HumanoidFingerDist_*`, and a medial/radial right-hand thumb `WristOrientationFiducial` / `HumanoidThumbDistal` on $-X$).
+- **Anthropomorphic Head Camera Perspective ([`CinematicCameraTracker`](file:///Users/Mattia/Desktop/Studies/Temp/sim/Assets/Scripts/Visualization/CinematicCameraTracker.cs) & [`SensoryStreamDisplay`](file:///Users/Mattia/Desktop/Studies/Temp/sim/Assets/Scripts/Visualization/SensoryStreamDisplay.cs))**:
+  - Positioned at human eye-level head perspective relative to the right shoulder (`HeadOffsetFromShoulder = (-0.22m, +0.25m, -0.28m)`, world position `(-0.22m, 1.60m, -0.28m)`), tilted downward toward the left-side manipulation workspace (`EyeCameraLookTargetOffset = (-0.12m, 1.06m, 0.44m)`), bringing the complete shoulder cap, humerus, elbow hinge, forearm, wrist, hand, and left target into clear visual framing.
+  - **Diagonal Opening Reach Biomechanics**: Target objects are spawned on the left (`startPos.x ≈ -0.185m`, reachable forward reach `z ∈ [0.45m, 0.49m]`). Starting from a closed resting posture (`q_neutral = [1.42, 3.00, -1.78, 0.05, -0.70, -0.25]` rad, elbow down at `y = 1.07m` flexed at `-102°`, hand on the right at `x = +0.02m`), reaching toward the left target causes the shoulder to open slightly right (`q1: 3.00 -> 2.41 rad`), the elbow to raise and turn right (`y: 1.07m -> 1.14m`, `x: +0.04m -> +0.09m -> +0.06m`), the forearm to open and extend (`q2: -1.78 -> -0.95 rad`, opening from `102°` to `54°`), and the hand to follow a diagonal trajectory from the lower-right (`x = +0.02m`) to grasp and lift the payload on the left (`x = -0.18m`), maintaining natural inward wrist supination (negative `Wrist_Roll` in `[-1.45, 0.10]` rad, physical limits `[-95°, 15°]`).
 - **Physical Quantities**:
-  - Global joint friction: $\mu_{\text{joint}} = 0.08\,\text{N}\cdot\text{s}$
-  - Angular damping: $0.15\,\text{s}^{-1}$
-  - Ground static/dynamic friction: $\mu_s = 0.85, \mu_k = 0.75$
+  - Global joint friction: $\mu_{\text{joint}} = 0.06\,\text{N}\cdot\text{s}$
+  - Angular damping: $0.25\,\text{s}^{-1}$
+  - Ground static/dynamic friction: $\mu_s = 0.90, \mu_k = 0.80$
   - Gravity: $\mathbf{g} = [0, -9.81, 0]^T\,\text{m/s}^2$
 
 ---
@@ -65,15 +67,16 @@ At discrete time index $t \in \{0, 1, \dots, T-1\}$ with physics step $\Delta t 
 - **Applied Motor Action Vector**: $\mathbf{u}_t \in [-1.0, 1.0]^{D_u}$ ($D_u = \text{action\_dim} = 6$)
 - **Execution Phase Flags** (`phase_flag`): Discrete tag identifying sensory-motor regime:
   - `0 = BlindApproach`: Neutral setup followed by smooth minimum-jerk trajectory toward grasp coordinates.
-  - `1 = SensoryHeft`: Activated $N$ steps prior to contact (`pre_contact_sensory_steps = 5`) for sensory grounding, followed by collision-triggered rigid attachment and an upward micro-movement (+12 cm lift with wrist twist) generating informative event transients and velocity responses proportional to payload mass and inertia.
+  - `1 = SensoryHeft`: Activated $N$ steps prior to contact (`pre_contact_sensory_steps = 5`) for sensory grounding, followed by collision-triggered rigid attachment and an upward micro-movement (+12 cm lift with wrist twist, no acceleration/gain boost) generating informative event transients and velocity responses proportional to payload mass and inertia.
   - `2 = BlindTransport`: Smooth trajectory interpolation to the 6D target pose with wrist orientation variations to stress rotational inertia predictions.
 
 ### 2.2 Procedural Object Spawner & Rigid Grasp Attachment
 
-[`ProceduralObjectSpawner`](file:///Users/Mattia/Desktop/Studies/Temp/sim/Assets/Scripts/ProceduralObjectSpawner.cs) instantiates physical payloads in the scene:
+[`ProceduralObjectSpawner`](file:///Users/Mattia/Desktop/Studies/Temp/sim/Assets/Scripts/ProceduralObjectSpawner.cs) instantiates physical payloads in front of the torso/head across three anthropomorphic workspace elevation planes:
+- **Elevation Planes**: `Low` ($1.04\,\text{m}$, tabletop level below shoulder), `Mid` ($1.14\,\text{m}$, natural manipulation level), and `High` ($1.26\,\text{m}$, upper chest/reach level) at forward reach distances $[0.42, 0.52]\,\text{m}$.
 - **Primitive Shapes**: Sphere, Elongated Cylinder, Box.
-- **Mass Distribution**: Randomly sampled mass in $[0.2, 3.5]\,\text{kg}$ creating substantial variance in gravitational torques and inertial resistance.
-- **Attachment**: A `FixedJoint` constraint attaches the object to the end-effector link upon contact, eliminating finger slip friction and directly transferring the payload's mass and inertia tensor into the Featherstone kinematic chain.
+- **Mass Distribution**: Randomly sampled mass in $[1.20, 4.50]\,\text{kg}$ creating substantial variance in gravitational torques and inertial resistance.
+- **Attachment**: A `FixedJoint` constraint attaches the object into the humanoid right palm and curved fingers upon contact, eliminating finger slip friction and directly transferring the payload's mass and inertia tensor into the Featherstone kinematic chain.
 
 ### 2.3 Numerical Physics Integration
 

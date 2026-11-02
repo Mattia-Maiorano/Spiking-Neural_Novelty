@@ -28,6 +28,9 @@ namespace SPWM.Visualization
         public float[] ground_truth_p;
         public float[] predicted_p;
         public GhostInstantaneousMetrics instantaneous_metrics;
+        public float[] global_events;
+        public float[] wrist_events;
+        public float event_activity;
     }
 
     [Serializable]

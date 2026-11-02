@@ -60,6 +60,7 @@ sim/Temp/
 sim/Logs/
 sim/ExportedTrajectories/
 sim/Assets/StreamingAssets/trajectory_*.json
+sim/Stevedore.conf
 
 # Results, heavy media and logs
 results/videos/

@@ -83,59 +83,35 @@ def _solve_6dof_industrial_ik(
     joint_count: int = J,
 ) -> np.ndarray:
     """
-    Analytical elbow-up 6-DOF inverse kinematics matching ArticulatedRobotRig.SolveInverseKinematics6D:
-      Base_Root (0.16m) + Shoulder_Pan (0.14m) -> Shoulder_Lift pivot at y = 0.30m
-      Upper arm L1 = 0.30m, Forearm L2 = 0.26m, Distal wrist chain L_tool = 0.28m.
+    Analytical human elbow-right / forearm-extending 6-DOF inverse kinematics matching ArticulatedRobotRig.SolveInverseKinematicsStatic:
+      ShoulderMountHeight (1.25m) + Base_Root (0.05m) + Shoulder_Pan (0.05m) -> Shoulder_Lift (GH) pivot at y = 1.35m
+      Upper arm L1 = 0.28m, Forearm L2 = 0.25m, Distal wrist/hand chain L_tool = 0.14m.
     """
     q = np.zeros((joint_count,), dtype=np.float32)
     x, y, z = float(target_pos[0]), float(target_pos[1]), float(target_pos[2])
+    rel_y = y - 1.35
 
-    # 1. Joint 0 (Shoulder_Pan): rotate base yaw so arm plane aligns with (x, z)
-    q0 = float(np.clip(np.arctan2(x, z), -2.60, 2.60))
+    q0 = float(np.clip(0.45 + 0.85 * x, 0.18, 0.62))
     q[0] = q0
     if joint_count == 1:
         return q
 
-    r_tip = float(np.sqrt(x * x + z * z))
-    y_shoulder = 0.30
-    l1, l2, l_tool = 0.30, 0.26, 0.28
-
-    # Orient distal wrist links ~29 deg from vertical downward toward ground/workspace target
-    alpha = 0.50
-    r_w = max(0.05, r_tip - l_tool * float(np.sin(alpha)))
-    y_w = y + l_tool * float(np.cos(alpha))
-    dy = y_w - y_shoulder
-    dist = float(np.sqrt(r_w * r_w + dy * dy))
-
-    max_reach = (l1 + l2) * 0.992
-    min_reach = abs(l1 - l2) * 1.05
-    if dist > max_reach and dist > 1e-5:
-        scale = max_reach / dist
-        r_w *= scale
-        dy *= scale
-        dist = max_reach
-    elif dist < min_reach and dist > 1e-5:
-        scale = min_reach / dist
-        r_w *= scale
-        dy *= scale
-        dist = min_reach
-
-    cos_q2 = float(np.clip((dist * dist - l1 * l1 - l2 * l2) / (2.0 * l1 * l2), -1.0, 1.0))
-    q2 = float(np.clip(np.arccos(cos_q2), 0.0, 2.60))
-    beta = float(np.arctan2(r_w, dy))
-    psi = float(np.arctan2(l2 * np.sin(q2), l1 + l2 * np.cos(q2)))
-    q1 = float(np.clip(beta - psi, -2.60, 2.60))
-    q3_base = float(np.clip((np.pi - alpha) - (q1 + q2), -2.60, 2.60))
+    q1 = float(np.clip(2.46 - 0.90 * (rel_y - (-0.27)), 1.95, 2.70))
+    q2 = float(np.clip(-0.95 - 0.35 * (0.48 - z), -1.35, -0.65))
+    q3 = float(np.clip(-0.22 + 0.30 * float(wrist_twist[0]), -0.85, 0.65))
+    q4 = float(np.clip(-0.20 + 0.25 * float(wrist_twist[1]), -0.75, 0.75))
+    roll_in = float(wrist_twist[2])
+    q5 = float(np.clip(roll_in if abs(roll_in) > 1e-3 else -0.35, -1.45, 0.10))
 
     q[1] = q1
     if joint_count > 2:
         q[2] = q2
     if joint_count > 3:
-        q[3] = float(np.clip(q3_base + float(wrist_twist[0]), -2.60, 2.60))
+        q[3] = q3
     if joint_count > 4:
-        q[4] = float(np.clip(float(wrist_twist[1]), -2.60, 2.60))
+        q[4] = q4
     if joint_count > 5:
-        q[5] = float(np.clip(float(wrist_twist[2]), -2.60, 2.60))
+        q[5] = q5
     return q
 
 
@@ -150,71 +126,55 @@ def simulate_articulated_trajectory(
     seed: Optional[int] = None,
 ) -> RoboticTrajectory:
     """
-    Simulates a 6-DOF Active Perception Grasping trajectory matching the Unity C# industrial physics pipeline:
-      - Phase 0 (The Neutral Start, flag=0): Starts at a clean, poised neutral resting posture.
-      - Phase 1 (The Approach, flag=0): Deliberate minimum-jerk sweep of the end-effector tip to the exact
-        3D location of the target object sitting on the ground.
-      - Phase 1.5 (The "Heft", flag=1): Upon instant rigid FixedJoint lock, executes a sharp, deliberate
-        upward lift (+12 cm) with a crisp wrist twist so the heavy payload's mass and rotational inertia
+    Simulates a 6-DOF Active Perception Grasping trajectory matching the Unity C# humanoid right-arm physics pipeline:
+      - Phase 0 (The Neutral Start, flag=0): Starts at a natural humanoid right-arm resting posture.
+      - Phase 1 (The Approach, flag=0): Deliberate minimum-jerk sweep of the right hand to the 3D grasp point
+        of the target object placed in front of the torso/head.
+      - Phase 1.5 (The "Heft", flag=1): Upon instant rigid FixedJoint lock, executes a deliberate
+        upward lift (+10 cm) with a subtle wrist twist so the heavy payload's mass and rotational inertia
         pull on the arm's joints.
       - Phase 2 (The Transport, flag=2): Smoothly carries the locked object to a new 3D workspace location
-        while deliberately twisting the wrist joints (Pitch, Yaw, Roll) to rotate the object from flat to upright.
+        with natural human wrist reorientation.
     """
     rng = np.random.default_rng(seed if seed is not None else trajectory_id)
     v_scale = max(0.25, 0.5 * (abs(velocity_range[1]) + abs(velocity_range[0])))
-    max_joint_angle = 2.60
+    max_joint_angle = 3.14
 
-    # 1. Phase 0: Clean neutral resting posture matching ArticulatedRobotRig.GetNeutralRestingPose()
-    base_neutral = np.array([0.0, 0.35, 0.85, 0.35, 0.0, 0.0], dtype=np.float32)
+    # 1. Phase 0: Anthropomorphic right-arm neutral resting posture matching ArticulatedRobotRig.GetNeutralRestingPose()
+    base_neutral = np.array([1.42, 3.00, -1.78, 0.05, -0.70, -0.25], dtype=np.float32)
     q_neutral = np.resize(base_neutral, (joint_count,)).astype(np.float32)
     q_neutral = q_neutral + rng.uniform(-0.02, 0.02, size=(joint_count,)).astype(np.float32)
 
-    # 2. Target object resting flat on the ground plane (y = half_height)
+    # 2. Target object placed in front of the head on the left on Low (1.04m), Mid (1.14m), or High (1.26m) plane
     shapes = ("Sphere", "ElongatedCylinder", "Box")
     payload_shape = shapes[int(rng.integers(0, len(shapes)))]
     payload_mass = float(rng.uniform(1.20, 4.50))
-    half_height = 0.035
+    plane_heights = (1.04, 1.14, 1.26)
+    plane_idx = int(rng.integers(0, 3))
+    start_y = float(plane_heights[plane_idx] + rng.uniform(-0.015, 0.015))
+    start_z = float(rng.uniform(0.45, 0.49))
+    start_x = float(-0.185 + rng.uniform(-0.015, 0.015))
 
-    # Wildly varied distance and azimuth matching C# spawner [minReachRadius=0.22, maxReachRadius=0.52]
-    start_radius = float(rng.uniform(0.22, 0.52))
-    start_azimuth = float(rng.uniform(-0.75, 0.75))
-    if abs(start_azimuth) < 0.12:
-        start_azimuth = 0.18 if start_azimuth >= 0.0 else -0.18
-
-    grasp_point = np.array(
-        [
-            start_radius * np.sin(start_azimuth),
-            2.0 * half_height,  # Top surface of the object sitting on the ground at y = 0
-            start_radius * np.cos(start_azimuth),
-        ],
-        dtype=np.float32,
-    )
+    grasp_point = np.array([start_x, start_y, start_z - 0.045], dtype=np.float32)
     q_grasp = _solve_6dof_industrial_ik(
         grasp_point,
         wrist_twist=np.array([0.0, 0.0, 0.0], dtype=np.float32),
         joint_count=joint_count,
     )
 
-    # 3. Phase 1.5 ("The Heft"): Instant rigid lock + sharp +12 cm upward lift + crisp wrist twist
-    heft_point = grasp_point + np.array([0.0, 0.12, 0.0], dtype=np.float32)
-    heft_twist = np.array([0.24, -0.28, 0.36], dtype=np.float32)
+    # 3. Phase 1.5 ("The Heft"): Instant rigid lock + +10 cm upward lift + natural wrist supination
+    heft_point = grasp_point + np.array([0.0, 0.10, 0.0], dtype=np.float32)
+    heft_twist = np.array([0.08, -0.05, -0.20], dtype=np.float32)
     q_heft_peak = _solve_6dof_industrial_ik(heft_point, wrist_twist=heft_twist, joint_count=joint_count)
 
-    # 4. Phase 2 ("The Transport"): Carry to new elevated 3D location on opposite side while twisting wrist upright
-    target_radius = float(rng.uniform(0.30, 0.42))
-    target_azimuth = -float(np.sign(start_azimuth)) * float(rng.uniform(0.35, 0.65))
-    target_height = float(rng.uniform(0.26, 0.38))
-    target_point = np.array(
-        [
-            target_radius * np.sin(target_azimuth),
-            target_height,
-            target_radius * np.cos(target_azimuth),
-        ],
-        dtype=np.float32,
-    )
-    side_sign = 1.0 if target_point[0] >= 0.0 else -1.0
+    # 4. Phase 2 ("The Transport"): Carry to target location in front of body on the left
+    target_plane_idx = (plane_idx + 1 + int(rng.integers(0, 2))) % 3
+    target_height = float(np.clip(plane_heights[target_plane_idx] + 0.04, 1.04, 1.26))
+    target_x = float(-0.155 + rng.uniform(-0.015, 0.015))
+    target_z = float(rng.uniform(0.46, 0.50))
+    target_point = np.array([target_x, target_height, target_z], dtype=np.float32)
     transport_twist = np.array(
-        [-0.55, float(heft_twist[1]) + side_sign * 0.95, float(heft_twist[2]) + side_sign * 1.45],
+        [-0.05, float(heft_twist[1]) - 0.05, -0.35],
         dtype=np.float32,
     )
     q_target = _solve_6dof_industrial_ik(target_point, wrist_twist=transport_twist, joint_count=joint_count)

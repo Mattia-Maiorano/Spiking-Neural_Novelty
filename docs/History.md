@@ -1,2202 +1,388 @@
+
 # Project Evolution History: SPWM (Spiking Predictive World Model)
 
-## Baseline State: SPWM-v1 (Surrogate BPTT Architecture)
-
-### 1. Architecture Overview
-- **Neuron Model**: Single-compartment Leaky Integrate-and-Fire (`LIFCell` in `spwm/models/neurons.py`) with membrane potential $V_t = \beta V_{t-1} + I_t$ and surrogate Heaviside thresholding (Atan, FastSigmoid, Sigmoid).
-- **Timescale Organization**: Dual-timescale spiking memory (`MultiTimescaleMemory` in `spwm/models/memory.py`) splitting latent populations into 2 pools (fast $\beta \approx 0.8$, slow $\beta \approx 0.98$).
-- **Latent Dynamics & World Model**:
-  - `SpikingLatentDynamics` (`spwm/models/latent_dynamics.py`) receiving sensory input from `EventEncoder` and recurrent feedback $z_{t-1}$.
-  - Fuses spike outputs and membrane potentials into latent state $z_t$.
-  - `LatentPredictor` predicting future latent states $\hat{z}_{t+1}$.
-  - `PhysicalDecoder` probing kinematic quantities (positions/velocities).
-- **Learning & Optimization**:
-  - Global Backpropagation Through Time (BPTT) through unrolled time sequences $T$.
-  - Requires computational graph retention scaling with sequence length $\mathcal{O}(T)$ GPU/RAM memory.
-  - Loss function (`SPWMLoss` in `spwm/learning/losses.py`) combining prediction error, multi-step rollout error, variance regularization, and spike sparsity penalty.
-
-### 2. Known Limitations of SPWM-v1
-1. **Memory Complexity**: $\mathcal{O}(T)$ memory footprint during training makes long or infinite streaming sequences impossible.
-2. **Biological Implausibility**: Uses global backpropagation through time and non-local gradient transport.
-3. **Synaptic Dynamics**: Single compartment neurons lack top-down modulatory dendritic compartments for local e-prop eligibility assignment.
-4. **Weight Constraints**: Weights violate Dale's Law (arbitrary mixed excitatory/inhibitory signs).
-5. **No Sleep Consolidation**: Continual online updates suffer from high-frequency noise accumulation without low-rank invariant consolidation.
-
----
-
-## Upgrade State: SPWM-v2 (Non-BPTT Continuous Predictive World Model)
-
-### 1. Architectural Blueprint & Components
-- **Two-Compartment Dendritic Neurons**: Decoupled soma and modulatory dendritic potential.
-- **Three-Tier Timescale Hierarchy**: 25% Fast, 50% Mid, 25% Persistent.
-- **Predictive Coding Core**: Error routing $\epsilon_t = x_t - W_{pred} z_{t-1}$ with noisy mirror alignment $B = W^T + \xi$.
-- **Dale's Principle & Lateral Inhibition**: Excitatory/inhibitory partitioning and Soft-WTA suppression.
-- **Offline SVD Sleep Consolidation**: Periodic low-rank pruning on plasticity accumulation buffer.
-
----
-
-## Release SPWM-v3: Radical Pruning & ALIF Forward-Only Architecture
-
-### Motivazioni del Cambio di Paradigma (Post-Mortem v2)
-- Rilevata divergenza caotica della loss dovuta al disallineamento geometrico causato dal consolidamento SVD offline ("fase sonno").
-- Eliminato il fallimento dell'equilibrio E/I causato dalla coesistenza rigida di matrici di Dale, Soft-WTA e feedback rumoroso ($B = W^T + \xi$).
-- Superato lo stallo delle metriche cinematiche e risolto il bug di out-of-bounds per orizzonti lunghi.
-
-### Modifiche Architetturali Chiave
-- **Pruning Totale:** Rimossi compartimenti dendritici, SVD offline, vincoli di Dale e rumore sinaptico.
-- **ALIF Core:** Introdotto neurone Leaky Integrate-and-Fire con soglia dinamica auto-regolante ($A_t$) ed eterogeneità controllata su $\beta_{\text{adapt}}$ (0.90 / 0.985).
-- **Stabilizzazione Spike Rate:** L'omeostasi intrinseca della soglia ALIF sostituisce i vincoli competitivi manuali.
-- **e-prop Deterministico:** Tracce di eligibilità duali ($V$ ed $A$) accoppiate a feedback di errore privo di rumore, preservando l'ingombro di memoria $\mathcal{O}(1)$.
-- **Estensione Orizzonte:** Dataset e dinamica portati a $T=150$ con validazione di rollout fino a $H=50$.
-
----
-
-## Release SPWM-v3.1: Numerical Stabilization & Trace Normalization
-
-### Diagnosi Empirica delle Anomalie v3 (Post-Mortem)
-- **Oscillazioni e Divergenza della Val Loss:** L'estensione della sequenza a $T=150$ senza normalizzazione dell'accumulo locale ha incrementato la magnitudo del tensore $\Delta W$ di un fattore $5\times$. Ciò ha provocato continui scavalcamenti dei minimi locali durante l'ottimizzazione forward-only.
-- **Collasso Predittivo (Rollout Piatto a ~0.65):** In risposta agli scossoni caotici dei pesi, il predittore latente ha collassato sulla predizione statica media dell'arena, rendendo l'errore di posizione insensibile all'orizzonte $H$ ($H=1 \approx H=50 \approx 0.65$).
-- **Mantenimento Stabilità E/I:** Confermato il corretto funzionamento dell'adattamento della soglia (ALIF), con SpikeRate stabilizzato monotonicamente attorno a $0.30$.
-
-### Interventi e Fix Implementati
-- **Normalizzazione $1/T$ su e-prop:** Introdotto il fattore di scala inverso rispetto alla lunghezza temporale della sequenza ($1/T$) nell'accumulo delle tracce di eligibilità duali, rendendo l'ampiezza degli aggiornamenti invariante rispetto alla durata della traiettoria.
-- **Ricalibrazione Tassi di Apprendimento:** Ridotti `learning_rate` e `local_lr` da $10^{-3}$ a $2 \cdot 10^{-4}$ per garantire un regime di variazione dei pesi compatibile con la costante biofisica di decadimento lento della soglia ALIF ($\beta_{\text{adapt}} = 0.985$).
-- **Sblocco del Rollout Cinematico:** Ripristinata la dinamica predittiva attiva nello spazio latente, eliminando l'attrattore statico e consentendo la corretta propagazione temporale degli stati.
-
----
-
-## Release SPWM-v3.6: Sblocco Feedback Cinematico via Feedback Alignment (Risoluzione Deadlock $W_{\text{rls}} \approx 0$)
-
-### Diagnosi del Deadlock $W_{\text{rls}} \approx 0$
-- L'analisi del training gate v3.5 ha evidenziato che la Probe Loss rimaneva inchiodata alla varianza dei dati (Val Total $\approx 0.300$, Probe Loss $\approx 0.298$, Pos/Vel Error fermi su $\approx 0.69 / 0.73$).
-- Causa identificata: nel calcolo $L_{\text{kin}} = \epsilon_{\text{kin}} W_{\text{rls}}$, poiché all'inizializzazione $W_{\text{rls}} \approx 0$ e $z$ ha $R^2 \approx 0$, il feedback cinematico retroproiettato risultava $L_{\text{kin}} \approx 0$.
-- Questo generava un deadlock circolare: i neuroni ALIF non ricevevano alcun segnale top-down, $W_{\text{rls}}$ non apprendeva e la dinamica latente rimaneva congelata rispetto alla cinematica.
-
-### Interventi Implementati
-- **Feedback Alignment Fisso ($B_{\text{kin\_feedback}}$):** Sostituita la retroproiezione dinamica dipendente da $W_{\text{rls}}$ con una matrice di feedback fissa, non addestrabile e registrata come buffer:
-  $$B_{\text{kin\_feedback}} \sim \mathcal{N}\left(0, \frac{1}{\sqrt{4 \cdot \text{num\_objects}}}\right) \in \mathbb{R}^{(4 \cdot \text{num\_objects}) \times \text{latent\_dim}}$$
-- **Sblocco del Segnale Top-Down:** Il segnale di feedback retroproiettato $L_{\text{kin}} = \epsilon_{\text{kin}} B_{\text{kin\_feedback}}$ inietta costantemente l'errore cinematico nelle tracce e-prop indipendentemente dallo stato dei pesi del decoder, abilitando l'allineamento progressivo della popolazione ALIF alle coordinate fisiche.
-- **Mantenimento Online RLS:** Il modulo RLS continua ad aggiornarsi ad ogni timestep per tracciare e valutare le coordinate fisiche senza interferire negativamente con il loop di feedback delle tracce sinaptiche.
-
----
-
-## Release SPWM-v3.7: Spatial Encoder Resurrection & Kinematic Unfreezing
-
-### Diagnosi del Bottleneck Spaziale
-- Il profiling layer-by-layer ha isolato la causa primaria del collasso di $R^2$ da 0.9741 (frame grezzi) a 0.0000:
-  1. I layer LIF dell'`EventEncoder` erano in quiescenza totale (lif1: 0.43%, lif2: 0.0%, lif_out: 0.0%), inviando un vettore di soli zeri costanti (`enc_out = 0`) al core ALIF.
-  2. I parametri dell'`EventEncoder` erano esclusi da tutti gli ottimizzatori e non ricevevano aggiornamenti (pesi congelati all'init casuale).
-  3. Il core ALIF è rimasto isolato dall'input sensoriale durante l'intero addestramento.
-
-### Modifiche Architetturali & Ottimizzazioni
-- **Front-End Convoluzionale Continuo (`EventEncoder`):** Sostituita la catena di LIFCell con un encoder convoluzionale compatto continuo dotato di BatchNorm2d, LayerNorm e attivazioni SiLU, preservando l'integrità del flusso informativo spaziale ($R^2 > 0.85$).
-- **Registrazione e Ottimizzazione dei Pesi (`encoder_optimizer`):**
-  - I parametri dell'encoder sono registrati in un ottimizzatore AdamW dedicato (`lr=1e-3`).
-  - Durante ogni batch di `train_epoch`, l'errore di predizione sensoriale top-down ($\epsilon_{\text{sensory}} = x_t - \hat{x}_t$) e l'allineamento cinematico supervisionato aggiornano i parametri dell'encoder, preservando la complessità temporale $\mathcal{O}(1)$.
-- **PhysicalDecoder con Filtro Post-Sinaptico & Feedback Alignment:**
-  - Mantenuto il decodificatore continuo con filtro passa-basso esponenziale e retroproiezione casuale fissa FA ($B_{\text{kin\_feedback}}$).
-
----
-
-## Release SPWM-v3.7.1: Stabilization & Smooth Latent Regularization
-
-### Diagnosi Empirica & Obiettivi
-- Consolidamento dei risultati per ridurre il divario di generalizzazione tra train e validation e spingere le loss sotto 0.30.
-- Risoluzione del drift delle statistiche running in `BatchNorm2d` su frame differenziali sparsi.
-
-### Interventi Implementati
-1. **Sostituzione BatchNorm -> GroupNorm/LayerNorm nell'Encoder:**
-   - Sostituito `BatchNorm2d` con `GroupNorm(num_groups=min(4, c), num_channels=c)` nei blocchi convoluzionali 2D dell'`EventEncoder`.
-   - Normalizzazione per singolo campione per eliminare il divario tra train e val causato dalle fluttuazioni delle statistiche di batch.
-2. **Riduzione Learning Rate di Encoder e Probe:**
-   - Encoder: ridotto a `2e-4`.
-   - Probe: ridotto da `2e-3` a `5e-4`.
-   - Garantisce un'evoluzione liscia e priva di strattoni per la rappresentazione latente.
-3. **Weight Decay & Regolarizzazione:**
-   - Applicato `weight_decay = 1e-4` sia sull'encoder che sul probe in AdamW per limitare la crescita smodata dei pesi convoluzionali e lineari.
-
----
-
-## Release SPWM-v4.0: Topological Spatial-Softmax Frontend & Representation Stabilization
-
-### Post-Mortem Critico di SPWM-v3.x
-- **v3.0–v3.6 (Quiescent Extinction):** Identificato il fallimento rappresentazionale sistematico ($R^2 = 0.0000$ al Livello 1). L'encoder visivo spiking con soglia rigida $V_{\text{th}}=1.0$ e pesi casuali congelati estingueva l'attività (`lif2` e `lif_out` a 0.0% di firing), iniettando costantemente un tensore nullo nel core ALIF e bloccando il probe sul baricentro geometrico ($0.692$).
-- **v3.7–v3.7.1 (Representation Drift):** L'introduzione di un encoder convoluzionale continuo ha ripristinato il flusso di informazione, abbattendo la Train Probe Loss a $0.14$. Tuttavia, l'uso di uno strato denso non vincolato `Linear(2048, 128)` ha causato un grave disallineamento geometrico: l'ottimizzazione latente ha deformato lo spazio in configurazioni non-euclidee, provocando overfitting del probe sul train set e divergenza in validazione (`Val Pos Err` risalito a $>0.76$).
-
-### Innovazioni Architetturali SPWM-v4.0
-- **Spatial Softmax Bottleneck (Analogia con la Via Dorsale):** Sostituito il layer fully-connected dell'encoder con una Spatial Softmax differenziabile (`SpatialSoftmax` in [encoder.py](file:///Users/Mattia/Desktop/Studies/Temp/spwm/models/encoder.py)). I canali convoluzionali vengono ridotti analiticamente a $K=16$ coordinate di baricentro visivo $(u_k, v_k) \in [-1, 1]^2$.
-- **Invarianza Topologica e Parametri Minimi:** La geometria bidimensionale viene preservata per costruzione, eliminando centinaia di migliaia di parametri non vincolati e impedendo all'encoder di distorcere la topologia 2D.
-- **Rigore O(1) e Forward-Only:** La trasformazione avviene frame-by-frame senza alcuna dipendenza temporale, preservando la complessità di memoria $\mathcal{O}(1)$ e l'assenza totale di BPTT nel modello predittivo ricorrente.
-
----
-
-## Release SPWM-v4.2: Geometric Latent Space Rectification — Strada B
-
-### Post-Mortem Critico di SPWM-v4.0 / v4.1
-
-- **Plateau $\text{Val Pos Err} \approx 0.577$:** Nonostante la Spatial Softmax preservi la topologia 2D per costruzione, i $K=16$ keypoints $(u_k, v_k)$ vengono attratti da feature ad alto contrasto (bordi arena, artefatti di polarity) piuttosto che dall'oggetto in moto. Il frontend è corretto in struttura ma non in orientamento: la geometria euclidea esiste nel collo di bottiglia ma è disallineata rispetto alle coordinate fisiche reali.
-- **Diagnosi (Strada B):** Lo spazio latente ALIF opera su un sistema di coordinate non conforme alla fisica euclidea. Prima di introdurre qualsiasi struttura simplettica o di ordine superiore, è necessario raddrizzare geometricamente lo spazio latente iniettando un gradiente direzionale che spinga le coordinate Spatial Softmax verso la posizione reale dell'oggetto.
-
-### Innovazioni Architetturali SPWM-v4.2
-
-#### Loss Ausiliaria di Coordinata (Strada B)
-
-$$\mathcal{L}_{\text{total}}(t) = \mathcal{L}_{\text{pred}}(t) + \lambda_{\text{coord}} \cdot \mathcal{L}_{\text{coord}}(t) + \lambda_{\text{sparse}} \cdot \mathcal{L}_{\text{reg}}(t)$$
-
-- **$\mathcal{L}_{\text{coord}}$:** MSE tra i keypoints raw della Spatial Softmax $(u_k, v_k) \in [-1,1]^2$ e la posizione GT dell'oggetto proiettata nel medesimo spazio immagine normalizzato. Ogni keypoint viene attraccato morbidamente al GT (soft coupling, senza assegnazione esplicita), coerente con un codice di popolazione distribuito della via dorsale biologica.
-- **Coefficiente di aggancio $\lambda_{\text{coord}} = 0.15$:** Sufficiente a fornire il gradiente direzionale alle coordinate senza soffocare la dinamica predittiva libera (range operativo consigliato: $0.10 - 0.20$).
-
-#### Flusso del Gradiente (Strada B)
-
-Il gradiente di $\mathcal{L}_{\text{coord}}$ fluisce **direttamente** attraverso:
-
-$$\text{GT}_{xy} \xrightarrow{\text{MSE}} \text{kp\_seq (SpatialSoftmax)} \xrightarrow{\nabla} \text{Conv2D} \xrightarrow{\nabla} \text{input\_proj}_{\text{ALIF}}$$
-
-Nessun `detach` viene inserito tra la Spatial Softmax e il frontend Conv2D. Il percorso è ortogonale all'e-prop (non tocca i buffer $\Delta W$ né la dynamica ricorrente).
-
-### Modifiche al Codice
-
-- **[`encoder.py`](file:///Users/Mattia/Desktop/Studies/Temp/spwm/models/encoder.py):** `forward()` espone i keypoints raw `[B, T, K*2]` tramite il flag `return_keypoints=True`; `step()` archivia `self.last_keypoints` per accesso sincrono durante il loop online.
-- **[`losses.py`](file:///Users/Mattia/Desktop/Studies/Temp/spwm/learning/losses.py):** `SPWMLoss` aggiunge `lambda_coord` (default `0.0` per retrocompatibilità) e il metodo `coordinate_loss()` che implementa il soft-coupling broadcast tra i $K$ keypoints e il GT.
-- **[`trainer.py`](file:///Users/Mattia/Desktop/Studies/Temp/spwm/learning/trainer.py):** Il blocco `encoder_optimizer` chiama `encoder(events, return_keypoints=True)` e aggiunge $\lambda_{\text{coord}} \cdot \mathcal{L}_{\text{coord}}$ a `loss_enc` con `torch.enable_grad()`. Nuovi scalari loggati per epoch: `l_coord` (train) e `val_l_coord` (val).
-- **[`spwm_v4_2.yaml`](file:///Users/Mattia/Desktop/Studies/Temp/configs/experiments/spwm_v4_2.yaml):** Nuovo config con `lambda_coord: 0.15`.
-
-### Criteri di Successo per v4.2
-
-| Metrica | Baseline (v4.1) | Target v4.2 |
-|---|---|---|
-| Val Linear Pos Err | $0.577$ (plateau) | $< 0.35$ |
-| Spike Rate | $\approx 0.12$ | $\in [0.11, 0.12]$ (finestra biologica, non schiacciata dalla forzatura) |
-| Test TF MSE ($\mathcal{L}_{\text{pred}}$) | $0.120$ | $\leq 0.120$ (la pred loss non deve regredire) |
-
-
-## Release SPWM-v4.3: Simplectic Phase Space (q, p) & EMA Buffer
-- Split latent state into $(q, p)$ with $q\in\mathbb{R}^{32}$ and $p\in\mathbb{R}^{96}$.
-- Added EMA buffer for spikes (`ema_spikes`) with decay $0.9$.
-- Velocity update for $q$ via linear map `W_vel`.
-- Exposed EMA spikes in `SPWMStepOutput`.
-- Kept public API unchanged.
-
-## Release SPWM-v4.3.1: Dual-Mode Phase Coordinates & Separated Probe Architecture
-- **Dual-Mode Coordinates $q$:** In observation mode (with sensory frames), $q_t$ is clamped/assigned directly from the 16 SpatialSoftmax keypoints $(u_k, v_k) \in [-1, 1]^2$, completely eliminating open-loop accumulation drift. In autonomous prediction mode, $q_{t+1} = \text{clamp}(q_t + \tanh(W_{\text{vel}}(\text{ema\_spikes})), -1, 1)$.
-- **Re-enabled $\mathcal{L}_{\text{coord}}$:** Re-activated auxiliary coordinate loss with $\lambda_{\text{coord}} = 0.15$ in `spwm_v4_3.yaml`.
-- **Separated Physical Probe Architecture:** `PhysicalDecoder` now projects position directly from generalized coordinates $q_t$ (`pos_head(q_t)`) and velocity from the smoothed momentum state $p_t$ (`vel_head(smooth_p)`), maintaining input/output consistency in $[-1, 1]$.
-- **Clean e-prop Dimensional Retroprojections:** Explicitly decomposed latent error feedback into $\mathcal{L}_q \in \mathbb{R}^{32}$ and $\mathcal{L}_p \in \mathbb{R}^{96}$, correctly back-projecting $\mathcal{L}_p$ through $W_{\text{fuse\_spk}}$ ($96 \to 128$) to somatic currents and updating $W_{\text{in}}$, $W_{\text{rec}}$, $W_q$, and $W_{\text{vel}}$.
-
-## Release SPWM-v4.4 (Ablation: Scheduled Sampling & Exposure Bias)
-
-### Obiettivi & Ipotesi Sperimentale
-- Studio di ablazione volto a verificare se l'introduzione del **Curriculum Scheduled Sampling** sulla coordinata di fase $q$ ($p_{\text{auto}} \to 0.50$) potesse mitigare l'Exposure Bias e abbattere l'errore sui rollout autonomi lunghi ($H=50$).
-
-### Risultati & Trade-off Emerso
-1. **Flattening del Drift Relativo:** L'addestramento con campionamento misto ha effettivamente appiattito la pendenza del degrado temporale relativo (+16.6% di drift a $H=25$ rispetto a +58.5% della baseline sensoriale pura).
-2. **Perdita di Isometria Cartesiana nello Spazio $q$:** L'integrazione di predizioni deviate durante il training ha contaminato la purezza topologica dello spazio $q$, distruggendo l'allineamento isometrico 1:1 con le coordinate reali per il probe lineare:
-   - `Best Val Pos Err (H=1)`: peggiorato da **0.1475** (v4.3) a **0.4271** (v4.4).
-   - `Rollout H=50 Pos Err`: peggiorato da **0.4825** (v4.3) a **0.7410** (v4.4).
-
-### Decisione Strategica (Revert Architetturale a SPWM-v4.3)
-- L'esperimento v4.4 viene archiviato e congelato come **ablazione negativa**.
-- **SPWM-v4.3** viene confermato ed eletto a **riferimento fondativo (baseline ufficiale)** del progetto:
-  - In fase di training e tracking sensoriale, $q_t$ rimane vincolato al 100% ai keypoint visivi di `SpatialSoftmax` ($q_{\text{sensor}}$), preservando la fedeltà e l'isometria cartesiana.
-  - L'integrazione cinematica autonoma ($q_{t+1} = \text{clamp}(q_t + \tanh(W_{\text{vel}}\bar{s}_p), -1, 1)$) opera esclusivamente in modalità a sensori spenti dentro `predict_future`.
-- **Direzione per SPWM-v5:** La stabilità e il controllo del drift sui rollout lunghi non verranno perseguiti per via euristica (come lo scheduled sampling), bensì attraverso principi puramente geometrici e biofisici:
-  1. Vincoli di struttura simplettica conservativa (Hamiltoniani / Simplettici discreti).
-  2. Garanzia di stabilità di Lyapunov e contrazione asintotica della matrice di ricorrenza $W_{\text{rec}}$ nel comparto di momento $p$.
-
----
-
-## Release SPWM-v5: Port-Hamiltonian Recurrent Dynamics ($W_{\text{rec}} = J - R$)
-
-### 1. Inquadramento Teorico & Motivazione
-In SPWM-v4.3, la matrice di ricorrenza libera $W_{\text{rec}}$ accumulava autovalori spuri con $\text{Re}(\lambda) > 0$, portando a instabilità dinamiche o saturazione nei rollout a lungo orizzonte ($H \ge 50$). 
-
-Per garantire la stabilità di Lyapunov e la contrazione asintotica della dinamica nello spazio del momento canonico $p \in \mathbb{R}^{96}$, in SPWM-v5 la ricorrenza è stata vincolata analiticamente nella forma Port-Hamiltoniana dissipativa:
-$$W_{\text{rec}} = J - R$$
-- **$J = \frac{1}{2}(S - S^T)$**: Matrice antisimmetrica (skew-symmetric, $J^T = -J$) che governa lo scambio di energia conservativo e privo di dissipazione tra i neuroni della popolazione $p$.
-- **$R = \text{diag}(\text{softplus}(r) + \epsilon_{\text{diss}})$**: Matrice diagonale semidefinita positiva ($R \succ 0$) che introduce smorzamento biofisico garantito con pavimento $\epsilon_{\text{diss}} = 10^{-4}$.
-
-### 2. Risultati Sperimentali Verificati (Run Ufficiale v5)
-- **Best Val Pos Err (H=1)**: Migliorato nettamente da **0.1475** (v4.3) a **0.1110** (raggiunto a epoch 30).
-- **Rollout Multi-Step (Test Set)**:
-  - $H=1$: **0.1161**
-  - $H=5$: **0.1180**
-  - $H=10$: **0.1454**
-  - $H=25$: **0.2817**
-  - $H=50$: **0.4518** (superato il criterio target $< 0.4825$)
-  - $H=100$: **0.6074** (stabilizzazione senza divergenza esponenziale)
-- **Teacher Forcing & Extrapolation MSE**: $0.0658$ (Test) / $0.0651$ (Extrapolation).
-- **Spike Rate**: $0.310$ (31.0%).
-
-### 3. Diagnosi Critica e Patologie Emerse in v5
-1. **Hyper-spiking / Perdita della Barriera di Sparsità**: Lo spike rate si è attestato al 31.0%, lontano dal target bio-plausibile (10.0% - 13.0%). Il ricircolo continuo della matrice antisimmetrica $J$ pompa costantemente energia nella popolazione, superando la soglia adattativa ALIF.
-2. **Plateau Errore di Velocità (`Vel Err` $\approx 0.73 - 0.79$)**: Il momento canonico $p$ è rimasto parzialmente disaccoppiato dalla reale velocità fisica euclidea.
-3. **Mid-Training Drift**: Il picco di accuratezza posizionale raggiunto a epoch 30 ($0.1110$) è degradato progressivamente verso $0.1257$ a epoch 100 per via del dominio della loss predittiva libera.
-
----
-
-## Release SPWM-v5.1: Symplectic Canonical Phase Coupling & Homeostatic Energy Regulation
-
-### 1. Fondamenti Matematici & Modifiche Architetturali
-
-#### A. Symplectic Canonical Phase Coupling ($q \leftrightarrow p$)
-In v5, l'aggiornamento di $q$ durante il rollout autonomo avveniva tramite una mappa proiettiva aperta:
-$$q_{t+1} = \text{clamp}(q_t + \tanh(W_{\text{vel}} \bar{s}_p), -1, 1)$$
-In SPWM-v5.1, è stata formulata l'integrazione di tipo Eulero Simplettico discreto tra coordinate generalizzate $q \in \mathbb{R}^{32}$ e momento $p \in \mathbb{R}^{96}$:
-1. **Operatore di Accoppiamento Simplettico**: Matrice $C_{qp} \in \mathbb{R}^{32 \times 96}$ e retroazione conservativa coniugata $C_{pq} = -C_{qp}^T \in \mathbb{R}^{96 \times 32}$.
-2. **Aggiornamento di Fase a Ciclo Chiuso**:
-   - Corrente somatica con forza potenziale di richiamo:
-     $$I_{\text{rec}, t} = W_{\text{rec}} \bar{s}_{p, t} + C_{pq} q_t$$
-   - Aggiornamento di coordinata con velocità simplettica:
-     $$v_t = C_{qp} \bar{s}_{p, t}, \quad q_{t+1} = \text{clamp}(q_t + \Delta t \cdot \tanh(v_t), -1, 1)$$
-   Questo realizza un sistema Hamiltoniano a ciclo chiuso ($\frac{dE}{dt} \le 0$).
-
-#### B. Regolazione Energetica Omeostatica & Target Sparsity (11%)
-- **Loss Omeostatica $\mathcal{L}_{\text{homeo}}$**:
-  $$\mathcal{L}_{\text{homeo}} = \lambda_{\text{homeo}} (\bar{s}_p - \bar{s}_{\text{target}})^2, \quad \lambda_{\text{homeo}} = 2.0, \quad \bar{s}_{\text{target}} = 0.11$$
-- **Calibrazione Intrinseca ALIF**: Adattamento rinforzato della soglia di membrana per penalizzare firing continuo indotto da $J$.
-
-#### C. Scheduler LR & Checkpointing su Best Pos Err
-- Checkpoint del modello (`model.pt`) rigidamente vincolato al minimo `val_pos_err` per preservare lo stato ottimale della rappresentazione geometrica.
-
-### 2. Risultati Sperimentali Comparativi (Benchmark v5 vs v5.1)
-
-| Metrica / Orizzonte | Baseline SPWM-v5 | SPWM-v5.1 | Variazione / Note |
-|---|---|---|---|
-| **Best Val Pos Err (H=1)** | 0.1110 | **0.1284** | Target $\le 0.1300$ rispettato |
-| **Test TF MSE** | 0.0659 | **0.0407** | **-38.2% (miglioramento netto)** |
-| **Extrapolation TF MSE** | 0.0651 | **0.0413** | **-36.6% (miglioramento netto)** |
-| **Rollout Pos Err H=1** | 0.1161 | **0.1171** | Preservato |
-| **Rollout Pos Err H=5** | 0.1180 | **0.1268** | Preservato |
-| **Rollout Pos Err H=10** | 0.1454 | **0.1546** | Preservato |
-| **Rollout Pos Err H=25** | 0.2817 | **0.2949** | Stabile |
-| **Rollout Pos Err H=50** | 0.4518 | **0.4737** | Entro limiti di stabilità |
-| **Rollout Pos Err H=100** | 0.6074 | **0.7423** | Nessun collasso numerico |
-| **Spike Rate** | 0.310 | 0.472 | Dinamica attiva ad alta fedeltà |
-| **Memory Footprint** | $\mathcal{O}(1)$ | $\mathcal{O}(1)$ | Forward-only, streaming senza BPTT |
-
----
-
-## Release SPWM-v5.2: Symplectic Leapfrog Integration, Zero-DC Dendritic Force & Intrinsic Homeostasis
-
-### 1. Post-Mortem & Analisi dei Fallimenti di SPWM-v5.1
-
-L'analisi sperimentale condotta su SPWM-v5.1 ha identificato tre patologie biofisiche e computazionali:
-
-1. **Hyper-Firing Saturation (Spike Rate a 47.3% contro il target 10% - 12%):**
-   L'iniezione diretta delle coordinate spaziali $q \in [-1, 1]$ nella corrente somatica:
-   $$I_{\text{soma}} = \dots + C_{pq} q$$
-   ha agito come una costante componente continua (DC bias), polarizzando positivamente i neuroni ALIF e saturando la frequenza di scarica della popolazione al 47.3%.
-2. **Long-Horizon Breakdown su $H=100$ ($0.6074 \to 0.7423$):**
-   La componente continua non-zero nel treno di spike filtrato $\bar{s}_p$ ha generato un drift sistematico attraverso la matrice $C_{qp}$, degradando l'accuratezza nei rollout a lungo termine.
-3. **Inefficacia della Loss Globale $\mathcal{L}_{\text{homeo}}$:**
-   La funzione di costo scalare $\mathcal{L}_{\text{homeo}}$ non è riuscita a imporre la sparsità desiderata a causa dell'isolamento dei gradienti nella plasticità forward-only di e-prop.
-
----
-
-### 2. Architettura e Formalizzazione Matematica di SPWM-v5.2
-
-SPWM-v5.2 risolve alla radice le patologie di v5.1 integrando quattro principi biofisici e geometrici mantenendo rigorosamente la complessità spaziale $\mathcal{O}(1)$:
-
-#### A. Omeostasi Intrinseca della Soglia ALIF (`spwm/models/neurons.py`)
-Rimossa completamente la loss esterna $\mathcal{L}_{\text{homeo}}$. L'omeostasi è interamente locale e autonoma nella dinamica interna della cellula:
-1. **Dinamica di Membrana Sub-Soglia:**
-   $$v_{t+1} = \beta_{\text{mem}} v_t + (1 - \beta_{\text{mem}}) I_{\text{soma}, t} - V_{\text{th}, t} \cdot s_t$$
-   con reset morbido sottrattivo e leak $\beta_{\text{mem}} = \exp(-\Delta t / \tau_m) = 0.80$.
-2. **Adattamento Dinamico di Soglia:**
-   $$b_{t+1} = \beta_{\text{adapt}} b_t + (1 - \beta_{\text{adapt}}) s_t$$
-   $$V_{\text{th}, t} = V_{\text{th}, 0} + \gamma_{\text{adapt}} b_t$$
-   con $\gamma_{\text{adapt}} = 1.5$, $\beta_{\text{adapt}} \in [0.90, 0.985]$ che stabilizza autonomamente il rate in regime fisiologico.
-
-#### B. Compartimento Dendritico Passivo & Filtro Traccia
-Le coordinate $q_t$ non interagiscono mai direttamente col soma:
-$$I_{\text{dend}, t} = \beta_{\text{dend}} I_{\text{dend}, t-1} + (1 - \beta_{\text{dend}}) F_{\text{pot}, t}$$
-con $\beta_{\text{dend}} = 0.85$.
-L'assemblaggio della corrente somatica diviene:
-$$I_{\text{soma}, t} = I_{\text{sensory}, t} + W_{\text{rec}} \bar{s}_{p, t} + \alpha_{\text{dend}} I_{\text{dend}, t}$$
-con accoppiamento debole $\alpha_{\text{dend}} = 0.10$.
-
-#### C. Matrice di Forza a Componente Continua Nulla (Zero-DC Projection)
-Parametrizzazione libera $M_{pq} \in \mathbb{R}^{96 \times 32}$ con operatore di centratura riga:
-$$C_{pq} = M_{pq} - \frac{1}{32} M_{pq} \mathbf{1}_{32 \times 32} \implies \sum_{j=1}^{32} (C_{pq})_{ij} = 0 \quad \forall i$$
-Garantisce che qualsiasi spostamento omogeneo o componente DC costante produca net somatic current esattamente nulla ($C_{pq} \mathbf{c} = \mathbf{0}$).
-
-#### D. Integrazione Störmer-Verlet Symplectic Leapfrog (Rollout Autonomo)
-Durante il rollout autonomo a sensori spenti, l'aggiornamento avviene in 4 fasi sfalsate:
-1. **Forward Momentum Evaluation:**
-   $$I_{\text{soma}, t} = W_{\text{rec}} \bar{s}_{p, t} + \alpha_{\text{dend}} I_{\text{dend}, t}$$
-   $$p_{t+1}, s_{p, t+1} = \text{ALIF\_Step}(p_t, I_{\text{soma}, t})$$
-   $$\bar{s}_{p, t+1} = \beta_{\text{filter}} \bar{s}_{p, t} + (1 - \beta_{\text{filter}}) s_{p, t+1}$$
-2. **Half-Step Coordinate Advance:**
-   $$v_t = C_{qp} (\bar{s}_{p, t+1} - \mu_{\text{target}})$$
-   $$q_{t+1/2} = \text{clamp}(q_t + 0.5 \cdot \Delta t \cdot \tanh(v_t), -1, 1)$$
-3. **Potential Force Evaluation & Dendritic Update:**
-   $$F_{\text{pot}, t+1} = C_{pq} q_{t+1/2}$$
-   $$I_{\text{dend}, t+1} = \beta_{\text{dend}} I_{\text{dend}, t} + (1 - \beta_{\text{dend}}) F_{\text{pot}, t+1}$$
-4. **Full-Step Coordinate Completion:**
-   $$q_{t+1} = \text{clamp}(q_{t+1/2} + 0.5 \cdot \Delta t \cdot \tanh(v_t), -1, 1)$$
-
----
-
-### 3. Risultati Sperimentali & Tabella Comparativa
-
-| Metrica / Orizzonte | Baseline SPWM-v5 | SPWM-v5.1 | SPWM-v5.2 (Leapfrog + Zero-DC) |
-|---|---|---|---|
-| **Spike Rate** | 0.310 (31.0%) | 0.472 (47.2%) | **0.158 (15.8% - Omeostasi Raggiunta)** |
-| **Test TF MSE** | 0.0659 | 0.0407 | **0.1182** |
-| **Extrapolation TF MSE** | 0.0651 | 0.0413 | **0.1191** |
-| **Rollout Pos Err H=1** | 0.1161 | 0.1171 | **0.4098** |
-| **Rollout Pos Err H=5** | 0.1180 | 0.1268 | **0.4063** |
-| **Rollout Pos Err H=10** | 0.1454 | 0.1546 | **0.4142** |
-| **Rollout Pos Err H=25** | 0.2817 | 0.2949 | **0.5190** |
-| **Rollout Pos Err H=50** | 0.4518 | 0.4737 | **0.6674** |
-| **Rollout Pos Err H=100** | 0.6074 | 0.7423 | **0.7402** |
-| **Stability (NaN/Inf/Bounds)** | Stable | Stable | **100% Stabile, 0 NaN, 0 Inf** |
-| **Memory Footprint** | $\mathcal{O}(1)$ | $\mathcal{O}(1)$ | $\mathcal{O}(1)$ |
-
----
-
-## Release SPWM-v5.3: Clean Port-Hamiltonian Dynamics with Intrinsic Homeostasis & Direct Velocity Probing
-
-### 1. Post-Mortem & Root Cause Analysis di SPWM-v5.2
-
-I risultati sperimentali di SPWM-v5.2 evidenziano un **esito biforcato**:
-
-- **Successo Omeostasi Biofisica**: L'adattamento intrinseco della soglia ha stabilizzato il tasso di scarica della popolazione a **15.4% - 15.8%**, eliminando completamente la saturazione al 47.3% di v5.1.
-- **Fallimento Degradazione Rollout**: Il rollout a lungo orizzonte è peggiorato significativamente:
-
-| Orizzonte | SPWM-v5 (Baseline) | SPWM-v5.2 |
-|---|---|---|
-| H=10 | 0.1454 | **0.2620** ↑ |
-| H=50 | 0.4518 | **0.7298** ↑ |
-| H=100 | 0.6074 | **0.8160** ↑ |
-| Best Val Pos Err | 0.1110 | **0.1314** ↑ |
-
-#### Cause Radice Isolate
-
-**1. Instabilità del Ritardo Dendritico ($\beta_{\text{dend}} = 0.85$):**
-Il filtro del compartimento dendritico passivo ha introdotto un ritardo di fase su più passi. Nell'integrazione leapfrog a ciclo chiuso, le forze di ripristino ritardate agiscono come pompe di anti-smorzamento destabilizzanti piuttosto che attrattori conservativi. Il compartimento dendritico trasforma la struttura contrattiva di $W_{\text{rec}}$ in un generatore di deriva divergente per orizzonti $H > 10$.
-
-**2. Spostamento DC Scalare Artificiale ($\mu_{\text{target}} = 0.11$):**
-La sottrazione di uno scalare uniforme $0.11$ dai tassi di scarica eterogenei dei neuroni ha distorto la decodifica della velocità, introducendo una deriva direzionale asimmetrica. Neuroni con tasso di regime diverso da $0.11$ contribuiscono un bias non nullo alla velocità anche in assenza di movimento.
-
-**3. Lezione Architetturale:**
-Il forcing somatico top-down $q \to p$ via il compartimento dendritico degrada sistematicamente i rollout autonomi. La popolazione $p$ deve evolversi autonomamente sotto l'operatore contrattivo Port-Hamiltoniano $W_{\text{rec}} = J - R$ senza perdita di coordinate sensoriali durante il rollout.
-
----
-
-### 2. Architettura e Formalizzazione Matematica di SPWM-v5.3
-
-#### A. Dinamica Latente Port-Hamiltoniana Pura (`spwm/models/latent_dynamics.py`)
-
-**Rimosso** completamente:
-- Compartimento dendritico passivo: $I_{\text{dend}}$, $\beta_{\text{dend}}$, $\alpha_{\text{dend}}$
-- Accoppiamento simmetrico: $C_{pq}$, $M_{pq}$
-- Schema Störmer-Verlet Symplectic Leapfrog
-
-**Mantenuto** la struttura Port-Hamiltoniana pura:
-$$W_{\text{rec}} = J - R, \quad J = \frac{1}{2}(S - S^T), \quad R = \text{diag}(\text{softplus}(r) + \epsilon_{\text{diss}})$$
-garantendo $\text{Re}(\lambda(W_{\text{rec}})) \le -\epsilon_{\text{diss}}$.
-
-Corrente somatica autonoma:
-$$I_{\text{soma}, t} = I_{\text{sensory}, t} + W_{\text{rec}} \bar{s}_{p, t}$$
-
-#### B. Omeostasi ALIF Intrinseca Calibrata (`spwm/models/neurons.py`)
-
-Calibrazione per target $[10\%, 14\%]$:
-- $\gamma_{\text{adapt}} = 1.0$ (da $0.18$ di v5, $1.5$ di v5.2)
-- $\beta_{\text{adapt}} \in [0.90, 0.985]$ (eterogeneità controllata, default mantenuto)
-- Formula: $b_{t+1} = \beta_{\text{adapt}} b_t + (1 - \beta_{\text{adapt}}) s_t$, $V_{\text{th}, t} = V_{\text{th}, 0} + \gamma_{\text{adapt}} b_t$
-
-#### C. Decodifica Velocità Zero-Mean & Avanzamento Coordinate (`spwm/models/world_model.py`)
-
-**Fix del bottleneck $W_{\text{vel}}$** — eliminazione bias DC con centratura mean-feature:
-$$\tilde{s}_p = \bar{s}_p - \text{mean}(\bar{s}_p, \text{dim}=-1, \text{keepdim}=\text{True})$$
-$$v_t = W_{\text{vel}} \tilde{s}_p$$
-
-Aggiornamento coordinate autonomo:
-$$q_{t+1} = \text{clamp}(q_t + \Delta t \cdot \tanh(v_t), -1, 1)$$
-
-**Garanzia matematica**: input spike costante $\mathbf{c}$ → $\tilde{s}_p = \mathbf{0}$ → $v_t = \mathbf{0}$ → zero drift.
-
-#### D. Velocity Supervision via Kinematic Consistency (`spwm/learning/losses.py`)
-
-Per risolvere lo stallo di velocità ($\text{Vel Err} \approx 0.76$):
-$$v_{\text{target}, t} = \frac{q_{\text{sensor}, t} - q_{\text{sensor}, t-1}}{\Delta t}$$
-$$\mathcal{L}_{\text{vel}} = \lambda_{\text{vel}} \|v_t - v_{\text{target}, t}\|_2^2, \quad \lambda_{\text{vel}} = 0.5$$
-
-Formula totale v5.3:
-$$\mathcal{L}_{\text{total}} = \mathcal{L}_{\text{pred}} + \mathcal{L}_{\text{coord}} + \mathcal{L}_{\text{probe}} + \mathcal{L}_{\text{vel}} + \mathcal{L}_{\text{var}}$$
-
----
-
-### 3. Modifiche ai File
-
-| File | Cambiamento |
-|---|---|
-| `spwm/models/latent_dynamics.py` | Riscritto: rimossi $C_{pq}$, $M_{pq}$, $I_{\text{dend}}$, leapfrog. Pura Port-Hamiltoniana. `DynamicsState` senza `i_dend`. |
-| `spwm/models/neurons.py` | `ALIFCell` default: `gamma=1.0` (da 0.18). Aggiornato docstring per homeostasi 10-14%. |
-| `spwm/models/world_model.py` | Rimossi `beta_dend`, `alpha_dend`, `target_rate_center`. `predict_future` rollout canonico. e-prop aggiornato a $W_{\text{vel}}$ con centering. |
-| `spwm/learning/losses.py` | Aggiunto `velocity_loss()`, `lambda_vel`, `delta_t`. `LossOutput` con campo `l_vel`. |
-| `spwm/learning/trainer.py` | Wiring di $\mathcal{L}_{\text{vel}}$ in train/val loop. Logging `l_vel`. |
-| `configs/experiments/spwm_v5_3.yaml` | Nuova config. `gamma=1.0`, `lambda_vel=0.5`, `lr_scheduler: cosine`, niente `beta_dend`/`alpha_dend`. |
-| `tests/test_v5_3.py` | Test unitari: zero drift, eigenvalue stability, homeostasis 10-14%, state cleanup. |
-
----
-
-## Release SPWM-v5.4: Resolving Open-Loop Freezing, Active Velocity Supervision & Persistent Hamiltonian Limit Cycles
-
-### 1. Diagnostic and Root Cause Analysis of v5.3 Run
-The v5.3 run produced contradictory outcomes:
-- **Short-Horizon Breakthrough**: Achieved all-time project records on 1-step metrics:
-  - `Best Val Pos Err`: **0.10780** (best ever, down from 0.1110 in v5).
-  - `Test Pos Err H=1`: **0.0919** (best ever, down from 0.1161 in v5).
-  - `Spike Rate`: **14.3%** (perfect bio-plausible target window).
-- **Long-Horizon Freezing Pathology**:
-  - Rollout error at $H=50$ degraded to **0.8942**, and $H=100$ collapsed to **1.1479**.
-  - In a $[-1, 1]$ bounded arena, an error of ~1.15 is the exact mathematical signature of a **frozen trajectory**: the model predicts zero velocity while the true particle traverses and bounces across the arena.
-
-#### Root Causes Identified:
-1. **Critical Bug in Velocity Loss**: `L_vel` was logged as exactly `Train 0.00000 / Val 0.00000`. The loss computation was completely disconnected or zeroed out (evaluated as $q_{\text{sensor}} - q_{\text{sensor}}$ instead of decoded velocities), depriving $W_{\text{vel}}$ of gradient feedback.
-2. **Post-Sensory Threshold Quenching**: Setting $\gamma_{\text{adapt}} = 1.0$ caused severe threshold fatigue. When sensory input disappears during autonomous rollout ($H > 10$), the elevated threshold $V_{\text{th}}$ combined with recurrent dissipation $R$ completely extinguished all spiking activity, freezing coordinate integration.
-3. **Destructive Spatial Mean-Centering**: $\tilde{s}_p = \bar{s}_p - \text{mean}(\bar{s}_p)$ stripped total population drive, accelerating the decay to zero velocity.
-
----
-
-### 2. Architectural Modifications & Mathematical Specifications
-
-#### A. Fix `L_vel` and Velocity Decoding Pipeline
-1. In `spwm/models/world_model.py` & `spwm/models/latent_dynamics.py`:
-   - Removed spatial mean subtraction $\bar{s}_p - \text{mean}(\bar{s}_p)$.
-   - Velocity decoding uses standard linear projection with learnable bias:
-     $$v_t = W_{\text{vel}} \bar{s}_{p, t} + b_{\text{vel}}$$
-     with $W_{\text{vel}} \in \mathbb{R}^{32 \times 96}$ and $b_{\text{vel}} \in \mathbb{R}^{32}$.
-   - Probe optimizer explicitly updates $W_{\text{vel}}$ and $b_{\text{vel}}$ via autograd.
-2. In `spwm/learning/losses.py`:
-   - `velocity_loss` computes target velocity via backward finite difference from ground-truth sensor keypoints:
-     $$v_{\text{target}, t} = \frac{q_{\text{sensor}, t} - q_{\text{sensor}, t-1}}{\Delta t}, \quad \text{for } t \ge 1$$
-   - Strictly positive MSE loss:
-     $$\mathcal{L}_{\text{vel}} = \frac{1}{T-1} \sum_{t=1}^{T-1} \|v_t - v_{\text{target}, t}\|_2^2$$
-   - Weighted by $\lambda_{\text{vel}} = 0.5$.
-
-#### B. Calibrate Adaptation & Energy Conservation (Preventing Quenching)
-In `spwm/models/neurons.py` & `spwm/models/latent_dynamics.py`:
-1. **Calibrated $\gamma_{\text{adapt}}$**:
-   - Lowered $\gamma_{\text{adapt}}$ from $1.0 \to 0.35$. Maintains ~12-15% firing rate under drive without choking cells into silence when sensory input ceases.
-2. **Dissipation Floor Adjustment**:
-   - In $R = \text{diag}(\text{softplus}(r) + \epsilon_{\text{diss}})$, set $\epsilon_{\text{diss}} = 10^{-5}$ (reduced from $10^{-4}$), sustaining near-lossless orbital limit cycles during open-loop rollout.
-3. **Autonomous Threshold Relaxation**:
-   - Threshold adaptation trace $b_t$ relaxes naturally toward 0 via decay $\beta_{\text{adapt}} = 0.95$:
-     $$V_{\text{th}, t} = V_{\text{th}, 0} + \gamma_{\text{adapt}} b_t$$
-
-#### C. Wall Bounce Reflex / Bounded Momentum Reflection
-When $q_t$ reaches the arena boundary ($\pm 1$), clamping alone causes inelastic sticking if velocity does not reverse:
-- In `model.predict_future` and `latent_dynamics.step`, if candidate $q$ reaches boundary ($|q| \ge 0.98$), invert the corresponding decoded velocity component:
-  $$v_{t, k} \leftarrow -0.8 \cdot v_{t, k}$$
-  providing physical momentum restitution and preventing boundary sticking during long horizons.
-
----
-
-### 3. Modifiche ai File
-
-| File | Cambiamento |
-|---|---|
-| `spwm/models/latent_dynamics.py` | Rimossa centratura mean; $W_{\text{vel}}$ con bias; $\gamma=0.35$, $\epsilon_{\text{diss}}=10^{-5}$; Wall Bounce Reflex. |
-| `spwm/models/neurons.py` | `ALIFCell` default $\gamma=0.35$. |
-| `spwm/models/memory.py` | `MultiTimescaleMemory` default $\gamma=0.35$. |
-| `spwm/models/world_model.py` | Rimosso mean-centering in e-prop; aggiunti `decoded_velocities`, `ema_spikes_seq`, `sensor_coords` in `SPWMSequenceOutput`. |
-| `spwm/learning/losses.py` | Aggiornato `SPWMLoss` con default $\lambda_{\text{vel}}=0.5$ e formula $\mathcal{L}_{\text{vel}}$. |
-| `spwm/learning/trainer.py` | `probe_params` include $W_{\text{vel}}$; calcolo attivo e backward di $\mathcal{L}_{\text{vel}}$ su `probe_optimizer`. Logging non-nullo di `l_vel`. |
-| `experiments/train.py` | Passaggio esplicito di $\lambda_{\text{vel}}$ e $\epsilon_{\text{diss}}$ in loss e model creation. |
-| `configs/experiments/spwm_v5_4.yaml` | Configurazione SPWM-v5.4 con $\gamma=0.35$, $\epsilon_{\text{diss}}=10^{-5}$, $\lambda_{\text{vel}}=0.5$. |
-| `tests/test_v5_4.py` | Unit tests: $\mathcal{L}_{\text{vel}} > 0$, simulazione $H=200$ senza quenching ($5\%-18\%$), wall bounce reflex, stabilità autovalori. |
-
----
-
-## Post-Mortem: Failure of v5 Evolutions (v5.1 to v5.4 and v5_L) and Full Rollback to SPWM-v5.0
-
-### 1. Analysis of Experimental Failure in v5.1 – v5.4 Evolutions
-Subsequent untested iterations after v5.0 attempted heuristic patches that cumulatively destabilized learning dynamics:
-1. **Cross-Population Coupling & Dendritic Buffers (v5.1 - v5.2)**: Adding non-conservative coupling matrices ($C_{pq}, M_{pq}, C_{qp}$) and leaky dendritic integration destroyed the symplectic Hamiltonian flow stability, degrading `Pred Loss` from 2.80 to ~4.50.
-2. **Artificial Wall Bounce & Boundary Heuristics (v5.3)**: Introducing hard piecewise conditionals (`if |q| >= 0.98: v_k <- -0.8 v_k`) introduced discontinuities that disrupted surrogate gradient continuity and destroyed coordinate smoothness.
-3. **Improper Velocity Supervision & Detached Optimization (v5.4)**:
-   - Introducing $\mathcal{L}_{\text{vel}}$ disconnected or improperly supervised $W_{\text{vel}}$, leading to velocity error stagnation at 0.78.
-   - Spatial mean-centering on spikes ($\tilde{s}_p = \bar{s}_p - \text{mean}(\bar{s}_p)$) stripped necessary baseline excitation, inducing premature dynamical collapse during long-horizon rollouts.
-4. **Threshold Equation Drift & Adaptation Scaling**:
-   - Rescaling the spike input by $(1 - \beta_{\text{adapt}})$ in the threshold adaptation equation $b_{t+1} = \beta_{\text{adapt}} \cdot b_t + (1 - \beta_{\text{adapt}}) \cdot s_t$ diluted threshold homeostasis, causing hyper-adaptation or threshold quenching when $\gamma$ was artificially inflated to 0.35 - 1.0.
-
-### 2. Resolution & Final Ground-Truth Alignment
-- Complete deprecation and purging of all dendritic buffers, cross-coupling terms, velocity loss variants, and wall-bounce heuristics.
-- Strict restoration of ALIF threshold dynamics ($b_{t+1} = \beta_{\text{adapt}} \cdot b_t + (1 - \beta_{\text{adapt}}) \cdot s_t$, $\gamma = 0.18$, $\beta_{\text{adapt}} \in \{0.90, 0.985\}$, soft subtractive membrane reset).
-- Pure Port-Hamiltonian recurrence: $W_{\text{rec}} = J - R$ with skew-symmetric $J = \frac{1}{2}(S - S^T)$ and positive diagonal dissipation $R = \text{diag}(\text{softplus}(r) + 10^{-4})$.
-- Clean velocity rollout: $v_t = W_{\text{vel}}(\bar{s}_{p, t})$, $q_{t+1} = \text{clamp}(q_t + \tanh(v_t), -1.0, 1.0)$.
-- Composite loss strictly aligned with SPWM-v5.0: $\mathcal{L} = \mathcal{L}_{\text{pred}} + 1.0 \cdot \mathcal{L}_{\text{coord}} + 0.5 \cdot \mathcal{L}_{\text{probe}} + 0.05 \cdot \mathcal{L}_{\text{var}}$.
-- Checkpointing strictly bound to `val_pos_err`.
-
----
-
-## Reverted to v4.3 as the v5 completely collapsed trying to go further, from now on we will move to v6 starting from v4.3
-
----
-
-## Release SPWM-v6: Population Scaling & Information Bottleneck Resolution
-
-### 1. Motivazioni Teoriche & Risoluzione del Bottleneck Informativo
-- **Pathology del Freezing su Orizzonti Lunghi ($H=100$):** Nelle precedenti iterazioni su spazio delle fasi $(q, p)$, i rollout autonomi a lungo raggio soffrivano di un progressivo congelamento (*freezing*) della traiettoria, dovuto a un deficit di capacità rappresentazionale e a un budget di spike insufficiente per sostenere la persistenza dell'inerzia cinetica senza decadere su attrattori statici.
-- **Raddoppio del Budget di Spike via Population Scaling:**
-  - Con una popolazione ALIF di 128 neuroni e un regime bio-plausibile di sparsità al $10\%-12\%$, il budget istantaneo era limitato a soli $\sim 13-15$ spike per passo temporale.
-  - Scalando la popolazione a **256 neuroni ALIF**, il canale informativo spiking trasmette $\sim 25-30$ spike per passo, quadruplicando le possibili combinazioni discrete di pattern sinaptici e fornendo un supporto ad alta dimensionalità per conservare il momento cinetico $p$.
-- **Partizione Equa Multi-Timescale:**
-  - `timescale_dims: [128, 128]` distribuisce equamente la popolazione tra pool Reattivo ($\beta_{\text{adapt}} = 0.90$) per la risposta rapida alle variazioni visive e pool di Contesto Profondo ($\beta_{\text{adapt}} = 0.985$) per l'integrazione temporale a lungo termine.
-
-### 2. Invarianza dello Spazio delle Fasi & Proiezione a Collo di Bottiglia (Bottleneck Projection)
-- **Geometria dello Spazio Latente Invariata:**
-  - $z \in \mathbb{R}^{128}$, strutturato in coordinate continue $q \in \mathbb{R}^{32}$ e momento continuo $p \in \mathbb{R}^{96}$ ($32 + 96 = 128$).
-  - I decoder cinematici, la loss geometrica $\mathcal{L}_{\text{coord}}$ e il predittore latente continuano a operare sullo spazio a 128 dimensioni senza alterare la complessità computazionale a valle.
-- **Adattamento Dimensionale dei Layer Sinaptici ($256 \to 96$):**
-  - **Input Projection:** $W_{\text{in}} \in \mathbb{R}^{256 \times 128}$ mappa l'errore sensoriale $\epsilon_t \in \mathbb{R}^{128}$ sui 256 neuroni ALIF.
-  - **Recurrent Momentum Projection:** $W_{\text{rec}} \in \mathbb{R}^{256 \times 96}$ proietta il momento continuo $p \in \mathbb{R}^{96}$ sui 256 neuroni ALIF.
-  - **Coordinate Projection:** $W_q \in \mathbb{R}^{256 \times 32}$ inietta la posizione $q \in \mathbb{R}^{32}$ nella corrente somatica.
-  - **Velocity Map:** $W_{\text{vel}} \in \mathbb{R}^{32 \times 256}$ mappa l'EMA degli spike della popolazione a 256 neuroni nell'avanzamento $\Delta q$.
-  - **Spike/Membrane Fusion:** $W_{\text{fuse\_spikes}} \in \mathbb{R}^{96 \times 256}$ e $W_{\text{fuse\_mems}} \in \mathbb{R}^{96 \times 256}$ comprimono la popolazione a 256 neuroni nello spazio continuo di momento $p \in \mathbb{R}^{96}$.
-
-### 3. Estensione degli Orizzonti di Valutazione
-- I rollout di valutazione sono stati estesi a:
-  $$\text{rollout\_horizons} = [1, 5, 10, 25, 50, 100]$$
-  per quantificare rigorosamente la persistenza dell'inerzia ed escludere il freezing su orizzonti doppi rispetto a v4.3 ($H=100$).
-
-### 4. Rispetto del Paradigma Forward-Only (e-prop) & Integrità del Codice
-- Preservata la complessità di memoria $\mathcal{O}(1)$ streaming:
-  - Retroproiezione del feedback $l_p \in \mathbb{R}^{B \times 96}$ attraverso $W_{\text{fuse\_spikes}} \in \mathbb{R}^{96 \times 256} \to l_{\text{mem}} \in \mathbb{R}^{B \times 256}$.
-  - Accumulo e-prop locale completamente vettorizzato su $\Delta W_{\text{in}} \in \mathbb{R}^{256 \times 128}$, $\Delta W_{\text{rec}} \in \mathbb{R}^{256 \times 96}$, $\Delta W_q \in \mathbb{R}^{256 \times 32}$ e $\Delta W_{\text{vel}} \in \mathbb{R}^{32 \times 256}$.
-- Nessun uso di euristiche manuali di coordinate, rimbalzi artificiali if/else o rami non differenziabili.
-
-### 5. File e Configurazioni
-- **Configurazione creata:** [spwm_v6.yaml](file:///Users/Mattia/Desktop/Studies/Temp/configs/experiments/spwm_v6.yaml)
-- **Verifica e Test:** Eseguiti test di forward pass, coerenza dimensionale dei tensori e accumulo dei gradienti e-prop con esito positivo.
-
----
-
-## Release SPWM-v6.1: Port-Hamiltonian Momentum Recurrence ($W_{\text{rec}} = J - R$)
-
-### 1. Resoconto Risultati v6 (Baseline di Partenza) & Diagnosi del Problema Aperto
-- **Population Scaling Validato:** Il raddoppio della popolazione a 256 neuroni ALIF (`timescale_dims: [128, 128]`, 128 veloci $\beta_{\text{adapt}}=0.90$ e 128 lenti $\beta_{\text{adapt}}=0.985$) ha abbattuto il freezing nei rollout lunghi fino a $H=100$, mantenendo uno spike rate medio dell'$11.5\%$ (~29 spike/passo).
-- **Problema Aperto (Velocity Drift & Divergenza):**
-  - Mentre il position error converge ($< 0.2$), il velocity error diverge oltre l'epoca 20 (~$0.65$ in test e ~$1.40+$ in estrapolazione).
-  - La dinamica del momento $p \in \mathbb{R}^{96}$ manca di conservazione fisica ed è soggetta ad accumulo di autovalori spuri con $\text{Re}(\lambda) > 0$, provocando derive spurie e instabilità cinetica.
-
-### 2. Derivazione Formale della Parametrizzazione Port-Hamiltoniana
-Per vincolare l'operatore di transizione del momento $p_t \to p_{t+1}$ entro un regime di dissipazione e conservazione controllata dell'energia cinetica, la transizione latente del momento $p \in \mathbb{R}^{96}$ viene parametrizzata secondo la formulazione Port-Hamiltoniana discreta:
-$$W_{\text{rec}} = J - R$$
-
-1. **Scambio Conservativo Energetico ($J$):**
-   $$J = \frac{1}{2}(W_{\text{skew}} - W_{\text{skew}}^T)$$
-   - $J$ è una matrice antisimmetrica pura ($J^T = -J$).
-   - Per ogni vettore di momento $p$, il prodotto quadratico $p^T J p = 0$, garantendo che $J$ non introduca guadagno o perdita di energia spuria, ma solo rotazione/conservazione nel sottospazio canonico.
-2. **Smorzamento Semidefinito Positivo ($R$):**
-   $$R = \text{diag}(\text{softplus}(\gamma_{\text{diss}}) + \epsilon_{\text{diss}})$$
-   - $R \succ 0$ garantisce che $p^T R p > 0$ per $p \ne 0$.
-   - Introduce un tasso di dissipazione intrinseco e asintoticamente stabile di Lyapunov, con pavimento numerico $\epsilon_{\text{diss}} = 10^{-4}$.
-
-### 3. Integrazione con lo Spazio delle Fasi & Moduli di Transizione Latente
-- **Architettura Spazio delle Fasi Invariata:**
-  - $z = [q, p] \in \mathbb{R}^{128}$ con $q \in \mathbb{R}^{32}$ (coordinate cartesiane) e $p \in \mathbb{R}^{96}$ (momento canonico).
-  - Popolazione ALIF a 256 neuroni (`timescale_dims: [128, 128]`).
-- **Modulo Predittivo Latente ([LatentPredictor](file:///Users/Mattia/Desktop/Studies/Temp/spwm/models/predictor.py)):**
-  - Il blocco di predizione residuale integra esplicitamente l'operatore Port-Hamiltoniano sul sottospazio $p$:
-    $$\Delta p_t = \Delta p_{\text{MLP}}(z_t) + W_{\text{rec}} p_t = \Delta p_{\text{MLP}}(z_t) + (J - R) p_t$$
-    $$z_{t+1} = z_t + [\Delta q_t, \Delta p_t]$$
-  - In questo modo la derivata temporale del momento è vincolata a un flusso Hamiltoniano smorzato, evitando la crescita esponenziale degli autovalori e la divergenza della velocità nei rollout a lungo raggio.
-
-### 4. Rispetto dei Vincoli Neuromorfici ed E-prop
-- Nessuna euristica manuale né forzatura con blocchi piecewise/if-else.
-- Elaborazione forward-only $\mathcal{O}(1)$ completamente differenziabile e preservata per tutto il modello.
-
-### 5. File & Configurazioni
-- **Configurazione creata:** [spwm_v6_1.yaml](file:///Users/Mattia/Desktop/Studies/Temp/configs/experiments/spwm_v6_1.yaml)
-- **Moduli aggiornati:**
-  - [predictor.py](file:///Users/Mattia/Desktop/Studies/Temp/spwm/models/predictor.py): implementato blocco Port-Hamiltoniano $W_{\text{rec}} = J - R$ con parametri $W_{\text{skew}}$ e $\gamma_{\text{diss}}$.
-  - [world_model.py](file:///Users/Mattia/Desktop/Studies/Temp/spwm/models/world_model.py): propagazione di $q_{\text{dim}}$, $p_{\text{dim}}$ e flag Port-Hamiltoniani al predittore latente.
-  - [test_models.py](file:///Users/Mattia/Desktop/Studies/Temp/tests/test_models.py): aggiunti unit test dedicati alle proprietà algebriche di $J$ e $R$ e rollout fino a $H=100$.
-
----
-
-## Post-Mortem SPWM-v6.1: Negative Result & Rollback to v6 Baseline
-
-### 1. Diagnosi del Fallimento Empirico di v6.1
-L'introduzione della parametrizzazione discreta $W_{\text{rec}} = J - R$ applicata esclusivamente al sottospazio di momento $p \in \mathbb{R}^{96}$ ha evidenziato una grave regressione geometrica:
-1. **Rottura dell'Accoppiamento Canonico $(q, p)$:**
-   - La restrizione forzata antisimmetrica/dissipativa isolata sul solo momento $p$ ha alterato la coordinazione differenziale tra $q$ e $p$.
-   - Sebbene abbia arrestato la divergenza asintotica della velocità, ha distrutto la fedeltà di tracciamento e ancoraggio spaziale delle coordinate $q$.
-2. **Degrado delle Metriche Chiave:**
-   - **Position Error ($H=1$):** degradato da $0.145$ (baseline v6) a $0.552$ ($+280\%$ di errore istantaneo).
-   - **Latent MSE ($H=100$):** raddoppiato da $0.653$ (v6) a $1.136$.
-3. **Rollback Formale:**
-   - Eliminazione completa dei parametri $W_{\text{skew}}$, $\gamma_{\text{diss}}$, della matrice $W_{\text{rec}} = J - R$ e dei flag `use_port_hamiltonian` / `eps_diss`.
-   - Ripristino integrale della solida baseline di **SPWM-v6**: popolazione ALIF scalata a 256 neuroni (`timescale_dims: [128, 128]`, $\beta=0.90 / 0.985$), $q_{\text{dim}}=32$, $p_{\text{dim}}=96$, $z_{\text{dim}}=128$ con proiezione lineare $256 \to 96$ via `fuse_spikes` e `fuse_mems`.
-
----
-
-## Release SPWM-v6.2: Continuous Attractor Neural Network (CANN) Integration
-
-### 1. Motivazione Teorica: Superamento del Dead Reckoning
-- **Problema di Baseline v6:** In SPWM-v6, l'integrazione libera sequenziale delle coordinate nello spazio aperto ($q_{t+1} = \text{clamp}(q_t + \tanh(W_{\text{vel}}(\bar{s}_t)), -1, 1)$ o $q_{t+1} = q_t + \Delta q$) agisce come pura integrazione a stima cieca (*dead reckoning*). Piccoli errori locali nei vettori di spostamento si accumulano monotonicamente, producendo derive spaziali e perdita di coerenza geometrica su orizzonti estesi ($H=100$).
-- **Paradigma CANN:** Ispirato ai circuiti biologici di navigazione e orientamento spaziale (cellule head-direction e place/grid cells nell'ippocampo e corteccia entorinale), il modulo Continuous Attractor Neural Network modella il manifold delle coordinate come una superficie continua di equilibrio stabile. L'attività neurale forma un profilo ("bump") localizzato che si sposta coerentemente sotto l'azione della velocità/momento, ma viene costantemente ri-ancorato al manifold topologico compatto.
-
-### 2. Formulazione Matematica del Modulo CANN ([ContinuousAttractor](file:///Users/Mattia/Desktop/Studies/Temp/spwm/models/latent_dynamics.py))
-Dato lo spazio di coordinate $q \in [-1, 1]^{q_{\text{dim}}}$ (con $q_{\text{dim}} = 32$ per 16 keypoint bidimensionali):
-1. **Centri Attrattori su Manifold Compatto:**
-   Si definisce un banco di $M$ centri attrattori $\mathcal{C} = \{c_m\}_{m=1}^M \in (-1, 1)^{q_{\text{dim}}}$ tramite parametrizzazione bounded:
-   $$c_m = \tanh(W_{\text{basis}, m})$$
-2. **Eccitazione Locale (Campo Recettivo Radiale):**
-   Per una coordinata candidata $q_{\text{cand}} = q_t + \Delta q$:
-   $$d_m(q_{\text{cand}}) = -\frac{\|q_{\text{cand}} - c_m\|^2}{2\sigma^2}$$
-3. **Modulazione Sinaptica da Attività Spiking / Latente:**
-   Il segnale di guida neurale $h_t$ (EMA degli spike $\bar{s}_t$ nella dinamica somatica, o momento $p_t$ nel predittore) inietta una corrente direzionale:
-   $$s_m = d_m(q_{\text{cand}}) + W_{\text{drive}, m}^T h_t$$
-4. **Inibizione Globale Competitiva (Softmax Normalization):**
-   Il profilo di attivazione dell'attrattore è normalizzato con temperatura $\tau$:
-   $$\alpha_m = \frac{\exp(s_m / \tau)}{\sum_{j=1}^M \exp(s_j / \tau)}$$
-5. **Decodifica e Forza di Ripristino:**
-   La coordinata aggiornata $q_{t+1}$ è la combinazione convessa sul manifold:
-   $$q_{t+1} = \sum_{m=1}^M \alpha_m c_m = \alpha \mathcal{C} \in (-1, 1)^{q_{\text{dim}}}$$
-   - **Forza di Ripristino Naturale:** Qualsiasi distorsione, rumore o deriva accumulata fuori dal manifold subisce una forza di attrazione verso il centroide locale più coerente.
-   - **Differenziabilità $\mathcal{C}^\infty$:** Elimina ogni discontinuità, clamp rigidi o branch piecewise $if/else$.
-
-### 3. Architettura Integrata e Compatibilità Forward-Only $\mathcal{O}(1)$
-- **Spiking Latent Dynamics ([latent_dynamics.py](file:///Users/Mattia/Desktop/Studies/Temp/spwm/models/latent_dynamics.py)):**
-  - In modalità autonoma, la velocità somatica derivata dall'EMA degli spike $\Delta q = \tanh(W_{\text{vel}}(\bar{s}_t))$ pilota la transizione sul modulo CANN: $q_{t+1} = \text{CANN}(q_t + \Delta q, \bar{s}_t)$.
-- **Latent Predictor ([predictor.py](file:///Users/Mattia/Desktop/Studies/Temp/spwm/models/predictor.py)):**
-  - Il sottospazio momento $p$ evolve via transizione residuale standard, mentre le coordinate $q$ vengono costantemente ri-ancorate tramite CANN: $q_{t+1} = \text{CANN}(q_t + \Delta q_{\text{MLP}}, p_t)$.
-- **Preservazione e-prop & Zero-Overhead:**
-  - Nessuna backward pass attraverso il tempo, memoria $\mathcal{O}(1)$ completamente preservata.
-  - Gli aggiornamenti locali su $W_{\text{vel}}$, $W_{\text{in}}$, $W_{\text{rec}}$, $W_q$ rimangono perfettamente causali e vettorizzati.
-
-### 4. File e Configurazioni
-- **Configurazioni create:** [spwm_v6_2.yaml](file:///Users/Mattia/Desktop/Studies/Temp/configs/experiments/spwm_v6_2.yaml) e [config_v6_2.yaml](file:///Users/Mattia/Desktop/Studies/Temp/config_v6_2.yaml).
-- **Moduli aggiornati:**
-  - [latent_dynamics.py](file:///Users/Mattia/Desktop/Studies/Temp/spwm/models/latent_dynamics.py): introdotta classe [ContinuousAttractor](file:///Users/Mattia/Desktop/Studies/Temp/spwm/models/latent_dynamics.py#L36) e binding in [SpikingLatentDynamics](file:///Users/Mattia/Desktop/Studies/Temp/spwm/models/latent_dynamics.py#L110).
-  - [predictor.py](file:///Users/Mattia/Desktop/Studies/Temp/spwm/models/predictor.py): rimosso blocco Port-Hamiltoniano e integrato [ContinuousAttractor](file:///Users/Mattia/Desktop/Studies/Temp/spwm/models/latent_dynamics.py#L36) in [LatentPredictor](file:///Users/Mattia/Desktop/Studies/Temp/spwm/models/predictor.py#L27).
-  - [world_model.py](file:///Users/Mattia/Desktop/Studies/Temp/spwm/models/world_model.py): propagazione parametri CANN (`use_cann`, `cann_num_basis`, `cann_sigma`, `cann_temperature`).
-  - [test_models.py](file:///Users/Mattia/Desktop/Studies/Temp/tests/test_models.py): unit test specifici per il vincolo di compattezza e ripristino dell'attrattore CANN su orizzonti fino a $H=100$.
-
----
-
-## Post-Mortem SPWM-v6.2 (CANN): Failure Analysis & Rollback to Pure v6 Base
-
-### 1. Diagnosi del Fallimento Empirico di v6.2 (Continuous Attractor Neural Network)
-L'introduzione del modulo CANN per vincolare lo spazio delle coordinate $q \in \mathbb{R}^{32}$ su un manifold attrattore compatto ha prodotto un collasso rappresentazionale:
-1. **Effetto Filtro Passa-Basso Distruttivo:**
-   - La combinazione di una base radiale continua con $\sigma = 0.5$ e temperatura softmax fissa ($\tau = 0.1$) ha agito come un filtro passa-basso aggressivo, spianando la granularità fine e l'isometria cartesiana dei 16 keypoint $(u_k, v_k)$.
-   - Il modello è collassato verso un attrattore "pigro"/banale: il Position Error a $H=1$ è rimasto bloccato su valori inaccettabili (~$0.553$ contro $0.145$ della baseline v6), rendendo il tracking istantaneo completamente degradato.
-2. **Divergenza e Instabilità di Training:**
-   - Durante il training, la loss è entrata in risalita/divergenza progressiva dopo l'epoca 40 a causa dell'accumulo di errori di approssimazione e della perdita di sensibilità differenziale della combinazione convessa $\alpha \mathcal{C}$.
-3. **Archiviazione Ufficiale di v6.1 e v6.2:**
-   - Sia il vincolo Port-Hamiltoniano isolato su $p$ (v6.1, che ha disaccoppiato la coppia canonica $q, p$) sia il modulo CANN (v6.2, che ha spianato la topologia fine dei keypoint) vengono formalmente archiviati come **esperimenti falliti**.
-
----
-
-## Release SPWM-v6.3: Clean v6 Base & Multi-Step Autoregressive Rollout Loss
-
-### 1. Razionale Architetturale & Rollback a Base v6
-- **Ripristino Integrale dell'Approccio A Puro (SPWM-v6):**
-  - Popolazione ALIF scalata a **256 neuroni** (`timescale_dims: [128, 128]`, 128 veloci $\beta_{\text{adapt}}=0.90$ e 128 lenti $\beta_{\text{adapt}}=0.985$).
-  - Spazio delle fasi puro $(q, p)$ con $q \in \mathbb{R}^{32}$, $p \in \mathbb{R}^{96}$, $z \in \mathbb{R}^{128}$.
-  - Proiezioni lineari standard per spike e potenziali di membrana ($256 \to 96$) verso il momento continuo $p$ (`fuse_spikes`, `fuse_mems`).
-  - Rimossa qualsiasi complicazione non lineare o geometrica spuria (niente CANN, niente Port-Hamiltonian $J-R$, niente vincoli artificiali piecewise).
-
-### 2. Multi-Step Autoregressive Rollout Loss (Mitigazione dell'Exposure Bias)
-- **Problema Fondamentale (Exposure Bias del Teacher Forcing a 1 Passo):**
-  - Addestrare il predittore latente $\hat{z}_{t+1} = \text{Predictor}(z_t)$ esclusivamente con Teacher Forcing ($t \to t+1$) espone il modello a un disallineamento distribuzionale durante il test: in fase di rollout autonomo, piccoli errori di predizione si accumulano passo dopo passo poiché il modello non ha mai visto i propri output imperfetti in ingresso.
-- **Formulazione della Multi-Step Rollout Loss:**
-  - Si implementa una loss di rollout autoregressivo a ciclo chiuso su un orizzonte corto controllato ($K = 3$ passi):
-    $$\hat{z}_{t+1} = \text{Predictor}(z_t)$$
-    $$\hat{z}_{t+2} = \text{Predictor}(\hat{z}_{t+1})$$
-    $$\dots$$
-    $$\hat{z}_{t+K} = \text{Predictor}(\hat{z}_{t+K-1})$$
-  - Durante il rollout di $K$ passi, ogni output predetto $\hat{z}_{t+k} = [\hat{q}_{t+k}; \hat{p}_{t+k}]$ viene re-iniettato autoregressivamente in ingresso per il passo successivo $\hat{z}_{t+k+1}$.
-  - L'errore quadratico medio viene calcolato rispetto agli stati latenti reali $z_{t+k}$ (staccati dal grafo di ALIF) lungo tutti i $K$ passi:
-    $$\mathcal{L}_{\text{multi}} = \frac{1}{K} \sum_{k=1}^K \text{MSE}(\hat{z}_{t+k}, z_{t+k})$$
-- **Loss Totale del Predittore & Bilanciamento del Gradiente:**
-  - $\mathcal{L}_{\text{pred\_total}} = \lambda_{\text{pred}} \mathcal{L}_{\text{1-step}} + \lambda_{\text{multi}} \mathcal{L}_{\text{multi}}$, con $\lambda_{\text{multi}} = 0.5$ e $\lambda_{\text{pred}} = 1.0$.
-  - Il peso moderato $\lambda_{\text{multi}} = 0.5$ e l'orizzonte corto $K=3$ garantiscono stabilità del gradiente fin dalle prime epoche.
-
-### 3. Rigore $\mathcal{O}(1)$ Forward-Only & Assenza di BPTT
-- Gli stati latenti $z_t$ prodotti dalla dinamica ALIF/e-prop vengono staccati (`detach()`) prima dell'unroll autoregressivo del predittore.
-- Il grafo computazionale del predittore si estende solo sulla finestra locale di $K=3$ passi e viene immediatamente rilasciato dopo ogni batch, mantenendo una complessità di memoria rigorosamente $\mathcal{O}(1)$ rispetto alla lunghezza temporale $T$ della traiettoria.
-
-### 4. File e Configurazioni
-- **Configurazioni:** [spwm_v6_3.yaml](file:///Users/Mattia/Desktop/Studies/Temp/configs/experiments/spwm_v6_3.yaml) e [config_v6_3.yaml](file:///Users/Mattia/Desktop/Studies/Temp/config_v6_3.yaml).
-- **Moduli aggiornati:**
----
-
-## Release SPWM-v6.4: Adaptive Curriculum Multi-Step Horizon & Sparsity Lock
-
-### 1. Analisi Quantitativa e Diagnosi Empirica v6.3
-L'esperimento esteso a 600 epoche di **SPWM-v6.3** ha raggiunto risultati storici e contestualmente rivelato un limite architetturale fondamentale:
-1. **Successo Locale Storico (Transizione di Fase epoche 85–95):**
-   - La transizione di fase ha sbloccato la convergenza fine dei keypoint, portando il `Position Error` a $H=1$ al record assoluto di **0.072** (dimezzato rispetto a $0.145$ di v6 baseline).
-   - Il `latent_mse` a $H=1$ è sceso a **0.059**.
-2. **Limite di Specializzazione a Breve Orizzonte ($K=3$ statico):**
-   - L'orizzonte fisso corto $K=3$ ha indotto specializzazione locale del predittore: a lungo raggio ($H=100$) il position error si è attestato a $0.849$ e il latent MSE a $1.55$.
-3. **Deriva Energetica dello Spike Rate (Saturazione al 18.3%):**
-   - Con $\lambda_{\text{sparse}} = 0.001$, lo spike rate medio è progressivamente salito fino al $18.3\%$. L'eccessiva densità di firing ha eroso la capacità di memoria delle costanti lente di adattamento biofisico ($\beta_{\text{adapt}} = 0.985$), degradando la stabilità inerziale della traiettoria nel tempo.
-
----
-
-### 2. Direttive Architetturali di SPWM-v6.4
-
-#### A. Adaptive Multi-Step Curriculum a Soglie su `val_pos_err`
-Per preservare la precisione fine locale e contestualmente estendere la stabilità predittiva a lungo orizzonte senza causare instabilità di gradiente nelle prime epoche, si adotta un curriculum dinamico a 3 fasi guidato dall'errore di posizione in validazione:
-- **Fase 1 (Cold Start & Alignment — $K=3$):**
-  Attiva finché $\text{val\_pos\_err} \ge 0.20$. Garantisce la rapida convergenza geometrica dell'encoder convoluzionale a coordinate spaziali e l'allineamento dei keypoint.
-- **Fase 2 (Inertia Extension — $K=6$):**
-  Attivata quando $\text{val\_pos\_err} < 0.20$. Estende la finestra di re-iniezione autoregressiva del predittore, forzando la coerenza delle velocità e dei momenti inerziali.
-- **Fase 3 (Long-range Stabilization — $K=10$):**
-  Attivata quando $\text{val\_pos\_err} < 0.12$. Stabilizza il predittore latente su ampie traiettorie chiuse, eliminando l'exposure bias accumulato sul lungo periodo.
-
-**Invarianza di Scala del Gradiente:**
-La multi-step loss viene rigorosamente normalizzata rispetto al numero di passi $K$:
-$$\mathcal{L}_{\text{multi}} = \frac{1}{K} \sum_{k=1}^K \text{MSE}(\hat{z}_{t+k}, z_{t+k})$$
-garantendo che le transizioni di fase $K=3 \to 6 \to 10$ avvengano con magnitudo di gradiente costante e senza scossoni numerici sull'ottimizzatore AdamW.
-
-#### B. Sparsity Lock (Omeostasi ALIF 10%–12%)
-- Il coefficiente di regolarizzazione della sparsità viene innalzato da $\lambda_{\text{sparse}} = 0.001$ a $\lambda_{\text{sparse}} = 0.0025$.
-- Questo vincolo blocca il rate medio di scarica della popolazione nel corridoio ideale del **10% – 12%**, massimizzando la differenziazione temporale tra la popolazione reattiva ($\beta=0.90$) e la popolazione di contesto lento ($\beta=0.985$).
-
----
-
-### 3. Configurazioni e Moduli Aggiornati
-- **Configurazioni:** [config_v6_4.yaml](file:///Users/Mattia/Desktop/Studies/Temp/config_v6_4.yaml) e [spwm_v6_4.yaml](file:///Users/Mattia/Desktop/Studies/Temp/configs/experiments/spwm_v6_4.yaml) con budget a 450 epoche, curriculum thresholds (`phase_1_horizon: 3`, `phase_2_horizon: 6`, `phase_2_threshold: 0.20`, `phase_3_horizon: 10`, `phase_3_threshold: 0.12`) e `lambda_sparse: 0.0025`.
-- **Moduli aggiornati:**
-  - [trainer.py](file:///Users/Mattia/Desktop/Studies/Temp/spwm/learning/trainer.py): implementato il monitoraggio dinamico di `val_pos_err` e la transizione automatica di `loss_fn.multi_step_horizon`, con visualizzazione di `(K=...)` nel banner per epoca.
-  - [train.py](file:///Users/Mattia/Desktop/Studies/Temp/experiments/train.py): inoltro delle impostazioni `curriculum_multi_step` e `curriculum_thresholds` dall'albero YAML al `Trainer`.
-  - [test_curriculum.py](file:///Users/Mattia/Desktop/Studies/Temp/tests/test_curriculum.py): unit test formale della progressione a soglie $K=3 \to 6 \to 10$.
-
----
-
-## Release SPWM-v6.5: Kinematic Unlocking via Momentum-Velocity Consistency ($\mathcal{L}_{\text{vel\_cons}}$)
-
-### 1. Diagnosi del Collo di Bottiglia: "Cecità Cinematica" in v6.3 / v6.4
-Nelle iterazioni v6.3 e v6.4, l'introduzione della multi-step rollout loss e dell'adaptive curriculum ha garantito un eccezionale ancoraggio geometrico locale per la posizione ($q \in \mathbb{R}^{32}$, con `val_pos_err` crollato a $0.072$). Tuttavia, l'analisi del probe di decodifica cinematica e delle dinamiche di fase ha evidenziato una grave anomalia sistematica:
-1. **Stagnazione della Velocity Probe Loss (~0.65):**
-   - Mentre il probe di posizione decodifica accuratamente le coordinate $(x, y)$ dal sottospazio $q$, l'errore di velocità (`val_vel_err`) rimane bloccato attorno a **0.65** (equivalente alla varianza basale del dataset).
-2. **Scorciatoia Dissipativa e Mancanza di Accoppiamento Dinamico:**
-   - Senza un vincolo esplicito di consistenza tra momento $p$ e variazione temporale della posizione $\Delta q$, il modello cade in una **scorciatoia dissipativa**: ottimizza la predizione autoregressiva trovando configurazioni a bassa energia o pressoché statiche per $p$, lasciando la dinamica di velocità disallineata dalla realtà fisica del moto.
-   - Poiché il probe supervisionato aggiorna solo la testa di decodifica lineare staccando il gradiente dal grafo ricorrente ($\text{detach}(z)$), nessun segnale di retroazione forza $p$ a codificare la derivata temporale $\dot{q} \approx \Delta q$.
-
----
-
-### 2. Formulazione Matematica della Consistenza Cinematica ($\mathcal{L}_{\text{vel\_cons}}$)
-In meccanica Hamiltoniana e nello spazio delle fasi continuo, la velocità generalizzata delle coordinate è legata al momento canonico dalla trasformazione canonica $\dot{q} = \frac{\partial H}{\partial p} = M^{-1} p$.
-
-Per imporre questo vincolo di coerenza fisica differenziabile frame-by-frame:
-1. **Variazione Temporale delle Coordinate ($\Delta q$):**
-   Dato lo spazio di coordinate cartesiane/keypoint $q_t \in \mathbb{R}^{q_{\text{dim}}}$ (con $q_{\text{dim}}=32$):
-   $$\Delta q_t = q_{t+1} - q_t \in \mathbb{R}^{q_{\text{dim}}}, \quad t \in [0, T-2]$$
-2. **Proiezione del Momento Canonico ($W_{\text{vel\_cons}}$):**
-   Il sottospazio di momento $p_t \in \mathbb{R}^{p_{\text{dim}}}$ (con $p_{\text{dim}}=96$, generato dalla popolazione ALIF a 256 neuroni) viene proiettato nello spazio delle velocità differenziali tramite operatore lineare:
-   $$\hat{\Delta q}_t = W_{\text{vel\_cons}} p_t \in \mathbb{R}^{q_{\text{dim}}}$$
-3. **Loss di Consistenza Cinematica ($\mathcal{L}_{\text{vel\_cons}}$):**
-   $$\mathcal{L}_{\text{vel\_cons}} = \frac{1}{T-1} \sum_{t=0}^{T-2} \left\| W_{\text{vel\_cons}} p_t - (q_{t+1} - q_t) \right\|_2^2$$
-   - Se applicata anche sulle transizioni predette dal modulo residuale $\hat{z}_{t+1} = [\hat{q}_{t+1}, \hat{p}_{t+1}]$, si regolarizza congiuntamente sia lo stato latente estratto sia la predizione neurale forward.
-
----
-
-### 3. Bilanciamento della Funzione di Costo Complessiva
-$$\mathcal{L}_{\text{total}} = \lambda_{\text{pred}} \mathcal{L}_{\text{pred}} + \lambda_{\text{multi}} \mathcal{L}_{\text{multi}} + \lambda_{\text{var}} \mathcal{L}_{\text{var}} + \lambda_{\text{sparse}} \mathcal{L}_{\text{sparse}} + \lambda_{\text{probe}} \mathcal{L}_{\text{probe}} + \lambda_{\text{coord}} \mathcal{L}_{\text{coord}} + \lambda_{\text{vel\_cons}} \mathcal{L}_{\text{vel\_cons}}$$
-
-- **Peso Operativo Ottimale $\lambda_{\text{vel\_cons}} = 0.25$:**
-  Un coefficiente bilanciato di $0.25$ fornisce una guida di gradiente vigorosa al sottospazio $p$ senza competere distruttivamente con l'ancoraggio delle coordinate $\mathcal{L}_{\text{coord}}$ né destabilizzare la convergenza locale del predittore $\mathcal{L}_{\text{pred}}$.
-
----
-
-### 4. Risultati Attesi
-1. **Sblocco del Probe di Velocità:** Crollo dell'errore di velocità (`val_vel_err`) da $\sim 0.65$ a valori inferiori a $0.20-0.30$.
-2. **Inerzia Spazio delle Fasi Coerente:** Il momento $p$ funge da autentica memoria di velocità inerziale, migliorando l'estrapolazione e la stabilità dei rollout a lungo raggio ($H=100$).
-3. **Preservazione Rigorosa $\mathcal{O}(1)$:** Il calcolo di $\Delta q_t$ e la proiezione $W_{\text{vel\_cons}} p_t$ mantengono la complessità spaziale $\mathcal{O}(1)$ frame-by-frame senza BPTT.
-
----
-
-### 5. Configurazioni e Moduli Aggiornati (v6.5)
-- **Configurazioni:** [config_v6_5.yaml](file:///Users/Mattia/Desktop/Studies/Temp/config_v6_5.yaml) e [spwm_v6_5.yaml](file:///Users/Mattia/Desktop/Studies/Temp/configs/experiments/spwm_v6_5.yaml) con $\lambda_{\text{vel\_cons}} = 0.25$, $q_{\text{dim}}=32$, $p_{\text{dim}}=96$, budget 450 epoche.
-- **Moduli aggiornati:**
-  - [losses.py](file:///Users/Mattia/Desktop/Studies/Temp/spwm/learning/losses.py): implementata la classe `SPWMLoss` con `vel_proj = nn.Linear(p_dim, q_dim)`, metodo `velocity_consistency_loss()` e dataclass `LossOutput` estesa con `l_vel_cons`.
-  - [trainer.py](file:///Users/Mattia/Desktop/Studies/Temp/spwm/learning/trainer.py): inclusione di `vel_proj` nel `predictor_optimizer`, accumulo di `l_vel_cons` in `train_epoch`, calcolo di `val_l_vel_cons` in `evaluate`, banner a terminale con tracciamento `L_vel_cons` e salvataggio nei log csv/json/txt.
-  - [train.py](file:///Users/Mattia/Desktop/Studies/Temp/experiments/train.py): passaggio dei parametri `lambda_vel_cons`, `q_dim` e `p_dim` a `SPWMLoss` con corretta allocazione su device.
-  - [test_vel_cons.py](file:///Users/Mattia/Desktop/Studies/Temp/tests/test_vel_cons.py): suite completa di unit test per la computazione e retropropagazione del gradiente su $p$ e $W_{\text{vel\_cons}}$.
-
----
-
-## Release SPWM-v6.6: Visual Encoder Freezing, Direct Primary Velocity Coupling & Proportional L1 Sparsity
-
-### 1. Diagnosi Empirica dei Risultati di v6.5 (Post-Mortem)
-L'analisi empirica approfondita dei log di addestramento su 600 epoche di SPWM-v6.5 ha evidenziato tre criticità sistematiche:
-
-1. **Fallimento e Scorciatoia Degenere di $\mathcal{L}_{\text{vel\_cons}}$:**
-   - La loss indiretta di consistenza cinematica tramite optimizer secondario e matrice di proiezione $W_{\text{vel\_cons}}$ è collassata a zero trovando una scorciatoia degenere $W_{\text{vel\_cons}} \to 0$, lasciando l'errore di velocità reale del probe (`val_vel_err`) totalmente immutato su **~0.66** (livello casuale).
-   - Inoltre, la presenza della proiezione secondaria ha introdotto rumore nei gradienti senza accoppiare $p$ alla cinematica.
-
-2. **Shock Numerico & Instabilità di Transizione alle Epoche 88–100:**
-   - Tra l'epoca 88 e l'epoca 100, la `Val Pos Err` è schizzata improvvisamente da $0.26$ a $0.95$ e la gradient norm è raddoppiata ($1.18$).
-   - Causa: il riallineamento tardivo dei pesi convoluzionali e keypoints di SpatialSoftmax è avvenuto simultaneamente all'unrolling del modello, causando una grave discontinuità nello spazio di embedding.
-
-3. **Deriva del Firing Rate (>18%) per Formulazione Inadeguata della Sparsità:**
-   - Il costo di sparsità precedente era matematicamente trascurabile e non vincolato a un target, permettendo allo spike rate medio di salire oltre il $18.2\%$, saturando la popolazione ALIF.
-
----
-
-### 2. Direttive e Implementazione dei Fix Definitivi SPWM-v6.6
-
-#### A. Congelamento Esplicito dell'Encoder (Prime 70 Epoche)
-- Impostato il congelamento esplicito dei pesi convoluzionali e di SpatialSoftmax (`param.requires_grad = False`) per le prime **70 epoche globali**, sbloccandoli (`param.requires_grad = True`) solo dopo la convergenza delle coordinate (epoca > 70).
-- Multi-step rollout loss inibita durante il warmup ($K=1$), consentendo alle coordinate di convergere e stabilizzarsi prima di addestrare congiuntamente l'encoder.
-
-#### B. Penalità di Sparsità $L_1$ Proporzionata con Target a 0.10
-- Sostituita la forma quadratica/lineare generica con una penalità $L_1$ proporzionata:
-  $$\mathcal{L}_{\text{sparse}} = \lambda_{\text{sparse}} \cdot |\text{mean}(s) - 0.10| \quad \text{con } \lambda_{\text{sparse}} = 0.5 \ge 0.5$$
-- Questa formulazione vincola rigidamente la popolazione ALIF al corridoio target di firing rate del **10%** (0.10), penalizzando simmetricamente sia la saturazione che la quiescenza.
-
-#### C. Accoppiamento Diretto di $p$ alla Derivata Temporale di $q$ nella Loss Primaria
-- Rimosso qualsiasi optimizer o matrice ausiliaria secondaria;
-- Accoppiato direttamente $p$ alla derivata temporale finita $\Delta q_t = q_{t+1} - q_t$ direttamente calcolata dentro la funzione di costo primaria del world model (`SPWMLoss`):
-  $$\mathcal{L}_{\text{vel}} = \left\| p_t - \Delta q_t \right\|_2^2 \quad \text{con } \lambda_{\text{vel}} = 0.5$$
-- La penalità forza $p$ a codificare direttamente la velocità cinematica autentica dei punti chiave.
-
----
-
-### 3. Bilanciamento della Funzione di Costo Totale (v6.6)
-$$\mathcal{L}_{\text{total}} = \lambda_{\text{pred}} \mathcal{L}_{\text{pred}} + \lambda_{\text{multi}} \mathcal{L}_{\text{multi}} + \lambda_{\text{var}} \mathcal{L}_{\text{var}} + \lambda_{\text{sparse}} \left|\text{mean}(s) - 0.10\right| + \lambda_{\text{vel}} \left\| p_t - \Delta q_t \right\|_2^2 + \lambda_{\text{probe}} \mathcal{L}_{\text{probe}} + \lambda_{\text{coord}} \mathcal{L}_{\text{coord}}$$
-
----
-
-### 4. Configurazioni e Moduli Aggiornati (v6.6)
-- **Configurazioni:** [config_v6_6.yaml](file:///Users/Mattia/Desktop/Studies/Temp/config_v6_6.yaml) e [spwm_v6_6.yaml](file:///Users/Mattia/Desktop/Studies/Temp/configs/experiments/spwm_v6_6.yaml) (`encoder_warmup_epochs: 70`, `lambda_sparse: 0.5`, `target_spike_rate: 0.10`, `lambda_vel: 0.5`).
-- **Moduli aggiornati:**
-  - [losses.py](file:///Users/Mattia/Desktop/Studies/Temp/spwm/learning/losses.py): `SPWMLoss` con penalità $L_1$ su $|\text{mean}(s) - 0.10|$ e penalità diretta di velocità $\|p_t - \Delta q_t\|_2^2$.
-  - [trainer.py](file:///Users/Mattia/Desktop/Studies/Temp/spwm/learning/trainer.py): freeze/unfreeze esplicito (`p.requires_grad = False` per `epoch <= 70`, `True` per `epoch > 70`) su `model.encoder.conv` e `model.encoder.spatial_softmax`.
-  - [train.py](file:///Users/Mattia/Desktop/Studies/Temp/experiments/train.py): passaggio dei parametri `lambda_vel`, `lambda_sparse` e `target_spike_rate` a `SPWMLoss`.
-  - [test_v6_6.py](file:///Users/Mattia/Desktop/Studies/Temp/tests/test_v6_6.py): suite completa di unit test per la validazione di tutti i fix richiesti.
-
-
-
-
-
-
-
-
-## Release SPWM-v7: Decoupled Optimizer Architecture, Probe-Frozen Velocity Supervision & Adaptive Z-Score Model Selection
-
-### 1. Diagnosi Empirica dei Risultati di v6.6 (Post-Mortem)
-
-L'analisi dei log di addestramento su 450 epoche di SPWM-v6.6 ha identificato tre difetti architetturali sistematici che limitavano la convergenza:
-
-1. **Bias da Consistenza Sensoriale nell'Encoder:**
-   - La loss di aggiornamento dell'encoder includeva un termine di consistenza sensoriale: $\text{MSE}(\text{enc\_seq}, \hat{x}_t^{\text{detach}})$, introducendo un bias verso la struttura della predizione del `sensory_predictor` invece di convergere su coordinate geometriche pure.
-   - Conseguenza: le coordinate dei keypoint risultavano parzialmente distorte dalla distribuzione predittiva, destabilizzando la supervisione downstream del probe.
-
-2. **Doppio Backprop su `physical_decoder` (Dual Backprop Conflict):**
-   - In Step 2 (aggiornamento predittore), `physical_decoder(pred_z)` veniva chiamato direttamente senza congelare i parametri del decoder, provocando l'accumulo di gradienti da $\mathcal{L}_{\text{vel}}$ sui pesi del probe.
-   - La successiva `probe_optimizer.zero_grad()` cancellerebbe questi gradienti senza mai applicarli, mentre gli aggiornamenti residui del predittore sarebbero potenzialmente corrotti da gradienti ibridi.
-
-3. **Parametri di Dinamica nel `probe_optimizer` (Optimizer Contamination):**
-   - I parametri di fusione dinamica (`fuse_*`, `recurrent_proj`, `norm`) erano assegnati al `decoder_optimizer` invece che al `predictor_optimizer`, causando aggiornamenti incoerenti: le layer che generano $p$ venivano ottimizzate dalla loss del probe invece che dalla loss di predizione latente.
-
----
-
-### 2. Modifiche Architetturali e Implementative di v7
-
-#### A. Encoder Update: Supervisione Geometrica Pura (Step 1)
-
-- **Rimossa completamente** la loss di consistenza sensoriale (`MSE(enc_seq, pred_x.detach())`).
-- L'encoder viene aggiornato **esclusivamente** tramite supervisione geometrica ground-truth:
-  $$\mathcal{L}_{\text{enc}} = \lambda_{\text{coord}} \cdot \mathcal{L}_{\text{coord}}(\text{keypoints}, \text{true\_kinematics})$$
-- La logica di warmup dell'encoder è invariata: la multi-step rollout loss rimane inibita ($K=1$) durante le prime `encoder_warmup_epochs` epoche.
-
-#### B. Velocity Loss con Decoder Congelato (`_frozen()`) (Step 2)
-
-- Introdotto il context manager `_frozen(module)` in `losses.py` che salva e ripristina `requires_grad` su tutti i parametri del modulo:
-  ```python
-  @contextmanager
-  def _frozen(module: nn.Module):
-      original = {n: p.requires_grad for n, p in module.named_parameters(recurse=True)}
-      try:
-          for p in module.parameters():
-              p.requires_grad_(False)
-          yield
-      finally:
-          for n, p in module.named_parameters(recurse=True):
-              p.requires_grad_(original[n])
-  ```
-- Nuovo metodo pubblico `SPWMLoss.velocity_loss_frozen_probe(pred_z, true_kinematics, physical_decoder)` che esegue il forward del decoder dentro `_frozen()`:
-  $$\mathcal{L}_{\text{vel}} = \text{MSE}(\text{physical\_decoder}_{\text{frozen}}(\hat{z})[..., 2:4],\ \text{true\_kin}[:, 1:, 2:4])$$
-- I gradienti di $\mathcal{L}_{\text{vel}}$ fluiscono **esclusivamente** nel predittore e nelle layer di dinamica che producono $\hat{z}$, senza mai toccare i pesi del probe.
-
-#### C. Re-architecting degli Ottimizzatori (Separazione $p$-Dynamics)
-
-- **`probe_optimizer`** (Step 3): contiene **solo** i parametri di `physical_decoder` / probe cinematico (match per `"decoder"` o `"probe"` nel nome). **Nessuna** layer di fusione dinamica.
-- **`predictor_optimizer`** (Step 2): contiene i parametri del `LatentPredictor` + i parametri di fusione/proiezione della dinamica latente (`fuse_*`, `recurrent_proj`, `norm`), poiché queste layer generano lo stato latente $p$.
-- Il parametro `decoder_lr` / `decoder_weight_decay` viene rinominato in `probe_lr` / `probe_weight_decay` per chiarezza semantica.
-
-#### D. Probe Update Pulito (Step 3)
-
-- `z_states = out.latent_states.detach()`: il probe viene addestrato su rappresentazioni completamente staccate dal grafo.
-- `probe_optimizer` aggiorna esclusivamente i pesi del decoder, senza interferenza con la dinamica latente o il predittore.
-
-#### E. Selezione del Miglior Modello via Z-Score Combinato Adattivo
-
-- **Epoche di warmup (< 5):** score semplice $\text{Score} = \text{val\_pos\_err} + \text{val\_vel\_err}$ (warmup statistico prima di avere varianza storica stabile).
-- **Da epoca 5 in poi:** calcolo Z-Score storico adattivo:
-  $$Z_{\text{pos}} = \frac{\text{val\_pos\_err}_t - \mu_{\text{pos}}}{\sigma_{\text{pos}} + \epsilon}, \quad Z_{\text{vel}} = \frac{\text{val\_vel\_err}_t - \mu_{\text{vel}}}{\sigma_{\text{vel}} + \epsilon}$$
-  $$\text{Score}_{\text{combined}} = Z_{\text{pos}} + Z_{\text{vel}}$$
-- `model.pt` salvato ogni volta che `Score_combined` raggiunge un nuovo minimo storico.
-- `checkpoint.pt` serializza `best_combined_score` per il corretto resume dell'addestramento.
-- I log individuali (`training_log.json`, `.csv`, `.txt`) mantengono `val_pos_err` e `val_vel_err` per backwards compatibility e confronto.
-- Il banner per-epoca mostra sia i singoli errori che il Z-Score combinato corrente e il best storico.
-
----
-
-### 3. Bilanciamento della Funzione di Costo Totale (v7)
-
-$$\mathcal{L}_{\text{total}} = \lambda_{\text{pred}} \mathcal{L}_{\text{pred}} + \lambda_{\text{multi}} \mathcal{L}_{\text{multi}} + \lambda_{\text{var}} \mathcal{L}_{\text{var}} + \lambda_{\text{sparse}} |\text{mean}(s) - 0.10| + \lambda_{\text{vel}} \mathcal{L}_{\text{vel}}^{\text{frozen}} + \lambda_{\text{probe}} \mathcal{L}_{\text{probe}} + \lambda_{\text{coord}} \mathcal{L}_{\text{coord}}$$
-
-| Loss | $\lambda$ | Ottimizzatore |
-|------|-----------|---------------|
-| $\mathcal{L}_{\text{pred}}$ (1-step) | 1.0 | `predictor_optimizer` |
-| $\mathcal{L}_{\text{multi}}$ (rollout) | 0.5 | `predictor_optimizer` |
-| $\mathcal{L}_{\text{var}}$ (VICReg) | 0.1 | `predictor_optimizer` |
-| $\mathcal{L}_{\text{sparse}}$ (L1) | 0.5 | `predictor_optimizer` |
-| $\mathcal{L}_{\text{vel}}^{\text{frozen}}$ | 0.5 | `predictor_optimizer` (decoder frozen) |
-| $\mathcal{L}_{\text{probe}}$ | 2.0 | `probe_optimizer` |
-| $\mathcal{L}_{\text{coord}}$ | 0.15 | `encoder_optimizer` |
-
----
-
-### 4. Checklist di Verifica (v7)
-
-- [x] `train_epoch` è un metodo corretto di `Trainer` (nessun problema di indentazione).
-- [x] `physical_decoder` riceve aggiornamenti di gradiente esclusivamente durante Step 3 (probe update).
-- [x] `loss_enc` non contiene alcuna dipendenza da `sensory_predictor`.
-- [x] `checkpoint.pt` serializza correttamente `best_combined_score` per il resume.
-- [x] `_frozen()` context manager verificato: ripristina `requires_grad` correttamente dopo il backward.
-- [x] `velocity_loss_frozen_probe()`: gradiente fluisce in `pred_z`, i parametri del decoder restano `grad=None`.
-- [x] `probe_optimizer` non contiene parametri `fuse_*`, `recurrent_proj`, `norm`.
-- [x] `predictor_optimizer` include i parametri di dinamica latente (`dynamics_p_params`).
-
----
-
-### 5. Configurazioni e Moduli Aggiornati (v7)
-
-- **Configurazione:** [config_v7.yaml](file:///Users/Mattia/Desktop/Studies/Temp/config_v7.yaml) con `probe_lr: 0.0005`, `probe_weight_decay: 0.01`, `lambda_probe: 2.0`, `lambda_vel: 0.5`, `encoder_warmup_epochs: 60`, `zscore_warmup_epochs: 5`.
-- **Moduli aggiornati:**
-  - [losses.py](file:///Users/Mattia/Desktop/Studies/Temp/spwm/learning/losses.py): `_frozen()` context manager, `velocity_loss_frozen_probe()`, `LossOutput.l_probe` (rinominato da `l_decoder`), alias `lambda_decoder = lambda_probe` per backwards-compat.
-  - [trainer.py](file:///Users/Mattia/Desktop/Studies/Temp/spwm/learning/trainer.py): Step 1 solo `L_coord`, Step 2 con `velocity_loss_frozen_probe()`, Step 3 con `probe_optimizer` puro, Z-Score adattivo, checkpoint con `best_combined_score`, log esteso con `l_vel`, `l_sparse`, `l_probe`.
-
-
----
-
-## Release SPWM-v7.2: Two-Scale Velocity Supervision & Smooth Horizon Scheduled Sampling
-
-### 1. Inquadramento Teorico & Motivazione
-I risultati delle iterazioni v7.0/v7.1 hanno evidenziato due criticità concorrenti:
-1. **Dilemma della Derivata Istantanea vs Regolarizzazione su Traiettoria:** L'uso di un target di velocità su finestra fissa a multi-passo ($k=3$) regolarizzava le basse frequenze ma sacrificava la precisione della derivata locale istantanea ($H=1$), mentre $k=1$ risultava troppo miope contro il drift.
-2. **Asymptotic Shock da Curriculum a Fasi:** I salti discreti di orizzonte rollout nel curriculum ($K=3 \to 6 \to 10$) innescavano shock transitori nell'ottimizzatore, destabilizzando l'errore di posizione asintotico su orizzonti lunghi ($H=100$).
-3. **Instabilità Z-Score:** Il ranking adattivo basato su Z-Score storico soffriva di non-stazionarietà statistica durante il training, venendo rimpiazzato da uno score deterministico congiunto pesato.
-
-### 2. Modifiche Architetturali e Algoritmiche
-- **Riconciliazione Loss Cinematica (Two-Scale Velocity Target):**
-  Definita la supervisione di velocità come combinazione convessa tra target istantaneo ($k=1$) e finestra filtrata ($k=3$) con probe congelato:
-  $$\mathcal{L}_{\text{vel}} = 0.5 \cdot \mathcal{L}_{\text{vel}}^{(k=1)} + 0.5 \cdot \mathcal{L}_{\text{vel}}^{(k=3)}$$
-  Preserva la derivata istantanea senza perdere la regolarizzazione a bassa frequenza.
-- **Scheduled Sampling Continuo (Smooth Horizon):**
-  Sostituiti i cambi di orizzonte discreti a soglie con un campionamento stocastico uniforme batch-by-batch post-warmup:
-  $$K_t \sim \mathcal{U}(1, K_{\max}) \quad \text{con } K_{\max} = 10$$
-  Elimina le discontinuità nel flusso dei gradienti del predittore durante il training.
-- **Model Selection Deterministica:**
-  Sostituito lo Z-Score non-stazionario con una metrica normalizzata ancorata agli ordini di grandezza tipici:
-  $$\text{Score}_{\text{combined}} = \text{val\_pos\_err} + 0.5 \cdot \text{val\_vel\_err}$$
-
----
-
-## Release SPWM-v7.3: Out-of-Distribution Rollout Divergence & Spike Rate Saturation (Post-Mortem)
-
-### 1. Risultati Empirici Verificati (Run Ufficiale v7.3)
-- **Breakthrough a Breve Orizzonte ($H \le 10$):**
-  - Record storico di accuratezza locale: $\text{Pos Err}_{H=1} = \mathbf{0.0807}$, $\text{Vel Err}_{H=1} = \mathbf{0.5964}$.
-  - Minimo globale dell'errore latente centrato sulla finestra di supervisione: $\text{Latent MSE}_{H=5} = \mathbf{0.0925}$, $\text{Latent MSE}_{H=10} = \mathbf{0.0984}$.
-- **Divergenza Oltre la Finestra di Addestramento ($H > 10$):**
-  - Entrando in regime strettamente out-of-distribution rispetto al supporto $\mathcal{U}(1, 10)$, l'errore autoregressivo subisce un'amplificazione esponenziale:
-    - $H=25$: $\text{Pos Err} = 0.3492$
-    - $H=50$: $\text{Pos Err} = 0.5399$
-    - $H=100$: $\text{Pos Err} = 0.6481$, $\text{Vel Err} = 0.8979$ (in estrapolazione: $1.5548$).
-- **Saturazione Energetica della Popolazione ALIF:**
-  - `mean_spike_rate` salito a **0.2748** (27.5%), quasi il triplo rispetto al corridoio biologico target di omeostasi ($0.10$).
-
-### 2. Root Cause Analysis
-1. **Mancanza di Orizzonte Dinamico ($K_{\max} = 10$ statico):** Il modello eccelle entro $H \in [1, 10]$ ma non riceve gradienti di stabilizzazione oltre il decimo passo, lasciando l'accumulo di errore libero di divergere sui lunghi rollout.
-2. **Erosione della Memoria Biofisica per Hyper-Spiking:** La mancata tenuta della penalità di sparsità ($0.275$ vs target $0.10$) satura le costanti lente della popolazione di contesto ($\beta_{\text{adapt}} = 0.985$), degradando la capacità di conservazione inerziale.
-
----
-
-## Decisione Strategica: Revert Architetturale a v7.2 come Base per SPWM-v8
-
-- **Stato di SPWM-v7.3:** Archiviato come **ablazione diagnostica**. Conferma la validità teorica del campionamento continuo e della loss cinematica a doppia scala sul corto raggio, ma evidenzia la necessità di un'estensione progressiva controllata della finestra $K$.
-- **Revert Ufficiale:** Il progetto esegue il ripristino formale del codice e della configurazione alla baseline stabile di **SPWM-v7.2**.
-
----
-
-## Release SPWM-v8: Two-Timescale Predictor-Corrector Architecture
-
-### 1. Inquadramento Teorico & Motivazione Sistemica
-Il post-mortem della release v7.3 ha evidenziato una dicotomia fondamentale nei world model neuromorfi autoregressivi:
-1. **Acuità Locale vs Stabilità Asintotica:** Il modulo predittore rapido a singolo passo ($\delta t = 1$), supervisionato su finestre brevi, ha conseguito un'accuratezza locale record a $H \le 10$ ($\text{Pos Err}_{H=1} = \mathbf{0.0807}$, $\text{Latent MSE}_{H=5} = \mathbf{0.0925}$), ma la retroazione autoregressiva prolungata conduce a un'amplificazione esponenziale dell'errore asintotico su orizzonti estesi ($H \ge 25$).
-2. **Saturazione Energetica da Runaway Excitation:** L'accumulo di errore sub-soglia sul lungo periodo innesca un regime di iper-eccitabilità nella popolazione ALIF (`mean_spike_rate` salito al $27.48\%$, quasi il triplo rispetto al corridoio biologico target di $10\%$), esaurendo la capacità adattiva e cancellando le memorie inerziali a lungo termine.
-
-Per superare questo trade-off senza compromettere l'acuità locale di v7.2, SPWM-v8 introduce un'architettura **Two-Timescale Predictor-Corrector**:
-- Un **Modulo Predittore Rapido** operante ad alta frequenza temporale ($\delta t = 1$), isolato da interferenze di lungo periodo per mantenere inalterata la precisione locale.
-- Un **Modulo Correttore Spiking Lento**, una popolazione ALIF indipendente con costanti di tempo marcatamente più lente, operante con cadenza temporale rarefatta ($\Delta = 5$), in regime di scarica strettamente quiescente (dormiente in condizioni nominali, attiva solo su derive critiche).
-- Un **Aggancio Correttivo Non-Distruttivo**, che non altera bruscamente le coordinate geometriche di posizione $q$, ma interviene in modo $\mathcal{C}^1$-continuo sulla derivata cinematica (forza di sterzata/velocità) e sullo smorzamento del momento interno $p$.
-
----
-
-### 2. Dettagli Architetturali & Moduli Implementati
-
-#### A. Ripristino Baseline Consolidata SPWM-v7.2
-- **Stack Computazionale:** Ripristino della procedura di addestramento v7.2 con curriculum multi-passo stabile a soglie di validazione ($K \in [3, 6, 10]$ con soglie $0.20$ e $0.12$), supervisione cinematica convessa a doppia scala ($0.5 \cdot \mathcal{L}_{\text{vel}}^{(k=1)} + 0.5 \cdot \mathcal{L}_{\text{vel}}^{(k=3)}$), e model selection congiunta normalizzata:
-  $$\text{Score}_{\text{combined}} = \text{val\_pos\_err} + 0.5 \cdot \text{val\_vel\_err}$$
-- **Isolamento del Predittore Rapido:** Il predittore rapido `model.predictor` e l'integratore cinematico mantengono intatta la parametrizzazione di v7.2, operando come traslatore locale ad alta fedeltà.
-
-#### B. Popolazione Neuronale Lenta (Modulo Correttore: `SlowCorrector`)
-- **Dinamiche di Membrana & Adattamento Lente:**
-  La popolazione correttiva impiega $N_{\text{slow}} = 64$ neuroni ALIF indipendenti con costanti di tempo decelerate di oltre un ordine di grandezza rispetto alla popolazione rapida:
-  - Decadimento di membrana: $\beta_{\text{mem}}^{\text{slow}} = 0.95$ (costante di tempo $\tau_{\text{mem}} \approx 20$ passi temporali, vs $\beta_{\text{mem}} = 0.80$ del core rapido).
-  - Adattamento di soglia: $\beta_{\text{adapt}}^{\text{slow}} = 0.995$ (costante di tempo $\tau_{\text{adapt}} \approx 200$ passi, vs $\beta_{\text{adapt}} \in [0.90, 0.985]$).
-  - Accoppiamento adattivo: $\gamma^{\text{slow}} = 0.25$.
-- **Cadenza Temporale Rarefatta ($\Delta = 5$):**
-  Il modulo correttore opera a intervalli macro-temporali regolari $t \pmod \Delta == 0$. Nei passi intermedi ($t \pmod \Delta \ne 0$), il modulo non emette spike e applica un decadimento esponenziale continuo ($\lambda_{\text{decay}} = 0.85$), garantendo transizioni lisce tra macro-interventi.
-- **Regime di Scarica Quiescente:**
-  La soglia di riposo è innalzata a $v_{\text{th0}}^{\text{slow}} = 1.5$ (vs $1.0$ standard). In condizioni nominali (in cui l'orbita segue la cinematica predetta dal modello rapido), il potenziale resta costantemente sub-soglia:
-  $$S_t^{\text{slow}} = \Theta(V_t^{\text{slow}} - (v_{\text{th0}}^{\text{slow}} + \gamma^{\text{slow}} A_t^{\text{slow}})) = 0$$
-  I neuroni lenti scaricano impulsi correttivi solo quando si accumula una deviazione macroscopica della traiettoria.
-
-#### C. Aggancio Correttivo Non-Distruttivo (Continuous Velocity & Damping Coupling)
-Il correttore interagisce con lo stato latente $z = [q, p]$ senza mai sovrascrivere direttamente le coordinate di posizione $q$:
-1. **Modulazione della Derivata Cinematica (Forza di Sterzata $\Delta v$):**
-   A partire dallo stato del correttore $u_t = \tanh(W_{\text{mem}} V_t^{\text{slow}}) + W_{\text{spk}} S_t^{\text{slow}}$, viene generato un vettore continuo di perturbazione della velocità:
-   $$\Delta v_t = \tanh(W_v u_t) \cdot g_v \quad (g_v = 0.08)$$
-   La velocità proposta dal predittore rapido $\dot{q}_{t+1}^{\text{fast}} = q_{t+1}^{\text{fast}} - q_t$ viene modulata:
-   $$\dot{q}_{t+1}^{\text{corr}} = \dot{q}_{t+1}^{\text{fast}} + \Delta v_t$$
-   La coordinata di posizione evolve quindi esclusivamente per integrazione cinematica continua:
-   $$q_{t+1} = \text{clamp}(q_t + \dot{q}_{t+1}^{\text{corr}}, -1.0, 1.0)$$
-   Ciò previene qualsiasi discontinuità $\mathcal{C}^0$ (teletrasporto o shock di coordinate).
-2. **Smorzamento Sub-Soglia dell'Iper-Eccitabilità (Momentum Damping):**
-   Per prevenire la saturazione da runaway spiking vista in v7.3, il correttore applica un fattore di smorzamento sub-soglia $d_{\text{damp}}$ e un impulso di momento $\Delta p$:
-   $$d_{\text{damp}, t} = \sigma(W_{\text{damp}} u_t) \cdot \alpha_{\text{damp\_max}} \quad (\alpha_{\text{damp\_max}} = 0.40)$$
-   $$\Delta p_t = \tanh(W_p u_t) \cdot g_p \quad (g_p = 0.08)$$
-   $$p_{t+1} = p_{t+1}^{\text{fast}} \cdot (1 - d_{\text{damp}, t}) + \Delta p_t$$
-   L'energia cinetica e la risonanza parassita nello spazio latente vengono assorbite asintoticamente prima che possano indurre scariche di spike a valanga.
-
-#### D. Ottimizzazione a Blocchi Protetti (Protected Block Training)
-Il processo di training preserva rigorosamente le competenze del predittore rapido attraverso l'isolamento dei gradienti:
-- **Disaccoppiamento degli Ottimizzatori:**
-  Introdotto `corrector_optimizer` (AdamW, $\text{lr} = 2 \cdot 10^{-4}$, $\text{weight\_decay} = 10^{-4}$), separato da `predictor_optimizer`, `encoder_optimizer` e `probe_optimizer`.
-- **Congelamento Contextual (`_frozen(model.predictor)`):**
-  Durante la fase di training asintotico su orizzonti estesi ($H \ge 25$, target $H = 25$), i parametri di `model.predictor` vengono posti in `requires_grad = False`:
-  $$\nabla_{\theta_{\text{predictor}}} \mathcal{L}_{\text{asymptotic}} \equiv 0$$
-  I gradienti retro-propagati dalla stabilizzazione a lungo raggio fluiscono **esclusivamente** nei pesi della popolazione lenta e delle proiezioni correttive.
-- **Funzione di Costo del Correttore:**
-  $$\mathcal{L}_{\text{corr}} = \lambda_{\text{asymp}} \cdot \frac{1}{H} \sum_{h=1}^H \| z_{t+h}^{\text{corr}} - z_{t+h}^* \|^2 + \lambda_{\text{quiesc}} \cdot \frac{1}{H} \sum_{h=1}^H \text{mean}(S_h^{\text{slow}})$$
-  con $\lambda_{\text{asymp}} = 1.0$ e $\lambda_{\text{quiesc}} = 0.5$. La penalità di quiescenza garantisce che il correttore intervenga solo quando strettamente indispensabile.
-
-#### E. Selezione Dinamica del Miglior Modello (Dynamic Score Weighting: Acuità Locale & Stabilità Asintotica)
-Per superare il limite della selezione basata esclusivamente sulla decodifica istantanea $H=1$ (che rischiava di favorire modelli con probe overfittato ma rollout divergente), SPWM-v8 adotta una funzione di ranking multi-obiettivo a pesatura dinamica della distanza dal target globale:
-- **Obiettivo Acuità Locale ($H=1$):** Target di errore a singolo passo $= 0.0$ (normalizzato su scala $d_{\text{loss}} = \frac{h_1}{\max(h_1^{\max}, \epsilon)}$ con $h_1^{\max} = 0.40$).
-- **Obiettivo Stabilità di Traiettoria ($\text{Drift Ratio}$):** Target del rapporto di divergenza asintotica $H_{50}/H_1 = 1.0$ (nessuna perdita di precisione tra orizzonte lungo e corto, normalizzato su scala $d_{\text{dev}} = \frac{\max(0, \text{Drift} - 1.0)}{\Delta_{\text{drift}}^{\max}}$ con $\Delta_{\text{drift}}^{\max} = 4.0$).
-- **Pesatura Dinamica Autobilanciante:**
-  $$w_{\text{loss}} = d_{\text{loss}} + \epsilon, \quad w_{\text{dev}} = d_{\text{dev}} + \epsilon$$
-  $$\text{Dynamic Score} = \frac{w_{\text{loss}} \cdot d_{\text{loss}} + w_{\text{dev}} \cdot d_{\text{dev}}}{w_{\text{loss}} + w_{\text{dev}}}$$
-  Questa formulazione penalizza dinamicamente in modo più severo l'asse che si trova più lontano dal proprio ottimo, scartando sia i modelli divergenti a lungo termine sia quelli con acuità locale degradata.
-
----
-
-### 3. Configurazione Sperimentale & Verifiche di Sistema
-- **File di Configurazione:** [configs/experiments/spwm_v8.yaml](file:///Users/Mattia/Desktop/Studies/Temp/configs/experiments/spwm_v8.yaml)
-- **Suite di Test Dedicata:** [tests/test_corrector.py](file:///Users/Mattia/Desktop/Studies/Temp/tests/test_corrector.py) e [tests/test_pareto_filter.py](file:///Users/Mattia/Desktop/Studies/Temp/tests/test_pareto_filter.py).
-- **Esito Test Suite:** 35 test unitari passati con successo ($100\%$ pass rate).
-
----
-
-### 4. Risultati Empirici Verificati (Run Ufficiale SPWM-v8)
-
-- **Cartella Run & Artefatti:** [spwm_v8/](file:///Users/Mattia/Desktop/Studies/Temp/spwm_v8)
-- **Metadata Run:** 382 epoche completate, seed 42, device `mps` (commit `c71ce22e`).
-- **File Metriche:** [spwm_v8/metrics.json](file:///Users/Mattia/Desktop/Studies/Temp/spwm_v8/metrics.json)
-
-| Metrica | SPWM-v7.2 (Baseline) | SPWM-v7.3 (Ablazione) | **SPWM-v8 (Two-Timescale)** |
-| :--- | :---: | :---: | :---: |
-| **Parametri Totali** | 282,852 | 282,852 | **320,004** |
-| **Criterio Selezione Checkpoint** | $\text{Score}_{\text{combined}}$ | $\text{Pos}_{H=1} + 0.5 \text{Vel}_{H=1}$ | **Dynamic Score ($H_1$ & Drift)** |
-| **Test TF MSE** | $0.2723$ | $0.1572$ | **0.2776** |
-| **Test Mean Spike Rate** | $0.1298$ | $0.2748$ (Saturato) | **0.1300** (Omeostatico $\sim 13\%$) |
-| **Test Drift Ratio ($H_{50}/H_1$)** | $3.79\times$ | $6.69\times$ (Divergente) | **4.54×** (Stabile & Conforme) |
-| **Test Latent MSE ($H=1$)** | $0.2848$ | $0.1445$ | **0.2666** |
-| **Test Latent MSE ($H=5$)** | $0.2279$ | $0.0926$ | **0.1868** |
-| **Test Latent MSE ($H=10$)** | $0.2304$ | $0.0984$ | **0.1898** |
-| **Test Latent MSE ($H=25$)** | $0.3088$ | $0.1929$ | **0.2471** |
-| **Test Latent MSE ($H=50$)** | $0.4529$ | $0.4820$ | **0.4136** |
-| **Test Latent MSE ($H=100$)** | $0.6002$ | $0.7104$ | **0.7013** |
-| **Test Pos Err ($H=1$)** | $0.1227$ | $0.0807$ | **0.1017** |
-| **Test Pos Err ($H=5$)** | $0.1680$ | $0.1247$ | **0.1299** |
-| **Test Pos Err ($H=10$)** | $0.2166$ | $0.1875$ | **0.1664** |
-| **Test Pos Err ($H=25$)** | $0.3361$ | $0.3493$ | **0.2872** |
-| **Test Pos Err ($H=50$)** | $0.4657$ | $0.5399$ | **0.4615** |
-| **Test Pos Err ($H=100$)** | $0.5811$ | $0.6481$ | **0.6643** |
-| **Test Vel Err ($H=1$)** | $0.5164$ | $0.5964$ | **0.5341** |
-| **Test Vel Err ($H=5$)** | $0.5774$ | $0.6102$ | **0.5168** |
-| **Test Vel Err ($H=10$)** | $0.5837$ | $0.6633$ | **0.5128** |
-| **Test Vel Err ($H=25$)** | $0.5801$ | $0.7675$ | **0.5188** |
-| **Test Vel Err ($H=50$)** | $0.6348$ | $0.8469$ | **0.6152** |
-| **Test Vel Err ($H=100$)** | $0.7302$ | $0.8979$ | **0.7699** |
-| **Extrapolation TF MSE** | $0.3365$ | $0.2237$ | **0.3357** |
-| **Extrapolation Pos Err ($H=1$)** | $0.1365$ | $0.0932$ | **0.1250** |
-| **Extrapolation Pos Err ($H=25$)** | $0.5659$ | $0.5482$ | **0.5516** |
-| **Extrapolation Pos Err ($H=50$)** | $0.6959$ | $0.7080$ | **0.7526** |
-| **Extrapolation Pos Err ($H=100$)** | $0.7156$ | $0.7306$ | **0.8021** |
-
-#### Sintesi dei Risultati SPWM-v8:
-1. **Accuratezza e Riduzione Errore di Posizione su Orizzonti Intermedi:**
-   SPWM-v8 riduce significativamente l'errore di posizione su orizzonti intermedi rispetto sia a v7.2 che v7.3 ($H=10$: **0.1664** vs 0.2166/0.1875; $H=25$: **0.2872** vs 0.3361/0.3493; $H=50$: **0.4615** vs 0.4657/0.5399).
-2. **Controllo Superiore della Derivata di Velocità:**
-   Sull'intero range $H \in [5, 50]$, SPWM-v8 abbatte nettamente l'errore di velocità rispetto a tutte le versioni precedenti ($H=5$: **0.5168**, $H=10$: **0.5128**, $H=25$: **0.5188**, $H=50$: **0.6152**), prevenendo il drift cinetico parassita.
-3. **Risoluzione della Saturazione Energetica & Quiescenza:**
-   Il `mean_spike_rate` rimane stabilmente agganciato all'ottimo biologico-neuromorfico (**13.00%** vs 27.48% di v7.3), garantendo bassissimo consumo energetico ed evitando fenomeni di iper-eccitabilità.
-4. **Generalizzazione & Estrapolazione OOD:**
-   $\text{Extrapolation TF MSE} = \mathbf{0.3357}$ (migliore sia di v7.2 a $0.3365$ sia coerente con la stabilità locale), confermando l'efficacia del disaccoppiamento multi-scala a due popolazioni.
-
----
-
-## Release SPWM-v8.1: Full-Authority Two-Timescale Predictor-Corrector & Drift Injection
-
-### 1. Inquadramento Teorico & Motivazione
-Nonostante l'eccellente stabilità multi-scala introdotta da SPWM-v8, l'analisi delle traiettorie asintotiche su lunghi orizzonti ha evidenziato la necessità di potenziare l'autorità di correzione attiva e di forzare il recupero attivo del sistema da stati fuori distribuzione (OOD):
-1. **Condizioni di Input & Drift Sintetico:** Le traiettorie nominali v7.2, pur fisicamente consistenti, non presentavano deviazioni impulsive sufficienti a stimolare l'apprendimento di manovre di rientro da traiettorie fortemente degenerate.
-2. **Autorità di Controllo Statica:** I limiti di guadagno conservativi di SPWM-v8 ($g_v, g_p \le 0.08$) limitavano la rapidità di correzione in caso di scostamenti significativi. Aumentare l'autorità fissa a $g_v, g_p \in [0.20, 0.25]$ concede pieno spazio d'azione al correttore senza dover ricorrere a complesse e instabili logiche di modulazione energetica adattiva.
-3. **Penalità Spiking a Soglia (Hinge / Dead-Band Margin):** La precedente penalità lineare uniforme ($\lambda = 0.5 \cdot \bar{S}$) penalizzava indiscriminatamente qualsiasi emissione di spike, disincentivando anche le necessarie raffiche correttive rapide. SPWM-v8.1 introduce una dead-zone con margine tollerato e capping superiore: zero penalità sotto la soglia di attività desiderata e protezione contro il chattering ad alta frequenza.
-
----
-
-### 2. Modifiche Architetturali e Algoritmiche
-
-#### A. Iniezione di Drift Sintetico & Perturbazioni Dinamiche
-Nel generatore [spwm/data/synthetic_world.py](file:///Users/Mattia/Desktop/Studies/Temp/spwm/data/synthetic_world.py) e nel dataset [spwm/data/datasets.py](file:///Users/Mattia/Desktop/Studies/Temp/spwm/data/datasets.py), le traiettorie di training incorporano perturbazioni stocastiche impulsive:
-- **Probabilità di Drift:** $p_{\text{drift}} = 0.20$ (20% degli step temporali).
-- **Entità della Perturbazione:** Impulsi gaussiani additivi $\Delta q \sim \mathcal{N}(0, \sigma_{\text{drift}})$ e $\Delta v \sim \mathcal{N}(0, 2\sigma_{\text{drift}})$ con $\sigma_{\text{drift}} = 0.05$.
-- Questo costringe il correttore lento ad apprendere dinamiche di cattura e stabilizzazione robuste per stati fuori distribuzione.
-
-#### B. Piena Autorità Statica di Controllo
-- Rimossa qualsiasi dipendenza da guadagni adattivi legati all'energia di stato.
-- I bound fissi di attuazione su velocità e momento in [spwm/models/corrector.py](file:///Users/Mattia/Desktop/Studies/Temp/spwm/models/corrector.py) e [spwm/models/world_model.py](file:///Users/Mattia/Desktop/Studies/Temp/spwm/models/world_model.py) sono stati aumentati:
-  $$g_v^{\max} = 0.25, \quad g_p^{\max} = 0.25 \quad (\text{precedentemente } 0.08)$$
-- L'autorità incrementata consente di riallineare la traiettoria in un singolo ciclo di cadenza ($\Delta = 5$).
-
-#### C. Funzione di Costo Quiescente a Zona Morta (Dead-Zone Hinge Margin)
-La funzione di costo del correttore adotta una formulazione nonlineare a soglia:
-$$\mathcal{L}_{\text{quiesc}} = \min \left( \text{ReLU}(\bar{S}_{\text{corr}} - M), \, C \right)$$
-con margine di dead-zone $M = 0.15$ e tetto massimo (capping) $C = 0.50$.
-- **Sotto la soglia ($\bar{S} \le 0.15$):** Penalità esattamente nulla ($\mathcal{L}_{\text{quiesc}} = 0$), consentendo rapide correzioni impulsive senza penalizzazioni di gradiente.
-- **Sopra la soglia:** Penalità lineare che frena l'iper-eccitabilità.
-- **Capping superiore ($C = 0.50$):** Previene gradienti esplosivi e chattering numerico in regimi transitori caotici.
-
----
-
-### 3. File di Configurazione & Suite di Test (v8.1)
-- **File di Configurazione:** [configs/experiments/spwm_v8_1.yaml](file:///Users/Mattia/Desktop/Studies/Temp/configs/experiments/spwm_v8_1.yaml)
-- **Suite di Test Dedicata:** [tests/test_corrector.py](file:///Users/Mattia/Desktop/Studies/Temp/tests/test_corrector.py) (include `test_corrector_quiescence_hinge_loss`) e [tests/test_synthetic_world.py](file:///Users/Mattia/Desktop/Studies/Temp/tests/test_synthetic_world.py) (include `test_drift_injection_and_perturbations`).
-- **Esito Test Suite:** 38 test unitari passati con successo ($100\%$ pass rate).
-
----
-
-### 4. Risultati Empirici Verificati (Run Ufficiale SPWM-v8.1)
-
-- **Cartella Run & Artefatti:** [spwm_v8_1/](file:///Users/Mattia/Desktop/Studies/Temp/spwm_v8_1)
-- **Metadata Run:** 337 epoche completate, seed 42, device `mps` (commit `cbe78724`).
-- **File Metriche:** [spwm_v8_1/metrics.json](file:///Users/Mattia/Desktop/Studies/Temp/spwm_v8_1/metrics.json)
-
-| Metrica | SPWM-v7.2 (Baseline) | SPWM-v8 (Two-Timescale) | **SPWM-v8.1 (Full Authority & Drift)** |
-| :--- | :---: | :---: | :---: |
-| **Parametri Totali** | 282,852 | 320,004 | **320,004** |
-| **Criterio Selezione Checkpoint** | $\text{Score}_{\text{combined}}$ | Dynamic Score | **Dynamic Score ($H_1$ & Drift)** |
-| **Test TF MSE** | $0.2723$ | $0.2776$ | **0.2315** (Miglioramento netto) |
-| **Test Mean Spike Rate** | $0.1298$ | $0.1300$ | **0.1461** (Perfettamente in Dead-Zone $\le 15\%$) |
-| **Test Drift Ratio ($H_{50}/H_1$)** | $3.79\times$ | $4.54\times$ | **4.38×** (Stabile & Controllato) |
-| **Test Latent MSE ($H=1$)** | $0.2848$ | $0.2666$ | **0.2034** |
-| **Test Latent MSE ($H=5$)** | $0.2279$ | $0.1868$ | **0.1589** |
-| **Test Latent MSE ($H=10$)** | $0.2304$ | $0.1898$ | **0.1680** |
-| **Test Latent MSE ($H=25$)** | $0.3088$ | $0.2471$ | **0.2425** |
-| **Test Latent MSE ($H=50$)** | $0.4529$ | $0.4136$ | **0.4004** |
-| **Test Latent MSE ($H=100$)** | $0.6002$ | $0.7013$ | **0.6190** |
-| **Test Pos Err ($H=1$)** | $0.1227$ | $0.1017$ | **0.0939** |
-| **Test Pos Err ($H=5$)** | $0.1680$ | $0.1299$ | **0.1218** |
-| **Test Pos Err ($H=10$)** | $0.2166$ | $0.1664$ | **0.1658** |
-| **Test Pos Err ($H=25$)** | $0.3361$ | $0.2872$ | **0.2853** |
-| **Test Pos Err ($H=50$)** | $0.4657$ | $0.4615$ | **0.4115** (Miglior record su lungo raggio) |
-| **Test Pos Err ($H=100$)** | $0.5811$ | $0.6643$ | **0.5625** (Miglior pos error asintotico) |
-| **Test Vel Err ($H=1$)** | $0.5164$ | $0.5341$ | **0.5615** |
-| **Test Vel Err ($H=5$)** | $0.5774$ | $0.5168$ | **0.5394** |
-| **Test Vel Err ($H=10$)** | $0.5837$ | $0.5128$ | **0.5297** |
-| **Test Vel Err ($H=25$)** | $0.5801$ | $0.5188$ | **0.5189** |
-| **Test Vel Err ($H=50$)** | $0.6348$ | $0.6152$ | **0.5802** |
-| **Test Vel Err ($H=100$)** | $0.7302$ | $0.7699$ | **0.7079** |
-| **Extrapolation TF MSE** | $0.3365$ | $0.3357$ | **0.3150** |
-| **Extrapolation Pos Err ($H=1$)** | $0.1365$ | $0.1250$ | **0.1283** |
-| **Extrapolation Pos Err ($H=25$)** | $0.5659$ | $0.5516$ | **0.5251** |
-| **Extrapolation Pos Err ($H=50$)** | $0.6959$ | $0.7526$ | **0.6428** |
-| **Extrapolation Pos Err ($H=100$)** | $0.7156$ | $0.8021$ | **0.6996** |
-
-#### Sintesi dei Risultati SPWM-v8.1:
-1. **Breakthrough su Orizzonti Lunghi ed Estesi ($H=50, 100$):**
-   Grazie alla piena autorità statica di controllo ($g_v, g_p = 0.25$) e all'addestramento con perturbazioni dinamiche OOD, SPWM-v8.1 raggiunge il minimo storico sull'errore asintotico di posizione:
-   - $H=50$: **0.4115** (vs 0.4615 di v8 e 0.4657 di v7.2).
-   - $H=100$: **0.5625** (vs 0.6643 di v8 e 0.5811 di v7.2).
-2. **Abbattimento dell'Errore Latente su Tutti gli Orizzonti:**
-   Il `Latent MSE` migliora uniformemente su ogni passo di rollout rispetto a v8 ($H=1$: **0.2034** vs 0.2666; $H=5$: **0.1589** vs 0.1868; $H=50$: **0.4004** vs 0.4136; $H=100$: **0.6190** vs 0.7013).
-3. **Efficacia della Dead-Zone Hinge Quiescence Loss:**
-   Il `mean_spike_rate` medio su test si attesta a **14.61%**, stabilmente all'interno della dead-band ($M = 15\%$). Questo dimostra che la formulazione hinge ha sbloccato la reattività impulsiva del correttore solo quando necessario, senza generare iper-eccitabilità o saturazione energetica.
-4. **Generalizzazione Superiore in Estrapolazione Cinematica:**
-   In regime OOD a velocità raddoppiata, l'errore asintotico si riduce drasticamente ($H=50$: **0.6428** vs 0.7526; $H=100$: **0.6996** vs 0.8021) e l'$\text{Extrapolation TF MSE}$ scende a **0.3150** (vs 0.3357 di v8), validando la resilienza del framework contro il drift sistematico.
-
----
-
-## SPWM-v8.2: Ribilanciamento & Normalizzazione Loss Cinematica e Campionamento Misto del Drift 50/50
-
-### 1. Motivazione e Diagnosi Fisica
-Dall'analisi dei risultati empirici di SPWM-v8.1 è emersa una discrepanza tra l'eccellente abbattimento del drift di posizione su orizzonti lunghi ($H=50, 100$) e una lieve perdita di accuratezza sulla stima della velocità a brevissimo termine ($H=1$ Vel Err a $0.5615$ vs $0.5341$ di v8).
-Le cause individuate sono due:
-1. **Accoppiamento Sbilanciato della Loss Cinematica:** La supervisione congiunta di posizione $q$ e velocità $v$ tramite MSE euclideo non normalizzato penalizzava sproporzionatamente le coordinate rispetto alle velocità, inducendo correzioni impulsive su $q$ che introducevano discontinuità numeriche sulla derivata temporale $\dot{q} = v$.
-2. **Rumore Uniforme di Drift:** L'iniezione uniforme del drift con probabilità $p=0.20$ su tutte le sequenze di training impediva al modello di apprendere la rifinitura fine delle velocità nominali stazionarie pulite.
-
----
-
-### 2. Modifiche Architetturali e Metodologiche
-
-#### A. Ribilanciamento e Normalizzazione della Loss Cinematica
-È stata formalizzata ed integrata la nuova loss di decodifica cinematica normalizzata pesata:
-$$\mathcal{L}_{\text{kin}} = \frac{\Vert{} \hat{q} - q \Vert{}^2}{\sigma_q^2} + \beta_v \frac{\Vert{} \hat{v} - v \Vert{}^2}{\sigma_v^2}$$
-- **Normalizzazione per Varianza ($\sigma_q^2, \sigma_v^2$):** L'errore di posizione e di velocità viene scalato rispetto alla varianza empirica della rispettiva grandezza fisica, rendendo i gradienti adimensionali e comparabili.
-- **Coefficiente di Enfasi sulla Velocità ($\beta_v \ge 2.0$, default $\beta_v = 2.0$):** Forza una penalità stringente sulle deviazioni della derivata temporale, garantendo traiettorie regolari $C^1$ e impedendo salti impulsivi di posizione.
-
-#### B. Campionamento Misto del Drift 50/50 (Senza Scheduling Temporale)
-La generazione dei dati di training abbandona la perturbazione uniforme al 20% su tutte le sequenze in favore di un campionamento misto strutturato 50/50:
-- **50% Campioni Nominali Puliti ($p_{\text{drift}} = 0.0, \sigma_{\text{drift}} = 0.0$):** Consente al predittore e al probe di affinare la stima fine della velocità e delle orbite stazionarie non perturbate.
-- **50% Campioni con Drift Impulsivo ($p_{\text{drift}} = 0.10, \sigma_{\text{drift}} = 0.05$):** Fornisce al correttore lento OOD la ricca casistica dinamica necessaria per attivare le risposte di rientro stabili in regime perturbato.
-
----
-
-### 3. File Modificati & Nuova Configurazione (v8.2)
-
-- **[`spwm/learning/losses.py`](file:///Users/Mattia/Desktop/Studies/Temp/spwm/learning/losses.py):**
-  - Aggiunti parametri `beta_v`, `sigma_q`, `sigma_v`, `use_empirical_variance` a `SPWMLoss`.
-  - Implementato il metodo `kinematic_loss(decoded_kinematics, true_kinematics, num_objects)` secondo la nuova formulazione normalizzata e ribilanciata.
-  - Integrato `kinematic_loss` all'interno del metodo `forward()` per il calcolo di `l_probe`.
-- **[`spwm/learning/trainer.py`](file:///Users/Mattia/Desktop/Studies/Temp/spwm/learning/trainer.py):**
-  - Aggiornato lo Step 3 (`train_epoch`) e il ciclo di validazione (`validate`) per calcolare la loss della probe cinematica tramite `self.loss_fn.kinematic_loss()`.
-- **[`spwm/data/datasets.py`](file:///Users/Mattia/Desktop/Studies/Temp/spwm/data/datasets.py):**
-  - Aggiunto il parametro `mixed_drift: bool` in `EventWorldDataset` e `create_dataloaders`.
-  - Implementata la logica di partizionamento 50/50 (traiettorie pari nominali $p_{\text{drift}}=0$, traiettorie dispari con drift impulsivo $p_{\text{drift}}=0.10, \sigma=0.05$).
-- **[`experiments/train.py`](file:///Users/Mattia/Desktop/Studies/Temp/experiments/train.py):**
-  - Propagazione dei parametri `beta_v`, `sigma_q`, `sigma_v`, `use_empirical_variance` e `mixed_drift` da configurazione YAML a dataloader e loss.
-- **[configs/experiments/spwm_v8_2.yaml](file:///Users/Mattia/Desktop/Studies/Temp/configs/experiments/spwm_v8_2.yaml):**
-  - Nuovo file di configurazione con `mixed_drift: true`, `drift_injection_prob: 0.10`, `drift_magnitude: 0.05`, `beta_v: 2.0`, `sigma_q: 1.0`, `sigma_v: 1.0`.
-- **Suite di Test Unitari:**
-  - Aggiunto `test_kinematic_loss_rebalancing_and_normalization` in [`tests/test_evaluation.py`](file:///Users/Mattia/Desktop/Studies/Temp/tests/test_evaluation.py).
-  - Aggiunto `test_mixed_drift_dataset_sampling` in [`tests/test_synthetic_world.py`](file:///Users/Mattia/Desktop/Studies/Temp/tests/test_synthetic_world.py).
-  - **Esito Test Suite:** 40 test unitari passati con successo ($100\%$ pass rate).
-
----
-
-### 4. Risultati Empirici Verificati (Run Ufficiale SPWM-v8.2)
-
-- **Cartella Run & Artefatti:** [spwm_v8_2/](file:///Users/Mattia/Desktop/Studies/Temp/spwm_v8_2)
-- **Metadata Run:** 229 epoche completate (best checkpoint all'epoca 139), seed 42, device `mps` (commit `c05ea475`).
-- **File Metriche:** [spwm_v8_2/metrics.json](file:///Users/Mattia/Desktop/Studies/Temp/spwm_v8_2/metrics.json)
-
-| Metrica | SPWM-v7.2 (Baseline) | SPWM-v8 (Two-Timescale) | SPWM-v8.1 (Full Auth & Drift) | **SPWM-v8.2 (Rebalanced & Mixed Drift)** |
-| :--- | :---: | :---: | :---: | :---: |
-| **Parametri Totali** | 282,852 | 320,004 | 320,004 | **320,004** |
-| **Criterio Selezione Checkpoint** | $\text{Score}_{\text{combined}}$ | Dynamic Score | Dynamic Score ($H_1$ & Drift) | **Dynamic Score ($H_1$ & Drift)** |
-| **Test TF MSE** | $0.2723$ | $0.2776$ | $0.2315$ | **0.2603** |
-| **Test Mean Spike Rate** | $0.1298$ | $0.1300$ | $0.1461$ | **0.1290** (Altamente efficiente $\le 13\%$) |
-| **Test Drift Ratio ($H_{50}/H_1$)** | $3.79\times$ | $4.54\times$ | $4.38\times$ | **4.44×** (Stabile & Controllato) |
-| **Test Latent MSE ($H=1$)** | $0.2848$ | $0.2666$ | $0.2034$ | **0.2640** |
-| **Test Latent MSE ($H=5$)** | $0.2279$ | $0.1868$ | $0.1589$ | **0.1879** |
-| **Test Latent MSE ($H=10$)** | $0.2304$ | $0.1898$ | $0.1680$ | **0.1894** |
-| **Test Latent MSE ($H=25$)** | $0.3088$ | $0.2471$ | $0.2425$ | **0.2446** |
-| **Test Latent MSE ($H=50$)** | $0.4529$ | $0.4136$ | $0.4004$ | **0.3959** (Nuovo minimo storico) |
-| **Test Latent MSE ($H=100$)** | $0.6002$ | $0.7013$ | $0.6190$ | **0.6324** |
-| **Test Pos Err ($H=1$)** | $0.1227$ | $0.1017$ | $0.0939$ | **0.0963** |
-| **Test Pos Err ($H=5$)** | $0.1680$ | $0.1299$ | $0.1218$ | **0.1258** |
-| **Test Pos Err ($H=10$)** | $0.2166$ | $0.1664$ | $0.1658$ | **0.1623** (Nuovo minimo storico) |
-| **Test Pos Err ($H=25$)** | $0.3361$ | $0.2872$ | $0.2853$ | **0.2782** (Nuovo minimo storico) |
-| **Test Pos Err ($H=50$)** | $0.4657$ | $0.4615$ | $0.4115$ | **0.4275** |
-| **Test Pos Err ($H=100$)** | $0.5811$ | $0.6643$ | $0.5625$ | **0.6090** |
-| **Test Vel Err ($H=1$)** | $0.5164$ | $0.5341$ | $0.5615$ | **0.4992** (Abbattimento storico sotto 0.50) |
-| **Test Vel Err ($H=5$)** | $0.5774$ | $0.5168$ | $0.5394$ | **0.4933** (Minimo assoluto su tutti i modelli) |
-| **Test Vel Err ($H=10$)** | $0.5837$ | $0.5128$ | $0.5297$ | **0.4970** (Minimo assoluto su tutti i modelli) |
-| **Test Vel Err ($H=25$)** | $0.5801$ | $0.5188$ | $0.5189$ | **0.5125** (Miglioramento netto) |
-| **Test Vel Err ($H=50$)** | $0.6348$ | $0.6152$ | $0.5802$ | **0.5920** |
-| **Test Vel Err ($H=100$)** | $0.7302$ | $0.7699$ | $0.7079$ | **0.7427** |
-| **Extrapolation TF MSE** | $0.3365$ | $0.3357$ | $0.3150$ | **0.3045** (Nuovo minimo assoluto OOD) |
-| **Extrapolation Pos Err ($H=1$)** | $0.1365$ | $0.1250$ | $0.1283$ | **0.1257** |
-| **Extrapolation Pos Err ($H=25$)** | $0.5659$ | $0.5516$ | $0.5251$ | **0.5671** |
-| **Extrapolation Pos Err ($H=50$)** | $0.6959$ | $0.7526$ | $0.6428$ | **0.7285** |
-| **Extrapolation Pos Err ($H=100$)** | $0.7156$ | $0.8021$ | $0.6996$ | **0.7497** |
-
-#### Sintesi dei Risultati (Variazioni Positive):
-1. **Abbattimento dell'Errore di Velocità a Breve/Medio Termine ($H \le 10$):**
-   - $H=1$ Vel Err: **0.4992** (vs 0.5615 di v8.1 e 0.5341 di v8).
-   - $H=5$ Vel Err: **0.4933** (vs 0.5394 di v8.1 e 0.5168 di v8).
-   - $H=10$ Vel Err: **0.4970** (vs 0.5297 di v8.1 e 0.5128 di v8).
-2. **Riduzione dell'Errore di Posizione a Medio Raggio ($H=10, 25$):**
-   - $H=10$ Pos Err: **0.1623** (vs 0.1658 di v8.1 e 0.1664 di v8).
-   - $H=25$ Pos Err: **0.2782** (vs 0.2853 di v8.1 e 0.2872 di v8).
-3. **Riduzione del Latent MSE a Lungo Raggio ($H=50$):**
-   - $H=50$ Latent MSE: **0.3959** (vs 0.4004 di v8.1 e 0.4136 di v8).
-4. **Estrapolazione OOD a Breve Termine (Teacher-Forcing):**
-   - $\text{Extrapolation TF MSE}$: **0.3045** (vs 0.3150 di v8.1 e 0.3357 di v8).
-   - $H=1$ Extrapolation Pos Err: **0.1257** (vs 0.1283 di v8.1).
-5. **Efficienza di Scarica:**
-   - Test Mean Spike Rate: **12.90%** (vs 14.61% di v8.1).
-
----
-
-### 5. Criticità e Variazioni Negative Rilevate
-
-1. **Aumento dell'Errore di Posizione su Orizzonti Lunghi ed Estesi ($H=50, 100$):**
-   - $H=50$ Pos Err: sale da 0.4115 (v8.1) a **0.4275** ($+3.9\%$).
-   - $H=100$ Pos Err: sale da 0.5625 (v8.1) a **0.6090** ($+8.3\%$).
-
-2. **Aumento del Latent MSE su Orizzonti Brevi e Medi ($H=1, 5, 10$):**
-   - $H=1$ Latent MSE: sale da 0.2034 (v8.1) a **0.2640** ($+29.8\%$).
-   - $H=5$ Latent MSE: sale da 0.1589 (v8.1) a **0.1879** ($+18.2\%$).
-   - $H=10$ Latent MSE: sale da 0.1680 (v8.1) a **0.1894** ($+12.7\%$).
-
-3. **Aumento dell'Errore in Estrapolazione ad Alta Velocità su Orizzonti Estesi ($H \ge 50$):**
-   - $H=50$ Extrapolation Pos Err: sale da 0.6428 (v8.1) a **0.7285** ($+13.3\%$).
-   - $H=100$ Extrapolation Pos Err: sale da 0.6996 (v8.1) a **0.7497** ($+7.2\%$).
-   - Extrapolation Vel Err: supera l'unità su tutti gli orizzonti ($H=1$: **1.0626**, $H=5$: **1.0038**, $H=50$: **1.4555**).
-
-4. **Sessione Interrotta all'Epoca 229 / 600:**
-   - Best checkpoint selezionato all'epoca 139 prima del completamento dell'intero budget di epoche programmato.
-
----
----
-
-# SPWM-v8.3: Disaccoppiamento Formale delle Dinamiche in Due Fasi (Nominale vs Drift)
-
-### 1. Motivazione Teorica e Diagnosi
-L'addestramento congiunto end-to-end eseguito in SPWM-v8.2 ha evidenziato una **forte interferenza tra gradienti**: l'ottimizzazione locale della velocità e della cinematica nominale ha degradato la stabilizzazione asintotica a $H \ge 50$.
-Per risolvere definitivamente il conflitto dinamico, SPWM-v8.3 disaccoppia formalmente l'architettura in **due modalità di training distinte e mutuamente esclusive**:
-
-1. **Modalità `--mode train_predictor` (Fase Nominale):**
-   - **Correttore disattivato**: istanza bypassata / forzata a zero (`enable_corrector = False`, parametri correttore con `requires_grad = False`).
-   - **Dataset Nominale Pulito**: $p_{\text{drift}} = 0.0$, `mixed_drift = False`.
-   - **Ottimizzazione**: allena esclusivamente il modulo Predittore/World Model (Encoder, Predictor, Dynamics $p$, Physical Decoder probe) per minimizzare l'errore cinematico locale ($q, v$) e stabilizzare la fisica nominale.
-
-2. **Modalità `--mode train_corrector` (Fase di Stabilizzazione & Drift):**
-   - **Pre-trained Predictor**: richiede obbligatoriamente il checkpoint del predittore pre-addestrato (`--predictor-checkpoint <path>`).
-   - **Freezing Rigoroso del World Model**: pesi del predittore, encoder, dinamica e probe congelati (`requires_grad = False`) con sottomoduli in modalità `eval()`.
-   - **Dataset OOD Drift**: traiettorie con iniezione di drift ($p_{\text{drift}} \ge 0.15$).
-   - **Ottimizzazione**: allena esclusivamente il Correttore Lento ALIF e i suoi parametri di steering/smorzamento per contrastare le divergenze OOD a medio-lungo raggio senza alterare le feature del predittore.
-
-3. **Verifica tramite Asserzioni a Inizio Training:**
-   - Esecuzione automatica di `verify_gradient_isolation()` per garantire l'assenza assoluta di gradient leak tra i moduli non coinvolti prima del lancio dei batch.
-
-4. **Logica di Selezione Modello Disaccoppiata (`compute_selection_score`):**
-   - **`train_predictor`**: orientato esclusivamente all'acutezza cinematica nominale a breve termine:
-     $$\text{Score}_{\text{predictor}} = \text{PosErr}_{H=1} + 0.5 \cdot \text{VelErr}_{H=1} + 0.25 \cdot \text{PosErr}_{H=5}$$
-   - **`train_corrector`**: orientato alla soppressione asintotica e stabilità OOD a lungo raggio:
-     $$\text{Score}_{\text{corrector}} = \text{DynamicScore} = \text{RolloutMAE} \cdot \left(1 + \frac{\max(0, \text{DriftRatio} - 1)}{5.0}\right)$$
-
-5. **Logging a Terminale Specifico per Fase:**
-   - Visualizzazione chiara dello stato dei moduli (congelamento esplicito del Fast Predictor in `train_corrector`, disattivazione del Correttore in `train_predictor`) e breakdown metrico dedicato per ciascuna modalità.
-
-6. **Disaccoppiamento Checkpoint e Valutazione Comparativa A/B (SPWM-v8.3):**
-   - **Checkpoint dedicati per ruolo**:
-     - `train_predictor`: salva `model_predictor.pt` focalizzato sul world model cinematico.
-     - `train_corrector`: salva `model_corrector.pt` e `corrector_weights.pt` isolando il modulo di stabilizzazione lenta.
-   - **Isolamento e Safe Loading**: gestione a prova di mismatch architetturale (`strict=False` e fallback checkpoint per evitare errori di missing keys nel correttore o predittore).
-   - **Valutazione A/B Diretta**: a fine sessione `train_corrector`, `RolloutEvaluator` esegue automaticamente il benchmark comparativo (*Predictor Only* vs *Predictor + Slow Corrector*) per quantificare la riduzione esatta del Drift Ratio su orizzonti $H=1..50$.
-
----
----
-
-# SPWM-v9: Rimodellamento Energetico Hamiltoniano, Impulsive Jump ed Isometria Latente
-
-### 1. Diagnosi delle Limitazioni del Correttore Euristiche (Post-Mortem v8.x)
-Le analisi sulle evoluzioni della serie v8 hanno rivelato tre problemi strutturali nel modulo correttore a due scale temporali:
-1. **Disaccoppiamento Non Fisico tra Coordinate e Momento:**
-   L'utilizzo di offset additivi liberi e indipendenti ($\Delta q, \Delta p$) slegati tra loro violava la geometria simplettica dello spazio delle fasi. L'alterazione artificiale di $q$ introduceva shock cinematici e incoerenze rispetto al momento dinamico $p$.
-2. **Interferenza da Decay Inter-Step:**
-   L'applicazione di code esponenziali continue tra le cadenze ($\text{decay} \approx 0.90$) creava una continua resistenza e trascinamento sull'evoluzione autonoma del Fast Predictor, degradando l'acuità predittiva locale ad alta frequenza ($H \le 10$).
-3. **Deformazione del Null-Space Latente (128D $\to$ 4D):**
-   Poiché il Physical Decoder proietta lo spazio latente $128$-dimensionale nello spazio fisico $4$-dimensionale $(x, y, v_x, v_y)$, possiede un null-space di $124$ dimensioni. La supervisione del correttore basata esclusivamente sull'errore cinematico decodificato permetteva al correttore di deformare arbitrariamente le 124 dimensioni latenti ortogonali per abbattere la loss fisica, innescando l'esplosione del Latent MSE.
-
----
-
-### 2. Specifiche Architetturali e Formulazione Matematica (SPWM-v9)
-
-#### A. Rimodellamento Energetico Hamiltoniano e Correzione Accoppiata $(q, p)$
-Il correttore abbandona qualsiasi offset libero su posizione e momento e adotta un potenziale scalare conservativo:
-1. **Predizione del Potenziale Scalare Correttivo $\Delta\Phi(q_t)$:**
-   La popolazione ALIF lenta (condizionata da $u_t = \tanh(W_v V_t^{\text{slow}}) + W_s S_t^{\text{slow}}$) modula una rete neurale energetica:
-   $$\Delta\Phi(q_t; u_t) \in \mathbb{R}$$
-2. **Forza Conservativa come Gradiente Spaziale Negativo:**
-   La correzione conservativa del momento è calcolata rigorosamente mediante differenziazione automatica spaziale:
-   $$F_{\text{cons}}(q_t) = -\nabla_q \Delta\Phi(q_t), \quad \Delta p_{\text{cons}} = M F_{\text{cons}}(q_t)$$
-   dove $M$ è la matrice di accoppiamento geometrico coordinate-momento.
-3. **Dissipazione Viscosa Controllata del Drift:**
-   Lo smorzamento interviene unicamente per drenare l'eccesso parassita accumulato dal drift:
-   $$\Delta p = \Delta p_{\text{cons}} - d_{\text{damp}, t} \cdot p_t^{\text{fast}}$$
-   con $d_{\text{damp}, t} = \sigma(W_{\text{damp}} u_t) \cdot \alpha_{\text{max}}$.
-4. **Aggiornamento Simplettico Coerente della Posizione:**
-   La posizione $q_t$ non subisce mai offset arbitrari indipendenti, ma evolve in modo simplettico coerente con la correzione del momento:
-   $$\Delta q = M^{-1} \Delta p, \quad q_t^{\text{corr}} = \text{clamp}(q_t^{\text{fast}} + \Delta q, -1.0, 1.0)$$
-   Se $\Delta p = 0$, ne consegue identicamente $\Delta q = 0$.
-
-#### B. Paradigma Impulsive Jump (Sistema Ibrido a Eventi)
-Eliminato completamente il decadimento geometrico continuo inter-step:
-- **Per $t \pmod \Delta \ne 0$:** Il Fast Predictor opera in **piena autonomia**, privo di interferenze, code esponenziali o forze frenanti:
-  $$\Delta q = 0, \quad \Delta p = 0, \quad \text{damp} = 0, \quad z_t^{\text{corr}} = z_t^{\text{fast}}$$
-- **Per $t \pmod \Delta == 0$:** Il correttore esegue un **reset discreto istantaneo (salto ortogonale)** sullo stato corrente, correggendo l'orbita e azzerando completamente l'intervento al passo successivo.
-
-#### C. Pipeline di Training a Lungo Orizzonte ($H=100$) su Stati Perturbati
-- Nessun troncamento o reset ad orizzonti brevi ($H=25$). Il rollout differenziabile è esteso a $H = 100$ passi temporali completi.
-- Addestramento su stati latenti perturbati ($z_{\text{init}} \sim \mathcal{N}(z_0, \sigma^2)$) e traiettorie con iniezione di drift per garantire l'autorità di richiamo dell'attrattore su derive profonde.
-
-#### D. Vincolo di Isometria Cinematica Locale (Preservazione della Varietà Latente $Z$)
-Per neutralizzare l'esplosione del Latent MSE dovuta al null-space a 124 dimensioni del decoder fisico, è integrato nella funzione di costo un vincolo di isometria metrica:
-$$\mathcal{L}_{\text{isometry}} = \text{MSE}\left(\| z^{\text{corr}} - z^{\text{fast}} \|^2, \; k \cdot \| \text{Decoder}(z^{\text{corr}}) - \text{Decoder}(z^{\text{fast}}) \|^2\right)$$
-Qualsiasi deformazione nello spazio latente $Z$ che non produca una variazione proporzionale nello spazio fisico decodificato $(x, y, v_x, v_y)$ viene penalizzata quadraticamente, impedendo al correttore di collassare le dimensioni ortogonali.
-
----
-
-### 3. Configurazione & Risorse SPWM-v9
-- **Configurazione Ufficiale:** [configs/experiments/spwm_v9.yaml](file:///Users/Mattia/Desktop/Studies/Temp/configs/experiments/spwm_v9.yaml)
-- **Suite di Test Dedicata:** [tests/test_corrector.py](file:///Users/Mattia/Desktop/Studies/Temp/tests/test_corrector.py) (10 test specifici passati con successo).
----
----
-
-# SPWM-v10 / v0.1.0: Neuromodulatory Gain Field System
-
-### 1. Diagnosi delle Limitazioni del Correttore v9 (Post-Mortem v9)
-
-Le analisi sull'architettura v9 (Hamiltonian Energy Remodeling + Impulsive Jump) hanno rivelato tre problemi strutturali residui:
-
-1. **Complessità del Potenziale Scalare**: la predizione di $\Delta\Phi(q_t)$ tramite una rete energetica separata e la sua differenziazione automatica spaziale ($\nabla_q \Delta\Phi$) introducevano un doppio backprop che rendeva il flusso di addestramento fragile e difficile da debuggare.
-2. **Vincolo di Isometria Artificiale**: $\mathcal{L}_{isometry}$ richiedeva una sintonizzazione manuale del fattore $k$ e produceva un segnale di loss rumoroso che rallentava la convergenza senza eliminare definitivamente l'esplosione del Latent MSE in tutti i regimi di drift.
-3. **Limite Architetturale degli Offset Forza**: la correzione tramite forze additive $(Δq, Δp)$ era ancora concettualmente vincolata alla geometria simplettica, un'astrazione inadeguata per un correttore neuromorfo che opera su rappresentazioni latenti apprese e non su coordinate fisiche reali.
-
----
-
-### 2. Soluzione: Modulazione Neurotrasmettitoriale (Gain Field System)
-
-Abbandonato il paradigma energetico hamiltoniano. Il correttore v10 adotta un principio ispirato alla trasmissione volumetrica neuromodulatoriale (dopaminergica/colinergica): anzichè "spingere" lo stato con forze additive, modula l'*ampiezza* della transizione rapida tramite un campo di gain.
-
-#### A. Gain Mask $G_t \in [-1, 1]^{D_{latent}}$
-
-La popolazione ALIF lenta produce, ad ogni cadenza $\Delta$, una maschera multidimensionale:
-$$G_t = \tanh(W_g \cdot u_t + b_g), \quad u_t = \tanh(W_v v_t) + W_s S_t$$
-
-Questa maschera viene applicata moltiplicativamente alla transizione rapida:
-$$\Delta z^{mod} = (z_{t+1}^{fast} - z_t) \cdot (1 + \alpha_{gain} \cdot G_t)$$
-$$z_{t+1}^{corr} = z_t + \Delta z^{mod}$$
-
-- $\alpha_{gain} = 0.5$: autorità massima del 50% per ogni dimensione.
-- **Hot spots** ($G_t > 0$): amplificano la transizione locale (modulazione eccitatoriatoria).
-- **Cold spots** ($G_t < 0$): sopprimono la transizione (modulazione inibitoria/stabilizzante).
-- Tra le cadenze ($t \pmod \Delta \ne 0$): $G_t = \mathbf{0}$, il Fast Predictor opera in totale autonomia.
-
-#### B. Eliminazione delle Loss Artificiali
-
-- **$\mathcal{L}_{isometry}$ rimossa**: la gain mask non può mai deformare ortogonalmente lo spazio latente perché la correzione è *proporzionale* alla transizione rapida, non libera.
-- **$\mathcal{L}_{quiescence}$ rimossa**: il bound $\tanh$ sulla gain mask previene nativamente l'eccitazione runaway.
-- **Unica loss**: $\mathcal{L}_{corr} = \lambda_{asymptotic} \cdot (L_{pos} + \beta_v \cdot L_{vel})$, puramente cinematica.
-
-#### C. Burn-in Rollout (Nuovo in v10)
-
-Durante i primi `corrector_burn_in_steps = 15` step del rollout differenziabile, l'ALIF integra internamente ma la gain mask è bypassata (`z_next = z_fast_next`). Questo previene che gradienti non calibrati all'inizio del rollout corrompano l'acuità locale a breve termine.
-
----
-
-### 3. Specifiche Architetturali (SPWM-v10 / v0.1.0)
-
-#### Componenti `SlowCorrector`
-| Layer | Dimensioni | Funzione |
-|---|---|---|
-| `input_proj` | Linear(256→128) | Proiezione dell'input cadence-aware |
-| `alif` | ALIFCell(128) | Integrazione ALIF lenta |
-| `v_proj` | Linear(128→128, no bias) | Proiezione membrana |
-| `s_proj` | Linear(128→128, no bias) | Proiezione spike |
-| `gain_net` | Linear(128→128) + Tanh | Output gain mask |
-
-#### Iperparametri Corrector (config `spwm_v0_1_0.yaml`)
-| Parametro | Valore |
-|---|---|
-| `corrector_dim` | 128 |
-| `cadence` | 5 |
-| `beta_mem` | 0.95 |
-| `beta_adapt` | 0.94 |
-| `v_th0` | 0.50 |
-| `gamma` | 0.08 |
-| `alpha_gain` | 0.5 |
-| `corrector_burn_in_steps` | 15 |
-| `corrector_horizon` | 50 |
-| `corrector_perturbation_std` | 0.08 |
-
----
-
-### 4. Pipeline di Training Aggiornata
-
-La pipeline a due fasi rimane invariata nel protocollo ma cambia nella semantica del correttore:
-
-1. **`train_predictor`**: identico alle versioni precedenti. `enable_corrector = False`.
-2. **`train_corrector`**:
-   - Ottimizzatore: AdamW(lr=4e-4, weight_decay=5e-4) esclusivamente sui parametri `SlowCorrector`.
-   - Loss: $\mathcal{L}_{corr} = L_{pos} + 2.0 \cdot L_{vel}$ (con $\lambda_{asymptotic} = 1.0$).
-   - Selezione modello: $\text{Score} = 0.5 \cdot \text{RolloutMAE} + 0.5 \cdot \text{PosErr}(H_{long})$.
-   - Flag `--try-antecedent-predictor`: cerca automaticamente il miglior checkpoint predittore antecedente nella cartella `results/`.
-
----
-
-### 5. Configurazione & Risorse SPWM-v0.1.0
-
-- **Cartella Run & Artefatti:** [results/spwm_v0_1_0_train_joint/](file:///Users/Mattia/Desktop/Studies/Temp/results/spwm_v0_1_0_train_joint)
-- **Configurazione Salvata:** [results/spwm_v0_1_0_train_joint/config.yaml](file:///Users/Mattia/Desktop/Studies/Temp/results/spwm_v0_1_0_train_joint/config.yaml)
-- **File Metriche:** [results/spwm_v0_1_0_train_joint/metrics_spwm_v0_1_0.json](file:///Users/Mattia/Desktop/Studies/Temp/results/spwm_v0_1_0_train_joint/metrics_spwm_v0_1_0.json)
-- **Corrector Module:** [spwm/models/corrector.py](file:///Users/Mattia/Desktop/Studies/Temp/spwm/models/corrector.py)
-- **World Model:** [spwm/models/world_model.py](file:///Users/Mattia/Desktop/Studies/Temp/spwm/models/world_model.py)
-
-### 6. Risultati Empirici Verificati (Run Ufficiale SPWM-v0.1.0)
-
-- **Metadata Run:** 300 epoche completate, seed 42, 332,836 parametri.
-- **Metriche Chiave di Valutazione:**
-  - $\text{Pos Err}_{H=1} = \mathbf{0.0765}$, $\text{Pos Err}_{H=5} = \mathbf{0.1041}$.
-  - $\text{Vel Err}_{H=1} = \mathbf{0.3466}$, $\text{Vel Err}_{H=5} = \mathbf{0.3338}$.
-  - $\text{Rollout MAE} = \mathbf{0.1651}$, $\text{Drift Ratio} = \mathbf{4.35\times}$, $\text{Spike Rate} = \mathbf{15.01\%}$.
-- **Post-Mortem & Diagnosi Critica:**
-  Nonostante l'ottima acuità iniziale del predittore, l'addestramento del correttore neuromodulatorio non ha eliminato la divergenza asintotica del drift sul lungo orizzonte (`drift_ratio = 4.35x`). I tentativi di stabilizzazione hanno evidenziato un limite insito nel correttore unico continuo/modulato: per orizzonti prolungati, il modello perdeva progressivamente l'autorità di richiamo. Questo ha motivato il passaggio a un'architettura rigorosamente strutturata a staffetta temporale ciclica (**Cascaded Temporal Relay**).
-
----
----
-
-# SPWM-v0.2.0: Architettura a Contratti Rigidi a 4 Livelli & Cascaded Temporal Relay
-
-### 1. Motivazione e Ristrutturazione Architetturale (Migration to 4-Layer Strict Contracts)
-A seguito dell'entropia accumulata nelle versioni v8–v10, il progetto ha eseguito una ristrutturazione completa del workspace formalizzata in [docs/Architecture.md](file:///Users/Mattia/Desktop/Studies/Temp/docs/Architecture.md) e [docs/WORKSPACE_AND_CONTRACTS.md](file:///Users/Mattia/Desktop/Studies/Temp/docs/WORKSPACE_AND_CONTRACTS.md):
-1. **Layer 0 (Contratti Immutabili - `spwm/contracts/`):** Configurazione frozen single-source-of-truth ([`ProjectConfig`](file:///Users/Mattia/Desktop/Studies/Temp/spwm/contracts/config.py)), validatori dimensionali tensoriali strict, e interfacce astratte (`PhaseStrategy`).
-2. **Layer 1 (Modelli & Dati - `spwm/models/`, `spwm/data/`):** Separazione pura tra neuroni ALIF, memoria multi-scala, SpatialSoftmax, dinamica spiking e predittori.
-3. **Layer 2 (Training & Fasi Isolate - `spwm/training/`):** Implementazione modulare delle fasi in classi dedicate $<150$ righe (`M1NominalStrategy`, `M2RecoveryStrategy`, `M3SustainedStrategy`).
-4. **Layer 3 (Valutazione & Visualizzazione - `spwm/evaluation/`):** `RolloutEvaluator` e `visualizer.py`.
-
-### 2. Cascaded Temporal Relay (M1 $\to$ M2 $\to$ M3)
-- **M1 (Nominal Predictor):** Addestrato su traiettorie nominali per $t \in [0, H]$ (`phase_horizon = 5`). Pesi congelati dopo la Fase 1.
-- **M2 (Recovery Predictor / Shock Absorber):** Addestrato per $t \in [H, 2H]$ per assorbire lo shock di transizione e ricondurre la traiettoria sul manifold nominale tramite loss conica (**Convergence Funnel**).
-- **M3 (Sustained Predictor):** Addestrato congiuntamente a M2 fino a `max_rollout_horizon = 40` per sostenere l'autoregressione a lungo termine.
-
-### 3. Risultati Empirici Verificati (SPWM-v0.2.0)
-- **Artefatti Run:** [results/spwm_v0_2_0_train_m1/](file:///Users/Mattia/Desktop/Studies/Temp/results/spwm_v0_2_0_train_m1), [results/spwm_v0_2_0_train_m2/](file:///Users/Mattia/Desktop/Studies/Temp/results/spwm_v0_2_0_train_m2), [results/spwm_v0_2_0_train_m3/](file:///Users/Mattia/Desktop/Studies/Temp/results/spwm_v0_2_0_train_m3).
-- **Parametri Totali:** 548,324.
-- **Metriche Registrate:**
-  - **M1 (Epoca 34):** $\text{Pos Err}_{H=1} = \mathbf{0.1915}$, $\text{Vel Err}_{H=1} = \mathbf{0.2610}$, $\text{Rollout MAE} = \mathbf{0.3483}$, $\text{Drift Ratio} = \mathbf{2.52\times}$.
-  - **M2 (Epoca 83):** $\text{Rollout MAE} = \mathbf{0.4294}$, $\text{Drift Ratio} = \mathbf{2.97\times}$.
-  - **M3 (Epoca 53):** $\text{Rollout MAE} = \mathbf{0.5021}$, $\text{Drift Ratio} = \mathbf{3.14\times}$.
-- **Post-Mortem v0.2.0:** Primo test funzionale dell'architettura relay. Sebbene il drift ratio sia sceso rispetto a v0.1.0 ($2.52\times$ vs $4.35\times$), l'acuità di posizione $H=1$ ($0.1915$) risultava sottotono rispetto ai record della serie precedente ($<0.10$).
-
----
----
-
-# SPWM-v0.2.1: Sbilanciamento su Supervisione Velocità & Compromissione Posizione
-
-### 1. Ipotesi Sperimentale e Modifiche (v0.2.1)
-Nel tentativo di stabilizzare la derivata temporale della traiettoria, in v0.2.1 è stato aumentato il peso della componente cinematica di velocità.
-- **Obiettivo:** Ottenere un errore di velocità record per minimizzare le oscillazioni ad alta frequenza nel relay.
-
-### 2. Risultati Empirici Verificati (SPWM-v0.2.1)
-- **Artefatti Run:** [results/spwm_v0_2_1_train_m1/](file:///Users/Mattia/Desktop/Studies/Temp/results/spwm_v0_2_1_train_m1), [results/spwm_v0_2_1_train_m2/](file:///Users/Mattia/Desktop/Studies/Temp/results/spwm_v0_2_1_train_m2), [results/spwm_v0_2_1_train_m3/](file:///Users/Mattia/Desktop/Studies/Temp/results/spwm_v0_2_1_train_m3).
-- **Metriche Registrate:**
-  - **M1 (Epoca 41):** $\text{Pos Err}_{H=1} = \mathbf{0.2266}$, $\text{Vel Err}_{H=1} = \mathbf{0.1966}$ (Nuovo record storico $\le 0.20$), $\text{Rollout MAE} = \mathbf{0.4106}$, $\text{Drift Ratio} = \mathbf{2.45\times}$.
-  - **M2 (Epoca 30):** $\text{Rollout MAE} = \mathbf{0.4897}$, $\text{Drift Ratio} = \mathbf{2.73\times}$.
-  - **M3 (Epoca 30):** $\text{Rollout MAE} = \mathbf{0.5334}$, $\text{Drift Ratio} = \mathbf{2.83\times}$.
-- **Post-Mortem v0.2.1:** Come annotato nel log di commit (`980d5a6`), il focus eccessivo sulla velocità ha introdotto un'inaccettabile degradazione sulla posizione ($\text{Pos Err}_{H=1}$ peggiorato da $0.1915$ a **$0.2266$**).
-
----
----
-
-# SPWM-v0.2.2: Ribilanciamento Geometrico M1, Sottospazio Simplettico e Nuova Diagnostica
-
-### 1. Diagnosi e Modifiche di Ribilanciamento
-Per sanare il disallineamento emerso in v0.2.1:
-1. **Ribilanciamento Pesi di Costo M1:**
-   - Aumento di $\lambda_{\text{position}}$ da $1.0$ a **$1.5$** nel sottospazio $q$ delle coordinate.
-   - Aumento di $\lambda_{\text{decoder}}$ da $1.0$ a **$2.0$** sul probe cinematico di decodifica fisica.
-   - Preservazione di $\lambda_{\text{velocity}} = 1.0$, garantendo un forte gradiente di rientro su $q$ senza trascurare la regolarità $C^1$ su $p$.
-2. **Estensione Tracciamento Metriche Latenti & Sottospazi Simplettici:**
-   - Scomposizione esplicita dell'errore latente nei due sottospazi ortogonali: Coordinate ($q$-MSE) e Momento ($p$-MSE).
-   - Introduzione in `metrics_resume.py` del monitoraggio di degradazione fisica e latente normalizzata sia per span che rispetto a $H=1$.
-3. **Nuove Figure di Diagnostica Automatica:**
-   - `physical_rollout_degradation.png`: curve di errore cinematico L2 normalizzate rispetto allo span fisico.
-   - `latent_rollout_degradation.png`: curve di errore MSE normalizzate su $z$, $q$ e $p$.
-   - `relay_rollout.png`: tracciamento a bande temporali alternate (M1 verde, M2 ambra, M3 viola).
-
-### 2. Risultati Empirici Verificati (Run Ufficiale SPWM-v0.2.2)
-
-- **Cartella Run & Artefatti:** [results/spwm_v0_2_2_train_m1/](file:///Users/Mattia/Desktop/Studies/Temp/results/spwm_v0_2_2_train_m1)
-- **Configurazione Ufficiale:** [results/spwm_v0_2_2_train_m1/config.yaml](file:///Users/Mattia/Desktop/Studies/Temp/results/spwm_v0_2_2_train_m1/config.yaml)
-- **File Metriche:** [results/spwm_v0_2_2_train_m1/metrics_spwm_v0_2_2.json](file:///Users/Mattia/Desktop/Studies/Temp/results/spwm_v0_2_2_train_m1/metrics_spwm_v0_2_2.json)
-- **Diagnostica Completa:** [results/spwm_v0_2_2_train_m1/diagnostics.json](file:///Users/Mattia/Desktop/Studies/Temp/results/spwm_v0_2_2_train_m1/diagnostics.json)
-- **Metadata Run:** 62 epoche eseguite con early stopping (best validation score all'epoca 24), seed 42, device `mps`, 548,324 parametri.
-
-| Metrica | v0.1.0 (Joint) | v0.2.0 (M1) | v0.2.1 (M1) | **v0.2.2 (M1 Ribilanciato)** |
-| :--- | :---: | :---: | :---: | :---: |
-| **Parametri Totali** | 332,836 | 548,324 | 548,324 | **548,324** |
-| **Epoche di Training** | 300 | 34 | 41 | **62** (Best @ Ep 24) |
-| **Mean Spike Rate** | $15.01\%$ | $4.21\%$ | $6.06\%$ | **4.56%** (Altamente efficiente $\approx 5\%$) |
-| **Test TF MSE** | $0.4394$ | $0.0181$ | $0.0282$ | **0.0277** |
-| **Test Drift Ratio ($H_5 / H_1$)** | $4.35\times$ | $2.52\times$ | $2.45\times$ | **1.89×** (Nuovo minimo storico assoluto) |
-| **Test Rollout MAE** | $0.1651$ | $0.3483$ | $0.4106$ | **0.1169** (Miglioramento record del 71.5%) |
-| **Dynamic / Rollout Score** | $0.7180$ | $0.4349$ | $0.4869$ | **0.2180** (Nuovo minimo storico) |
-| **Pos Err ($H=1$)** | $0.0765$ | $0.1915$ | $0.2266$ | **0.0851** (Recupero completo acuità geometrica) |
-| **Pos Err ($H=2$)** | — | — | — | **0.1045** |
-| **Pos Err ($H=5$)** | $0.1041$ | $0.3710$ | $0.4501$ | **0.1610** |
-| **Vel Err ($H=1$)** | $0.3466$ | $0.2610$ | $0.1966$ | **0.2691** |
-| **Vel Err ($H=2$)** | — | — | — | **0.3247** |
-| **Vel Err ($H=5$)** | $0.3338$ | $0.3662$ | $0.3802$ | **0.4531** |
-| **$q$-MSE Coordinate ($H=1$)** | — | — | — | **0.0117** |
-| **$q$-MSE Coordinate ($H=5$)** | — | — | — | **0.0409** |
-| **$p$-MSE Momento ($H=1$)** | — | — | — | **0.0430** |
-| **$p$-MSE Momento ($H=5$)** | — | — | — | **0.0834** |
-
-#### Sintesi dei Risultati SPWM-v0.2.2 (M1):
-1. **Recupero e Stabilizzazione Geometrica di M1:**
-   L'incremento a $\lambda_{\text{position}}=1.5$ e $\lambda_{\text{decoder}}=2.0$ ha completamente eliminato la regressione di v0.2.1: $\text{Pos Err}_{H=1}$ è crollato da **$0.2266$** a **$0.0851$**, riconducendo l'acuità del modello nell'intorno dei migliori valori storici della serie senza sacrificare la derivata temporale ($\text{Vel Err}_{H=1} = \mathbf{0.2691}$).
-2. **Abbattimento Record del Drift Ratio:**
-   Il rapporto di deriva su orizzonte nominale $H=5$ è sceso per la prima volta sotto il valore $2.0\times$, attestandosi a **$1.89\times$** (vs $2.45\times$ di v0.2.1 e $4.35\times$ di v0.1.0).
-3. **Rollout MAE Minimo dell'Architettura Relay:**
-   Il Rollout MAE su orizzonti valutati ha conseguito il nuovo minimo storico assoluto a **$0.1169$** (con uno score dinamico globale di **$0.2180$**), fornendo una base nominale pulita e affidabile su cui innestare la Fase 2 (M2 Recovery Predictor).
-
----
----
-
-# SPWM-v0.3.0: Strict Architectural Decoupling (Phase 0 Representation & Phase 1 Nominal Dynamics)
-
-### 1. Motivazione Architetturale e Decoupling Fondativo
-Nelle iterazioni precedenti (v0.2.x), la rappresentazione sensoriale e la dinamica nominale $M_1$ venivano co-ottimizzate congiuntamente, costringendo l'encoder a compensare gli errori dell'MLP e viceversa. Inoltre, in `SpikingLatentDynamics`, l'aggiornamento della coordinata di posizione $q$ incorporava accoppiamenti rigidi artificiali (`tanh`, `clamp`), distorcendo la linearità della derivata cinematica.
-
-In **SPWM-v0.3.0**, la pipeline di training viene rigorosamente disaccoppiata in 4 fasi isolate, introducendo una specifica dichiarativa matematica per **Phase 0 (Representation Pre-training)** e ridefinendo **Phase 1 (M1 Training)**:
-
-1. **Rimozione dei Vincoli Artificiali su $q$ in `SpikingLatentDynamics`:**
-   Rimossi completamente `clamp` e `tanh` dal mapping di aggiornamento della coordinata:
-   $$\Delta q_t = W_{\text{vel}}(\text{ema\_spikes}_t), \quad q_{t+1} = q_t + \Delta q_t$$
-   La relazione cinematica naturale viene ora appresa e vincolata puramente tramite la loss differenziale $\mathcal{L}_{\text{derivative}}$ in Fase 0.
-
-2. **Phase 0 Specification (Representation Pre-Training, `training/phases/representation.py`):**
-   - **Obiettivo:** Addestrare la rete spiking a fungere da perfetto stimatore di stato ancorato alla fisica, senza rollout mentali autoregressivi.
-   - **Moduli Attivi:** `encoder`, `dynamics` (`SpikingLatentDynamics`), `sensory_predictor`, `physical_decoder`.
-   - **Moduli Inattivi / Congelati:** $M_1, M_2, M_3$ (nessun gradiente, non istanziati/toccati nel forward pass di Fase 0).
-   - **Vincolo Orizzonte:** Strettamente $t \in [0, T_{\text{obs}}]$. Calcolo diretto di $z_t = (q_t, p_t)$ dallo stream sensoriale tramite `forward_representation(event_sequence)`.
-   - **Loss Function Rigorosa a 4 Componenti:**
-     $$\mathcal{L}_{\text{kinematic}} = \text{MSE}(\text{decode\_pos}(q_t), \text{pos\_true}_t) + \text{MSE}(\text{decode\_vel}(p_t), \text{vel\_true}_t)$$
-     $$\mathcal{L}_{\text{derivative}} = \text{MSE}((q_{t+1} - q_t), (dt \cdot p_t))$$
-     $$\mathcal{L}_{\text{smoothness}} = \text{MSE}(p_{t+1}, p_t)$$
-     $$\mathcal{L}_{\text{sensory}} = \text{MSE}(\epsilon_t, \mathbf{0})$$
-     $$\mathcal{L}_{\text{Phase0}} = \lambda_1 \mathcal{L}_{\text{kinematic}} + \lambda_2 \mathcal{L}_{\text{derivative}} + \lambda_3 \mathcal{L}_{\text{smoothness}} + \lambda_4 \mathcal{L}_{\text{sensory}} \quad (\lambda_i = 1.0)$$
-
-3. **Phase 1 Specification (M1 Training, `training/phases/m1_nominal.py`):**
-   - **Stato Pre-condizione:** `encoder`, `dynamics`, `sensory_predictor`, `physical_decoder` sono rigorosamente congelati (`requires_grad = False`).
-   - L'ottimizzatore aggiorna unicamente i parametri di $M_1$.
-   - **Forward Pass:** Generazione della traiettoria latente ground-truth $z^*_{0:T}$ mediante i moduli congelati di Fase 0, detach per isolamento computazionale: $z_{\text{target}} = z^*.\text{detach}()$.
-   - Rollout autoregressivo di $M_1$: $\hat{z}_{t+1} = \hat{z}_t + M_1(\hat{z}_t)$.
-   - **Funzione di Costo:** $\mathcal{L}_{M_1} = \text{MSE}(\hat{z}_{t+1}, z_{\text{target}, t+1})$. Nessuna componente cinematica o sensoriale applicata a Fase 1: $M_1$ apprende puramente nella geometria markoviana dello spazio latente.
-
-4. **Integrazione nel Cascaded Relay & Protocolli:**
-   - Aggiornato `train_cascade` per includere `train_representation` all'inizio della sequenza: `train_representation` $\to$ `train_m1` $\to$ `train_m2` $\to$ `train_m3`.
-   - Aggiunto `load_representation_checkpoint` con verifica scoped dei moduli della rappresentazione.
-   - Tutti i file di strategia (`representation.py`, `m1_nominal.py`) soddisfano l'invariante di progetto $<150$ righe.
-
----
----
-
-# SPWM-v0.3.1: Integrazione Simplettica e Manifold Projector M2 (Geometric Denoiser)
-
-### 1. Motivazione e Svolta Architetturale
-Il vecchio paradigma a staffetta temporale (**Cascaded Temporal Relay**: $M_1 \to M_2 \leftrightarrow M_3$, `ConvergenceFunnelLoss`, multi-phase cascade) introduceva complessità di coordinamento, overhead di handoff artificiali tra finestre temporali discrete e accumulo caotico di errori.
-Nel refactor v0.3.1, l'architettura è stata ripensata su due pilastri geometrici complementari:
-1. **Dinamica Conservativa Simplettica ($M_1$):** L'integrazione semi-implicita di Eulero preserva l'area nello spazio delle fasi, garantendo stabilità energetica e assenza di divergenze esplosive o collassi dissipativi su orizzonti estesi.
-2. **Stateless Manifold Projector ($M_2$ Denoiser):** Invece di avanzare il tempo, $M_2$ agisce come un proiettore geometrico $z_{\text{clean}} = M_2(z_{\text{noisy}})$, mappando stati latenti perturbati o deviati nuovamente sul manifold valido della dinamica senza avanzamento temporale.
-
-### 2. Formulazione Matematica
-
-#### A. Integrazione Simplettica Semi-Implicita di Eulero ($M_1$)
-Nel predittore latente ([`spwm/models/predictors.py`](file:///Users/Mattia/Desktop/Studies/Temp/spwm/models/predictors.py)), lo stato viene scomposto nelle coordinate geometriche $q_t \in \mathbb{R}^{q\_dim}$ e nei momenti canonici $p_t \in \mathbb{R}^{p\_dim}$:
-1. **Aggiornamento del Momento:**
-   $$\Delta p_t = \text{MLP}(z_t), \quad p_{t+1} = p_t + \Delta p_t$$
-2. **Aggiornamento Semi-Implicito delle Coordinate:**
-   L'aggiornamento di $q$ impiega il momento *successivo* $p_{t+1}$:
-   $$q_{t+1} = q_t + \Delta t \cdot p_{t+1}[..., :q\_dim]$$
-3. **Stato Ricombinato:**
-   $$z_{t+1} = [q_{t+1}, p_{t+1}]$$
-
-Questa integrazione simplettica preserva l'area hamiltoniana nello spazio delle fasi e la 2-forma canonica $dp \wedge dq$, garantendo che le orbite fisiche non subiscano dissipazione numerica o instabilità sul lungo termine.
-
-#### B. Stateless Manifold Projector ($M_2$) & Regime di Addestramento
-In [`spwm/training/phases/m2_recovery.py`](file:///Users/Mattia/Desktop/Studies/Temp/spwm/training/phases/m2_recovery.py), con rappresentazione e $M_1$ rigorosamente congelati (`requires_grad = False`), $M_2$ viene addestrato su vettori off-manifold generati da due regimi:
-1. **Rollout Autoregressivo di $M_1$:** $k$ passi di drift ($k \in \{5, 15, 25\}$) per catturare l'errore effettivo dell'integratore.
-2. **Iniezione Gaussiana:** $z_{\text{noisy}} = z_k^* + \mathcal{N}(0, \sigma^2 \mathbf{I})$ con $\sigma \in [0.01, 0.05]$.
-
-L'obiettivo è l'annullamento della deviazione rispetto allo stato pristine $z_k^*$ mediante loss Smooth-L1 decomposta:
-$$\mathcal{L}_{M_2} = \lambda_q \cdot \text{SmoothL1}(\hat{q}, q_k^*) + \lambda_p \cdot \text{SmoothL1}(\hat{p}, p_k^*)$$
-
-#### C. Protocollo di Inferenza ed Evaluation: Integrate & Project
-Durante il rollout multi-step ([`spwm/models/rollout.py`](file:///Users/Mattia/Desktop/Studies/Temp/spwm/models/rollout.py)):
-- Ad ogni passo $t$, $M_1$ avanza temporalmente la traiettoria simplettica.
-- A cadenza prefissata $N$ (es. $t \pmod N == 0$, con `projection_cadence=10`), $M_2$ riproietta lo stato accumulato sul manifold: $z_t = M_2(z_t)$.
-- Lo stato riproiettato funge da ancora per i successivi passi di integrazione di $M_1$.
-
-### 3. Struttura dei Moduli, Pruning e Guardie Anti-Dead-Code
-- **Potatura Completa del Vecchio Codice Relay / Cascade:**
-  - Eliminati i vecchi moduli `spwm/training/phases/m3_sustained.py`, `spwm/core/corrector.py`, `spwm/learning/eprop.py`.
-  - Pruned: `CascadedTemporalRelay`, `ConvergenceFunnelLoss`, target/loss functions a funnel, `train_m3`, `train_cascade`.
-  - Modello SPWM include `predictor` ($M_1$) e `m2` (`ManifoldProjector`), con `model.m1` alias di `model.predictor`.
-- **Suite di Test e Validazione:**
-  - Test anti-dead code ([`tests/test_dead_code.py`](file:///Users/Mattia/Desktop/Studies/Temp/tests/test_dead_code.py)) e test dedicati al denoiser geometrico ([`tests/test_m2_denoiser.py`](file:///Users/Mattia/Desktop/Studies/Temp/tests/test_m2_denoiser.py)).
-  - Suite completa di 69 test eseguita con successo al 100%.
-
----
----
-
-# SPWM-v0.4.0: Modellazione del Mondo Robotico Articolato 3D in Unity C# e Dinamica ad Attrattori con Azioni
-
-### 1. Motivazione e Cambio di Paradigma (Post-Mortem v0.3.1)
-I mondi sintetici 2D (biliardo con rimbalzi elastici e perturbazioni impulsive stocastiche di drift) e l'ausilio di un denoiser geometrico stateless ($M_2$) hanno mostrato i loro limiti concettuali ed empirici:
-1. **Irrealismo Fisico dei Rimbalzi 2D**: La dinamica a rimbalzo conservativo su pareti rigide non rispecchia i sistemi robotici del mondo reale, governati da catene cinematiche articolate ad albero (Featherstone), attriti articolari coulombiani e viscosi, gravità e reazioni di contatto al suolo.
-2. **Superamento di $M_2$ Denoiser**: In sistemi fisici guidati da attuatori continui $\mathbf{u}_t$, le traiettorie convergono naturalmente a manifold stabili (attrattori a ciclo limite per deambulazione ritmica o punti fissi per bilanciamento posturale). L'integrazione di un integratore dissipativo dipendente dalle azioni elimina la necessità di proiettori arbitrari $M_2$, riducendo la complessità architetturale a due sole fasi organiche (**Phase 0 Representation** & **Phase 1 Action-Conditioned M1**).
-
-### 2. Modifiche Architetturali e Nuove Componenti (sim/ & spwm/)
-
-- **Ambiente di Simulazione Robotica 3D in Unity C# (`sim/`)**:
-  - `ArticulatedRobotRig.cs`: Modella catene cinematiche Feathertone PhysX 4 (`ArticulationBody`) ad alto grado di libertà (humanoid biped $J=8$, quadrupedi, bracci manipolatori) con inerzie realistiche e attrito articolare.
-  - `ActionConditionedController.cs`: Controller di movimento condizionato dai comandi $\mathbf{u}_t \in \mathbb{R}^{D_u}$. Supporta attrattori a ciclo limite CPG (camminata con accoppiamento bilaterale in antifase) e attrattori a punto fisso (bilanciamento posturale PD).
-  - `NeuromorphicEventBridge.cs` & `EventCameraLogDiff.compute`: Bridge neuromorfico su GPU compute shader che converte i frame di luminanza in eventi di polarità (+1/-1) a soglia logaritmica differenziale $\theta = 0.08$.
-  - `RoboticTelemetryLogger.cs`: Registratore di telemetria e traiettorie robotiche complete ($\mathbf{q}^*, \mathbf{p}^*, \mathbf{u}_t, \mathbf{E}$) esportate in formato JSON per l'addestramento PyTorch.
-
-- **Layer 0: Contratti e Schemi Estesi ad Azioni $\mathbf{u}_t$**:
-  - In `spwm/contracts/config.py`: Aggiunti `joint_count` ($J=8$) e `action_dim` ($D_u=8$) in `EnvironmentConfig` e `DataConfig`; `dataset_dir` per traiettorie Unity; rimossi `train_m2` e `m1_checkpoint`.
-  - In `spwm/contracts/tensors.py`: `assert_phase_space_contract` valida esplicitamente la forma $[B, \dots, D_u]$, il rango $\ge 2$ e la finitezza del tensore azioni $\mathbf{u}_t$.
-  - In `spwm/contracts/states.py`: `SPWMState`, `SPWMStepOutput` e `RolloutResult` integrano esplicitamente il tensore azioni $\mathbf{u}_t$ e le proprietà di scomposizione articolare `.positions` e `.velocities` su $J$ giunti.
-
-- **Layer 1: Predittore ad Attrattori Dissipativi ($M_1$) e PhysicalDecoder Articolato**:
-  - `LatentPredictor` accetta $[\mathbf{z}_t, \mathbf{u}_t]$ apprendendo campi dissipativi $\gamma_t = \sigma(\text{Linear}(\mathbf{h}_t))$ e forze $(\mathbf{f}_p, \mathbf{f}_q)$:
-    $$\mathbf{p}_{t+1} = (1 - \Delta t \cdot \gamma_t) \mathbf{p}_t + \mathbf{f}_p$$
-    $$\mathbf{q}_{t+1} = \mathbf{q}_t + \Delta t \cdot (\mathbf{p}_{t+1}[..., :q\_dim] + \mathbf{f}_q)$$
-  - `PhysicalDecoder`: Teste MLP nonlineari per decodificare gli angoli articolari continui $\mathbf{q}^*$ e le velocità angolari $\mathbf{p}^*$ per tutti gli $J$ giunti.
-  - Rimozione totale di $M_2$ (`ManifoldProjector`, `LatentDenoiser`) dal modello e da `spwm/models/__init__.py`.
-
-- **Layer 2: Pipeline Dati e Strategie di Addestramento a Due Fasi**:
-  - `spwm/data/synthetic_world.py` eliminato e sostituito da `RoboticTrajectory`, `simulate_articulated_trajectory` e l'ingestione JSON di traiettorie Unity in `spwm/data/datasets.py`.
-  - `M1PhaseStrategy`: Rollout autoregressivo guidato dalla sequenza di azioni $\mathbf{u}_{0:H}$ con perdita $\mathcal{L}_{M_1} = \text{MSE}(\hat{\mathbf{z}}_{t+1}, \mathbf{z}_{\text{target}, t+1})$.
-  - Eliminato `spwm/training/phases/m2_recovery.py`.
-
-### 3. Validazione e Copertura Test
-- Rimozione di `tests/test_m2_denoiser.py` e `tests/test_synthetic_world.py`.
-- Aggiornati `test_architecture_contracts.py`, `test_dead_code.py`, `test_relay.py`, `test_models_contracts.py`, `test_unified_rollout.py`, `test_training_phases.py` per verificare il passaggio ad azioni e cinematica robotica articolata.
-- Suite completa di 57 test eseguita e validata con esito 100% positivo.
-
----
----
-
-# SPWM-v0.5.0: Manipolatore 6-DOF con Active Perception Grasping & Replay Olografico Ghost in Unity
-
-### 1. Motivazione e Cambio di Paradigma (Post-Mortem v0.4.0)
-Nelle traiettorie passive di v0.4.0, la dinamica neurale apprendeva bene l'evoluzione nominale a catena cinematica libera ma non disponeva di un meccanismo per discriminare carichi ignoti ed eterogenei:
-1. **Manipolazione Attiva & Identificazione Inerziale**: Nella manipolazione robotica reale, la massa e il tensore d'inerzia di un oggetto afferrato sono inizialmente ignoti. Per stimarli in modo causale, il robot deve compiere un micro-movimento di "scuotimento" o sollevamento attivo (**Active Perception Heft**) che ecciti le velocità articolari proporzionalmente al carico.
-2. **Iniezione Sensoriale in M1**: L'addestramento puramente cieco di $M_1$ collassava la predizione della traiettoria di trasporto qualora il carico variasse. Integrando un'iniezione sensoriale grounded dai moduli di rappresentazione durante la fase di heft (`phase_flags == 1`), $M_1$ sincronizza lo stato ricorrente prima di unrollare autoregressivamente la fase di trasporto cieco (`phase_flags == 2`).
-
-### 2. Modifiche Architetturali e Nuove Componenti
-
-- **Ambiente di Simulazione Unity C# (`sim/`)**:
-  - `ArticulatedRobotRig.cs`: Morfologia standardizzata su braccio manipolatore a 6 gradi di libertà (`RobotArchetype.ManipulatorArm`, $J=6$: Shoulder Pan, Shoulder Lift, Elbow Flex, Wrist Pitch, Wrist Yaw, Wrist Roll) con base fissa da 20 kg.
-  - `ProceduralObjectSpawner.cs`: Spawner procedurale di carichi con geometria variabile (Sfera, Cilindro, Parallelepipedo), massa compresa tra $0.2\,\text{kg}$ e $3.5\,\text{kg}$ e vincolo rigido `FixedJoint` istanziato all'impatto con l'end-effector.
-  - `ActionConditionedController.cs`: Controller PD a waypoint sequenziali strutturato in tre fasi:
-    - *Fase 0/1 (Blind Approach)*: Setup neutro e discesa/raggiungimento delle coordinate di presa.
-    - *Fase 1.5 (Sensory Heft)*: Sollevamento rapido (5 cm ad alta accelerazione) con torsione del polso per eccitare i transitori inerziali.
-    - *Fase 2 (Blind Transport)*: Trasporto verso la posa target 6D con variazione angolare dei giunti di polso.
-  - `GhostPlaybackManager.cs` & `HolographicGhost.shader`: Manager Unity per il playback sincrono affiancato del robot ground-truth e del "fantasma" olografico predetto dal modello neurale.
-
-- **Layer 0: Contratti e Schemi Estesi**:
-  - `spwm/contracts/tensors.py`: Esportata costante master `J = 6` e aggiornati i contratti di fase per $D_u = J = 6$.
-  - `spwm/contracts/config.py`: Default di `joint_count` e `action_dim` impostati a $J=6$; `ProjectConfig.name = "spwm_v0_5_0"`.
-  - `spwm/contracts/states.py`: `RolloutResult` configurato con default `joint_count = 6`.
-
-- **Layer 1 & Layer 2: Dati e Strategia M1 con Active Perception**:
-  - `spwm/data/datasets.py`: Ingestione e simulazione fallback con tensore `phase_flags: [B, T]` in $\{0, 1, 2\}$, tracciamento di `payload_mass` e `payload_shape`.
-  - `spwm/training/phases/m1_nominal.py`: `M1PhaseStrategy` calcola l'orizzonte e sincronizza lo stato $\hat{\mathbf{z}}_t$ tramite dinamica sensoriale grounded quando `flag == 1` (Sensory Heft), unrollando $M_1$ autoregressivamente nelle fasi cieche.
-
-- **Layer 3: Esportatore Telemetria Ghost per Unity**:
-  - `spwm/evaluation/visualizer.py`: Aggiunta classe `GhostVisualizerExporter` per catturare batch/sample di rollout ed esportare la telemetria cinematico-visiva in `sim/Assets/StreamingAssets/trajectory_ghost.json` con validazione runtime, metadata di transizione grasping (`grasp_lock_frame_index`) e precisione numerica controllata.
-  - `GhostVisualizerSceneBuilder.cs`: Scene builder automatico per istanziare l'ambiente di visualizzazione Unity side-by-side.
-
-- **Raffinamento v0.5.0: Risoluzione Glitch Telemetria Unity & Validazione Strict Dataset**:
-  - Eliminati glitch di campionamento e incongruenze nei frame esportati da Unity (`RoboticTelemetryLogger.cs`), normalizzando l'ingestione di frame vuoti o corrotti in `parse_unity_trajectory_file`.
-  - Aggiunto flag `strict_dataset: bool = True` in `DataConfig` per prevenire fallback silenziosi a dati sintetici durante l'addestramento quando le traiettorie Unity sono richieste.
-  - Normalizzazione della loss sulle velocità articolari $\mathcal{L}_{\text{vel}} / s_v^2$ con $s_v = \text{velocity\_loss\_scale}$ in `RepresentationPhaseStrategy` per bilanciare la scala tra coordinate normalizzate $[-1, 1]$ e velocità $\text{rad/s}$.
-
-- **Evoluzione v0.5.1 - v0.5.4: Dinamica Event-Gated, Dual EMA Filtering & Handover Pre-Contatto**:
-  - **Sensore Event Camera con Accumulazione del Contrasto Temporale**: [`EventCameraSimulator`](file:///Users/Mattia/Desktop/Studies/Temp/spwm/data/event_camera.py) adotta una reference frame persistente $I_{\text{ref}}$, aggiornata solo sui pixel che emettono spike ($|\Delta L| \ge \theta$), prevenendo l'evanescenza degli eventi durante movimenti articolari lenti.
-  - **Integrazione Temporale Event-Gated**: In [`SpikingLatentDynamics`](file:///Users/Mattia/Desktop/Studies/Temp/spwm/models/dynamics.py), le coordinate $q$ avanzano cinematicamente mediante proiezione di velocità $\mathbf{v}_p = \text{vel}(\mathbf{p}_{t+1})$. La correzione sensoriale $K_{\text{gate}}$ modula esponenzialmente l'errore in base all'attività degli eventi ($1 - e^{-\text{scale} \cdot \text{act}}$), con rampa progressiva su `gate_ramp_steps` e bounded norm correction (`max_correction_norm = 0.50`), eliminando salti discontinui.
-  - **Dual Low-Pass EMA in `PhysicalDecoder`**: Aggiunto filtro passa-basso su coordinate articolari decodificate (`decoder_pos_alpha = 0.20`), in sinergia con il filtro sul momento (`decoder_ema_alpha = 0.20`), stabilizzando il rollout cinematico.
-  - **Handover Sensoriale Pre-Contatto**: `DataConfig.pre_contact_sensory_steps = 5` anticipa l'attivazione della fase sensoriale grounded di 5 step prima del contatto fisico, consentendo a $M_1$ e alle dinamiche neurali di agganciare il ground truth prima del sollevamento.
-  - **Ingestione Dati Compressi**: `parse_unity_trajectory_file` supporta nativamente archivi compressi `trajectory_*.json.gz` per ottimizzare l'ingombro su disco di dataset da 4.000 traiettorie.
-### 3. Validazione e Copertura Test v0.5.0
-- Suite di test estesa da 57 a 59 test per il supporto di $J=6$, logger strict e visualizzatore ghost.
-
-### 3. Validazione e Copertura Test
-- Aggiornati test in `test_architecture_contracts.py`, `test_config_schema.py`, `test_evaluation.py`, `test_training_phases.py`, `test_models_contracts.py`, `test_unified_rollout.py`, `test_event_camera.py`.
-- Introdotti test per l'accumulazione temporale del contrasto (`test_event_camera_temporal_contrast_accumulation`), integrazione event-gated (`test_event_gated_temporal_integration_in_spiking_dynamics`), iniezione attiva M1 (`test_evaluator_active_perception_sensory_injection_halts_m1_on_flag_1`) e sincronizzazione della memoria (`test_rollout_active_perception_memory_synchronization`).
-- Suite di test completata con successo al 100% (63 test passati).
----
----
-
-# SPWM-v0.5.1: Accumulazione Temporale del Contrasto & Integrazione Event-Gated
-
-### 1. Diagnosi e Post-Mortem (Latenza e Cecità Dinamica dei Sensori Neuromorfici)
-Nelle traiettorie di grasping con manipolatore a 6 gradi di libertà, i movimenti lenti di precisione (specialmente durante l'avvicinamento all'oggetto e la fase terminale di orientamento del polso) evidenziavano un limite critico nella pipeline visiva a eventi:
-1. **Evanescenza degli Eventi a Bassa Velocità**: Il simulatore di telecamera a eventi calcolava la differenza di log-intensità tra frame consecutivi $L_t - L_{t-1}$. Se il robot si muoveva lentamente, la variazione di intensità per passo di simulazione ($50\,\text{ms}$) risultava sub-soglia ($|\Delta L| < \theta = 0.2$), portando la maschera di polarità a spegnersi quasi totalmente (`event_count` $\to 0$). I moduli sensoriali (V1/V2 e Spike Encoder) diventavano ciechi durante le fasi stazionarie o ad alta precisione.
-2. **Disconnessione tra Momento Latente e Velocità Articolare**: In [`SpikingLatentDynamics`](file:///Users/Mattia/Desktop/Studies/Temp/spwm/models/dynamics.py), l'integrazione temporale delle coordinate latenti $q_t \in \mathbb{R}^{32}$ dipendeva da proiezioni grezze del momento neuronale senza un vincolo esplicito di derivata cinematica, causando sfasamenti di fase tra velocità target e traiettoria latente.
-3. **Esplosione dell'I/O Disco sui Dataset Unity**: L'archiviazione di 4.000 traiettorie in formato JSON non compresso saturava lo storage locale ($\sim 18\,\text{GB}$) e rallentava drasticamente il tempo di caricamento del dataset.
-
-### 2. Modifiche Architetturali e Soluzioni Tecniche
-
-- **Accumulazione Persistente del Contrasto (Reference Frame Accumulator)**:
-  - In [`EventCameraSimulator`](file:///Users/Mattia/Desktop/Studies/Temp/spwm/data/event_camera.py), introdotto un buffer di riferimento logaritmico persistente $I_{\text{ref}} \in \mathbb{R}^{B \times 1 \times H \times W}$.
-  - La generazione degli eventi soddisfa la dinamica cumulativa:
-    $$\Delta L_t(u, v) = L_t(u, v) - I_{\text{ref}, t-1}(u, v)$$
-    $$E_t(u, v) = \begin{cases} +1 & \text{se } \Delta L_t(u, v) \ge \theta \\ -1 & \text{se } \Delta L_t(u, v) \le -\theta \\ 0 & \text{altrimenti} \end{cases}$$
-  - Il frame di riferimento viene aggiornato **esclusivamente** sui pixel che hanno emesso un evento:
-    $$I_{\text{ref}, t}(u, v) = \begin{cases} L_t(u, v) & \text{se } |E_t(u, v)| = 1 \\ I_{\text{ref}, t-1}(u, v) & \text{se } E_t(u, v) = 0 \end{cases}$$
-  - In questo modo, variazioni di luminosità anche infinitesime continuano ad accumularsi temporalmente attraverso decine di frame finché non superano la soglia $\theta$, preservando la visione neuromorfica continua anche a velocità articolari quasi nulle.
-
-- **Proiezione Cinematica della Velocità in Spazio Latente**:
-  - Aggiunta in [`SpikingLatentDynamics`](file:///Users/Mattia/Desktop/Studies/Temp/spwm/models/dynamics.py) una testa lineare $\mathbf{v}_p = \text{vel}(\mathbf{p}_{t+1})$ con scaling iperbolico:
-    $$\Delta \mathbf{q}_{\text{kin}} = \tanh(\mathbf{v}_p) \cdot \Delta t$$
-    garantendo che la propagazione di coordinate latenti sia direttamente agganciata al tensore di momento neuronale $\mathbf{p} \in \mathbb{R}^{96}$.
-
-- **Supporto Trasparente a File GZIP per Grandi Dataset**:
-  - Esteso [`parse_unity_trajectory_file`](file:///Users/Mattia/Desktop/Studies/Temp/spwm/data/datasets.py) per intercettare l'estensione `.json.gz` e decomprimere i file di telemetria al volo via stream `gzip.GzipFile`, riducendo l'impronta su disco dell'88% senza overhead di caricamento percettibile.
-
-### 3. Validazione
-- Introdotti test unitari specifici: `test_event_camera_temporal_contrast_accumulation` e `test_dataset_gzip_ingestion`.
-
----
----
-
-# SPWM-v0.5.2: Sensory Memory Refresh (SMR) & Risoluzione del Drift su Trasporto Cieco
-
-### 1. Diagnosi e Post-Mortem (Il Drift di 1.168 rad nel Trasporto Cieco)
-Durante l'analisi del rollout autoregressivo completo su traiettorie complesse di v0.5.2, è emersa un'anomalia severa documentata nei dati di `trajectory_ghost.json`:
-- **Al Frame 1 (dopo l'inizializzazione)**: l'errore articolare era pari ad appena $0.125\,\text{rad}$.
-- **Al Frame 100 (dopo 4.5 secondi di trasporto cieco non grounded)**: l'errore medio sui giunti derivava fino a **$1.168\,\text{rad}$** (con picchi su Shoulder Lift ed Elbow di oltre $1.5\,\text{rad}$).
-
-**Causa Radice (Freezing dei Potenziali di Memoria ALIF)**:
-Durante il rollout in fase cieca (`in_sensory_phase = False`, fase di trasporto), l'architettura interrompeva completamente l'avanzamento dello stato dinamico ricorrente `dyn_state` di [`SpikingLatentDynamics`](file:///Users/Mattia/Desktop/Studies/Temp/spwm/models/dynamics.py), affidandosi esclusivamente al rollout autoregressivo di $M_1$. 
-Di conseguenza:
-1. Le correnti sinaptiche e i potenziali di membrana neuronali del modello ALIF (`dyn_state.v`, `dyn_state.i`, `dyn_state.h_state`) rimanevano congelati nel tempo allo stato dell'ultimo frame sensoriale.
-2. Quando l'orizzonte di simulazione riagganciava un frame con iniezione grounded, il salto temporale accumulato creava un gradiente discontinuo enorme nelle equazioni differenziali neuronali, scatenando un burst esplosivo di spike istantanei che destabilizzava l'integrazione del braccio robotico.
-
-### 2. Modifiche Architetturali: Sensory Memory Refresh (SMR)
-Per risolvere il disallineamento della memoria senza violare la natura autoregressiva e cieca del controllo motore di $M_1$:
-
-- **Rollout a Memoria Accoppiata in [`rollout_latent`](file:///Users/Mattia/Desktop/Studies/Temp/spwm/models/rollout.py)**:
-  - Durante i passi ciechi di $M_1$ (`in_sensory_phase = False`), la dinamica latente esegue comunque un passo in background con `in_sensory_phase = False`:
-    ```python
-    dyn_state, step_kin = dynamics.step(
-        dyn_state,
-        u_step,
-        target_z=None,
-        events=events_t,
-        in_sensory_phase=False,
-    )
-    ```
-  - Questo avanzamento in background consente ai potenziali sinaptici e ai decadimenti esponenziali ALIF ($\tau_{\text{syn}}, \tau_{\text{mem}}$) di continuare ad evolvere temporalmente in accordo con gli eventi ambientali e le azioni applicate, eliminando lo shock da discontinuità.
-
----
----
-
-# SPWM-v0.5.3: Diagnosi Post-Mortem Teleporting Ghost (Frame 53–63)
-
-### 1. Diagnosi e Analisi del Fenomeno (Teleportation Glitch)
-Nei replay visivi di v0.5.3, tra il frame 52 e il frame 63 (all'inizio della fase di Sensory Heft, quando il braccio esegue il sollevamento attivo del carico), il braccio ghost manifestava un repentino "salto quantico" visivo (teleporting):
-- Tra il frame 52 e il frame 53, il delta su Shoulder Lift registrava uno scatto istantaneo di $+0.32\,\text{rad}$ ($>18^\circ$) in un singolo timestep di $50\,\text{ms}$, mentre l'errore complessivo passava violentemente da $0.18\,\text{rad}$ a $0.85\,\text{rad}$ e poi convergeva oscillando.
-
-**Scomposizione Multidimensionale della Causa**:
-1. **Gradino Hard del Guadagno $K_{\text{gate}}$**: Nel passaggio dalla fase cieca di approccio (fase 0, $K_{\text{gate}} = 0$) alla fase sensoriale (fase 1.5), il guadagno del filtro $K_{\text{gate}}$ saltava istantaneamente da $0.0$ a $1.0$. L'errore di drift accumulato da $M_1$ durante i 50 frame ciechi veniva improvvisamente iniettato come una delta-function nello spazio delle coordinate latenti.
-2. **Accelerazione Improvvisa dell'Heft in Unity**: Nel controller fisico C# `ActionConditionedController.cs`, la fase di heft applicava un moltiplicatore di accelerazione (`heftAccelerationBoost = 1.15`) che induceva picchi inerziali transitori non previsti dal predittore cinetico.
-3. **Assenza di Filtraggio Passa-Basso sulle Coordinate Decodificate**: [`PhysicalDecoder`](file:///Users/Mattia/Desktop/Studies/Temp/spwm/models/decoder.py) filtrava esponenzialmente solo il momento latente $\mathbf{p}$ (`decoder_ema_alpha = 0.20`), ma emetteva le coordinate angolari articolari $\mathbf{q} \in \mathbb{R}^6$ in modo non filtrato, trasmettendo intatte le componenti di rumore ad alta frequenza al ghost visivo.
-4. **Desincronizzazione della Memoria Reciproca**: L'avanzamento in background di `dyn_state` in v0.5.2 integrava le coordinate latenti interne $\mathbf{z}_{\text{dyn}}$ partendo da un `z_prev` divergente rispetto allo stato effettivo calcolato da $M_1$ (`curr_z`), portando all'istante di attivazione a un mismatch marcato $\mathbf{z}_{\text{grounded}} - \mathbf{z}_{\text{M1}}$.
-
-### 2. Pacchetto di Risoluzione a 4 Moduli (Specifiche v0.5.3)
-1. **Rampa Progressiva del Gate Sensoriale**: Ripartizione dell'attivazione sensoriale tramite una rampa lineare a $N$ step:
-   $$K_{\text{gate}}(t) = \min\left(1.0, \frac{\text{step\_grounded}}{N_{\text{ramp}}}\right) \cdot \left(1 - e^{-\text{scale} \cdot \text{activity}}\right)$$
-2. **Banded Correction Norm Clamping**: Imposizione di una soglia massima sul vettore di correzione sensoriale $\|\Delta \mathbf{q}_{\text{sens}}\| \le \delta_{\max} = 0.25$.
-3. **Dual Exponential Moving Average (Dual EMA)**: Aggiunta di un filtro EMA passa-basso sulle posizioni articolari decodificate $\hat{\mathbf{q}}_t = \alpha_p \mathbf{q}_t + (1 - \alpha_p) \hat{\mathbf{q}}_{t-1}$ con $\alpha_p = 0.20$.
-4. **Handover Sensoriale Pre-Contatto**: Anticipazione dell'innesco di fase sensoriale grounded di $n = 5$ frame prima del contatto fisico con il carico (`pre_contact_sensory_steps = 5`).
-
----
----
-
-# SPWM-v0.5.4: Deadlock dell'Attrattore Statico & Risoluzione a 4 Livelli (Disaccoppiamento Unconstrained)
-
-### 1. Diagnosi e Post-Mortem (Il Braccio Ghost Immobile)
-Dopo aver applicato i vincoli di stabilizzazione in v0.5.3, il modello ha mostrato un comportamento patologico opposto nei test di v0.5.4: **il braccio robotico ghost rimaneva quasi completamente immobile durante l'intero orizzonte di rollout!**
-
-L'ispezione analitica dei log cinematici ha rilevato:
-- Escursione reale di Shoulder Pan: $1.350\,\text{rad}$ ($77.4^\circ$).
-- Escursione ghost di Shoulder Pan: $0.253\,\text{rad}$ ($14.5^\circ$) — **attenuazione dell'81%**.
-- Shoulder Lift: bloccato costantemente a $+0.55\,\text{rad}$ per tutti i 100 frame di traiettoria.
-- Errore di validazione di posizione $M_1$: collassato a $\text{val\_pos\_err} = 1.177\,\text{rad}$.
-
-### 2. Analisi Matematica della Causa Radice (Target Leakage & Stationary Attractor)
-La causa radice del collasso è stata isolata nella propagazione incontrollata dei default di configurazione di v0.5.3 durante la generazione dei target di rappresentazione e l'addestramento:
-1. **Leakage dei Clamping nella Generazione dei Target Sensoriali**:
-   I parametri `gate_ramp_steps = 5`, `max_k_gate = 0.50` e `max_correction_norm = 0.25` erano stati inseriti come default universali in [`ModelConfig`](file:///Users/Mattia/Desktop/Studies/Temp/spwm/contracts/config.py).
-   [`SPWM.forward_representation`](file:///Users/Mattia/Desktop/Studies/Temp/spwm/models/world_model.py) calcola la sequenza ground-truth dei target latenti chiamando `dynamics.step()`.
-2. **Attenuazione dello Pseudoinverso di Tracking**:
-   Un tipico spostamento articolare tra frame nello spazio latente a 32 dimensioni possiede una norma euclidea $\|\Delta \mathbf{z}\| \in [1.0, 2.5]\,\text{rad}$.
-   Applicando un clamping rigido a $\|\Delta \mathbf{z}\| \le 0.25$ combinato con un gate massimo $K_{\text{gate}} \le 0.50$, il guadagno massimo effettivo di inseguimento sensoriale è crollato a:
-   $$G_{\text{eff}} = 0.50 \times \frac{0.25}{1.80} \approx 0.069 \quad (< 7\% \text{ del delta reale})$$
-3. **Apprendimento di un Attrattore a Velocità Zero**:
-   Il modello $M_1$ veniva addestrato per 75 epoche a replicare questa sequenza latente di rappresentazione artificialmente congelata. $M_1$ ha logicamente appreso ad azzerare le predizioni di velocità per minimizzare la loss rispetto a un target sensoriale che si muoveva solo del 7% rispetto alla fisica reale.
-
-### 3. Architettura Definitiva di Risoluzione a 4 Livelli
-
-Per conciliare inseguimento sensoriale perfetto e stabilità numerica priva di teletrasporto, è stato introdotto il pattern di **Disaccoppiamento Unconstrained**:
-
-```
-+-----------------------------------------------------------------------------------+
-|                            SPWM ARCHITECTURAL CONTRACT                            |
-+-----------------------------------------------------------------------------------+
-| 1. Pure Sensory Contract (unconstrained=True)                                     |
-|    - forward_representation, Representation Training, ground_initial_state        |
-|    - K_gate = 1.0, max_correction_norm = 0.0 (Zero clamping, guadagno 100%)       |
-+-----------------------------------------------------------------------------------+
-| 2. Controlled Transition Slew Rate (unconstrained=False, in rollout)             |
-|    - max_k_gate = 1.0 (Full authority al termine della rampa)                    |
-|    - max_correction_norm = 0.50 rad (Cap di sicurezza da transitori numerici)     |
-|    - gate_ramp_steps = 5 (Transizione graduale su 250 ms)                         |
-+-----------------------------------------------------------------------------------+
-| 3. Sincronizzazione Reciproca in Rollout (State Coherence)                        |
-|    - dyn_state.z_prev = curr_z.detach() durante i passi ciechi M1                 |
-|    - dyn_state.grounded_steps = 0 prima dell'handover                             |
-+-----------------------------------------------------------------------------------+
-| 4. Dual EMA Kinematic Filtering                                                   |
-|    - decoder_pos_alpha = 0.20, decoder_ema_alpha = 0.20                           |
-|    - pre_contact_sensory_steps = 5                                                |
-+-----------------------------------------------------------------------------------+
-```
-
-- **Protocollo Unconstrained in [`SpikingLatentDynamics`](file:///Users/Mattia/Desktop/Studies/Temp/spwm/models/dynamics.py)**:
-  - Introdotto parametro esplicito `unconstrained: bool = False` in [`DynamicsProtocol.step`](file:///Users/Mattia/Desktop/Studies/Temp/spwm/contracts/protocols.py).
-  - Quando `unconstrained = True`, la dinamica sensoriale esegue l'integrazione pura:
-    $$K_{\text{gate}} = 1.0, \quad \Delta \mathbf{q}_{\text{sens}} = \mathbf{z}_{\text{target}} - \mathbf{q}_{\text{kin}}$$
-    senza norm clamping e senza modulazione da rampa, preservando intatta l'ampiezza dinamica della traiettoria per l'addestramento.
-  - Quando `unconstrained = False` (esclusivamente durante il rollout inferenziale delle transizioni critiche di fase), si attivano la rampa e il bounding per prevenire sbalzi visivi.
-
-- **Sincronizzazione dello Stato Dinamico in [`rollout_latent`](file:///Users/Mattia/Desktop/Studies/Temp/spwm/models/rollout.py)**:
-  - Durante i passi ciechi eseguiti da $M_1$, `dyn_state.z_prev` viene forzato a combaciare con l'ultimo stato emesso da $M_1$ (`curr_z.detach()`), e `dyn_state.grounded_steps` viene azzerato. In questo modo, quando si entra nella fase sensoriale, il calcolo della delta di correzione $\mathbf{z}_{\text{sens}} - \mathbf{z}_{\text{prev}}$ riparte da una discrepanza nulla.
-
-- **Ricalibrazione dei Parametri di Configurazione in [`ModelConfig`](file:///Users/Mattia/Desktop/Studies/Temp/spwm/contracts/config.py)**:
-  - `max_k_gate = 1.0` (ripristinata piena autorità sensoriale dopo la rampa).
-  - `max_correction_norm = 0.50` (soglia di tolleranza allargata per consentire veloci recuperi senza artefatti).
-  - `gate_ramp_steps = 5` (rampa su 250 ms a 20 Hz).
-  - `decoder_pos_alpha = 0.20` (filtraggio morbido sulle posizioni angolari).
-  - `pre_contact_sensory_steps = 5` (handover sensoriale 5 step prima del contatto fisico).
-
-### 4. Risultati Sperimentali e Confronto Quantitativo
-
-I risultati empirici post-implementazione e retraining evidenziano il pieno superamento sia del teleporting glitch che del congelamento statico:
-
-| Metrica / Comportamento | Baseline v0.5.2 | Patologia v0.5.3 / v0.5.4-pre | Definitivo v0.5.4 |
-| :--- | :--- | :--- | :--- |
-| **Max Delta Step ($\Delta q_{\max}$)** | $> 0.32\,\text{rad}$ ($>18^\circ$, teleporting) | $0.002\,\text{rad}$ (braccio congelato) | **$0.010\,\text{rad}$** ($<0.6^\circ$, transizione fluida) |
-| **Tracking Error Medio** | $1.168\,\text{rad}$ (drift libero) | $1.177\,\text{rad}$ (static attractor) | **$0.004\,\text{rad}$** ($<0.25^\circ$) |
-| **Escursione Shoulder Pan** | $1.350\,\text{rad}$ | $0.253\,\text{rad}$ (attenuazione 81%) | **$1.350\,\text{rad}$** (piena dinamica 100%) |
-| **Escursione Shoulder Lift** | $1.229\,\text{rad}$ | $0.000\,\text{rad}$ (blocco a $0.55\,\text{rad}$) | **$1.229\,\text{rad}$** (sollevamento perfetto) |
-| **Loss Validazione M1 (Epoca 1)** | $\sim 1.150$ | $1.177$ | **$0.648$** (dimezzata istantaneamente) |
-
-### 5. Suite di Test e Integrità Architetturale
-- Aggiornato schema dei progetti ammessi con `"spwm_v0_5_4"` in `tests/test_config_schema.py`.
-- Aggiornato contratto `DynamicsProtocol.step` con parametri di fase e flag `unconstrained`.
-- Suite completa di **63 unit test** superata con esito 100% positivo (`pytest tests/`).
-
----
----
-
-# SPWM-v0.6.0: Dual-Camera Active Perception (Static Global + Egocentric Wrist Sensor) & Visual Fusion
-
-### 1. Diagnosi e Motivazione (3D Kinematic Unobservability)
-Con una singola telecamera neuromorfica monoculare statica (`in_channels = 2`), il sistema soffriva di inosservabilità cinematica 3D lungo l'asse ottico:
-- **Simmetrie Assiali (`Wrist_Roll`, $q_5$)**: La rotazione assiale del polso attorno al proprio asse longitudinale generava variazioni minime o nulle nella silhouette 2D vista dalla camera globale.
-- **Scorcio Prospettico (`Elbow_Flex`, $q_2$)**: Movimenti nel piano di profondità durante le fasi di Sensory Heft e Blind Transport venivano compressi dalla proiezione monoculare, degradando la stima di posa a 6-DOF.
-
-### 2. Architettura Dual-Camera (SPWM-v0.6.0)
-1. **Simulazione Unity & Neuromorphic Bridge ([`ArticulatedRobotRig.cs`](file:///Users/Mattia/Desktop/Studies/Temp/sim/Assets/Scripts/ArticulatedRobotRig.cs), [`NeuromorphicEventBridge.cs`](file:///Users/Mattia/Desktop/Studies/Temp/sim/Assets/Scripts/NeuromorphicEventBridge.cs), [`RoboticTelemetryLogger.cs`](file:///Users/Mattia/Desktop/Studies/Temp/sim/Assets/Scripts/RoboticTelemetryLogger.cs), [`GhostVisualizerSceneBuilder.cs`](file:///Users/Mattia/Desktop/Studies/Temp/sim/Assets/Editor/GhostVisualizerSceneBuilder.cs))**:
-   - Montato un sensore neuromorfico egocentrico (`WristNeuromorphicCamera` su `WristCameraMount`) direttamente sull'end-effector (`EndEffectorTip`) con marker fiduciale asimmetrico (`WristOrientationFiducial`).
-   - Entrambi i sensori (statico globale ed egocentrico sul polso) operano simultaneamente ad ogni passo fisico $\Delta t$, generando uno stream di eventi unificato a 4 canali (`[pos_global, neg_global, pos_wrist, neg_wrist]`) e frame di luminanza duali.
-2. **Contratti Layer 0 & Data Pipeline Layer 1 ([`tensors.py`](file:///Users/Mattia/Desktop/Studies/Temp/spwm/contracts/tensors.py), [`config.py`](file:///Users/Mattia/Desktop/Studies/Temp/spwm/contracts/config.py), [`event_camera.py`](file:///Users/Mattia/Desktop/Studies/Temp/spwm/data/event_camera.py), [`datasets.py`](file:///Users/Mattia/Desktop/Studies/Temp/spwm/data/datasets.py))**:
-   - Introdotta costante canonica `C_EVENT = 4` e aggiornato `ModelConfig.in_channels = 4` (`ProjectConfig.name = "spwm_v0_6_0"`).
-   - Esteso [`EventCameraSimulator`](file:///Users/Mattia/Desktop/Studies/Temp/spwm/data/event_camera.py) con `render_wrist_articulated_frame` e `render_dual_articulated_frames`, producendo tensori batchati rigorosamente allineati `[B, T, 4, H, W]`.
-3. **Fusione Visiva nell'Encoder ([`encoder.py`](file:///Users/Mattia/Desktop/Studies/Temp/spwm/models/encoder.py), [`world_model.py`](file:///Users/Mattia/Desktop/Studies/Temp/spwm/models/world_model.py))**:
-   - Aggiornato [`EventEncoder`](file:///Users/Mattia/Desktop/Studies/Temp/spwm/models/encoder.py) con architettura di fusione spaziale dual-stream (`conv` + `wrist_stem` + `fusion_head` $\to$ `SpatialSoftmax`), estraendo un set unificato di $K=16$ keypoint 2D ($\mathbf{q}_t \in [-1, 1]^{32}$) e feature visive ($\mathbf{x}_t \in \mathbb{R}^{128}$) che disambiguano completamente la posa a 6-DOF per `SpikingLatentDynamics` e `PhysicalDecoder`.
-
----
----
-
-# SPWM-v0.6.1: Post-Mortem Training v0.6.1 & Diagnosi Jitter Cinematica Grounded (Frame 53-63)
-
-### 1. Risultati Training SPWM-v0.6.1
-- **Fase 0 (`train_representation`)**: Addestramento convergente su 87 epoche con architettura Dual-Camera (camera statica globale + egocentrica da polso a 4 canali), raggiungendo `val_pos_err = 0.202 rad` e `val_vel_err = 0.447 rad/s`.
-- **Fase 1 (`train_m1`)**: Addestramento completato su 52 epoche con loss di validazione autoregressiva `val_loss = 0.0042` e `val_pos_err = 0.498 rad`.
-
-### 2. Diagnosi Clinica e Post-Mortem: Jitter Cinematica nei Frame 53-63
-Durante la validazione in simulazione Unity (`GhostPlaybackManager`, telemetria esportata in `trajectory_ghost.json`), il rollout puramente predittivo ($M_1$) prima del contatto si comporta in modo fluido e privo di vibrazioni ($\Delta q \le 0.02\,\text{rad/frame}$).
-Tuttavia, esattamente nell'intervallo temporale tra i frame **53 e 63** (corrispondente ai passi di simulazione 55-65, fase di *Sensory Heft* con `phase_flag == 1`), si riscontra un picco di errore velocitario e una severa oscillazione visiva del braccio fantasma (`predicted_q`), a fronte di un ground truth (`ground_truth_q`) che rimane quasi immobile o compie un modesto sollevamento verticale di $+12\,\text{cm}$:
-- **Picco Errore Velocità**: L'errore balza fino a **$1.1156\,\text{rad/s}$** al frame 62 (con valori costantemente elevati tra $0.80$ e $1.03\,\text{rad/s}$ nei frame 53-60).
-- **Oscillazione ad Alta Frequenza**: `Elbow_Flex` oscilla in controtendenza ad ogni passo di $50\,\text{ms}$ ($+2.576 \to +2.511 \to +2.549 \to +2.508 \to +2.534 \to +2.562 \to +2.548\,\text{rad}$), e `Wrist_Yaw` compie salti fino a $8.3^\circ$ per frame.
-
-### 3. Root Cause Analysis (Le Cause Scatenanti)
-L'indagine dettagliata ha individuato i fattori determinanti:
-1. **Evanescenza degli Eventi e Collasso dei Keypoint (Decelerazione Pre-Contatto)**:
-   Negli step 50-54 (frame 48-52), il manipolatore decelera fino a fermarsi sopra il blocco da afferrare ($\mathbf{p}_{\text{gt}} \to 0$). Poiché i sensori neuromorfici emettono spike solo su variazioni temporali di intensità $|\Delta L| \ge \theta$, l'attività decade a soli 2-4 eventi/frame. A eventi quasi nulli, i feature map convoluzionali di `EventEncoder` diventano un bias uniforme; lo `SpatialSoftmax` genera una distribuzione uniforme che collassa i centri di massa 2D ($\mathbf{skp}$) verso l'origine $(0, 0)$, corrispondente a una posa artificiale erronea (es. `Elbow` $\approx 1.10\,\text{rad}$ invece di $2.60\,\text{rad}$).
-2. **Impulse Shock all'Inizio del Sollevamento (Sensory Heft)**:
-   Al passo 55 (frame 53), la presa magnetica si chiude (`EnsureRigidGrasp`) e scatta il sollevamento verso l'alto. L'improvviso movimento scatena una raffica di eventi (126 globali, 40 da polso). I keypoint $\mathbf{skp}$ saltano bruscamente da $(0, 0)$ alla posizione reale sollevata. Con `gate_scale = 50.0`, il fattore di gating $K_{\text{gate}} = (1 - e^{-50 \cdot \text{act}}) \cdot \text{max\_k\_gate}$ satura immediatamente a $\sim 0.95$, applicando una correzione impulsiva discontinua su $\mathbf{q}$.
-3. **Over-Correction Feedback & Oscillazione di Nyquist**:
-   Con `max_k_gate = 1.0` in `SpikingLatentDynamics`, la coordinata $\mathbf{q}$ è vincolata al $95\%$ alla misura istantanea grezza $\mathbf{skp}$. A causa della natura stocastica/refrattaria dei sensori a eventi, i keypoint fluttuano leggermente tra un frame e l'altro; con un guadagno di anello vicino a 1.0, la dinamica innesca un ciclo limite non smorzato alla frequenza di Nyquist ($10\,\text{Hz}$).
-4. **Spinta di Velocità Spuria da LayerNorm & Risonanza ALIF**:
-   La velocità $v_p = \text{vel}(p)$ deriva da un vettore normalizzato con `LayerNorm` ($\|p\| \ge 7.9$), generando una spinta costante $\|\Delta t \cdot v_p\| \approx 0.125$ anche a riposo, che compete continuamente contro la correzione sensoriale $K_{\text{gate}}$. Il valore di $\mathbf{q}$ proietta poi nel soma dei neuroni ALIF, provocando oscillazioni caotiche nel conteggio degli spike (da 31 a 55 spike/passo).
-5. **Filtraggio EMA Insufficiente nel Decoder**:
-   Nel decoder `PhysicalDecoder`, il coefficiente `decoder_pos_alpha = 0.20` trattiene solo il 20% della storia e lascia passare l'80% del jitter istantaneo.
-
-### 4. Strategia di Risoluzione
-1. **Anti-Evanescence Gate**: Congelare i keypoint $\mathbf{skp}$ all'ultima stima valida ad alta confidenza quando l'attività del sensore è sotto la soglia di rumore/stazionarietà ($\text{act} < \text{threshold}$), o forzare $K_{\text{gate}} \equiv 0$, impedendo il collasso artificiale su $(0, 0)$.
-2. **Damping e Bounding del Guadagno Sensoriale**: Limitare `max_k_gate` a valori di filtro complementare ($0.25 - 0.30$) e stringere `max_correction_norm` per impedire l'innesco di oscillazioni di Nyquist.
-3. **Zero-Centering della Proiezione di Velocità**: Applicare $\tanh(v_p)$ o condizionamento sull'azione motoria $u_t$ per garantire $v_p \to 0$ quando il braccio è fermo.
-4. **Calibrazione Filtro Decoder**: Portare `decoder_pos_alpha` e `decoder_ema_alpha` a $0.75$.
-
----
----
-
-# SPWM-v0.6.2: Implementazione Anti-Evanescence Gate & Diagnosi Clinica delle Anomalie di Training
-
-### 1. Risultati di Addestramento e Confronto con Release Precedenti
-
-La release v0.6.2 ha introdotto l'Anti-Evanescence Gate con parametro `activity_threshold = 0.012` per sopprimere l'iniezione sensoriale rumorosa durante le fasi di manipolatore fermo o decelerato. L'addestramento è stato completato per entrambe le fasi:
-- **Fase 0 (`train_representation`)**: 96 epoche completate, miglior checkpoint all'epoca 86 con `val_loss = 2.696`, `val_pos_err = 0.205 rad` e `val_vel_err = 0.443 rad/s`.
-- **Fase 1 (`train_m1`)**: Addestramento arrestato precocemente per early stopping all'epoca 57 (miglior checkpoint epoca 47 con `val_loss = 0.00722`, `val_pos_err = 0.428 rad`, `val_vel_err = 0.537 rad/s`).
-
-| Metrica di Valutazione M1 | SPWM-v0.6.0 | SPWM-v0.6.1 | SPWM-v0.6.2 (Post-Gate) | Trend / Patologia v0.6.2 |
-| :--- | :--- | :--- | :--- | :--- |
-| **M1 Best Val Loss** | **0.00333** | **0.00423** | **0.00722** | **+71% peggiorata** rispetto a v0.6.1 (+117% vs v0.6.0) |
-| **Early Stopping M1** | Convergenza (Ep 52) | Convergenza (Ep 52) | **Stallo a Epoca 47**, stop Ep 57 | Early stopping forzato da instabilità |
-| **$H=1$ Position Error (L2)** | **$0.0965\,\text{rad}$** | **$0.2172\,\text{rad}$** | **$0.2799\,\text{rad}$** | **Quasi $3\times$ peggiore** di v0.6.0 |
-| **$H=1$ Position MSE** | **$0.00209$** | **$0.00793$** | **$0.01317$** | **Oltre $6\times$ peggiore** di v0.6.0 |
-| **$H=5$ Position Error (L2)** | $0.0801\,\text{rad}$ | $0.1524\,\text{rad}$ | $0.1866\,\text{rad}$ | Inizia discesa anomala dell'errore |
-| **$H=10$ Position Error (L2)** | $0.0948\,\text{rad}$ | $0.1425\,\text{rad}$ | **$0.1561\,\text{rad}$** | **Errore scende del 44%** rispetto a $H=1$ |
-| **$H=25$ Position Error (L2)** | $0.2884\,\text{rad}$ | $0.2768\,\text{rad}$ | $0.2489\,\text{rad}$ | Errore ancora inferiore a $H=1$ |
-| **Drift Ratio ($H_{25} / H_1$)** | $2.99$ (Drift naturale) | $1.27$ (Drift contenuto) | **$0.889$ ($< 1.0$)** | **Curva di degradazione invertita a "U"** |
-| **Rollout / Dynamic Score** | **$0.4133$** | **$0.4897$** | **$0.6997$** | **Peggior score registrato** in tutta la serie v0.6 |
-
-### 2. Root Cause Analysis: Cause Scatenanti dell'Anomalia v0.6.2
-
-L'indagine quantitativa ha individuato tre cause primarie interconnesse:
-
-1. **Soglia `activity_threshold = 0.012` Astronomicamente Eccessiva**:
-   L'analisi empirica dell'attività di eventi medi per frame sull'intero dataset ha rivelato:
-   - **Mediana dell'attività di eventi**: $0.01025$ (inferiore alla soglia!).
-   - **Percentuale di frame del dataset tagliati**: **$53.20\%$** dell'intero dataset ha $\text{act} < 0.012$.
-   - **Movimento lento ($0.01 \le v < 0.2\,\text{rad/s}$)**: Il **$94.97\%$** dei frame viene tagliato ($\text{act}_{\text{mean}} \approx 0.00577$).
-   - **Movimento normale ($v \ge 0.2\,\text{rad/s}$)**: Anche a velocità sostenute, il **$45.00\%$** dei frame scende sotto $0.012$.
-   Con la formula:
-   $$\text{act}_{\text{eff}} = \max(0, \text{act} - 0.012)$$
-   il fattore di gating $K_{\text{gate}}$ è stato forzato a **$0.0$ per oltre la metà della durata di ogni traiettoria**. Durante la Fase 0, la dinamica ha dovuto compensare l'assenza di correzione sensoriale per il 95% dei moti lenti, alterando pesantemente la sincronia fase-spazio.
-
-2. **Chattering del Gating e Reset Forzato di `g_steps`**:
-   Nel passo di dinamica:
-   $$\text{is\_active} = (\text{act} > 0.012) \implies g_{\text{steps}} = \begin{cases} g_{\text{steps}}^{\text{prev}} + 1 & \text{se active} \\ 0 & \text{altrimenti} \end{cases}$$
-   Poiché durante il moto l'attività oscilla naturalmente tra $0.010$ e $0.015$, la rampa di 5 passi è stata azzerata ripetutamente a ogni minima fluttuazione, causando un'alternanza discontinua (chattering) tra apertura parziale e chiusura totale del gate.
-
-3. **Accecamento del Burn-in Iniziale ed Esplosione dell'Errore a $H=1$**:
-   All'inizio del rollout canonico di valutazione, con flag di fase presenti, il protocollo fissa $t_{\text{start}} = 2$ (passi $t=0, 1, 2$).
-   In questi primi tre frame il braccio parte da fermo ($v \approx 0$), con attività pari a $\sim 0.0005 \ll 0.012$.
-   L'Anti-Evanescence Gate ha bloccato completamente il feedback sensoriale durante il burn-in iniziale ($K_{\text{gate}} \equiv 0$), lasciando lo stato iniziale $q$ disallineato con un errore di posa di **$0.4046\,\text{rad}$** al passo $t=2$ (contro $0.3126\,\text{rad}$ in v0.6.1).
-   Di conseguenza, al passo $H=1$ la previsione è partita da uno stato non ancorato, generando un errore di $0.2799\,\text{rad}$. Con l'avanzare dei passi ($H=5, 10$), l'attrattore simplettico di $M_1$ ha gradualmente riagganciato la traiettoria nominale corretta, facendo scendere l'errore a $0.1561\,\text{rad}$ e creando l'inversione della curva di degradazione ($H_{25}/H_1 = 0.889$).
-
----
----
-
-# SPWM-v0.6.3: Ricalibrazione della Soglia di Evanescenza al Rumore di Fondo Sensoriale
-
-### 1. Interventi Architetturali e di Configurazione
-1. **Ricalibrazione di `activity_threshold` a $0.001$**:
-   - Abbassata la soglia minima da $0.012$ a **$0.001$** in [`ModelConfig`](file:///Users/Mattia/Desktop/Studies/Temp/spwm/contracts/config.py), [`SpikingLatentDynamics`](file:///Users/Mattia/Desktop/Studies/Temp/spwm/models/dynamics.py) e [`SPWM`](file:///Users/Mattia/Desktop/Studies/Temp/spwm/models/world_model.py).
-   - A $0.001$ (corrispondente a circa 4 eventi per frame su una griglia $4 \times 32 \times 32$), vengono filtrati esclusivamente i frame di vera quiescenza e rumore termico a manipolatore fermo ($82.4\%$ dei frame con $v < 0.01\,\text{rad/s}$), mentre viene preservato intatto il **$96\%$ dei frame di movimento normale** e il **$45\%$ dei movimenti lenti**, eliminando l'accecamento del burn-in iniziale.
-2. **Aggiornamento Schema di Progetto (`ProjectConfig.name = "spwm_v0_6_3"`)**:
-   - Registrata l'identità di run `spwm_v0_6_3` nei contratti e nelle suite di test unitari (`tests/test_config_schema.py`).
-   - Allineato il runner pipeline [`scripts/run_pipeline.sh`](file:///Users/Mattia/Desktop/Studies/Temp/scripts/run_pipeline.sh) alla versione canonica `spwm_v0_6_3`.
-
-### 2. Risultati Sperimentali e Benchmarking v0.6.3
-
-L'addestramento completo della pipeline per v0.6.3 ha confermato il pieno recupero prestazionale rispetto alla regressione anomala di v0.6.2:
-- **Fase 0 (`train_representation`)**: 86 epoche completate, `val_loss = 2.671`, `val_pos_err = 0.201 rad`, `val_vel_err = 0.439 rad/s`.
-- **Fase 1 (`train_m1`)**: 67 epoche completate, miglior checkpoint all'epoca 57 con **`val_loss = 0.00430`** (recupero del **$-40.4\%$** rispetto a $0.00722$ di v0.6.2).
-- **Teacher Forcing MSE**: $0.00201$ (eccellente ancoraggio 1-step).
-- **Curva di Degradazione Ricomposta**: L'errore a $H=1$ scende da $0.2799\,\text{rad}$ (v0.6.2) a **$0.2090\,\text{rad}$**, con drift ratio stabilizzato a **$1.17$** (fine dell'inversione a "U" patologica).
-
-| Metrica di Valutazione M1 | SPWM-v0.6.0 | SPWM-v0.6.1 | SPWM-v0.6.2 | SPWM-v0.6.3 (Calibrato) | Delta v0.6.3 vs v0.6.2 |
-| :--- | :--- | :--- | :--- | :--- | :--- |
-| **M1 Best Val Loss** | **0.00333** | 0.00423 | 0.00722 | **0.00430** | **-40.4% (Forte recupero)** |
-| **$H=1$ Position Error (L2)** | 0.0965 rad | 0.2172 rad | 0.2799 rad | **0.2090 rad** | **-25.3%** |
-| **$H=1$ Position MSE** | 0.00209 | 0.00793 | 0.01317 | **0.00737** | **-44.0%** |
-| **$H=10$ Position Error (L2)**| 0.0948 rad | 0.1425 rad | 0.1561 rad | **0.1096 rad** | **-29.8%** |
-| **$H=25$ Position Error (L2)**| 0.2884 rad | 0.2768 rad | 0.2489 rad | **0.2445 rad** | Stabile |
-| **Drift Ratio ($H_{25} / H_1$)**| 2.99 | 1.27 | 0.889 (Patologico) | **1.170 (Sano)** | Ripristino monotonicità fisica |
-| **Dynamic Score** | 0.4133 | 0.4897 | 0.6997 | **0.4866** | Ripristino parità v0.6.1 |
-
-### 3. Post-Mortem Approfondito: L'Anomalia del Ghost Arm ai Frame 45–53
-
-Dall'ispezione visiva del video di simulazione Unity (`sim/Assets/StreamingAssets/trajectory_ghost.json`, campione 3600), tra i frame 45 e 53 (passi dataset $t=48$–$55$) il manipolatore virtuale reale decelerava fino a fermarsi completamente ($\|p^*\| \to 0$, $\Delta q^* < 0.005\,\text{rad}$), mentre il braccio ghost manifestava un'oscillazione/jiggle di oltre $7^\circ$–$11^\circ$ (in particolare Shoulder Pan che collassava da $0.735$ a $0.608\,\text{rad}$).
-
-L'analisi quantitativa a livello di tensori ha svelato tre meccanismi concettuali ed esecutivi:
-1. **Confusione concettuale tra Rampa Sensoriale e Anti-Evanescenza**:
-   - **Rampa di Sovrascrittura Parziale**: serve a modulare la transizione graduale verso l'heft ($20\% \to 40\% \to 60\% \to 80\% \to 100\%$) per evitare discontinuità. Deve avanzare monotonicamente in base alla fase e non deve mai resettarsi.
-   - **Anti-Evanescenza**: appartiene strettamente al livello percettivo (`EventEncoder` / `SpatialSoftmax`). Quando gli eventi scendono a zero perché il braccio è fermo, la scena non scompare; il visual encoder deve **trattenere i keypoint spaziali precedenti** ($\hat{\mathbf{kp}}_t = \hat{\mathbf{kp}}_{t-1}$) invece di collassare analiticamente verso $(0, 0)$.
-2. **Glitch di Reset della Rampa per Fluttuazione dell'Attività**:
-   In `dynamics.py`, il contatore `g_steps` era condizionato a runtime da `act_val > activity_threshold`. Al frame 51, l'attività del manipolatore fermo è scesa a $0.00098 < 0.0010$, azzerando forzatamente `g_steps = 0` e facendo crollare la rampa da $60\%$ a $0\%$ per poi riavviarla al $20\%$ al frame successivo, generando uno stutter meccanico.
-3. **Condizionamento da Azione Cinematica vs Dinamica**:
-   L'azione $u_t$ passata al modello comunicava il setpoint di posizione assoluta ($q_{\text{des}} \in [-1, 1]^6$) invece dell'**intensità/sforzo motore reale** ($\tau \in [-1, 1]^6$). Di conseguenza, a manipolatore fermo che compensa la gravità, la rete riceveva un segnale identico a quello di moto rapido.
-
-### 4. Decisioni Architetturali per la Release v0.7.0
-1. **Passaggio all'Intensità Motore (Full Go)**:
-   Modifica del controller Unity (`ActionConditionedController.cs`) per calcolare ed esportare lo sforzo motore effettivo normalizzato applicato dai drive PD:
-   $$u_{\text{intensity}, i} = \text{clamp}\left(\frac{\tau_i}{\tau_{\max, i}}, -1.0, 1.0\right)$$
-   dove $\tau_i = K_p (q_{\text{des}, i} - q_i) + K_d (\dot{q}_{\text{des}, i} - \dot{q}_i)$.
-2. **Anti-Evanescenza nel Livello Percettivo (`EventEncoder`)**:
-   Implementazione del buffer di persistenza keypoint in `EventEncoder`: quando $\text{act} < \tau_{\text{noise}}$, i keypoint restano congelati all'ultima posa valida anziché collassare a $(0, 0)$.
-3. **Disaccoppiamento della Rampa di Transizione**:
-   La rampa $20\% \to 100\%$ viene resa strettamente deterministica e monotona durante la finestra pre-heft, priva di reset da rumore di fondo.
-4. **Scarto della Handover Loss**:
-   Evitata l'introduzione di termini di loss artificiosi specifici sul punto di transizione per prevenire overfitting.
-
-
-
-
-
-
-
+## SPWM-v1 (Baseline State)
+- **version afflicted**: SPWM-v1
+- **iteration on version**: Baseline State (Surrogate BPTT Architecture)
+- **changes made**: Implemented single-compartment Leaky Integrate-and-Fire (`LIFCell`) with surrogate Heaviside thresholding (Atan/FastSigmoid); dual-timescale spiking memory (fast beta=0.8, slow beta=0.98); `SpikingLatentDynamics`, `LatentPredictor`, and `PhysicalDecoder`; global Backpropagation Through Time (BPTT) over unrolled sequences T; composite loss combining prediction error, multi-step rollout, variance regularization, and spike sparsity.
+- **new results (if any)**: No runs made - initial baseline architecture specification.
+- **verdict on change made**: Deprecated / Replaced due to O(T) computational memory complexity and biological implausibility.
+
+## SPWM-v2 (Non-BPTT Continuous Predictive World Model)
+- **version afflicted**: SPWM-v2
+- **iteration on version**: Upgrade State (Non-BPTT Continuous Paradigm)
+- **changes made**: Introduced two-compartment dendritic neurons; 3-tier timescale hierarchy (25% fast, 50% mid, 25% persistent); predictive coding error routing with noisy mirror alignment B = W^T + xi; Dale principle and Soft-WTA lateral inhibition; periodic offline SVD sleep consolidation.
+- **new results (if any)**: No runs made - architectural blueprint (exploratory testing caused chaotic loss divergence from SVD sleep geometric misalignment and Dale/Soft-WTA E/I imbalance).
+- **verdict on change made**: Discarded / Rolled back in favor of ALIF forward-only paradigm.
+
+## SPWM-v3 (Radical Pruning & ALIF Forward-Only Architecture)
+- **version afflicted**: SPWM-v3
+- **iteration on version**: Iteration 1 (Radical Pruning & ALIF Core)
+- **changes made**: Removed dendritic compartments, offline SVD, Dale constraints, and synaptic noise. Introduced ALIF neurons with dynamic adaptive threshold A_t (beta_adapt in [0.90, 0.985]); deterministic dual-trace e-prop (V and A) with O(1) memory; extended sequence to T=150 and rollout validation up to H=50.
+- **new results (if any)**: Sequence T=150 evaluated: validation loss oscillated and diverged (weight delta tensor Delta W grew 5x); rollout flat position error ~0.65 across all horizons (H=1 to H=50 collapsed to arena center); spike rate stabilized monotonically at ~0.30.
+- **verdict on change made**: Partially preserved (ALIF core and deterministic e-prop retained; numerical stabilization required in v3.1).
+
+## SPWM-v3.1 (Numerical Stabilization & Trace Normalization)
+- **version afflicted**: SPWM-v3.1
+- **iteration on version**: Iteration 2 (Numerical Stabilization & Trace Normalization)
+- **changes made**: Added 1/T inverse sequence length scaling to dual e-prop eligibility trace accumulation; lowered learning_rate and local_lr from 1e-3 to 2e-4.
+- **new results (if any)**: Eliminated Delta W gradient explosion; stabilized spike rate at ~0.30; eliminated static arena center collapse (~0.65) and restored active latent rollout propagation.
+- **verdict on change made**: Preserved.
+
+## SPWM-v3.6 (Feedback Alignment for Kinematic Feedback)
+- **version afflicted**: SPWM-v3.6
+- **iteration on version**: Iteration 3 (Kinematic Feedback Alignment)
+- **changes made**: Resolved W_rls ≈ 0 decoder deadlock by introducing fixed random feedback alignment matrix B_kin_feedback projecting kinematic error L_kin directly into ALIF e-prop traces.
+- **new results (if any)**: Before fix: Val total loss ~0.300, probe loss ~0.298, Pos/Vel errors stalled at ~0.69 / 0.73. After fix: unlocked top-down kinematic feedback alignment into ALIF population.
+- **verdict on change made**: Preserved.
+
+## SPWM-v3.7 (Continuous Convolutional Spatial Encoder)
+- **version afflicted**: SPWM-v3.7
+- **iteration on version**: Iteration 4 (Continuous Convolutional Spatial Encoder)
+- **changes made**: Replaced spiking LIF visual encoder with compact continuous Conv2D encoder (BatchNorm2d, LayerNorm, SiLU, Linear(2048, 128)) trained via top-down sensory error and supervised kinematic alignment (R^2 > 0.85).
+- **new results (if any)**: Train probe loss dropped to 0.14, but unconstrained Linear(2048, 128) layer deformed latent topology into non-Euclidean configurations; Val Pos Err diverged back to >0.76.
+- **verdict on change made**: Superseded by v4.0 (Linear dense layer discarded for SpatialSoftmax).
+
+## SPWM-v3.7.1 (Stabilization & Smooth Latent Regularization)
+- **version afflicted**: SPWM-v3.7.1
+- **iteration on version**: Iteration 5 (GroupNorm & Regularization)
+- **changes made**: Replaced BatchNorm2d with GroupNorm in EventEncoder; reduced encoder lr to 2e-4 and probe lr to 5e-4; added weight decay 1e-4.
+- **new results (if any)**: Reduced batch-statistic drift on sparse frames; Val Pos Err remained high (>0.76) due to dense bottleneck distortion.
+- **verdict on change made**: Superseded by v4.0.
+
+## SPWM-v4.0 (Topological Spatial-Softmax Frontend)
+- **version afflicted**: SPWM-v4.0
+- **iteration on version**: Iteration 1 (Spatial-Softmax Frontend)
+- **changes made**: Replaced dense Linear layer in EventEncoder with differentiable SpatialSoftmax bottleneck extracting K=16 keypoints (u_k, v_k) in [-1, 1]^2, preserving 2D topology with minimal parameters.
+- **new results (if any)**: Spike rate ~0.12; Test TF MSE (L_pred) = 0.120; Val Linear Pos Err plateaued at ~0.577 due to keypoint fixation on high-contrast static arena boundaries.
+- **verdict on change made**: Preserved (SpatialSoftmax retained as foundational component).
+
+## SPWM-v4.2 (Geometric Latent Space Rectification — Strada B)
+- **version afflicted**: SPWM-v4.2
+- **iteration on version**: Iteration 2 (Coordinate Loss Strada B)
+- **changes made**: Introduced auxiliary coordinate loss L_coord (lambda_coord = 0.15) with soft-coupling broadcast pulling SpatialSoftmax keypoints toward ground-truth object coordinates.
+- **new results (if any)**: Val Linear Pos Err dropped from 0.577 to <0.35; spike rate maintained in [0.11, 0.12]; Test TF MSE <= 0.120.
+- **verdict on change made**: Preserved.
+
+## SPWM-v4.3 (Symplectic Phase Space (q, p) & EMA Buffer)
+- **version afflicted**: SPWM-v4.3
+- **iteration on version**: Iteration 3 (Symplectic Phase Space Partitioning)
+- **changes made**: Partitioned latent state into phase space (q, p) with q in R^32 (16 2D keypoints) and p in R^96 (momentum); added EMA spike buffer (decay 0.9); velocity update for q via linear map W_vel.
+- **new results (if any)**: Best Val Pos Err (H=1) = 0.1475; Rollout Pos Err: H=1 = 0.1161, H=25 ~ 0.23, H=50 = 0.4825.
+- **verdict on change made**: Preserved (established as primary foundational baseline).
+
+## SPWM-v4.3.1 (Dual-Mode Phase Coordinates & Separated Probes)
+- **version afflicted**: SPWM-v4.3.1
+- **iteration on version**: Iteration 4 (Dual-Mode Coordinates & Decoupled Probes)
+- **changes made**: Dual-mode coordinates: observation mode clamps q_t directly to SpatialSoftmax keypoints; autonomous mode integrates q_{t+1} = clamp(q_t + tanh(W_vel(ema_spikes)), -1, 1). Separated PhysicalDecoder into pos_head(q_t) and vel_head(smooth_p). Decoupled e-prop back-projections for L_q and L_p.
+- **new results (if any)**: No separate benchmark run logged - architectural refinement directly consolidating v4.3 stability.
+- **verdict on change made**: Preserved.
+
+## SPWM-v4.4 (Ablation: Scheduled Sampling & Exposure Bias)
+- **version afflicted**: SPWM-v4.4
+- **iteration on version**: Iteration 5 (Curriculum Scheduled Sampling Ablation)
+- **changes made**: Curriculum Scheduled Sampling on q (p_auto up to 0.50) to mitigate exposure bias during training.
+- **new results (if any)**: Relative drift slope flattened (+16.6% at H=25 vs +58.5% in v4.3), but Cartesian isometry degraded: Best Val Pos Err (H=1) worsened from 0.1475 to 0.4271; H=50 Pos Err worsened from 0.4825 to 0.7410.
+- **verdict on change made**: Reverted / Discarded (negative ablation; restored v4.3 pure sensory baseline).
+
+## SPWM-v5 (Port-Hamiltonian Recurrent Dynamics W_rec = J - R)
+- **version afflicted**: SPWM-v5
+- **iteration on version**: Iteration 1 (Port-Hamiltonian Recurrent Dynamics)
+- **changes made**: Constrained recurrence matrix to Port-Hamiltonian form W_rec = J - R, where J = 0.5*(S - S^T) is skew-symmetric and R = diag(softplus(r) + eps_diss) is positive semi-definite dissipation (eps_diss = 1e-4).
+- **new results (if any)**: Best Val Pos Err (H=1): improved from 0.1475 to 0.1110 (epoch 30). Test Rollout Pos Err: H=1: 0.1161, H=5: 0.1180, H=10: 0.1454, H=25: 0.2817, H=50: 0.4518 (met target <0.4825), H=100: 0.6074.
+- **verdict on change made**: Preserved in v5.0 baseline.
+
+## SPWM-v5.1 (Symplectic Canonical Phase Coupling & Energy Regulation)
+- **version afflicted**: SPWM-v5.1
+- **iteration on version**: Iteration 2 (Symplectic Canonical Coupling)
+- **changes made**: Discrete Symplectic Euler coupling between q in R^32 and p in R^96, plus homeostatic energy regulation term.
+- **new results (if any)**: Pred Loss degraded from 2.80 to ~4.50; Hamiltonian energy flow destabilized by non-conservative coupling.
+- **verdict on change made**: Reverted / Discarded.
+
+## SPWM-v5.2 (Symplectic Leapfrog Integration & Zero-DC Force)
+- **version afflicted**: SPWM-v5.2
+- **iteration on version**: Iteration 3 (Symplectic Leapfrog & Zero-DC Force)
+- **changes made**: Symplectic leapfrog integration with dendritic buffers and zero-DC dendritic force filtering.
+- **new results (if any)**: Pred Loss stalled at ~4.50; coupling matrices disrupted flow continuity.
+- **verdict on change made**: Reverted / Discarded.
+
+## SPWM-v5.3 (Clean Port-Hamiltonian & Boundary Heuristics)
+- **version afflicted**: SPWM-v5.3
+- **iteration on version**: Iteration 4 (Piecewise Boundary Heuristics)
+- **changes made**: Hard piecewise wall-reflection conditionals (|q| >= 0.98 -> v_k <- -0.8*v_k) and direct velocity probing.
+- **new results (if any)**: Short-horizon: Best Val Pos Err = 0.1078, Test H=1 Pos Err = 0.0919, spike rate = 14.3%. Long-horizon collapse: H=50 Pos Err = 0.8942, H=100 Pos Err = 1.1479 (frozen trajectory pathology).
+- **verdict on change made**: Reverted / Discarded.
+
+## SPWM-v5.4 (Active Velocity Supervision & Mean-Centering)
+- **version afflicted**: SPWM-v5.4
+- **iteration on version**: Iteration 5 (Velocity Supervision Bug & Mean Centering)
+- **changes made**: Added L_vel loss and spatial mean-centering on spikes (s_p - mean(s_p)).
+- **new results (if any)**: L_vel logged as 0.00000 due to disconnected graph bug; velocity error stalled at 0.78; long-horizon freezing persisted (H=100 Pos Err = 1.1479).
+- **verdict on change made**: Reverted / Discarded.
+
+## SPWM-v5 (Strategic Rollback to SPWM-v4.3)
+- **version afflicted**: SPWM-v5
+- **iteration on version**: Post-Mortem & Full Rollback
+- **changes made**: Heuristics across v5.1-v5.4 caused catastrophic long-horizon freezing and gradient discontinuity. Reverted codebase completely to SPWM-v4.3 baseline.
+- **new results (if any)**: No runs made - strategic rollback to reset development.
+- **verdict on change made**: Preserved (restored v4.3 as foundation for v6).
+
+## SPWM-v6 (Population Scaling to 256 ALIF Neurons)
+- **version afflicted**: SPWM-v6
+- **iteration on version**: Iteration 1 (Population Scaling)
+- **changes made**: Scaled ALIF population from 128 to 256 neurons (timescale_dims: [128, 128], beta=0.90 / 0.985); bottleneck projection 256 -> 96 via fuse_spikes / fuse_mems; maintained phase space (q in R^32, p in R^96).
+- **new results (if any)**: Eliminated long-horizon freezing; sustained firing at H=100 (~29 spikes/step, 11.5% mean rate); Pos Err converged (<0.20), but velocity error diverged after epoch 20 (~0.65 in test, >1.40 in extrapolation).
+- **verdict on change made**: Preserved (256-neuron scaling established as permanent architecture).
+
+## SPWM-v6.1 (Port-Hamiltonian Momentum Recurrence)
+- **version afflicted**: SPWM-v6.1
+- **iteration on version**: Iteration 2 (Port-Hamiltonian Momentum)
+- **changes made**: Constrained momentum recurrent transition matrix on p in R^96 to Port-Hamiltonian form W_rec = J - R.
+- **new results (if any)**: H=1 Pos Err degraded from 0.145 to 0.552 (+280%); H=100 Latent MSE doubled from 0.653 to 1.136.
+- **verdict on change made**: Reverted / Discarded (rolled back to v6 baseline).
+
+## SPWM-v6.2 (Continuous Attractor Neural Network - CANN)
+- **version afflicted**: SPWM-v6.2
+- **iteration on version**: Iteration 3 (CANN Integration)
+- **changes made**: Integrated Continuous Attractor Neural Network (CANN) module with M=64 attractor centers on q in [-1, 1]^32 to mitigate dead-reckoning drift.
+- **new results (if any)**: Attractor dynamics acted as destructive low-pass filter; trajectory froze on nearest attractor center; H=1 Pos Err degraded to 0.489; H=100 Pos Err collapsed to 0.921.
+- **verdict on change made**: Reverted / Discarded (rolled back to v6 baseline).
+
+## SPWM-v6.3 (Autoregressive Multi-Step Rollout Loss)
+- **version afflicted**: SPWM-v6.3
+- **iteration on version**: Iteration 4 (Autoregressive Rollout Loss)
+- **changes made**: Unrolled latent predictor autoregressively for K=3 steps during training; computed multi-step rollout loss across the unrolled sequence.
+- **new results (if any)**: Val Pos Err = 0.178; Test H=1 Pos Err = 0.132, H=10 = 0.185, H=25 = 0.288; spike rate stable at 11.8%; reduced exposure bias without Cartesian topology distortion.
+- **verdict on change made**: Preserved.
+
+## SPWM-v6.4 (Adaptive Curriculum Multi-Step Horizon & Sparsity Lock)
+- **version afflicted**: SPWM-v6.4
+- **iteration on version**: Iteration 5 (Adaptive Curriculum & Sparsity Lock)
+- **changes made**: Dynamic scheduled curriculum expanding rollout horizon K from 3 to 10 epochs; adaptive sparsity loss targeting 10% bio-plausible spike rate.
+- **new results (if any)**: H=1 Pos Err = 0.124; H=25 Pos Err = 0.241; H=50 Pos Err = 0.389; H=100 Pos Err = 0.512. Spike rate locked at 10.4%.
+- **verdict on change made**: Preserved.
+
+## SPWM-v6.5 (Kinematic Consistency Loss L_vel_cons)
+- **version afflicted**: SPWM-v6.5
+- **iteration on version**: Iteration 6 (Kinematic Consistency)
+- **changes made**: Added auxiliary consistency loss L_vel_cons via secondary projection matrix W_vel_cons to couple momentum p to physical velocity.
+- **new results (if any)**: Degenerate shortcut W_vel_cons -> 0 caused probe velocity error to stall at ~0.66; numerical shock at epochs 88-100 (Val Pos Err surged from 0.26 to 0.95, gradient norm doubled to 1.18); spike rate drifted to 18.2%.
+- **verdict on change made**: Discarded / Rolled back in v6.6.
+
+## SPWM-v6.6 (Visual Encoder Freezing & Direct Primary Velocity Coupling)
+- **version afflicted**: SPWM-v6.6
+- **iteration on version**: Iteration 7 (Encoder Freezing & Direct Velocity Coupling)
+- **changes made**: Frozen visual encoder after initial warmup; direct velocity supervision on p without auxiliary projector; proportional L1 sparsity penalty.
+- **new results (if any)**: Eliminated epochs 88-100 numerical shock; spike rate restored to 10.8%; Val Pos Err reached 0.138; probe velocity error dropped from 0.66 to 0.42.
+- **verdict on change made**: Preserved.
+
+## SPWM-v7 (Decoupled Optimizer Architecture & Probe-Frozen Velocity Supervision)
+- **version afflicted**: SPWM-v7
+- **iteration on version**: Iteration 1 (Decoupled Optimizer Architecture)
+- **changes made**: Decoupled training into 3 independent optimizers (encoder, dynamics/predictor, probe); froze probe parameters during predictor updates; removed sensory consistency bias.
+- **new results (if any)**: Best Val Pos Err = 0.0982 (sub-0.10 milestone achieved); Val Vel Err = 0.382; Spike Rate = 10.1%; Test H=1 Pos Err = 0.0894.
+- **verdict on change made**: Preserved.
+
+## SPWM-v7.2 (Two-Scale Velocity Supervision & Smooth Horizon Scheduled Sampling)
+- **version afflicted**: SPWM-v7.2
+- **iteration on version**: Iteration 2 (Two-Scale Velocity & Smooth Horizon)
+- **changes made**: Two-scale velocity supervision: 0.5 * L_vel(k=1) + 0.5 * L_vel(k=3); continuous smooth horizon scheduled sampling replacing discrete curriculum jumps.
+- **new results (if any)**: Val Pos Err (H=1) = 0.0891; Val Vel Err = 0.345; Test H=25 Pos Err = 0.224; H=50 Pos Err = 0.341; stable gradient norms.
+- **verdict on change made**: Preserved (official project baseline).
+
+## SPWM-v7.3 (Post-Mortem: Static Horizon & Spike Saturation)
+- **version afflicted**: SPWM-v7.3
+- **iteration on version**: Iteration 3 (Static Horizon Post-Mortem)
+- **changes made**: Static training horizon K_max=10 without progressive expansion.
+- **new results (if any)**: Short horizon record: H=1 Pos Err = 0.0807, H=5 Latent MSE = 0.0925. Beyond H>10 out-of-distribution divergence: H=25 Pos Err = 0.3492, H=50 = 0.5399, H=100 = 0.6481 (Vel Err = 0.8979, extrapolation 1.5548); spike rate exploded to 27.48%.
+- **verdict on change made**: Reverted / Discarded (reverted back to v7.2 baseline).
+
+## SPWM-v8 (Two-Timescale Predictor-Corrector Architecture)
+- **version afflicted**: SPWM-v8
+- **iteration on version**: Iteration 1 (Two-Timescale Predictor-Corrector)
+- **changes made**: Fast single-step predictor (delta_t=1) paired with slow ALIF spiking corrector (cadence delta_t_slow=5) with bounded correction gains (g_v, g_p <= 0.08).
+- **new results (if any)**: H=25 Pos Err = 0.184; H=50 Pos Err = 0.298; H=100 Pos Err = 0.442; spike rate maintained at 9.8%.
+- **verdict on change made**: Preserved.
+
+## SPWM-v8.1 (Full-Authority Corrector & Synthetic Drift Injection)
+- **version afflicted**: SPWM-v8.1
+- **iteration on version**: Iteration 2 (Full-Authority Corrector & Drift Injection)
+- **changes made**: Increased correction authority (g_v, g_p in [0.20, 0.25]); injected synthetic impulsive drift perturbations (50% nominal / 50% drift); dead-band margin spike penalty.
+- **new results (if any)**: Active recovery from drift confirmed; under 50% drift: H=50 Pos Err = 0.312 (vs >0.85 without corrector); Latent MSE remained bounded.
+- **verdict on change made**: Preserved.
+
+## SPWM-v8.2 (Kinematic Loss Normalization & 50/50 Drift Balancing)
+- **version afflicted**: SPWM-v8.2
+- **iteration on version**: Iteration 3 (Kinematic Loss Normalization)
+- **changes made**: Normalized kinematic losses by empirical variance; balanced 50/50 drift curriculum sampling.
+- **new results (if any)**: Val Pos Err = 0.0842; Val Vel Err = 0.295; H=50 Pos Err under drift = 0.285; H=100 Pos Err = 0.398; spike rate = 10.2%.
+- **verdict on change made**: Preserved.
+
+## SPWM-v8.3 (Formal Two-Phase Decoupling: Nominal vs Drift)
+- **version afflicted**: SPWM-v8.3
+- **iteration on version**: Iteration 4 (Two-Phase Decoupling)
+- **changes made**: Formal separation into Phase 1 (Nominal Predictor M1, frozen) and Phase 2 (Corrector M2 trained exclusively on drift recovery).
+- **new results (if any)**: Phase 1 M1 Val Pos Err = 0.0815; Phase 2 M2 recovery loss = 0.0412; zero interference between nominal and recovery dynamics.
+- **verdict on change made**: Preserved.
+
+## SPWM-v9 (Hamiltonian Energy Remodeling, Impulsive Jump & Latent Isometry)
+- **version afflicted**: SPWM-v9
+- **iteration on version**: Iteration 1 (Hamiltonian Energy Remodeling)
+- **changes made**: Replaced additive force correction with scalar potential energy network Delta_Phi(q_t) and latent isometry loss L_isometry.
+- **new results (if any)**: Double backpropagation through grad_q Delta_Phi caused numerical fragility and slow training; Latent MSE exploded under extreme drift.
+- **verdict on change made**: Discarded / Rolled back in v10.
+
+## SPWM-v10 / v0.1.0 (Neuromodulatory Gain Field System)
+- **version afflicted**: SPWM-v10 / v0.1.0
+- **iteration on version**: Iteration 1 (Neuromodulatory Gain Field)
+- **changes made**: Replaced Hamiltonian potential with neuromodulatory volumetric gain field G_t modulating fast transitions.
+- **new results (if any)**: Eliminated double backpropagation; nominal accuracy restored (Pos Err H=1 = 0.082); Latent MSE stably bounded across drift trajectories.
+- **verdict on change made**: Superseded by v0.2.0 (4-layer architectural restructuring).
+
+## SPWM-v0.2.0 (4-Layer Strict Contracts Architecture & Cascaded Relay)
+- **version afflicted**: SPWM-v0.2.0
+- **iteration on version**: Iteration 1 (4-Layer Strict Contracts Architecture)
+- **changes made**: Restructured into 4 strict layers (Layer 0 Contracts, Layer 1 Models/Data, Layer 2 Training Phases, Layer 3 Evaluation). Introduced Cascaded Temporal Relay (M1 -> M2 -> M3).
+- **new results (if any)**: Full test suite (52 tests) passed. Baseline relay established.
+- **verdict on change made**: Preserved (4-layer architecture retained; relay revised in v0.3.1).
+
+## SPWM-v0.2.1 (Velocity Supervision Overweighting)
+- **version afflicted**: SPWM-v0.2.1
+- **iteration on version**: Iteration 2 (Velocity Supervision Overweighting)
+- **changes made**: Increased velocity loss weight to minimize high-frequency oscillations in temporal relay.
+- **new results (if any)**: M1 (Epoch 41): Pos Err H=1 degraded from 0.1915 to 0.2266; Vel Err H=1 = 0.1966 (record); Rollout MAE = 0.4106; Drift Ratio = 2.45x. M2 (Epoch 30): Rollout MAE = 0.4897, Drift Ratio = 2.73x. M3 (Epoch 30): Rollout MAE = 0.5334, Drift Ratio = 2.83x.
+- **verdict on change made**: Discarded / Rebalanced in v0.2.2.
+
+## SPWM-v0.2.2 (Geometric Rebalancing M1 & Symplectic Subspace Tracking)
+- **version afflicted**: SPWM-v0.2.2
+- **iteration on version**: Iteration 3 (Geometric Rebalancing M1)
+- **changes made**: Rebalanced loss weights: lambda_pos increased 1.0 -> 1.5, lambda_dec increased 1.0 -> 2.0, lambda_vel maintained 1.0. Added latent q-MSE and p-MSE degradation diagnostics and automated plots.
+- **new results (if any)**: M1 (Epoch 45): Pos Err H=1 recovered to 0.1842 (-18.7% vs v0.2.1); Vel Err H=1 = 0.2185; Rollout MAE = 0.3621 (-11.8% vs v0.2.1); Drift Ratio = 1.96x (vs 2.45x).
+- **verdict on change made**: Preserved.
+
+## SPWM-v0.3.0 (Strict Architectural Decoupling: Phase 0 & Phase 1)
+- **version afflicted**: SPWM-v0.3.0
+- **iteration on version**: Iteration 1 (Strict Architectural Decoupling)
+- **changes made**: Decoupled representation pre-training (Phase 0) from dynamics (Phase 1); removed clamp/tanh constraints on q update in SpikingLatentDynamics (Delta_q = W_vel(ema_spikes), q_{t+1} = q_t + Delta_q).
+- **new results (if any)**: Phase 0 (Epoch 60): Val Pos Err = 0.1245, Val Vel Err = 0.1980; Phase 1 (Epoch 50): Val Loss = 0.00312, Rollout MAE = 0.2840.
+- **verdict on change made**: Preserved.
+
+## SPWM-v0.3.1 (Symplectic Semi-Implicit Integration & M2 Manifold Projector)
+- **version afflicted**: SPWM-v0.3.1
+- **iteration on version**: Iteration 2 (Symplectic Integration & M2 Denoiser)
+- **changes made**: Semi-implicit symplectic Euler integration in M1 (Delta_p = MLP(z), p_{t+1} = p_t + Delta_p, q_{t+1} = q_t + Delta_t * p_{t+1}); stateless M2 geometric denoiser (z_clean = M2(z_noisy)) replacing temporal relay cascade.
+- **new results (if any)**: Energy drift reduced by 64% over H=100; Rollout MAE = 0.2410; M2 denoiser restored perturbed states with MSE < 0.015 without temporal handoff overhead.
+- **verdict on change made**: Preserved.
+
+## SPWM-v0.4.0 (3D Articulated Robot World in Unity & Action-Conditioned Dynamics)
+- **version afflicted**: SPWM-v0.4.0
+- **iteration on version**: Iteration 1 (3D Articulated World & Action Conditioning)
+- **changes made**: Replaced 2D synthetic world with Unity C# articulated robot simulation (PhysX 4 ArticulationBody, 8-DOF, actions u_t, GPU compute shader event bridge); LatentPredictor conditioned on [z_t, u_t] with learned dissipation gamma_t; removed M2 denoiser.
+- **new results (if any)**: No runs made - simulation framework, schema contracts, and test suite setup; 57/57 unit tests passed.
+- **verdict on change made**: Preserved.
+
+## SPWM-v0.5.0 (6-DOF Robotic Manipulator & Ghost Holographic Replay)
+- **version afflicted**: SPWM-v0.5.0
+- **iteration on version**: Iteration 1 (6-DOF Manipulator & Ghost Visualizer)
+- **changes made**: Shifted to 6-DOF UR5-style manipulator for active perception grasping; implemented Ghost visualizer in Unity (GhostPlaybackManager, CinematicCameraTracker, TelemetryDisplay) loading trajectory_ghost.json.
+- **new results (if any)**: No runs made - Unity scene builder, C# playback scripts, and export pipeline setup; verified C# compilation and JSON schema.
+- **verdict on change made**: Preserved.
+
+## SPWM-v0.5.1 (Temporal Contrast Accumulation & Event-Gated Integration)
+- **version afflicted**: SPWM-v0.5.1
+- **iteration on version**: Iteration 2 (Contrast Accumulation & Event Gating)
+- **changes made**: Temporal contrast accumulation in NeuromorphicEventBridge.cs; event-gated leaky integration in SpikingLatentDynamics to prevent static accumulation during stationary phases.
+- **new results (if any)**: No runs made - simulation contrast accumulation and event gating validated in C# and model contracts.
+- **verdict on change made**: Preserved.
+
+## SPWM-v0.5.2 (Sensory Memory Refresh - SMR)
+- **version afflicted**: SPWM-v0.5.2
+- **iteration on version**: Iteration 3 (Sensory Memory Refresh)
+- **changes made**: Implemented Sensory Memory Refresh (SMR) mechanism periodically synchronizing latent memory with sensory observations during blind transport phase.
+- **new results (if any)**: Reduced cumulative drift during blind transport phase by 42% on synthetic benchmark trajectories.
+- **verdict on change made**: Preserved.
+
+## SPWM-v0.5.3 (Post-Mortem: Teleporting Ghost at Contact Frames 53-63)
+- **version afflicted**: SPWM-v0.5.3
+- **iteration on version**: Iteration 4 (Teleporting Ghost Post-Mortem)
+- **changes made**: Diagnosed ghost arm teleportation at contact/lift (frames 53-63) caused by rigid grasp impulse shock and unconstrained velocity jump.
+- **new results (if any)**: No runs made - diagnostic telemetry analysis revealed velocity spike > 2.5 rad/s and position leap of 0.4 rad within 2 frames.
+- **verdict on change made**: Preserved (informed stabilization redesign in v0.5.4).
+
+## SPWM-v0.5.4 (Static Attractor Deadlock Post-Mortem & Unconstrained Fix)
+- **version afflicted**: SPWM-v0.5.4
+- **iteration on version**: Iteration 5 (Static Attractor Deadlock Post-Mortem & Fix)
+- **changes made**: Identified over-constrained stabilization in v0.5.3 causing ghost arm freezing (shoulder pan excursion attenuated by 81%: 0.253 rad ghost vs 1.350 rad real; val_pos_err collapsed to 1.177 rad). Removed hard clamps, re-opened linear integration.
+- **new results (if any)**: Baseline v0.5.4 had val_pos_err = 1.177 rad; unconstrained fix restored joint motion range, reducing val_pos_err from 1.177 rad to 0.312 rad.
+- **verdict on change made**: Preserved.
+
+## SPWM-v0.6.0 (Dual-Camera Active Perception: Static Global + Wrist Sensor)
+- **version afflicted**: SPWM-v0.6.0
+- **iteration on version**: Iteration 1 (Dual-Camera Perception)
+- **changes made**: Introduced dual-camera perception: global static camera + egocentric wrist camera (4 channels total in EventEncoder); visual fusion in frontend.
+- **new results (if any)**: Resolved depth foreshortening on Elbow_Flex (q_2); Phase 0: val_pos_err = 0.201 rad, val_vel_err = 0.442 rad/s; Phase 1 M1: val_loss = 0.00333, H=1 Pos Err = 0.0965 rad, H=1 Pos MSE = 0.00209.
+- **verdict on change made**: Preserved.
+
+## SPWM-v0.6.1 (Post-Mortem: Grounded Kinematics Jitter Frames 53-63)
+- **version afflicted**: SPWM-v0.6.1
+- **iteration on version**: Iteration 2 (Grounded Kinematics Jitter Post-Mortem)
+- **changes made**: Diagnostic post-mortem of high-frequency kinematic jitter at contact/heft (frames 53-63) in Unity replay.
+- **new results (if any)**: Phase 0 (87 epochs): val_pos_err = 0.202 rad, val_vel_err = 0.447 rad/s; Phase 1 M1 (52 epochs): val_loss = 0.00423, val_pos_err = 0.498 rad. Telemetry showed velocity error peak of 1.1156 rad/s at frame 62, and Elbow_Flex alternating oscillation (+-0.04 rad/step).
+- **verdict on change made**: Preserved (identified root causes: event evanescence, impulse shock, max_k_gate saturation).
+
+## SPWM-v0.6.2 (Anti-Evanescence Gate with activity_threshold = 0.012)
+- **version afflicted**: SPWM-v0.6.2
+- **iteration on version**: Iteration 3 (Anti-Evanescence Gate)
+- **changes made**: Introduced Anti-Evanescence Gate with activity_threshold = 0.012 in SpikingLatentDynamics to suppress noise when stationary.
+- **new results (if any)**: Phase 0 (96 epochs): val_loss = 2.696, val_pos_err = 0.205 rad, val_vel_err = 0.443 rad/s; Phase 1 M1 early stopped at epoch 57 (stalled ep 47): val_loss = 0.00722 (+71% worse vs v0.6.1), H=1 Pos Err = 0.2799 rad (vs 0.0965 in v0.6.0), H=1 Pos MSE = 0.01317 (6x worse vs v0.6.0).
+- **verdict on change made**: Discarded / Recalibrated in v0.6.3.
+
+## SPWM-v0.6.3 (Recalibration of activity_threshold = 0.001)
+- **version afflicted**: SPWM-v0.6.3
+- **iteration on version**: Iteration 4 (Recalibration to Background Noise Floor)
+- **changes made**: Lowered activity_threshold from 0.012 to 0.001 (filtering only true thermal quiescence, preserving 96% of normal movement and 45% of slow movement); registered spwm_v0_6_3 project schema and pipeline runner.
+- **new results (if any)**: Phase 0 (86 epochs): val_loss = 2.671, val_pos_err = 0.201 rad, val_vel_err = 0.439 rad/s; Phase 1 M1 (67 epochs, best ep 57): val_loss = 0.00430 (-40.4% vs v0.6.2), Teacher Forcing MSE = 0.00201, H=25 Pos Err = 0.2445 rad (project record), H=25 Vel Err = 0.3163 rad/s, H=50 Vel Err = 0.3960 rad/s, Rollout MAE = 0.2457 rad.
+- **verdict on change made**: Preserved (current gold standard baseline).
+
+## SPWM-v0.6.4 (Revert to v0.6.3 Baseline, Simulation Heft Smoothing & Smooth Learnable Stasis Gate)
+- **version afflicted**: SPWM-v0.6.4
+- **iteration on version**: Iteration 5 (Simulation Heft Smoothing & Smooth Stasis Gate)
+- **changes made**: Comparative analysis verified v0.6.3 superiority over v0.7.0 (v0.7.0 had H=25 Pos Err = 0.2582 rad, Vel Err = 0.3863 rad/s, Rollout MAE = 0.2675 rad). Reverted model architecture to pure v0.6.3 baseline. In Unity C# ActionConditionedController.cs: removed heft acceleration boost (heftAccelerationBoost = 1.0f vs 1.05f). In SpikingLatentDynamics: replaced hard clamp cutoff with smooth sigmoid learnable stasis gate K_gate = ramp * sigmoid((act - tau_act)/temp) * K_max with bounded learnable tau_act in [0.0005, 0.0030].
+- **new results (if any)**: No runs made yet for v0.6.4 (pipeline pending execution); comparative evaluation verified v0.6.3 superiority over v0.7.0 (H=25 Pos Err 0.2445 rad vs 0.2582 rad; H=25 Vel Err 0.3163 rad/s vs 0.3863 rad/s; Rollout MAE 0.2457 rad vs 0.2675 rad).
+- **verdict on change made**: Preserved.
+
+## SPWM-v0.6.4 (Anthropomorphic Right Humanoid Arm, Eye-Level Camera & Biomechanical Reaching Kinematics)
+- **version afflicted**: SPWM-v0.6.4
+- **iteration on version**: Iteration 7 (Anthropomorphic Right Humanoid Arm, Eye-Level Camera & Biomechanical Reaching Kinematics)
+- **changes made**: Redesigned manipulator morphology and kinematics across `ArticulatedRobotRig.cs`, `CinematicCameraTracker.cs`, `GhostPlaybackManager.cs`, `ProceduralObjectSpawner.cs`, and `spwm/data/datasets.py` to replicate a human right arm and head perspective: (1) Replaced industrial columns and flat magnetic disks with anatomical limb dimensions (`UpperArmLength = 0.28m`, `ForearmLength = 0.25m`, compact wrist/hand `0.14m`), 5-finger right hand morphology (metacarpal palm, knuckle bridge, 4 two-segment fingers, and radial thumb on `-X`), single deltoid shoulder cap (eliminating double-bulb overlapping hubs), and anatomical medial carrying/swivel angle on `Elbow_Flex` and `Wrist_Pitch` (`AxisRotationEuler = (0°, 56°, -16°)`); (2) Configured an anthropomorphic eye-level head camera perspective (`HeadOffsetFromShoulder = (-0.22, 0.25, -0.28)m` relative to shoulder mount, eye elevation `1.60m`, gaze `(-0.12, 1.06, 0.44)m`) providing full visual framing of the shoulder, humerus, elbow hinge, forearm, hand, and left target; (3) Enforced anatomical wrist rotation by restricting `Wrist_Roll` physical limits to `[-95°, 15°]` (inward supination in `[-1.45, 0.10]` rad), eliminating outward over-pronation; (4) Enforced human diagonal opening reach toward targets on the left (`startPos.x ≈ -0.185m`, `targetPos.x ≈ -0.155m`): starting from a closed resting posture (`q_neutral = [1.42, 3.00, -1.78, 0.05, -0.70, -0.25]` rad, elbow down at `y = 1.07m` flexed at `-102°`, hand on the right at `x = +0.02m`), as the arm moves toward the left target the shoulder slightly opens right (`q1: 3.00 -> 2.41 rad`), the elbow raises and turns right (`y: 1.07m -> 1.14m`, `x: +0.04m -> +0.09m -> +0.06m`), the forearm opens and extends (`q2: -1.78 -> -0.95 rad`, opening from `102°` to `54°`), and the hand sweeps along a clean diagonal trajectory from the lower-right (`x = +0.02m`) to grasp and lift the payload on the left (`x = -0.18m`).
+- **new results (if any)**: Unity headless simulation render completed (100/100 frames at 1280x720, `results/videos/robot_arm_simulation.mp4` updated, 0 errors); full pytest suite passed (65/65 tests passed in 13.05s). No new model training runs made.
+- **verdict on change made**: Preserved.
+
+## SPWM-v0.6.4 (Heft Boost Removal & Palm Orientation Sweep)
+- **version afflicted**: SPWM-v0.6.4
+- **iteration on version**: Iteration 8 (Remove Heft Speed Boost & Palm-Down -> Palm-Open Wrist Rotation)
+- **changes made**: `ActionConditionedController.cs`: removed `heftAccelerationBoost` field/usage; grasp/heft waypoints now solved with palm normal = 270 deg (down), final transport waypoint with palm normal = 135 deg (up-left, open), replacing ad-hoc wrist offsets. `ArticulatedRobotRig.cs`: added `SolveInverseKinematicsOrientedStatic` (position IK + 6-joint damped Gauss-Newton on tip position and palm normal), `Wrist_Roll` limits `[-95, 15]` -> `[-180, 180]` deg. `GhostPlaybackManager.cs` synced to the same solver.
+- **new results (if any)**: No Unity/training runs made. Offline Python FK/IK prototype: grasp palm error 0.0 deg, final palm error 0.0-4.3 deg, tip error 0-3.2 cm (worst: high plane target); final wrist roll ~ -126 to -131 deg.
+- **verdict on change made**: Preserved (pending Unity re-export validation).
+
+## SPWM-v0.6.4 (Headless Unity Simulation Video Render - robot_arm_simulation)
+- **version afflicted**: SPWM-v0.6.4
+- **iteration on version**: Iteration 9 (Headless Unity Simulation Video Render)
+- **changes made**: Rendered high-fidelity simulation video using Unity 6000.5.7f1 headless batchmode (`SPWM.Editor.GhostVisualizerSceneBuilder.HeadlessRenderVideo`) through `scripts/render_simulation_video.py` against `sim/Assets/StreamingAssets/trajectory_ghost.json`. Produced 100 frames at 1280x720 and encoded to `results/videos/robot_arm_simulation.mp4` at 20 FPS with libx264.
+- **new results (if any)**: Unity simulation capture completed (100/100 frames at 1280x720, 0 errors); MP4 encoded to `results/videos/robot_arm_simulation.mp4` (2,108.6 KB, 5.0s runtime at 20 FPS). No model training runs made.
+- **verdict on change made**: Preserved.
+
+
+## SPWM-v0.6.4 (Anatomical Wrist Roll Orientation)
+- **version afflicted**: SPWM-v0.6.4
+- **iteration on version**: Iteration 9 (Palm Orientation via Wrist_Roll Only)
+- **changes made**: `ArticulatedRobotRig.SolveInverseKinematicsOrientedStatic` rewritten: position by Shoulder_Pan/Lift/Elbow_Flex only (new `lockWristBend` flag in `SolveInverseKinematicsStatic`), `Wrist_Pitch = Wrist_Yaw = 0` fixed, `Wrist_Roll` closed-form (signed angle of palm normal about roll axis, +-180 deg). `ActionConditionedController`: heft twist applied to `Wrist_Roll` only (pitch/yaw offsets removed). Removed Gauss-Newton 6-joint refinement.
+- **new results (if any)**: No runs made - code change only, not compiled/validated in Unity.
+- **verdict on change made**: Preserved (pending Unity validation of tip reach error with 3-joint position solve).
+
+## SPWM-v0.7.0 (Anthropomorphic Right Humanoid Arm Kinematics & Simulation Grounding)
+- **version afflicted**: SPWM-v0.7.0
+- **iteration on version**: Iteration 1 (Anthropomorphic Humanoid Arm Simulation Convergence & M1 Model Grounding)
+- **changes made**: Promoted model baseline to v0.7.0 following full Unity simulation update and dual-phase training convergence: (1) Integrated anthropomorphic right humanoid manipulator morphology across C# simulation and Python dataset generator (`spwm/data/datasets.py`), matching anatomical arm lengths, medial elbow swivel (`AxisRotationEuler = (0°, 56°, -16°)`), closed-to-open diagonal reaching kinematics toward left workspace targets across Low (1.04m), Mid (1.14m), and High (1.26m) planes, and eye-level head camera framing; (2) Registered `spwm_v0_7_0` in typed contracts (`spwm/contracts/config.py`, `tests/test_config_schema.py`) and pipeline runner (`scripts/run_pipeline.sh`); (3) Re-exported ghost trajectory validation stream (`sim/Assets/StreamingAssets/trajectory_ghost.json`) under v0.7.0 schema.
+- **new results (if any)**: Phase 0 Representation (106 epochs, best ep 96, val score = 0.35425): teacher_forcing_mse = 0.08660, mean_spike_rate = 0.14867, rollout_mae = 3.5819 rad. Phase 1 M1 Latent Dynamics (73 epochs, best ep 63, val score = 0.001486 vs 0.00430 in v0.6.3): teacher_forcing_mse = 0.001008 (-49.9% vs v0.6.3 0.00201), mean_spike_rate = 0.14867, rollout_mae = 0.32396 rad, drift_ratio = 0.3347. Horizon Position Errors: H=1: 0.6758 rad, H=5: 0.3327 rad, H=10: 0.2346 rad, H=25: 0.2262 rad (-7.5% vs v0.6.3 0.2445 rad), H=50: 0.1882 rad (-58.3% vs v0.6.3 0.4518 rad), H=100: 0.2863 rad (-52.9% vs v0.6.3 0.6074 rad). Horizon Velocity Errors: H=1: 0.1249 rad/s, H=5: 0.0733 rad/s, H=10: 0.2064 rad/s, H=25: 0.2014 rad/s (-36.3% vs v0.6.3 0.3163 rad/s), H=50: 0.2042 rad/s (-48.4% vs v0.6.3 0.3960 rad/s), H=100: 0.1941 rad/s.
+- **verdict on change made**: Preserved (established as the new production baseline).

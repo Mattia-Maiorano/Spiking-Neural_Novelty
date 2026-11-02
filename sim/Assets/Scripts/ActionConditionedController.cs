@@ -24,7 +24,7 @@ namespace SPWM.Robotics
     }
 
     /// <summary>
-    /// Sequential Waypoint PD Controller for the 6-DOF Industrial Manipulator (SPWM-v0.5.0).
+    /// Sequential Waypoint PD Controller for the 6-DOF Industrial Manipulator (SPWM-v0.6.4).
     /// Outputs 6-dimensional continuous motor vectors u_t in [-1, 1]^6 (normalized by MaxJointAngleRad = 2.60 rad)
     /// executing a deliberate 4-stage industrial grasping workflow without any oscillatory or walking artifacts:
     ///   - Phase 0 (The Neutral Start): Begins every episode at a clean, poised neutral resting posture.
@@ -73,13 +73,19 @@ namespace SPWM.Robotics
         [SerializeField] private float maxApproachKdMult = 1.45f;
 
         [Header("Sensory Heft Sharp Upward Lift")]
-        [SerializeField] private float heftLiftMeters = 0.12f;
-        [SerializeField] private Vector3 heftWristTwistRad = new Vector3(0.24f, -0.28f, 0.36f);
-        [SerializeField] private float heftAccelerationBoost = 1.05f;
+        [SerializeField] private float heftLiftMeters = 0.10f;
+        [SerializeField] private Vector3 heftWristTwistRad = new Vector3(0.08f, -0.05f, -0.20f);
+
+        [Header("Hand Orientation (palm normal polar angle in frontal X-Y plane)")]
+        [Tooltip("270 deg = palm facing straight down at grasp.")]
+        [SerializeField] private float graspPalmAngleDeg = 270f;
+        [Tooltip("135 deg = palm open, facing up and to the left at the final pose.")]
+        [SerializeField] private float finalPalmAngleDeg = 135f;
 
         private ArticulatedRobotRig _rig;
         private ProceduralObjectSpawner _spawner;
         private float[] _currentActionVector;
+        private float[] _currentPosTarget;   // reference joint position (rad) fed to the drive
         private float[] _currentVelTarget;   // reference joint velocity (rad/s) fed to the drive
         private float _stiffnessMult = 1f;   // per-phase/episode multiplier on drive stiffness
         private float _dampingMult = 1f;     // per-phase/episode multiplier on drive damping
@@ -135,6 +141,7 @@ namespace SPWM.Robotics
 
             int dof = _rig != null && _rig.JointCount > 0 ? _rig.JointCount : ArticulatedRobotRig.CanonicalJointCount;
             _currentActionVector = new float[dof];
+            _currentPosTarget = new float[dof];
             _currentVelTarget = new float[dof];
             _currentPhase = GraspTrajectoryPhase.BlindApproach;
             targetAngleScaleRad = ArticulatedRobotRig.MaxJointAngleRad;
@@ -176,39 +183,30 @@ namespace SPWM.Robotics
 
             // 1. Approach Waypoint: End-effector tip reaches the exact top surface of the ground object
             Vector3 graspPoint = spec.GraspPoint;
+            Vector3 graspPalm = ArticulatedRobotRig.PalmNormalFromFrontalAngleDeg(graspPalmAngleDeg);
+            Vector3 finalPalm = ArticulatedRobotRig.PalmNormalFromFrontalAngleDeg(finalPalmAngleDeg);
             _qGrasp = _rig != null
-                ? _rig.SolveInverseKinematics6D(graspPoint, spec.StartRotation)
-                : ArticulatedRobotRig.SolveInverseKinematicsStatic(baseOrigin, graspPoint, spec.StartRotation);
+                ? _rig.SolveInverseKinematics6DOriented(graspPoint, graspPalm)
+                : ArticulatedRobotRig.SolveInverseKinematicsOrientedStatic(baseOrigin, graspPoint, graspPalm);
 
             // 2. Heft Waypoint: Sharp, deliberate upward lift (+12 cm) + wrist twist to test payload inertia
             Vector3 liftedPoint = graspPoint + new Vector3(0f, heftLiftMeters, 0f);
-            Quaternion heftRotation = spec.StartRotation * Quaternion.Euler(heftWristTwistRad * Mathf.Rad2Deg);
             _qHeftPeak = _rig != null
-                ? _rig.SolveInverseKinematics6D(liftedPoint, heftRotation)
-                : ArticulatedRobotRig.SolveInverseKinematicsStatic(baseOrigin, liftedPoint, heftRotation);
+                ? _rig.SolveInverseKinematics6DOriented(liftedPoint, graspPalm)
+                : ArticulatedRobotRig.SolveInverseKinematicsOrientedStatic(baseOrigin, liftedPoint, graspPalm);
 
             if (dof >= 6)
             {
                 float maxAngle = ArticulatedRobotRig.MaxJointAngleRad;
-                _qHeftPeak[3] = Mathf.Clamp(_qHeftPeak[3] + heftWristTwistRad.x, -maxAngle, maxAngle);
-                _qHeftPeak[4] = Mathf.Clamp(_qHeftPeak[4] + heftWristTwistRad.y, -maxAngle, maxAngle);
+                // Wrist_Pitch / Wrist_Yaw stay straight; heft twist is applied to Wrist_Roll (pronation/supination) only.
                 _qHeftPeak[5] = Mathf.Clamp(_qHeftPeak[5] + heftWristTwistRad.z, -maxAngle, maxAngle);
             }
 
             // 3. Transport Waypoint: Carry to new 3D location while twisting wrist joints (flat -> upright)
+            //    The wrist rotates from palm-down (270 deg) to palm-open up-left (135 deg) and terminates there.
             _qTarget6D = _rig != null
-                ? _rig.SolveInverseKinematics6D(spec.TargetPosition, spec.TargetRotation)
-                : ArticulatedRobotRig.SolveInverseKinematicsStatic(baseOrigin, spec.TargetPosition, spec.TargetRotation);
-
-            if (dof >= 6)
-            {
-                float maxAngle = ArticulatedRobotRig.MaxJointAngleRad;
-                float sideSign = Mathf.Sign(spec.TargetPosition.x == 0f ? 1f : spec.TargetPosition.x);
-                // Deliberate ~80-90 deg wrist twist during transport so the flat payload is rotated upright
-                _qTarget6D[3] = Mathf.Clamp(_qTarget6D[3] - 0.55f, -maxAngle, maxAngle);
-                _qTarget6D[4] = Mathf.Clamp(_qHeftPeak[4] + sideSign * 0.95f, -maxAngle, maxAngle);
-                _qTarget6D[5] = Mathf.Clamp(_qHeftPeak[5] + sideSign * 1.45f, -maxAngle, maxAngle);
-            }
+                ? _rig.SolveInverseKinematics6DOriented(spec.TargetPosition, finalPalm)
+                : ArticulatedRobotRig.SolveInverseKinematicsOrientedStatic(baseOrigin, spec.TargetPosition, finalPalm);
         }
 
         /// <summary>
@@ -290,7 +288,6 @@ namespace SPWM.Robotics
                 // Softened minimum-jerk upward lift profile (smooth across full heft window without harsh 1.35x compression)
                 float liftProgress = SmoothStepMinimumJerk(tau);
                 float dLift = SmoothStepMinimumJerkDerivative(tau) / Mathf.Max(dt * sensoryHeftSteps, 1e-3f);
-                gainMultiplier = heftAccelerationBoost;
                 curKp = proportionalGainKp;
                 curKd = derivativeGainKd;
 
@@ -331,12 +328,37 @@ namespace SPWM.Robotics
             _stiffnessMult = gainMultiplier * curKp / Mathf.Max(1e-6f, proportionalGainKp);
             _dampingMult = curKd / Mathf.Max(1e-6f, derivativeGainKd);
 
+            if (_baseStiffness == null || _baseStiffness.Length != dof)
+            {
+                _baseStiffness = new float[dof];
+                _baseDamping = new float[dof];
+                if (_rig != null && _rig.ActuatedJoints != null)
+                {
+                    var joints = _rig.ActuatedJoints;
+                    for (int i = 0; i < Mathf.Min(dof, joints.Count); i++)
+                    {
+                        _baseStiffness[i] = joints[i].xDrive.stiffness;
+                        _baseDamping[i] = joints[i].xDrive.damping;
+                    }
+                }
+            }
+
+            if (_currentPosTarget == null || _currentPosTarget.Length != dof)
+            {
+                _currentPosTarget = new float[dof];
+            }
+            if (_currentVelTarget == null || _currentVelTarget.Length != dof)
+            {
+                _currentVelTarget = new float[dof];
+            }
+
             float invScale = 1.0f / Mathf.Max(0.1f, targetAngleScaleRad);
             float[] u = new float[dof];
             for (int i = 0; i < dof; i++)
             {
-                u[i] = Mathf.Clamp(qDes[i] * invScale, -1.0f, 1.0f);
+                _currentPosTarget[i] = qDes[i];
                 _currentVelTarget[i] = dqDes[i];
+                u[i] = Mathf.Clamp(qDes[i] * invScale, -1.0f, 1.0f);
             }
 
             SetActionVector(u);
@@ -414,7 +436,9 @@ namespace SPWM.Robotics
                 if (controlMode == ActionControlMode.MotorTargetPD)
                 {
                     var drive = joint.xDrive;
-                    float targetRad = u_i * targetAngleScaleRad;
+                    float targetRad = (_currentPosTarget != null && i < _currentPosTarget.Length)
+                        ? _currentPosTarget[i]
+                        : (u_i * targetAngleScaleRad);
                     drive.target = targetRad * Mathf.Rad2Deg;
                     drive.targetVelocity = _currentVelTarget[i] * Mathf.Rad2Deg;
                     drive.stiffness = _baseStiffness[i] * _stiffnessMult;

@@ -85,6 +85,7 @@ def main() -> None:
         dt=cfg.environment.dt,
         dataset_dir=cfg.data.dataset_dir,
         strict_dataset=cfg.data.strict_dataset,
+        cache_data=False,
     )
 
     evaluator = RolloutEvaluator(

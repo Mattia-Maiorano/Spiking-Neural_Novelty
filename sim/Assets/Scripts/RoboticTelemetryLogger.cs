@@ -15,7 +15,7 @@ namespace SPWM.Robotics
         public int phase_flag;            // 0 = Blind Approach, 1 = Sensory Heft, 2 = Blind Transport
         public float[] joint_positions;   // q* in R^6
         public float[] joint_velocities;  // p* in R^6
-        public float[] actions;           // u_t in R^6
+        public float[] actions;           // u_t in R^6 (normalized target position)
         public float[] grayscale_frame;       // Flattened [H * W] static global intensity frame
         public float[] wrist_grayscale_frame; // Flattened [H * W] egocentric wrist-mounted intensity frame
         public float[] dense_events;          // Flattened [4 * H * W] dual-sensor ON/OFF binary spikes
@@ -233,6 +233,22 @@ namespace SPWM.Robotics
             }
             controller.InitializeControllerState(seed: seed, payloadSpec: payloadSpec);
             EnsureWristSensorAttached();
+
+            // Aim the anthropomorphic eye-level head camera slightly tilted toward the object to pick up
+            if (eventBridge != null)
+            {
+                Vector3 baseOrigin = robotRig != null ? robotRig.transform.position : transform.position;
+                Vector3 headPos = ArticulatedRobotRig.GetAnthropomorphicHeadPosition(baseOrigin);
+                Vector3 lookTarget = payloadSpec.HasValue
+                    ? payloadSpec.Value.StartPosition
+                    : (baseOrigin + ArticulatedRobotRig.EyeCameraLookTargetOffset);
+                Vector3 forwardDir = (lookTarget - headPos).normalized;
+                Quaternion headRot = forwardDir.sqrMagnitude > 1e-6f
+                    ? Quaternion.LookRotation(forwardDir, Vector3.up)
+                    : Quaternion.identity;
+                eventBridge.transform.SetPositionAndRotation(headPos, headRot);
+            }
+
             eventBridge.ResetSensorBaseline();
             if (wristEventBridge != null && wristEventBridge != eventBridge.SecondaryWristBridge)
             {

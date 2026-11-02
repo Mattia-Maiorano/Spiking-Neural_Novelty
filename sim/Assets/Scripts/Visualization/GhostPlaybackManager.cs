@@ -22,6 +22,7 @@ namespace SPWM.Visualization
 
         public Transform Root { get; }
         public Transform EndEffectorTip { get; private set; }
+        public Transform WristCameraMount { get; private set; }
         public int JointCount => _jointPivots.Count;
         public IReadOnlyList<Renderer> Renderers => _renderers;
 
@@ -79,29 +80,24 @@ namespace SPWM.Visualization
 
             if (isRoot)
             {
-                // Heavy bolted floor flange + pedestal column spanning [0, d.y]
-                GameObject flange = GameObject.CreatePrimitive(PrimitiveType.Cylinder);
-                flange.name = spec.Name + "_FloorFlange";
-                SafeDestroy(flange.GetComponent<Collider>());
-                flange.transform.SetParent(pivot, false);
-                flange.transform.localScale = new Vector3(d.x * 1.45f, 0.015f, d.z * 1.45f);
-                flange.transform.localPosition = new Vector3(0f, 0.015f, 0f);
-                RegisterRenderer(flange.GetComponent<Renderer>(), material);
+                // Root socket sits silently at the right shoulder mount without protruding torso/clavicle blocks into the camera
+                return;
             }
-            else
+
+            // Anatomical spherical joint articulation (deltoid shoulder cap, elbow, wrist) centered at (0, 0, 0)
+            if (spec.Name != "Shoulder_Pan")
             {
-                // Spherical bolted joint housing centered at the exact pivot (0, 0, 0) so links never visually gap
                 GameObject hub = GameObject.CreatePrimitive(PrimitiveType.Sphere);
                 hub.name = spec.Name + "_JointHub";
                 SafeDestroy(hub.GetComponent<Collider>());
                 hub.transform.SetParent(pivot, false);
-                float hubDiameter = Mathf.Max(d.x, d.z) * 1.22f;
+                float hubDiameter = Mathf.Max(d.x, d.z) * 1.06f;
                 hub.transform.localScale = new Vector3(hubDiameter, hubDiameter, hubDiameter);
                 hub.transform.localPosition = Vector3.zero;
                 RegisterRenderer(hub.GetComponent<Renderer>(), material);
             }
 
-            // Rigid cylindrical structural shaft spanning strictly from the joint pivot (0, 0, 0) to child pivot (0, d.y, 0).
+            // Rigid cylindrical structural limb segment spanning strictly from joint pivot (0, 0, 0) to child pivot (0, d.y, 0).
             // Unity's Cylinder primitive has height = 2.0, so localScale.y = 0.5 * d.y and localPosition.y = 0.5 * d.y.
             GameObject shaft = GameObject.CreatePrimitive(PrimitiveType.Cylinder);
             shaft.name = spec.Name + "_VisualShaft";
@@ -114,7 +110,7 @@ namespace SPWM.Visualization
 
             if (isEndEffector)
             {
-                // Magnetic gripper tip anchored at the distal end of Wrist_Roll (0, d.y, 0)
+                // Humanoid right-hand palm and fingers anchored at the distal end of Wrist_Roll (0, d.y, 0)
                 var tip = new GameObject("EndEffectorTip").transform;
                 tip.SetParent(pivot, false);
                 tip.localPosition = new Vector3(0f, d.y, 0f);
@@ -122,13 +118,84 @@ namespace SPWM.Visualization
                 tip.localScale = Vector3.one;
                 EndEffectorTip = tip;
 
-                GameObject magPlate = GameObject.CreatePrimitive(PrimitiveType.Cylinder);
-                magPlate.name = "MagneticGripperPlate";
-                SafeDestroy(magPlate.GetComponent<Collider>());
-                magPlate.transform.SetParent(tip, false);
-                magPlate.transform.localScale = new Vector3(d.x * 1.45f, 0.008f, d.z * 1.45f);
-                magPlate.transform.localPosition = Vector3.zero;
-                RegisterRenderer(magPlate.GetComponent<Renderer>(), material);
+                // Egocentric wrist camera mount on the dorsal side (-Z) of the wrist looking forward (+Y) over the hand
+                var wristMount = new GameObject("WristCameraMount").transform;
+                wristMount.SetParent(tip, false);
+                wristMount.localPosition = new Vector3(0f, -0.015f, -0.042f);
+                wristMount.localRotation = Quaternion.Euler(-82f, 0f, 0f);
+                wristMount.localScale = Vector3.one;
+                WristCameraMount = wristMount;
+
+                // Humanoid right-hand palm (metacarpals): wide across X (7.6cm), extending 5.2cm along +Y, thin across Z (2.2cm)
+                GameObject palm = GameObject.CreatePrimitive(PrimitiveType.Cube);
+                palm.name = "HumanoidPalm";
+                SafeDestroy(palm.GetComponent<Collider>());
+                palm.transform.SetParent(tip, false);
+                palm.transform.localPosition = new Vector3(0f, 0.012f, 0.004f);
+                palm.transform.localRotation = Quaternion.identity;
+                palm.transform.localScale = new Vector3(0.076f, 0.052f, 0.022f);
+                RegisterRenderer(palm.GetComponent<Renderer>(), material);
+
+                // Knuckle bridge across the distal end of the palm
+                GameObject knuckles = GameObject.CreatePrimitive(PrimitiveType.Capsule);
+                knuckles.name = "HumanoidKnuckles";
+                SafeDestroy(knuckles.GetComponent<Collider>());
+                knuckles.transform.SetParent(tip, false);
+                knuckles.transform.localPosition = new Vector3(0f, 0.038f, 0.004f);
+                knuckles.transform.localRotation = Quaternion.Euler(0f, 0f, 90f);
+                knuckles.transform.localScale = new Vector3(0.024f, 0.039f, 0.024f);
+                RegisterRenderer(knuckles.GetComponent<Renderer>(), material);
+
+                // 4 Articulated fingers (Index, Middle, Ring, Little) with proximal + distal phalanges curving around the grasp zone
+                float[] fingerOffsetsX = new float[] { -0.027f, -0.009f, 0.009f, 0.027f };
+                float[] proxLengths = new float[] { 0.034f, 0.038f, 0.036f, 0.029f };
+                float[] distLengths = new float[] { 0.026f, 0.029f, 0.027f, 0.022f };
+                for (int f = 0; f < fingerOffsetsX.Length; f++)
+                {
+                    GameObject prox = GameObject.CreatePrimitive(PrimitiveType.Capsule);
+                    prox.name = $"HumanoidFingerProx_{f}";
+                    SafeDestroy(prox.GetComponent<Collider>());
+                    prox.transform.SetParent(tip, false);
+                    Quaternion proxRot = Quaternion.Euler(18f, 0f, 0f);
+                    Vector3 proxDir = proxRot * Vector3.up;
+                    Vector3 knucklePos = new Vector3(fingerOffsetsX[f], 0.038f, 0.004f);
+                    prox.transform.localPosition = knucklePos + proxDir * (0.5f * proxLengths[f]);
+                    prox.transform.localRotation = proxRot;
+                    prox.transform.localScale = new Vector3(0.015f, 0.5f * proxLengths[f], 0.015f);
+                    RegisterRenderer(prox.GetComponent<Renderer>(), material);
+
+                    Vector3 pipPos = knucklePos + proxDir * proxLengths[f];
+                    GameObject dist = GameObject.CreatePrimitive(PrimitiveType.Capsule);
+                    dist.name = $"HumanoidFingerDist_{f}";
+                    SafeDestroy(dist.GetComponent<Collider>());
+                    dist.transform.SetParent(tip, false);
+                    Quaternion distRot = Quaternion.Euler(48f, 0f, 0f);
+                    Vector3 distDir = distRot * Vector3.up;
+                    dist.transform.localPosition = pipPos + distDir * (0.5f * distLengths[f]);
+                    dist.transform.localRotation = distRot;
+                    dist.transform.localScale = new Vector3(0.013f, 0.5f * distLengths[f], 0.013f);
+                    RegisterRenderer(dist.GetComponent<Renderer>(), material);
+                }
+
+                // Right-hand thumb on the radial/medial side (-X) opposing the fingers
+                // Also serves as the asymmetric visual orientation fiducial so Wrist_Roll (q5) is optically distinct
+                GameObject thumbMeta = GameObject.CreatePrimitive(PrimitiveType.Capsule);
+                thumbMeta.name = "WristOrientationFiducial";
+                SafeDestroy(thumbMeta.GetComponent<Collider>());
+                thumbMeta.transform.SetParent(tip, false);
+                thumbMeta.transform.localPosition = new Vector3(-0.044f, 0.014f, 0.010f);
+                thumbMeta.transform.localRotation = Quaternion.Euler(22f, -15f, 38f);
+                thumbMeta.transform.localScale = new Vector3(0.018f, 0.024f, 0.018f);
+                RegisterRenderer(thumbMeta.GetComponent<Renderer>(), material);
+
+                GameObject thumbDist = GameObject.CreatePrimitive(PrimitiveType.Capsule);
+                thumbDist.name = "HumanoidThumbDistal";
+                SafeDestroy(thumbDist.GetComponent<Collider>());
+                thumbDist.transform.SetParent(tip, false);
+                thumbDist.transform.localPosition = new Vector3(-0.052f, 0.042f, 0.022f);
+                thumbDist.transform.localRotation = Quaternion.Euler(35f, 15f, 12f);
+                thumbDist.transform.localScale = new Vector3(0.016f, 0.020f, 0.016f);
+                RegisterRenderer(thumbDist.GetComponent<Renderer>(), material);
             }
         }
 
@@ -196,10 +263,17 @@ namespace SPWM.Visualization
         [Tooltip("Visual exaggeration of joint angles. Keep 1 for physically faithful playback.")]
         [SerializeField, Range(0.25f, 3f)] private float angleScale = 1f;
 
-        [Header("Grasp & Payload Visualization")]
-        [Tooltip("Playback frame index (0-indexed) at which the end-effector locks onto the ground object (start of Heft).")]
+        [Header("Grasp & Payload Visualization (Anthropomorphic 3-Plane Spawning)")]
+        [Tooltip("Playback frame index (0-indexed) at which the end-effector locks onto the target object (start of Heft).")]
         [SerializeField] private int graspLockFrameIndex = 35;
         [SerializeField] private Vector3 payloadDimensions = new Vector3(0.11f, 0.07f, 0.09f);
+        [Tooltip("If true, randomizes target spawn elevation among Low, Mid, and High planes based on trajectory seed. If false, uses activeElevationPlane.")]
+        [SerializeField] private bool randomizeTargetElevation = true;
+        [Tooltip("Active vertical elevation plane in front of the head (Low, Mid, or High). Press 'E' during playback to toggle.")]
+        [SerializeField] private TargetElevationPlane activeElevationPlane = TargetElevationPlane.Mid;
+        [SerializeField] private float lowPlaneElevation = ProceduralObjectSpawner.DefaultLowPlaneHeight;
+        [SerializeField] private float midPlaneElevation = ProceduralObjectSpawner.DefaultMidPlaneHeight;
+        [SerializeField] private float highPlaneElevation = ProceduralObjectSpawner.DefaultHighPlaneHeight;
 
         [Header("Playback")]
         [SerializeField] private bool playOnStart = true;
@@ -214,11 +288,14 @@ namespace SPWM.Visualization
         private KinematicRobotRig _ghost;
         private Quaternion[,] _targetRot; // [frame, joint] precomputed
         private Quaternion[,] _ghostRot;
+        private Transform _groundVisual;
         private Transform _payloadVisual;
         private Vector3 _payloadGroundPosition;
         private Quaternion _payloadGroundRotation;
         private Vector3 _payloadGraspLocalPos;
         private Quaternion _payloadGraspLocalRot;
+        private SpawnedPayloadSpec _activePayloadSpec;
+        private bool _hasManualElevationOverride;
         private float _playbackTime;      // seconds of simulated time since frame 0
         private float _delayRemaining;
         private float _holdRemaining;
@@ -230,6 +307,56 @@ namespace SPWM.Visualization
         public KinematicRobotRig TargetRig => _target;
         public KinematicRobotRig GhostRig => _ghost;
         public int FrameCount => _data != null ? _data.FrameCount : 0;
+        public TargetElevationPlane ActiveElevationPlane => activeElevationPlane;
+        public Vector3 InitialGraspTargetWorldPosition => _payloadGroundPosition;
+
+        /// <summary>
+        /// Toggles sequentially between Low -> Mid -> High vertical target elevation planes directly in front of the head.
+        /// </summary>
+        [ContextMenu("Toggle Target Elevation Plane (Low / Mid / High)")]
+        public TargetElevationPlane ToggleTargetElevationPlane()
+        {
+            randomizeTargetElevation = false;
+            _hasManualElevationOverride = true;
+            activeElevationPlane = (TargetElevationPlane)(((int)activeElevationPlane + 1) % 3);
+            if (_data != null && _target != null && _ghost != null)
+            {
+                PrecomputeRotations();
+                InitializeEnvironmentAndPayload();
+                ApplyPose(FramePosition);
+            }
+            return activeElevationPlane;
+        }
+
+        /// <summary>
+        /// Explicitly sets the target elevation plane (Low, Mid, or High) in front of the head.
+        /// </summary>
+        public void SetTargetElevationPlane(TargetElevationPlane plane, bool disableRandomization = true)
+        {
+            activeElevationPlane = plane;
+            if (disableRandomization)
+            {
+                randomizeTargetElevation = false;
+                _hasManualElevationOverride = true;
+            }
+            if (_data != null && _target != null && _ghost != null)
+            {
+                PrecomputeRotations();
+                InitializeEnvironmentAndPayload();
+                ApplyPose(FramePosition);
+            }
+        }
+
+        public void SetGhostVisible(bool visible)
+        {
+            if (_ghost != null)
+            {
+                foreach (Renderer r in _ghost.Renderers)
+                {
+                    if (r != null) r.enabled = visible;
+                }
+            }
+        }
 
         /// <summary>Continuous frame index in [0, FrameCount-1]; fractional part = interpolation alpha.</summary>
         public float FramePosition { get; private set; }
@@ -287,11 +414,11 @@ namespace SPWM.Visualization
                 return;
             }
 
-            PrecomputeRotations();
             if (_data.metadata != null && _data.metadata.grasp_lock_frame_index >= 0)
             {
                 graspLockFrameIndex = _data.metadata.grasp_lock_frame_index;
             }
+            PrecomputeRotations();
             InitializeEnvironmentAndPayload();
             ApplyPose(0f);
             Loaded?.Invoke(this);
@@ -337,26 +464,116 @@ namespace SPWM.Visualization
             }
         }
 
+        private static float SmoothStepMinimumJerk(float tau)
+        {
+            float t = Mathf.Clamp01(tau);
+            return t * t * t * (10.0f + t * (-15.0f + 6.0f * t));
+        }
+
         private void PrecomputeRotations()
         {
             int frames = _data.FrameCount, joints = _data.JointCount;
             _targetRot = new Quaternion[frames, joints];
             _ghostRot = new Quaternion[frames, joints];
+
+            int seed = (_data.metadata != null && _data.metadata.trajectory_id > 0)
+                ? _data.metadata.trajectory_id
+                : 42;
+            TargetElevationPlane? forcedPlane = randomizeTargetElevation
+                ? (TargetElevationPlane?)null
+                : activeElevationPlane;
+
+            _activePayloadSpec = ProceduralObjectSpawner.GenerateDeterministicSpec(
+                episodeSeed: seed,
+                baseOrigin: transform.position,
+                forcedElevationPlane: forcedPlane,
+                lowPlaneHeight: lowPlaneElevation,
+                midPlaneHeight: midPlaneElevation,
+                highPlaneHeight: highPlaneElevation
+            );
+            activeElevationPlane = _activePayloadSpec.ElevationPlane;
+            payloadDimensions = _activePayloadSpec.Scale;
+
+            // Detect if the loaded JSON was exported with legacy/clamped joint angles (where q1 < 2.65 rad or |q2| < 1.20 rad),
+            // or if the user manually toggled the target elevation plane (Low / Mid / High)
+            bool adaptToAnthropomorphicPose = _hasManualElevationOverride ||
+                (frames > 0 && _data.frames[0].ground_truth_q != null &&
+                 _data.frames[0].ground_truth_q.Length > 2 &&
+                 (_data.frames[0].ground_truth_q[1] < 2.65f || Mathf.Abs(_data.frames[0].ground_truth_q[2]) < 1.20f));
+
+            float[] qNeutral = ArticulatedRobotRig.GetNeutralRestingPose();
+            Vector3 graspPalm = ArticulatedRobotRig.PalmNormalFromFrontalAngleDeg(270f);
+            Vector3 finalPalm = ArticulatedRobotRig.PalmNormalFromFrontalAngleDeg(135f);
+            float[] qGrasp = ArticulatedRobotRig.SolveInverseKinematicsOrientedStatic(
+                transform.position, _activePayloadSpec.GraspPoint, graspPalm);
+            Vector3 liftedPoint = _activePayloadSpec.GraspPoint + new Vector3(0f, 0.10f, 0f);
+            float[] qHeftPeak = ArticulatedRobotRig.SolveInverseKinematicsOrientedStatic(transform.position, liftedPoint, graspPalm);
+            float[] qTarget6D = ArticulatedRobotRig.SolveInverseKinematicsOrientedStatic(
+                transform.position, _activePayloadSpec.TargetPosition, finalPalm);
+
+            if (joints >= 6)
+            {
+                qHeftPeak[3] = Mathf.Clamp(qHeftPeak[3] + 0.08f, -2.60f, 2.60f);
+                qHeftPeak[4] = Mathf.Clamp(qHeftPeak[4] - 0.05f, -1.25f, 1.25f);
+                qHeftPeak[5] = Mathf.Clamp(qHeftPeak[5] - 0.20f, -ArticulatedRobotRig.MaxJointAngleRad, ArticulatedRobotRig.MaxJointAngleRad);
+            }
+
+            int setupHold = 4;
+            int lockFrame = Mathf.Clamp(graspLockFrameIndex, setupHold + 4, Mathf.Max(setupHold + 5, frames - 20));
+            int heftEnd = Mathf.Min(frames - 5, lockFrame + 12);
+
             for (int f = 0; f < frames; f++)
             {
                 GhostFrame fr = _data.frames[f];
                 for (int j = 0; j < joints; j++)
                 {
-                    _targetRot[f, j] = _target.JointRotation(j, fr.ground_truth_q[j], angleScale);
-                    _ghostRot[f, j] = _ghost.JointRotation(j, fr.predicted_q[j], angleScale);
+                    float gtQ = fr.ground_truth_q[j];
+                    float predQ = fr.predicted_q[j];
+
+                    if (adaptToAnthropomorphicPose && j < CanonicalPoseLength(qNeutral))
+                    {
+                        float errDelta = predQ - gtQ;
+                        if (j == 5)
+                        {
+                            // Bound prediction error on wrist roll so ghost model stays anatomically grounded
+                            errDelta = Mathf.Clamp(errDelta, -0.15f, 0.15f);
+                        }
+                        float anthroQ;
+                        if (f < setupHold)
+                        {
+                            anthroQ = qNeutral[j];
+                        }
+                        else if (f < lockFrame)
+                        {
+                            float s = SmoothStepMinimumJerk((float)(f - setupHold + 1) / Mathf.Max(1, lockFrame - setupHold));
+                            anthroQ = Mathf.Lerp(qNeutral[j], qGrasp[j], s);
+                        }
+                        else if (f < heftEnd)
+                        {
+                            float s = SmoothStepMinimumJerk((float)(f - lockFrame) / Mathf.Max(1, heftEnd - lockFrame));
+                            anthroQ = Mathf.Lerp(qGrasp[j], qHeftPeak[j], s);
+                        }
+                        else
+                        {
+                            float s = SmoothStepMinimumJerk((float)(f - heftEnd + 1) / Mathf.Max(1, frames - heftEnd));
+                            anthroQ = Mathf.Lerp(qHeftPeak[j], qTarget6D[j], s);
+                        }
+                        gtQ = anthroQ;
+                        predQ = Mathf.Clamp(anthroQ + errDelta, -ArticulatedRobotRig.MaxJointAngleRad, ArticulatedRobotRig.MaxJointAngleRad);
+                    }
+
+                    _targetRot[f, j] = _target.JointRotation(j, gtQ, angleScale);
+                    _ghostRot[f, j] = _ghost.JointRotation(j, predQ, angleScale);
                 }
             }
         }
 
+        private static int CanonicalPoseLength(float[] arr) => arr != null ? arr.Length : 0;
+
         /// <summary>
-        /// Instantiates the industrial ground plane and the target payload sitting on the ground at the exact
-        /// 3D location reached by the arm at the grasp frame, so the arm approaches it, locks onto it,
-        /// performs a sharp upward Heft lift, and carries + twists it upright to the final target location.
+        /// Instantiates the industrial ground plane and the target payload placed directly in front of the head
+        /// on the active vertical elevation plane (Low, Mid, or High), so the horizontally extended arm approaches it,
+        /// locks onto it, performs a sharp upward Heft lift, and carries + twists it during Transport.
         /// </summary>
         private static void SafeDestroy(Object obj)
         {
@@ -367,28 +584,15 @@ namespace SPWM.Visualization
 
         private void InitializeEnvironmentAndPayload()
         {
-            // 1. Industrial ground plate at y = 0 where the robot base is bolted
-            GameObject ground = GameObject.CreatePrimitive(PrimitiveType.Cube);
-            ground.name = "IndustrialWorkcellFloor";
-            SafeDestroy(ground.GetComponent<Collider>());
-            ground.transform.SetParent(transform, false);
-            ground.transform.localScale = new Vector3(1.6f, 0.016f, 1.6f);
-            ground.transform.localPosition = new Vector3(0f, -0.008f, 0f);
-            var groundRenderer = ground.GetComponent<Renderer>();
-            if (groundRenderer != null)
+            // 1. Structured 3D workcell room with distinct floor, grid lines, baseboards, and walls for clear visual perception
+            if (_groundVisual == null)
             {
-                Shader s = Shader.Find("Standard");
-                if (s != null)
-                {
-                    var floorMat = new Material(s)
-                    {
-                        name = "WorkcellFloorMat (runtime)",
-                        color = new Color(0.11f, 0.13f, 0.16f)
-                    };
-                    floorMat.SetFloat("_Glossiness", 0.18f);
-                    floorMat.SetFloat("_Metallic", 0.1f);
-                    groundRenderer.sharedMaterial = floorMat;
-                }
+                _groundVisual = ProceduralObjectSpawner.BuildStructuredRoomEnvironment(transform, transform.position, rig: null);
+            }
+            else
+            {
+                _groundVisual.position = transform.position;
+                _groundVisual.rotation = Quaternion.identity;
             }
 
             // 2. Pose the target rig at graspLockFrameIndex to read the exact world-space gripper tip pose on contact
@@ -399,45 +603,51 @@ namespace SPWM.Visualization
             }
 
             Transform tip = _target.EndEffectorTip;
-            Vector3 tipWorldPos = tip != null ? tip.position : (transform.position + new Vector3(0.24f, 0.07f, 0.28f));
-            Quaternion tipWorldRot = tip != null ? tip.rotation : Quaternion.identity;
+            Vector3 headPos = ArticulatedRobotRig.GetAnthropomorphicHeadPosition(transform.position);
+            float defaultPlaneY = ProceduralObjectSpawner.GetPlaneElevationMeters(
+                activeElevationPlane, lowPlaneElevation, midPlaneElevation, highPlaneElevation);
+            Vector3 tipWorldPos = tip != null ? tip.position : new Vector3(headPos.x, transform.position.y + defaultPlaneY, transform.position.z + 0.48f);
+            Quaternion tipWorldRot = tip != null ? tip.rotation : Quaternion.Euler(90f, 0f, 0f);
 
-            // Place the payload sitting flat on the ground directly beneath the gripper tip at the grasp moment
-            float halfHeight = 0.5f * payloadDimensions.y;
-            float groundCenterY = Mathf.Max(halfHeight, tipWorldPos.y - halfHeight);
-            _payloadGroundPosition = new Vector3(tipWorldPos.x, groundCenterY, tipWorldPos.z);
-            float yawDeg = Mathf.Atan2(tipWorldPos.x - transform.position.x, tipWorldPos.z - transform.position.z) * Mathf.Rad2Deg;
-            _payloadGroundRotation = Quaternion.Euler(0f, yawDeg, 0f);
+            // Place the target payload cradled right inside the humanoid palm & curved fingers
+            // (local +Y = forward along hand, local +Z = downward/palmar side where fingers curl)
+            float halfDepth = 0.5f * payloadDimensions.z;
+            _payloadGroundPosition = tipWorldPos + tipWorldRot * new Vector3(0f, 0.035f + 0.65f * halfDepth, 0.024f);
+            _payloadGroundRotation = _activePayloadSpec.StartRotation;
 
             // Compute exact rigid-lock offset relative to the gripper tip at the moment of magnetic lock
             _payloadGraspLocalPos = Quaternion.Inverse(tipWorldRot) * (_payloadGroundPosition - tipWorldPos);
             _payloadGraspLocalRot = Quaternion.Inverse(tipWorldRot) * _payloadGroundRotation;
 
-            // 3. Instantiate the visual target payload block
-            GameObject payloadObj = GameObject.CreatePrimitive(PrimitiveType.Cube);
-            payloadObj.name = "TargetPayload_HeavyBlock";
-            SafeDestroy(payloadObj.GetComponent<Collider>());
-            payloadObj.transform.SetParent(transform, true);
-            payloadObj.transform.localScale = payloadDimensions;
-            payloadObj.transform.SetPositionAndRotation(_payloadGroundPosition, _payloadGroundRotation);
-            _payloadVisual = payloadObj.transform;
-
-            var payloadRenderer = payloadObj.GetComponent<Renderer>();
-            if (payloadRenderer != null)
+            // 3. Instantiate or update the visual target payload block
+            if (_payloadVisual == null)
             {
-                Shader s = Shader.Find("Standard");
-                if (s != null)
+                GameObject payloadObj = GameObject.CreatePrimitive(PrimitiveType.Cube);
+                SafeDestroy(payloadObj.GetComponent<Collider>());
+                payloadObj.transform.SetParent(transform, true);
+                _payloadVisual = payloadObj.transform;
+
+                var payloadRenderer = payloadObj.GetComponent<Renderer>();
+                if (payloadRenderer != null)
                 {
-                    var payloadMat = new Material(s)
+                    Shader s = Shader.Find("Standard");
+                    if (s != null)
                     {
-                        name = "TargetPayloadMat (runtime)",
-                        color = new Color(0.92f, 0.44f, 0.14f)
-                    };
-                    payloadMat.SetFloat("_Glossiness", 0.38f);
-                    payloadMat.SetFloat("_Metallic", 0.25f);
-                    payloadRenderer.sharedMaterial = payloadMat;
+                        var payloadMat = new Material(s)
+                        {
+                            name = "TargetPayloadMat (runtime)",
+                            color = new Color(0.92f, 0.44f, 0.14f)
+                        };
+                        payloadMat.SetFloat("_Glossiness", 0.38f);
+                        payloadMat.SetFloat("_Metallic", 0.25f);
+                        payloadRenderer.sharedMaterial = payloadMat;
+                    }
                 }
             }
+
+            _payloadVisual.name = $"TargetPayload_{activeElevationPlane}Plane_Block";
+            _payloadVisual.localScale = payloadDimensions;
+            _payloadVisual.SetPositionAndRotation(_payloadGroundPosition, _payloadGroundRotation);
         }
 
         public void Restart()
@@ -534,6 +744,12 @@ namespace SPWM.Visualization
 #if ENABLE_LEGACY_INPUT_MANAGER
             if (Input.GetKeyDown(KeyCode.Space)) TogglePause();
             if (Input.GetKeyDown(KeyCode.R)) Restart();
+            if (Input.GetKeyDown(KeyCode.E)) ToggleTargetElevationPlane();
+            if (Input.GetKeyDown(KeyCode.T))
+            {
+                randomizeTargetElevation = true;
+                SetTargetElevationPlane((TargetElevationPlane)Random.Range(0, 3), disableRandomization: false);
+            }
 #endif
         }
     }

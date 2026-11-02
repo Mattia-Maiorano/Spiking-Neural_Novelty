@@ -71,7 +71,7 @@ namespace SPWM.Visualization
             if (playback != null && playback.IsLoaded) Bind(playback);
         }
 
-        private void Bind(GhostPlaybackManager pm)
+        public void Bind(GhostPlaybackManager pm)
         {
             GhostTrajectoryData data = pm.Data;
             GhostMetadata meta = data.metadata;

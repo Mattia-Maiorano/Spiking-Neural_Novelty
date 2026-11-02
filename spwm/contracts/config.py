@@ -60,7 +60,7 @@ def _strict_dict_to_dataclass(cls: Type[T], data: Dict[str, Any], context: str =
 @dataclass(frozen=True)
 class ProjectConfig:
     """Project-level identity, tracking tags, and pseudo-random reproducibility configuration."""
-    name: str = "spwm_v0_6_3"  #: Unique identifier/tag for the project and run artifacts.
+    name: str = "spwm_v0_7_0"  #: Unique identifier/tag for the project and run artifacts.
     seed: int = 42             #: Global pseudo-random seed for PyTorch, NumPy, and trajectory generation.
 
 

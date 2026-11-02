@@ -14,12 +14,26 @@ namespace SPWM.Robotics
     }
 
     /// <summary>
+    /// Three distinct vertical elevation planes for anthropomorphic target spawning directly in front of the head:
+    ///   - Low:  Lower tabletop workspace plane below shoulder level (~1.04m above ground, -0.31m relative to shoulder)
+    ///   - Mid:  Mid manipulation workspace plane below shoulder level (~1.14m above ground, -0.21m relative to shoulder)
+    ///   - High: Upper chest/reach workspace plane (~1.26m above ground, -0.09m relative to shoulder)
+    /// </summary>
+    public enum TargetElevationPlane
+    {
+        Low = 0,
+        Mid = 1,
+        High = 2
+    }
+
+    /// <summary>
     /// Episode specification for the procedurally spawned payload and its 6D target pose.
     /// </summary>
     [Serializable]
     public struct SpawnedPayloadSpec
     {
         public PayloadPrimitiveShape Shape;
+        public TargetElevationPlane ElevationPlane;
         public float Mass;
         public Vector3 Scale;
         public Vector3 StartPosition;
@@ -28,7 +42,7 @@ namespace SPWM.Robotics
         public Quaternion TargetRotation;
 
         /// <summary>
-        /// Vertical half-height of the payload as it rests flat on the ground at spawn.
+        /// Vertical half-height of the payload.
         /// </summary>
         public float HalfHeight
         {
@@ -36,7 +50,6 @@ namespace SPWM.Robotics
             {
                 if (Shape == PayloadPrimitiveShape.ElongatedCylinder)
                 {
-                    // When lying flat on the ground (rotated 90 deg about Z), vertical diameter is Scale.x
                     return 0.5f * Scale.x;
                 }
                 return 0.5f * Scale.y;
@@ -44,9 +57,24 @@ namespace SPWM.Robotics
         }
 
         /// <summary>
-        /// World-space 3D coordinates of the top grasp surface of the object sitting on the ground.
+        /// Half-depth of the payload along the forward (+Z) approach axis.
         /// </summary>
-        public Vector3 GraspPoint => StartPosition + new Vector3(0f, HalfHeight, 0f);
+        public float HalfDepth
+        {
+            get
+            {
+                if (Shape == PayloadPrimitiveShape.Sphere || Shape == PayloadPrimitiveShape.ElongatedCylinder)
+                {
+                    return 0.5f * Scale.x;
+                }
+                return 0.5f * Scale.z;
+            }
+        }
+
+        /// <summary>
+        /// World-space 3D coordinates of the proximal grasp surface of the target object facing the approaching hand.
+        /// </summary>
+        public Vector3 GraspPoint => StartPosition - new Vector3(0f, 0f, HalfDepth);
     }
 
     /// <summary>
@@ -102,16 +130,17 @@ namespace SPWM.Robotics
                 _targetTipTransform = tipTransform;
             }
 
-            // Snap payload flush beneath the magnetic gripper plate at the end-effector tip
+            // Snap payload into the humanoid palm & curved fingers at the end-effector tip
             if (_targetTipTransform != null)
             {
-                float halfExtent = 0.5f * Mathf.Min(transform.localScale.x, transform.localScale.y);
-                transform.position = _targetTipTransform.position - _targetTipTransform.up * halfExtent;
+                float halfExtent = 0.5f * Mathf.Min(transform.localScale.x, transform.localScale.z);
+                transform.position = _targetTipTransform.position + _targetTipTransform.rotation * new Vector3(0f, 0.035f + 0.65f * halfExtent, 0.024f);
             }
 
             Rigidbody rb = GetComponent<Rigidbody>();
             if (rb != null)
             {
+                rb.constraints = RigidbodyConstraints.None;
                 rb.useGravity = true;
                 rb.isKinematic = false;
                 rb.linearVelocity = Vector3.zero;
@@ -135,27 +164,50 @@ namespace SPWM.Robotics
     }
 
     /// <summary>
-    /// Procedural Object Spawner for SPWM-v0.5.0 6-DOF Active Perception Grasping.
-    /// Generates a heavy target payload resting on the physical ground plane at the start of each episode:
-    ///   - Randomized starting (x, z) coordinates on the ground within the reachable workspace
-    ///   - Randomized final 6D target pose (3D translation + 3D upright twisted orientation)
-    ///   - Randomized geometry across primitive shapes (spheres, elongated cylinders, boxes)
-    ///   - Randomized heavy mass (1.2 kg to 4.5 kg) and full rotational inertia tensors
-    ///   - Instant rigid magnetic FixedJoint lock upon end-effector contact
+    /// Procedural Object Spawner for Anthropomorphic 6-DOF Active Perception Grasping.
+    /// Places the target payload directly in front of the human torso/head along the forward (+Z) axis,
+    /// with logic to randomize or toggle between three distinct vertical elevation planes:
+    ///   - Low plane  (~1.04m, tabletop level below shoulder)
+    ///   - Mid plane  (~1.14m, natural human manipulation level)
+    ///   - High plane (~1.26m, upper chest/reach level)
+    /// Preserves randomized geometry (spheres, elongated cylinders, boxes), heavy mass (1.2 kg to 4.5 kg),
+    /// rotational inertia tensors, and instant rigid FixedJoint lock upon end-effector contact.
     /// </summary>
     public class ProceduralObjectSpawner : MonoBehaviour
     {
-        [Header("Workspace Bounds (Meters from Base)")]
-        [Tooltip("Minimum horizontal distance from robot base to initial ground object spawn.")]
-        [SerializeField] private float minReachRadius = 0.22f;
-        [Tooltip("Maximum horizontal distance from robot base to initial ground object spawn.")]
+        public const float DefaultLowPlaneHeight = 1.04f;   // ShoulderElevation (1.35m) - 0.31m (tabletop level)
+        public const float DefaultMidPlaneHeight = 1.14f;   // ShoulderElevation (1.35m) - 0.21m (natural human manipulation level)
+        public const float DefaultHighPlaneHeight = 1.26f;  // ShoulderElevation (1.35m) - 0.09m (chest/upper reach level)
+
+        [Header("Anthropomorphic Forward Workspace Bounds")]
+        [Tooltip("Minimum forward distance (+Z) from shoulder/head plane to target spawn.")]
+        [SerializeField] private float minReachRadius = 0.42f;
+        [Tooltip("Maximum forward distance (+Z) from shoulder/head plane to target spawn.")]
         [SerializeField] private float maxReachRadius = 0.52f;
-        [Tooltip("Minimum azimuth angle (radians) for initial ground object spawn.")]
-        [SerializeField] private float minStartAzimuth = -0.75f;
-        [Tooltip("Maximum azimuth angle (radians) for initial ground object spawn.")]
-        [SerializeField] private float maxStartAzimuth = 0.75f;
-        [SerializeField] private float minTargetHeight = 0.24f;
-        [SerializeField] private float maxTargetHeight = 0.38f;
+        [Tooltip("Maximum lateral jitter (meters) around the head's forward axis so target stays directly in front of the head.")]
+        [SerializeField] private float maxLateralJitter = 0.04f;
+        [Tooltip("Minimum azimuth angle (radians) for transport target offset.")]
+        [SerializeField] private float minStartAzimuth = -0.10f;
+        [Tooltip("Maximum azimuth angle (radians) for transport target offset.")]
+        [SerializeField] private float maxStartAzimuth = 0.10f;
+
+        [Header("Three Vertical Elevation Planes (Low / Mid / High)")]
+        [Tooltip("If true, deterministically randomizes between Low, Mid, and High vertical planes each episode. If false, uses activeElevationPlane.")]
+        [SerializeField] private bool randomizeElevationPlane = true;
+        [Tooltip("Active vertical elevation plane when randomizeElevationPlane is false (or toggled via ToggleElevationPlane).")]
+        [SerializeField] private TargetElevationPlane activeElevationPlane = TargetElevationPlane.Mid;
+        [Tooltip("Vertical elevation (meters above ground) for the Low plane.")]
+        [SerializeField] private float lowPlaneElevation = DefaultLowPlaneHeight;
+        [Tooltip("Vertical elevation (meters above ground) for the Mid (shoulder-level) plane.")]
+        [SerializeField] private float midPlaneElevation = DefaultMidPlaneHeight;
+        [Tooltip("Vertical elevation (meters above ground) for the High (eye-level) plane.")]
+        [SerializeField] private float highPlaneElevation = DefaultHighPlaneHeight;
+        [Tooltip("Small within-plane vertical variance (meters) to prevent exact coordinate memorization while keeping planes distinct.")]
+        [SerializeField] private float planeVerticalJitter = 0.015f;
+
+        [Header("Transport Target Bounds")]
+        [SerializeField] private float minTargetHeight = DefaultLowPlaneHeight;
+        [SerializeField] private float maxTargetHeight = DefaultHighPlaneHeight;
 
         [Header("Inertial & Visual Variance")]
         [SerializeField] private float minPayloadMassKg = 1.20f;
@@ -166,29 +218,101 @@ namespace SPWM.Robotics
         private Rigidbody _activePayloadRigidbody;
         private PayloadGraspConstraint _activeGraspConstraint;
         private SpawnedPayloadSpec _currentSpec;
+        private int _lastEpisodeSeed = 42;
+        private ArticulatedRobotRig _lastRig;
 
         public GameObject ActivePayloadObject => _activePayloadObject;
         public Rigidbody ActivePayloadRigidbody => _activePayloadRigidbody;
         public PayloadGraspConstraint ActiveGraspConstraint => _activeGraspConstraint;
         public SpawnedPayloadSpec CurrentSpec => _currentSpec;
         public bool IsPayloadGrasped => _activeGraspConstraint != null && _activeGraspConstraint.IsAttached;
+        public bool RandomizeElevationPlane
+        {
+            get => randomizeElevationPlane;
+            set => randomizeElevationPlane = value;
+        }
+        public TargetElevationPlane ActiveElevationPlane
+        {
+            get => activeElevationPlane;
+            set => activeElevationPlane = value;
+        }
+
+        /// <summary>
+        /// Returns the vertical height (meters above baseOrigin.y) for the given elevation plane (Low, Mid, High).
+        /// </summary>
+        public static float GetPlaneElevationMeters(
+            TargetElevationPlane plane,
+            float lowHeight = DefaultLowPlaneHeight,
+            float midHeight = DefaultMidPlaneHeight,
+            float highHeight = DefaultHighPlaneHeight)
+        {
+            switch (plane)
+            {
+                case TargetElevationPlane.Low:
+                    return lowHeight;
+                case TargetElevationPlane.High:
+                    return highHeight;
+                case TargetElevationPlane.Mid:
+                default:
+                    return midHeight;
+            }
+        }
+
+        /// <summary>
+        /// Toggles sequentially between Low -> Mid -> High vertical target elevation planes
+        /// and updates the active target object in front of the head if one is currently spawned.
+        /// </summary>
+        [ContextMenu("Toggle Target Elevation Plane (Low / Mid / High)")]
+        public TargetElevationPlane ToggleElevationPlane()
+        {
+            randomizeElevationPlane = false;
+            activeElevationPlane = (TargetElevationPlane)(((int)activeElevationPlane + 1) % 3);
+            if (_activePayloadObject != null)
+            {
+                SpawnEpisodePayload(_lastEpisodeSeed, _lastRig);
+            }
+            return activeElevationPlane;
+        }
+
+        /// <summary>
+        /// Explicitly sets the target elevation plane (Low, Mid, or High) and optionally disables plane randomization.
+        /// </summary>
+        public void SetElevationPlane(TargetElevationPlane plane, bool disableRandomization = true)
+        {
+            activeElevationPlane = plane;
+            if (disableRandomization)
+            {
+                randomizeElevationPlane = false;
+            }
+            if (_activePayloadObject != null)
+            {
+                SpawnEpisodePayload(_lastEpisodeSeed, _lastRig);
+            }
+        }
 
         /// <summary>
         /// Deterministically computes the episode payload specification for a given seed and base origin.
-        /// Used by both physical simulation and offline trajectory visualization.
-        /// Wildly varies the initial distance (radius) and approach azimuth to break predictor temporal timing memorization.
+        /// Places the target object directly in front of the head along the forward (+Z) axis at one of
+        /// three distinct vertical elevations (Low, Mid, or High plane), while varying forward reach distance,
+        /// shape, and mass to prevent predictor temporal/spatial memorization.
         /// </summary>
         public static SpawnedPayloadSpec GenerateDeterministicSpec(
             int episodeSeed,
             Vector3 baseOrigin,
-            float minRadius = 0.22f,
+            float minRadius = 0.42f,
             float maxRadius = 0.52f,
-            float minHeight = 0.24f,
-            float maxHeight = 0.38f,
+            float minHeight = DefaultLowPlaneHeight,
+            float maxHeight = DefaultHighPlaneHeight,
             float minMass = 1.20f,
             float maxMass = 4.50f,
-            float minStartAzimuth = -0.75f,
-            float maxStartAzimuth = 0.75f)
+            float minStartAzimuth = -0.10f,
+            float maxStartAzimuth = 0.10f,
+            TargetElevationPlane? forcedElevationPlane = null,
+            float lowPlaneHeight = DefaultLowPlaneHeight,
+            float midPlaneHeight = DefaultMidPlaneHeight,
+            float highPlaneHeight = DefaultHighPlaneHeight,
+            float lateralJitterMax = 0.04f,
+            float verticalJitterMax = 0.015f)
         {
             System.Random rng = new System.Random(episodeSeed * 7919 + 104729);
 
@@ -196,137 +320,260 @@ namespace SPWM.Robotics
             PayloadPrimitiveShape shape = shapes[rng.Next(shapes.Length)];
             float mass = Mathf.Lerp(minMass, maxMass, (float)rng.NextDouble());
 
+            // 1. Select vertical elevation plane: Low, Mid, or High
+            TargetElevationPlane elevationPlane = forcedElevationPlane.HasValue
+                ? forcedElevationPlane.Value
+                : (TargetElevationPlane)rng.Next(3);
+
             Vector3 scale;
-            float halfHeightOnGround;
-            Quaternion flatStartRotation;
-            float startYawDeg = Mathf.Lerp(-35f, 35f, (float)rng.NextDouble());
+            Quaternion startRotation;
+            float startYawDeg = Mathf.Lerp(-20f, 20f, (float)rng.NextDouble());
 
             switch (shape)
             {
                 case PayloadPrimitiveShape.Sphere:
-                    float diameter = Mathf.Lerp(0.08f, 0.12f, (float)rng.NextDouble());
+                    float diameter = Mathf.Lerp(0.08f, 0.11f, (float)rng.NextDouble());
                     scale = new Vector3(diameter, diameter, diameter);
-                    halfHeightOnGround = 0.5f * diameter;
-                    flatStartRotation = Quaternion.Euler(0f, startYawDeg, 0f);
+                    startRotation = Quaternion.Euler(0f, startYawDeg, 0f);
                     break;
 
                 case PayloadPrimitiveShape.ElongatedCylinder:
-                    // Lay cylinder flat on the ground (rotated 90 deg around Z) so it can be lifted upright during transport
-                    float cylDiameter = Mathf.Lerp(0.06f, 0.09f, (float)rng.NextDouble());
-                    float cylHalfLength = Mathf.Lerp(0.09f, 0.14f, (float)rng.NextDouble());
+                    float cylDiameter = Mathf.Lerp(0.06f, 0.085f, (float)rng.NextDouble());
+                    float cylHalfLength = Mathf.Lerp(0.08f, 0.12f, (float)rng.NextDouble());
                     scale = new Vector3(cylDiameter, cylHalfLength, cylDiameter);
-                    halfHeightOnGround = 0.5f * cylDiameter;
-                    flatStartRotation = Quaternion.Euler(0f, startYawDeg, 90f);
+                    startRotation = Quaternion.Euler(0f, startYawDeg, 90f);
                     break;
 
                 default:
-                    // Flat heavy industrial block resting on the ground
-                    float width = Mathf.Lerp(0.10f, 0.15f, (float)rng.NextDouble());
-                    float thickness = Mathf.Lerp(0.06f, 0.08f, (float)rng.NextDouble());
-                    float depth = Mathf.Lerp(0.09f, 0.14f, (float)rng.NextDouble());
+                    float width = Mathf.Lerp(0.09f, 0.13f, (float)rng.NextDouble());
+                    float thickness = Mathf.Lerp(0.06f, 0.085f, (float)rng.NextDouble());
+                    float depth = Mathf.Lerp(0.08f, 0.12f, (float)rng.NextDouble());
                     scale = new Vector3(width, thickness, depth);
-                    halfHeightOnGround = 0.5f * thickness;
-                    flatStartRotation = Quaternion.Euler(0f, startYawDeg, 0f);
+                    startRotation = Quaternion.Euler(0f, startYawDeg, 0f);
                     break;
             }
 
-            // 2. Starting (x, y, z) sitting directly on the ground plane (y = baseOrigin.y + halfHeightOnGround)
-            // Wildly varied distance and azimuth from the base
-            float startRadius = Mathf.Lerp(minRadius, maxRadius, (float)rng.NextDouble());
-            float startAzimuth = Mathf.Lerp(minStartAzimuth, maxStartAzimuth, (float)rng.NextDouble());
-            if (Mathf.Abs(startAzimuth) < 0.12f)
-            {
-                startAzimuth = startAzimuth >= 0f ? 0.18f : -0.18f;
-            }
+            // 2. Starting (x, y, z) placed strictly on the left in front of the head
+            //    (x ≈ -0.17m..-0.20m) at the chosen vertical elevation plane (Low, Mid, or High).
+            //    Reaching to the left enforces the human-like reaching behavior: the arm starts closed on the
+            //    lower-right and opens diagonally as the shoulder opens slightly right, the elbow raises and turns
+            //    right, and the forearm extends to grasp the left target.
+            float forwardDist = Mathf.Lerp(0.45f, 0.49f, (float)rng.NextDouble());
+            float lateralOffset = Mathf.Lerp(-0.015f, 0.015f, (float)rng.NextDouble());
+            float planeY = GetPlaneElevationMeters(elevationPlane, lowPlaneHeight, midPlaneHeight, highPlaneHeight);
+            float verticalJitter = Mathf.Lerp(-verticalJitterMax, verticalJitterMax, (float)rng.NextDouble());
 
-            Vector3 startPos = baseOrigin + new Vector3(
-                startRadius * Mathf.Sin(startAzimuth),
-                halfHeightOnGround,
-                startRadius * Mathf.Cos(startAzimuth)
+            Vector3 startPos = new Vector3(
+                baseOrigin.x - 0.185f + lateralOffset,
+                baseOrigin.y + planeY + verticalJitter,
+                baseOrigin.z + forwardDist
             );
 
-            // 3. Final 6D target pose at an elevated workspace coordinate on the opposite azimuth,
-            //    with a deliberate 80-90 deg upright wrist reorientation (picking up flat -> lifting upright).
-            float targetRadius = Mathf.Lerp(minRadius, maxRadius - 0.02f, (float)rng.NextDouble());
-            float targetAzimuth = -Mathf.Sign(startAzimuth) * Mathf.Lerp(0.32f, 0.65f, (float)rng.NextDouble());
-            float targetHeight = Mathf.Lerp(minHeight, maxHeight, (float)rng.NextDouble());
-            Vector3 targetPos = baseOrigin + new Vector3(
-                targetRadius * Mathf.Sin(targetAzimuth),
-                targetHeight,
-                targetRadius * Mathf.Cos(targetAzimuth)
+            // 3. Final 6D transport target pose on the left in front of the body/head within reachable range,
+            //    maintaining natural human wrist supination (palm inward toward body, thumb up)
+            TargetElevationPlane targetPlane = (TargetElevationPlane)(((int)elevationPlane + 1 + rng.Next(2)) % 3);
+            float targetPlaneY = GetPlaneElevationMeters(targetPlane, lowPlaneHeight, midPlaneHeight, highPlaneHeight);
+            float targetHeight = Mathf.Clamp(targetPlaneY + 0.04f, minHeight, maxHeight);
+            float targetForwardDist = Mathf.Lerp(0.46f, 0.50f, (float)rng.NextDouble());
+            float targetLateralOffset = Mathf.Lerp(-0.015f, 0.015f, (float)rng.NextDouble());
+
+            Vector3 targetPos = new Vector3(
+                baseOrigin.x - 0.155f + targetLateralOffset,
+                baseOrigin.y + targetHeight,
+                baseOrigin.z + targetForwardDist
             );
 
             Quaternion targetRot = Quaternion.Euler(
-                Mathf.Lerp(55f, 85f, (float)rng.NextDouble()),
-                startYawDeg + Mathf.Sign(targetAzimuth) * Mathf.Lerp(40f, 75f, (float)rng.NextDouble()),
-                Mathf.Lerp(-85f, -55f, (float)rng.NextDouble())
+                Mathf.Lerp(-12f, 10f, (float)rng.NextDouble()),
+                startYawDeg + Mathf.Lerp(-15f, -5f, (float)rng.NextDouble()),
+                Mathf.Lerp(-35f, -15f, (float)rng.NextDouble()) // Negative Roll: natural human supination!
             );
 
             return new SpawnedPayloadSpec
             {
                 Shape = shape,
+                ElevationPlane = elevationPlane,
                 Mass = mass,
                 Scale = scale,
                 StartPosition = startPos,
-                StartRotation = flatStartRotation,
+                StartRotation = startRotation,
                 TargetPosition = targetPos,
                 TargetRotation = targetRot
             };
+        }
+
+        /// <summary>
+        /// Builds a structured 3D room environment (floor + grid lines, back wall + horizon trim, left/right side walls,
+        /// and a workspace table/pedestal under the manipulation zone) with distinct luminance levels and spatial edges
+        /// so both human viewers and neuromorphic/optical vision sensors clearly distinguish floor from walls.
+        /// </summary>
+        public static Transform BuildStructuredRoomEnvironment(Transform parent, Vector3 baseOrigin, ArticulatedRobotRig rig = null)
+        {
+            Transform existing = parent != null ? parent.Find("StructuredWorkcellRoom") : null;
+            if (existing != null)
+            {
+                existing.position = baseOrigin;
+                existing.rotation = Quaternion.identity;
+                IgnoreFloorCollisionsWithRig(existing, rig);
+                return existing;
+            }
+
+            GameObject roomRoot = new GameObject("StructuredWorkcellRoom");
+            if (parent != null)
+            {
+                roomRoot.transform.SetParent(parent, false);
+            }
+            roomRoot.transform.position = baseOrigin;
+            roomRoot.transform.rotation = Quaternion.identity;
+
+            Shader std = Shader.Find("Standard");
+
+            Material CreateMat(string matName, Color col, float gloss = 0.15f, float metallic = 0.05f)
+            {
+                var m = new Material(std != null ? std : Shader.Find("Sprites/Default"))
+                {
+                    name = matName,
+                    color = col
+                };
+                if (std != null)
+                {
+                    m.SetFloat("_Glossiness", gloss);
+                    m.SetFloat("_Metallic", metallic);
+                }
+                return m;
+            }
+
+            // Distinct surface materials for clear floor-vs-wall visual contrast
+            Material floorMat = CreateMat("RoomFloorMat", new Color(0.22f, 0.25f, 0.30f), 0.20f, 0.08f);
+            Material floorGridMat = CreateMat("RoomFloorGridMat", new Color(0.32f, 0.37f, 0.44f), 0.15f, 0.05f);
+            Material backWallMat = CreateMat("RoomBackWallMat", new Color(0.46f, 0.50f, 0.57f), 0.10f, 0.02f);
+            Material sideWallMat = CreateMat("RoomSideWallMat", new Color(0.38f, 0.42f, 0.49f), 0.10f, 0.02f);
+            Material baseboardMat = CreateMat("RoomBaseboardMat", new Color(0.12f, 0.14f, 0.18f), 0.25f, 0.15f);
+            Material wainscotTrimMat = CreateMat("RoomWainscotTrimMat", new Color(0.28f, 0.33f, 0.40f), 0.20f, 0.10f);
+
+            GameObject CreateBox(string boxName, Vector3 localPos, Vector3 localScale, Material mat, bool keepCollider = false)
+            {
+                GameObject go = GameObject.CreatePrimitive(PrimitiveType.Cube);
+                go.name = boxName;
+                go.transform.SetParent(roomRoot.transform, false);
+                go.transform.localPosition = localPos;
+                go.transform.localRotation = Quaternion.identity;
+                go.transform.localScale = localScale;
+                if (!keepCollider)
+                {
+                    Collider c = go.GetComponent<Collider>();
+                    if (c != null)
+                    {
+                        if (Application.isPlaying) Destroy(c);
+                        else DestroyImmediate(c);
+                    }
+                }
+                Renderer r = go.GetComponent<Renderer>();
+                if (r != null)
+                {
+                    r.sharedMaterial = mat;
+                    r.receiveShadows = true;
+                }
+                return go;
+            }
+
+            // 1. Main Floor Slab (y = 0 top surface, extending forward to z = +2.4m where it meets the back wall)
+            CreateBox("IndustrialGroundFloor", new Vector3(0f, -0.02f, 0.60f), new Vector3(4.4f, 0.04f, 3.6f), floorMat, keepCollider: true);
+
+            // Floor perspective grid strips (extending along Z and X on the floor to provide strong depth/perspective cues)
+            for (int i = -3; i <= 3; i++)
+            {
+                float x = i * 0.45f;
+                CreateBox($"FloorGridZ_{i}", new Vector3(x, 0.001f, 0.60f), new Vector3(0.018f, 0.002f, 3.5f), floorGridMat);
+            }
+            for (int k = 0; k <= 5; k++)
+            {
+                float z = -0.30f + k * 0.48f;
+                CreateBox($"FloorGridX_{k}", new Vector3(0f, 0.001f, z), new Vector3(3.6f, 0.002f, 0.018f), floorGridMat);
+            }
+
+            // 2. Back Wall (at z = +2.35m, height = 3.2m) - distinctly lighter tone than the floor
+            const float backWallZ = 2.35f;
+            const float wallHeight = 3.2f;
+            CreateBox("RoomBackWall", new Vector3(0f, 0.5f * wallHeight, backWallZ), new Vector3(4.4f, wallHeight, 0.06f), backWallMat);
+
+            // High-contrast baseboard / skirting at floor-to-back-wall junction (y = 0.06m) so the floor/wall boundary is unmistakable
+            CreateBox("BackWallBaseboard", new Vector3(0f, 0.06f, backWallZ - 0.035f), new Vector3(4.4f, 0.12f, 0.02f), baseboardMat);
+
+            // Architectural horizontal wainscot / dado rail on the back wall (y = 1.05m and y = 1.60m) for visual horizon reference
+            CreateBox("BackWallDadoRail", new Vector3(0f, 1.05f, backWallZ - 0.032f), new Vector3(4.4f, 0.035f, 0.015f), wainscotTrimMat);
+            CreateBox("BackWallEyeRail", new Vector3(0f, 1.60f, backWallZ - 0.032f), new Vector3(4.4f, 0.025f, 0.015f), wainscotTrimMat);
+
+            // Subtle vertical architectural pilasters on the back wall for lateral optical flow & parallax
+            for (int i = -2; i <= 2; i++)
+            {
+                float x = i * 0.75f;
+                CreateBox($"BackWallPilaster_{i}", new Vector3(x, 0.5f * wallHeight, backWallZ - 0.032f), new Vector3(0.03f, wallHeight, 0.015f), wainscotTrimMat);
+            }
+
+            // 3. Left & Right Side Walls (at x = -2.15m and x = +2.15m) with baseboards and dado rails
+            const float sideWallX = 2.15f;
+            CreateBox("RoomLeftWall", new Vector3(-sideWallX, 0.5f * wallHeight, 0.60f), new Vector3(0.06f, wallHeight, 3.6f), sideWallMat);
+            CreateBox("LeftWallBaseboard", new Vector3(-sideWallX + 0.035f, 0.06f, 0.60f), new Vector3(0.02f, 0.12f, 3.6f), baseboardMat);
+            CreateBox("LeftWallDadoRail", new Vector3(-sideWallX + 0.032f, 1.05f, 0.60f), new Vector3(0.015f, 0.035f, 3.6f), wainscotTrimMat);
+
+            CreateBox("RoomRightWall", new Vector3(sideWallX, 0.5f * wallHeight, 0.60f), new Vector3(0.06f, wallHeight, 3.6f), sideWallMat);
+            CreateBox("RightWallBaseboard", new Vector3(sideWallX - 0.035f, 0.06f, 0.60f), new Vector3(0.02f, 0.12f, 3.6f), baseboardMat);
+            CreateBox("RightWallDadoRail", new Vector3(sideWallX - 0.032f, 1.05f, 0.60f), new Vector3(0.015f, 0.035f, 3.6f), wainscotTrimMat);
+
+            IgnoreFloorCollisionsWithRig(roomRoot.transform, rig);
+            return roomRoot.transform;
+        }
+
+        private static void IgnoreFloorCollisionsWithRig(Transform roomRoot, ArticulatedRobotRig rig)
+        {
+            if (roomRoot == null || rig == null) return;
+            Collider[] roomColliders = roomRoot.GetComponentsInChildren<Collider>();
+            Collider[] armColliders = rig.GetComponentsInChildren<Collider>();
+            for (int r = 0; r < roomColliders.Length; r++)
+            {
+                for (int a = 0; a < armColliders.Length; a++)
+                {
+                    if (roomColliders[r] != null && armColliders[a] != null && roomColliders[r] != armColliders[a])
+                    {
+                        Physics.IgnoreCollision(roomColliders[r], armColliders[a], true);
+                    }
+                }
+            }
         }
 
         private void EnsureGroundPlane(Vector3 baseOrigin, ArticulatedRobotRig rig)
         {
             if (_groundPlaneObject == null)
             {
-                _groundPlaneObject = GameObject.CreatePrimitive(PrimitiveType.Cube);
-                _groundPlaneObject.name = "IndustrialGroundFloor";
-                _groundPlaneObject.transform.SetParent(transform, true);
-                _groundPlaneObject.transform.localScale = new Vector3(4.0f, 0.04f, 4.0f);
-                var renderer = _groundPlaneObject.GetComponent<Renderer>();
-                if (renderer != null)
-                {
-                    Shader s = Shader.Find("Standard");
-                    if (s != null)
-                    {
-                        var mat = new Material(s)
-                        {
-                            name = "GroundFloorMat (runtime)",
-                            color = new Color(0.14f, 0.16f, 0.19f)
-                        };
-                        mat.SetFloat("_Glossiness", 0.15f);
-                        renderer.sharedMaterial = mat;
-                    }
-                }
+                Transform room = BuildStructuredRoomEnvironment(transform, baseOrigin, rig);
+                _groundPlaneObject = room.gameObject;
             }
-
-            _groundPlaneObject.transform.position = new Vector3(baseOrigin.x, baseOrigin.y - 0.02f, baseOrigin.z);
-            _groundPlaneObject.transform.rotation = Quaternion.identity;
-
-            // Ignore collision between the ground floor and the bolted robot arm links so the gripper tip
-            // can cleanly reach ground-level objects without fighting floor contact forces.
-            Collider floorCollider = _groundPlaneObject.GetComponent<Collider>();
-            if (floorCollider != null && rig != null)
+            else
             {
-                Collider[] armColliders = rig.GetComponentsInChildren<Collider>();
-                for (int i = 0; i < armColliders.Length; i++)
-                {
-                    if (armColliders[i] != null && armColliders[i] != floorCollider)
-                    {
-                        Physics.IgnoreCollision(floorCollider, armColliders[i], true);
-                    }
-                }
+                _groundPlaneObject.transform.position = baseOrigin;
+                _groundPlaneObject.transform.rotation = Quaternion.identity;
+                IgnoreFloorCollisionsWithRig(_groundPlaneObject.transform, rig);
             }
         }
 
         /// <summary>
-        /// Spawns a new randomized target payload resting on the ground for the episode seeded by episodeSeed.
+        /// Spawns a new target payload directly in front of the head on the selected or randomized
+        /// vertical elevation plane (Low, Mid, or High) for the episode seeded by episodeSeed.
         /// </summary>
         public SpawnedPayloadSpec SpawnEpisodePayload(int episodeSeed, ArticulatedRobotRig rig = null)
         {
             ClearActivePayload();
 
+            _lastEpisodeSeed = episodeSeed;
+            _lastRig = rig;
+
             Vector3 baseOrigin = rig != null ? rig.transform.position : transform.position;
             EnsureGroundPlane(baseOrigin, rig);
+
+            TargetElevationPlane? forcedPlane = randomizeElevationPlane
+                ? (TargetElevationPlane?)null
+                : activeElevationPlane;
 
             _currentSpec = GenerateDeterministicSpec(
                 episodeSeed,
@@ -338,8 +585,16 @@ namespace SPWM.Robotics
                 minPayloadMassKg,
                 maxPayloadMassKg,
                 minStartAzimuth,
-                maxStartAzimuth
+                maxStartAzimuth,
+                forcedPlane,
+                lowPlaneElevation,
+                midPlaneElevation,
+                highPlaneElevation,
+                maxLateralJitter,
+                planeVerticalJitter
             );
+
+            activeElevationPlane = _currentSpec.ElevationPlane;
 
             PrimitiveType unityPrimitive;
             switch (_currentSpec.Shape)
@@ -356,7 +611,7 @@ namespace SPWM.Robotics
             }
 
             _activePayloadObject = GameObject.CreatePrimitive(unityPrimitive);
-            _activePayloadObject.name = $"TargetPayload_{_currentSpec.Shape}_{episodeSeed:D4}";
+            _activePayloadObject.name = $"TargetPayload_{_currentSpec.ElevationPlane}_{_currentSpec.Shape}_{episodeSeed:D4}";
             _activePayloadObject.transform.SetParent(transform, true);
             _activePayloadObject.transform.position = _currentSpec.StartPosition;
             _activePayloadObject.transform.rotation = _currentSpec.StartRotation;
@@ -381,7 +636,10 @@ namespace SPWM.Robotics
 
             _activePayloadRigidbody = _activePayloadObject.AddComponent<Rigidbody>();
             _activePayloadRigidbody.mass = _currentSpec.Mass;
-            _activePayloadRigidbody.useGravity = true;
+            // Hold target stationary at its spawned vertical plane (Low, Mid, or High) until gripper contact;
+            // PayloadGraspConstraint.AttachRigidly enables gravity and releases constraints on contact so full mass/inertia pull on the arm.
+            _activePayloadRigidbody.useGravity = false;
+            _activePayloadRigidbody.constraints = RigidbodyConstraints.FreezeAll;
             _activePayloadRigidbody.linearDamping = 0.05f;
             _activePayloadRigidbody.angularDamping = 0.05f;
             _activePayloadRigidbody.ResetInertiaTensor();

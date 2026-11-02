@@ -29,6 +29,7 @@ def test_experiment_config_instantiates_cleanly():
         "spwm_v0_6_1",
         "spwm_v0_6_2",
         "spwm_v0_6_3",
+        "spwm_v0_7_0",
     )
     assert cfg.environment.joint_count == 6
     assert cfg.environment.action_dim == 6

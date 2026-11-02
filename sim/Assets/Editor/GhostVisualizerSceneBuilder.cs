@@ -31,13 +31,15 @@ namespace SPWM.Editor
             playbackGo.transform.position = Vector3.zero;
             var playbackManager = playbackGo.AddComponent<GhostPlaybackManager>();
 
-            // 4. Main Camera + Cinematic Tracker
+            // 4. Main Camera + Anthropomorphic Eye-Level Tracker
             var cameraGo = new GameObject("Main Camera");
             cameraGo.tag = "MainCamera";
+            SPWM.Robotics.ArticulatedRobotRig.GetEyeLevelCameraPose(Vector3.zero, out Vector3 mainEyePos, out Quaternion mainEyeRot);
+            cameraGo.transform.SetPositionAndRotation(mainEyePos, mainEyeRot);
             var cam = cameraGo.AddComponent<Camera>();
             cam.clearFlags = CameraClearFlags.SolidColor;
             cam.backgroundColor = new Color(0.06f, 0.08f, 0.11f, 1f); // Dark Charcoal/Slate
-            cam.fieldOfView = 50f;
+            cam.fieldOfView = 60f;
             cam.nearClipPlane = 0.05f;
             cam.farClipPlane = 100f;
             cameraGo.AddComponent<AudioListener>();
@@ -45,18 +47,24 @@ namespace SPWM.Editor
             var cameraTracker = cameraGo.AddComponent<CinematicCameraTracker>();
             var camSo = new SerializedObject(cameraTracker);
             camSo.FindProperty("playback").objectReferenceValue = playbackManager;
-            camSo.FindProperty("elevationDeg").floatValue = 30f;
-            camSo.FindProperty("azimuthDeg").floatValue = 45f;
-            camSo.FindProperty("screenComposition").vector2Value = new Vector2(0.12f, 0.05f);
+            camSo.FindProperty("useAnthropomorphicEyeLevel").boolValue = true;
+            camSo.FindProperty("headOffsetFromShoulder").vector3Value = SPWM.Robotics.ArticulatedRobotRig.HeadOffsetFromShoulder;
+            camSo.FindProperty("forwardWorkspaceLookPoint").vector3Value = SPWM.Robotics.ArticulatedRobotRig.EyeCameraLookTargetOffset;
+            camSo.FindProperty("elevationDeg").floatValue = 15f;
+            camSo.FindProperty("azimuthDeg").floatValue = 0f;
+            camSo.FindProperty("screenComposition").vector2Value = Vector2.zero;
             camSo.ApplyModifiedPropertiesWithoutUndo();
 
-            // 5. Canvas e EventSystem
+            // 5. Canvas e EventSystem (ScreenSpaceOverlay so UI overlays cleanly on top of 3D geometry;
+            //    HeadlessRenderVideo uses a low planeDistance and UI layer 5 so sensory cameras exclude UI)
             var canvasGo = new GameObject("TelemetryCanvas");
+            canvasGo.layer = 5; // UI layer
             var canvas = canvasGo.AddComponent<Canvas>();
             canvas.renderMode = RenderMode.ScreenSpaceOverlay;
+            canvas.sortingOrder = 100;
             var scaler = canvasGo.AddComponent<CanvasScaler>();
             scaler.uiScaleMode = CanvasScaler.ScaleMode.ScaleWithScreenSize;
-            scaler.referenceResolution = new Vector2(1080, 1920); // Mobile / LinkedIn Portrait
+            scaler.referenceResolution = new Vector2(1920, 1080); // Standard Full HD
             scaler.matchWidthOrHeight = 0.5f;
             canvasGo.AddComponent<GraphicRaycaster>();
 
@@ -74,13 +82,13 @@ namespace SPWM.Editor
             hudRect.anchorMax = new Vector2(0f, 0f);
             hudRect.pivot = new Vector2(0f, 0f);
             hudRect.anchoredPosition = new Vector2(40f, 40f);
-            hudRect.sizeDelta = new Vector2(420f, 480f);
+            hudRect.sizeDelta = new Vector2(440f, 500f);
 
             var font = Resources.GetBuiltinResource<Font>("LegacyRuntime.ttf");
 
             // Header Title & Subtitle
-            var titleText = CreateText("Header_Title", hudPanelGo.transform, "SPWM v0.4.0 · GHOST EXECUTION", font, 24, FontStyle.Bold, Color.white);
-            PositionRect(titleText.rectTransform, new Vector2(0f, 1f), new Vector2(1f, 1f), new Vector2(0f, 1f), new Vector2(20f, -20f), new Vector2(-40f, 32f));
+            var titleText = CreateText("Header_Title", hudPanelGo.transform, "SPWM v0.7.0 · GHOST EXECUTION", font, 20, FontStyle.Bold, Color.white);
+            PositionRect(titleText.rectTransform, new Vector2(0f, 1f), new Vector2(1f, 1f), new Vector2(0f, 1f), new Vector2(20f, -20f), new Vector2(-20f, 32f));
 
             var subText = CreateText("Header_Subtitle", hudPanelGo.transform, "M1 autoregressive rollout · H=100 · Δt=50ms", font, 14, FontStyle.Normal, new Color(0.55f, 0.58f, 0.62f));
             PositionRect(subText.rectTransform, new Vector2(0f, 1f), new Vector2(1f, 1f), new Vector2(0f, 1f), new Vector2(20f, -54f), new Vector2(-40f, 22f));
@@ -151,7 +159,115 @@ namespace SPWM.Editor
             telemSo.FindProperty("positionErrorAccent").objectReferenceValue = accentBarImg;
             telemSo.ApplyModifiedPropertiesWithoutUndo();
 
-            // 8. Salvataggio scena
+            // 8. Costruzione Gerarchia Sensory Streams Panel (Top-Right)
+            var sensoryPanelGo = CreateUIElement("Sensory_Panel", canvasGo.transform);
+            var sensoryPanelImg = sensoryPanelGo.AddComponent<Image>();
+            sensoryPanelImg.color = new Color(0.051f, 0.067f, 0.090f, 0.90f);
+
+            var sensoryRect = sensoryPanelGo.GetComponent<RectTransform>();
+            sensoryRect.anchorMin = new Vector2(1f, 1f);
+            sensoryRect.anchorMax = new Vector2(1f, 1f);
+            sensoryRect.pivot = new Vector2(1f, 1f);
+            sensoryRect.anchoredPosition = new Vector2(-40f, -40f);
+            sensoryRect.sizeDelta = new Vector2(430f, 560f);
+
+            // Top accent bar
+            var sensoryAccentGo = CreateUIElement("Sensory_TopAccent", sensoryPanelGo.transform);
+            var sensoryAccentImg = sensoryAccentGo.AddComponent<Image>();
+            sensoryAccentImg.color = new Color(0f, 0.85f, 1f); // #00D9FF
+            PositionRect(sensoryAccentGo.GetComponent<RectTransform>(), new Vector2(0f, 1f), new Vector2(1f, 1f), new Vector2(0f, 1f), new Vector2(0f, 0f), new Vector2(0f, 4f));
+
+            // Header Title & Subtitle
+            var sensoryTitleText = CreateText("Sensory_Title", sensoryPanelGo.transform, "SENSORY EVENT STREAMS", font, 18, FontStyle.Bold, new Color(0f, 0.85f, 1f));
+            PositionRect(sensoryTitleText.rectTransform, new Vector2(0f, 1f), new Vector2(1f, 1f), new Vector2(0f, 1f), new Vector2(18f, -16f), new Vector2(-36f, 26f));
+
+            var sensorySubText = CreateText("Sensory_Subtitle", sensoryPanelGo.transform, "Dual-Camera Neuromorphic Perception (32×32)", font, 12, FontStyle.Normal, new Color(0.55f, 0.58f, 0.62f));
+            PositionRect(sensorySubText.rectTransform, new Vector2(0f, 1f), new Vector2(1f, 1f), new Vector2(0f, 1f), new Vector2(18f, -42f), new Vector2(-36f, 18f));
+
+            // Section 1: Global Sensor Camera (Anthropomorphic Eye-Level Head Perspective)
+            var globalSectionText = CreateText("Global_Label", sensoryPanelGo.transform, "EYE-LEVEL HEAD CAMERA (WORKSPACE)", font, 12, FontStyle.Bold, new Color(0.35f, 0.65f, 1f));
+            PositionRect(globalSectionText.rectTransform, new Vector2(0f, 1f), new Vector2(1f, 1f), new Vector2(0f, 1f), new Vector2(18f, -70f), new Vector2(-36f, 18f));
+
+            // Global Optical Viewport Container
+            var globalOptBox = CreateUIElement("Global_Optical_Box", sensoryPanelGo.transform);
+            var globalOptBoxImg = globalOptBox.AddComponent<Image>();
+            globalOptBoxImg.color = new Color(0.043f, 0.059f, 0.082f);
+            PositionRect(globalOptBox.GetComponent<RectTransform>(), new Vector2(0f, 1f), new Vector2(0f, 1f), new Vector2(0f, 1f), new Vector2(18f, -94f), new Vector2(190f, 150f));
+
+            var globalOptRaw = CreateRawImage("Global_Optical_Img", globalOptBox.transform, Color.white);
+            PositionRect(globalOptRaw.rectTransform, new Vector2(0f, 0f), new Vector2(1f, 1f), new Vector2(0.5f, 0.5f), Vector2.zero, Vector2.zero);
+
+            var globalOptBadge = CreateText("Global_Opt_Badge", globalOptBox.transform, "OPTICAL FEED", font, 10, FontStyle.Bold, new Color(1f, 1f, 1f, 0.85f));
+            PositionRect(globalOptBadge.rectTransform, new Vector2(0f, 1f), new Vector2(1f, 1f), new Vector2(0f, 1f), new Vector2(8f, -6f), new Vector2(-16f, 16f));
+
+            // Global Events Viewport Container
+            var globalEvtBox = CreateUIElement("Global_Events_Box", sensoryPanelGo.transform);
+            var globalEvtBoxImg = globalEvtBox.AddComponent<Image>();
+            globalEvtBoxImg.color = new Color(0.043f, 0.059f, 0.082f);
+            PositionRect(globalEvtBox.GetComponent<RectTransform>(), new Vector2(0f, 1f), new Vector2(0f, 1f), new Vector2(0f, 1f), new Vector2(222f, -94f), new Vector2(190f, 150f));
+
+            var globalEvtRaw = CreateRawImage("Global_Events_Img", globalEvtBox.transform, Color.white);
+            PositionRect(globalEvtRaw.rectTransform, new Vector2(0f, 0f), new Vector2(1f, 1f), new Vector2(0.5f, 0.5f), Vector2.zero, Vector2.zero);
+
+            var globalEvtBadge = CreateText("Global_Evt_Badge", globalEvtBox.transform, "EVENT STREAM (+/-)", font, 10, FontStyle.Bold, new Color(0f, 0.85f, 1f, 0.95f));
+            PositionRect(globalEvtBadge.rectTransform, new Vector2(0f, 1f), new Vector2(1f, 1f), new Vector2(0f, 1f), new Vector2(8f, -6f), new Vector2(-16f, 16f));
+
+            var globalStatusText = CreateText("Global_Status", sensoryPanelGo.transform, "act: 0.0125  ·  ACTIVE", font, 12, FontStyle.Bold, new Color(0.22f, 0.83f, 0.33f));
+            PositionRect(globalStatusText.rectTransform, new Vector2(0f, 1f), new Vector2(1f, 1f), new Vector2(0f, 1f), new Vector2(18f, -250f), new Vector2(-36f, 20f));
+
+            // Section 2: Egocentric Wrist Sensor Camera
+            var wristSectionText = CreateText("Wrist_Label", sensoryPanelGo.transform, "EGOCENTRIC WRIST CAMERA (GRIPPER)", font, 12, FontStyle.Bold, new Color(0.49f, 0.91f, 0.53f));
+            PositionRect(wristSectionText.rectTransform, new Vector2(0f, 1f), new Vector2(1f, 1f), new Vector2(0f, 1f), new Vector2(18f, -276f), new Vector2(-36f, 18f));
+
+            // Wrist Optical Viewport Container
+            var wristOptBox = CreateUIElement("Wrist_Optical_Box", sensoryPanelGo.transform);
+            var wristOptBoxImg = wristOptBox.AddComponent<Image>();
+            wristOptBoxImg.color = new Color(0.043f, 0.059f, 0.082f);
+            PositionRect(wristOptBox.GetComponent<RectTransform>(), new Vector2(0f, 1f), new Vector2(0f, 1f), new Vector2(0f, 1f), new Vector2(18f, -300f), new Vector2(190f, 150f));
+
+            var wristOptRaw = CreateRawImage("Wrist_Optical_Img", wristOptBox.transform, Color.white);
+            PositionRect(wristOptRaw.rectTransform, new Vector2(0f, 0f), new Vector2(1f, 1f), new Vector2(0.5f, 0.5f), Vector2.zero, Vector2.zero);
+
+            var wristOptBadge = CreateText("Wrist_Opt_Badge", wristOptBox.transform, "WRIST OPTICAL", font, 10, FontStyle.Bold, new Color(1f, 1f, 1f, 0.85f));
+            PositionRect(wristOptBadge.rectTransform, new Vector2(0f, 1f), new Vector2(1f, 1f), new Vector2(0f, 1f), new Vector2(8f, -6f), new Vector2(-16f, 16f));
+
+            // Wrist Events Viewport Container
+            var wristEvtBox = CreateUIElement("Wrist_Events_Box", sensoryPanelGo.transform);
+            var wristEvtBoxImg = wristEvtBox.AddComponent<Image>();
+            wristEvtBoxImg.color = new Color(0.043f, 0.059f, 0.082f);
+            PositionRect(wristEvtBox.GetComponent<RectTransform>(), new Vector2(0f, 1f), new Vector2(0f, 1f), new Vector2(0f, 1f), new Vector2(222f, -300f), new Vector2(190f, 150f));
+
+            var wristEvtRaw = CreateRawImage("Wrist_Events_Img", wristEvtBox.transform, Color.white);
+            PositionRect(wristEvtRaw.rectTransform, new Vector2(0f, 0f), new Vector2(1f, 1f), new Vector2(0.5f, 0.5f), Vector2.zero, Vector2.zero);
+
+            var wristEvtBadge = CreateText("Wrist_Evt_Badge", wristEvtBox.transform, "WRIST EVENTS (+/-)", font, 10, FontStyle.Bold, new Color(0f, 0.85f, 1f, 0.95f));
+            PositionRect(wristEvtBadge.rectTransform, new Vector2(0f, 1f), new Vector2(1f, 1f), new Vector2(0f, 1f), new Vector2(8f, -6f), new Vector2(-16f, 16f));
+
+            var wristStatusText = CreateText("Wrist_Status", sensoryPanelGo.transform, "act: 0.0084  ·  ACTIVE", font, 12, FontStyle.Bold, new Color(0.22f, 0.83f, 0.33f));
+            PositionRect(wristStatusText.rectTransform, new Vector2(0f, 1f), new Vector2(1f, 1f), new Vector2(0f, 1f), new Vector2(18f, -456f), new Vector2(-36f, 20f));
+
+            // Legend / Footer
+            var legendText = CreateText("Sensory_Legend", sensoryPanelGo.transform,
+                "<color=#00F0FF>■</color> ON Spike   <color=#FF3B5C>■</color> OFF Spike   ·   θ = 0.08   τ = 0.001",
+                font, 11, FontStyle.Normal, new Color(0.55f, 0.58f, 0.62f));
+            PositionRect(legendText.rectTransform, new Vector2(0f, 1f), new Vector2(1f, 1f), new Vector2(0f, 1f), new Vector2(18f, -488f), new Vector2(-36f, 20f));
+
+            // 9. Wiring SensoryStreamDisplay
+            var sensory = canvasGo.AddComponent<SensoryStreamDisplay>();
+            var sensorySo = new SerializedObject(sensory);
+            sensorySo.FindProperty("playback").objectReferenceValue = playbackManager;
+            sensorySo.FindProperty("globalOpticalImage").objectReferenceValue = globalOptRaw;
+            sensorySo.FindProperty("globalEventsImage").objectReferenceValue = globalEvtRaw;
+            sensorySo.FindProperty("globalStatusText").objectReferenceValue = globalStatusText;
+            sensorySo.FindProperty("wristOpticalImage").objectReferenceValue = wristOptRaw;
+            sensorySo.FindProperty("wristEventsImage").objectReferenceValue = wristEvtRaw;
+            sensorySo.FindProperty("wristStatusText").objectReferenceValue = wristStatusText;
+            sensorySo.FindProperty("headerTitleText").objectReferenceValue = sensoryTitleText;
+            sensorySo.FindProperty("headerSubtitleText").objectReferenceValue = sensorySubText;
+            sensorySo.FindProperty("legendText").objectReferenceValue = legendText;
+            sensorySo.ApplyModifiedPropertiesWithoutUndo();
+
+            // 10. Salvataggio scena
             if (!AssetDatabase.IsValidFolder("Assets/Scenes"))
             {
                 AssetDatabase.CreateFolder("Assets", "Scenes");
@@ -165,8 +281,18 @@ namespace SPWM.Editor
         private static GameObject CreateUIElement(string name, Transform parent)
         {
             var go = new GameObject(name, typeof(RectTransform));
+            go.layer = 5; // UI layer
             go.transform.SetParent(parent, false);
             return go;
+        }
+
+        private static RawImage CreateRawImage(string name, Transform parent, Color color)
+        {
+            var go = CreateUIElement(name, parent);
+            var raw = go.AddComponent<RawImage>();
+            raw.color = color;
+            raw.raycastTarget = false;
+            return raw;
         }
 
         private static Text CreateText(string name, Transform parent, string content, Font font, int size, FontStyle style, Color color)
@@ -263,15 +389,8 @@ namespace SPWM.Editor
 
             System.IO.Directory.CreateDirectory(framesDir);
 
-            // Load visualization scene
-            if (System.IO.File.Exists(SceneSavePath))
-            {
-                EditorSceneManager.OpenScene(SceneSavePath, OpenSceneMode.Single);
-            }
-            else
-            {
-                BuildScene();
-            }
+            // Load visualization scene (or rebuild to ensure latest room/camera/HUD setup)
+            BuildScene();
 
             var playback = Object.FindFirstObjectByType<GhostPlaybackManager>();
             if (playback == null)
@@ -291,6 +410,29 @@ namespace SPWM.Editor
                 return;
             }
 
+            // Configure Canvas at near-clip plane (0.06m) so UI always renders on top of 3D geometry without arm occlusion
+            var canvas = Object.FindFirstObjectByType<Canvas>();
+            if (canvas != null)
+            {
+                canvas.renderMode = RenderMode.ScreenSpaceCamera;
+                canvas.worldCamera = cam;
+                canvas.planeDistance = 0.06f;
+                var scaler = canvas.GetComponent<CanvasScaler>();
+                if (scaler != null)
+                {
+                    scaler.uiScaleMode = CanvasScaler.ScaleMode.ScaleWithScreenSize;
+                    scaler.referenceResolution = new Vector2(width >= height ? 1920 : 1080, width >= height ? 1080 : 1920);
+                    scaler.matchWidthOrHeight = 0.5f;
+                }
+            }
+
+            var sensory = Object.FindFirstObjectByType<SensoryStreamDisplay>();
+            if (sensory != null)
+            {
+                sensory.EnsureCameras();
+                sensory.OnPlaybackLoaded(playback);
+            }
+
             // Set up RenderTexture for direct camera grab
             RenderTexture rt = new RenderTexture(width, height, 24, RenderTextureFormat.ARGB32);
             rt.antiAliasing = 4;
@@ -300,6 +442,10 @@ namespace SPWM.Editor
             int totalFrames = playback.FrameCount;
             var tracker = camObj != null ? camObj.GetComponent<CinematicCameraTracker>() : null;
             var telemetry = Object.FindFirstObjectByType<TelemetryDisplay>();
+            if (telemetry != null)
+            {
+                telemetry.Bind(playback);
+            }
 
             // Warm up camera tracking
             var lateUpdateMethod = typeof(CinematicCameraTracker).GetMethod("LateUpdate", System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance);
@@ -320,10 +466,17 @@ namespace SPWM.Editor
                     lateUpdateMethod.Invoke(tracker, null);
                 }
 
+                if (sensory != null)
+                {
+                    sensory.RefreshSensors(force: true);
+                }
+
                 if (telemetry != null && refreshMethod != null)
                 {
                     refreshMethod.Invoke(telemetry, new object[] { true });
                 }
+
+                Canvas.ForceUpdateCanvases();
 
                 RenderTexture.active = rt;
                 cam.Render();
@@ -356,13 +509,14 @@ namespace SPWM.Editor
             var spawner = rootGo.AddComponent<SPWM.Robotics.ProceduralObjectSpawner>();
             var controller = rootGo.AddComponent<SPWM.Robotics.ActionConditionedController>();
 
-            // 1. Static Global Sensor Camera with NeuromorphicEventBridge
+            // 1. Anthropomorphic Eye-Level Head Sensor Camera with NeuromorphicEventBridge
             var camGo = new GameObject("NeuromorphicCamera");
             camGo.transform.SetParent(rootGo.transform, false);
-            camGo.transform.localPosition = new Vector3(0.40f, 0.45f, 0.55f);
-            camGo.transform.LookAt(new Vector3(0.20f, 0.15f, 0.10f));
+            SPWM.Robotics.ArticulatedRobotRig.GetEyeLevelCameraPose(Vector3.zero, out Vector3 eyeCamPos, out Quaternion eyeCamRot);
+            camGo.transform.localPosition = eyeCamPos;
+            camGo.transform.localRotation = eyeCamRot;
             var cam = camGo.AddComponent<Camera>();
-            cam.fieldOfView = 50f;
+            cam.fieldOfView = 60f;
             cam.nearClipPlane = 0.05f;
             cam.farClipPlane = 50f;
             cam.clearFlags = CameraClearFlags.SolidColor;

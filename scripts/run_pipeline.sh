@@ -15,6 +15,9 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_ROOT="$(cd "${SCRIPT_DIR}/.." && pwd)"
 cd "${PROJECT_ROOT}"
 
+export PYTHONUNBUFFERED=1
+export MPLCONFIGDIR=/tmp/matplotlib
+
 # Activate virtual environment if present
 if [[ -f ".venv/bin/activate" ]]; then
     # shellcheck source=/dev/null
@@ -38,7 +41,7 @@ if [[ ! -x "${UNITY_BIN}" ]]; then
 fi
 
 # Defaults
-DEFAULT_MODEL_VERSION="spwm_v0_6_3"
+DEFAULT_MODEL_VERSION="spwm_v0_7_0"
 DEFAULT_EPOCHS=200
 DEFAULT_HORIZON=100
 DEFAULT_TOTAL_TRAJECTORIES=4000
@@ -388,7 +391,7 @@ while [[ $# -gt 0 ]]; do
 done
 
 case "${COMMAND}" in
-    sim-data|sim_data|export-data|export_data|data)
+    sim-data|sim_data|export-data|export_data|data|exportTrajectories|export-trajectories)
         run_sim_data
         ;;
     1|train)

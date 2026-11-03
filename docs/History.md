@@ -442,5 +442,12 @@
   Clean AST scan across `spwm/` and `experiments/` (0 violations), anti-fallback test suite passed (18/18 tests in 1.42s).
 - **verdict on change made**: Preserved.
 
+## SPWM-v0.7.3 (Dual-Phase Pipeline Convergence & Multi-Horizon Latent Baseline)
+- **version afflicted**: SPWM-v0.7.3
+- **iteration on version**: Iteration 1 (Dual-Phase Pipeline Convergence & Multi-Horizon Latent Baseline)
+- **changes made**: Upgraded model version to `spwm_v0_7_3` across typed config schema (`spwm/contracts/config.py`), pipeline orchestrator (`scripts/run_pipeline.sh`), and export scripts (`experiments/export_ghost_trajectory.py`). Executed full end-to-end two-phase training pipeline on 4,000 sanitized trajectories with zero-lag decoders (`decoder_ema_alpha = 0.0`, `decoder_pos_alpha = 0.0`), smooth soft-fade sensory handover ($w_{\text{max}} = 0.40$), and $[t_{\text{contact}} - 7, t_{\text{contact}} + 3]$ sensory injection window: (1) Trained Phase 0 Representation model (`spwm_v0_7_3_train_representation`) to convergence; (2) Trained Phase 1 M1 Latent Dynamics model (`spwm_v0_7_3_train_m1`) under continuous soft-fade handover and normalized momentum; (3) Exported canonical ghost trajectory (`sim/Assets/StreamingAssets/trajectory_ghost.json`) and rendered headless simulation video (`results/videos/robot_arm_simulation.mp4`).
+- **new results (if any)**: Phase 0 Representation (114 epochs, best ep 104, val score = 0.344606): teacher_forcing_mse = 0.08579, mean_spike_rate = 0.14603, rollout_mae = 3.5759 rad. Phase 1 M1 Latent Dynamics (78 epochs, best ep 68, val score = 0.002041): teacher_forcing_mse = 0.00777, mean_spike_rate = 0.14603, rollout_mae = 0.37868 rad, drift_ratio = 0.3236. Horizon Position Errors: H=1: 0.7983 rad, H=5: 0.4300 rad, H=10: 0.2730 rad, H=25: 0.2583 rad, H=50: 0.2385 rad, H=100: 0.2740 rad. Horizon Velocity Errors: H=1: 0.0393 rad/s, H=5: 0.0404 rad/s, H=10: 0.1441 rad/s, H=25: 0.1733 rad/s, H=50: 0.1870 rad/s, H=100: 0.1846 rad/s. Canonical ghost trajectory export (H=100, traj_id=3600): mean position error = 0.2450 rad, final position error = 0.4151 rad, max position error = 0.7866 rad, mean velocity error = 0.1432 rad/s, final velocity error = 0.0942 rad/s, max velocity error = 0.4719 rad/s, mean latent error = 3.5459, final latent error = 4.3078. Headless simulation video rendered: 100 frames at 1280x720 (2,222.9 KB). All 78 tests passed.
+- **verdict on change made**: Preserved (established as the active production baseline).
+
 
 

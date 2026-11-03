@@ -1,5 +1,5 @@
 """
-Ghost Execution Exporter for Unity (SPWM-v0.7.2).
+Ghost Execution Exporter for Unity (SPWM-v0.7.3).
 
 Runs the canonical RolloutEvaluator protocol on test trajectories and serializes
 ground-truth vs. M1-predicted joint angles into `sim/Assets/StreamingAssets/trajectory_ghost.json`
@@ -7,8 +7,8 @@ ground-truth vs. M1-predicted joint angles into `sim/Assets/StreamingAssets/traj
 
 Usage:
     python experiments/export_ghost_trajectory.py \
-        --checkpoint results/spwm_v0_7_2_train_m1/model.pt \
-        --config results/spwm_v0_7_2_train_m1/config.yaml \
+        --checkpoint results/spwm_v0_7_3_train_m1/model.pt \
+        --config results/spwm_v0_7_3_train_m1/config.yaml \
         [--episodes 5] [--compare-injection] [--horizon 100]
 """
 
@@ -71,7 +71,7 @@ def main() -> None:
     parser.add_argument("--compare-injection", action="store_true", help="Export each episode both with and without sensory injection")
     parser.add_argument("--output", type=str, default=None, help="Path to save the trajectory JSON (for single export)")
     parser.add_argument("--output-dir", type=str, default=None, help="Directory for exported trajectory files")
-    parser.add_argument("--model-version", type=str, default="spwm_v0_7_2")
+    parser.add_argument("--model-version", type=str, default="spwm_v0_7_3")
     parser.add_argument("--device", type=str, default=None, help="Device (cpu, mps, cuda)")
     parser.add_argument("--no-injection", action="store_true", help="Disable active perception sensory injection during rollout")
     args = parser.parse_args()

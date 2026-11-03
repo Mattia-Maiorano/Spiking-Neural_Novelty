@@ -1,6 +1,6 @@
-# SPWM-v0.6.0 Master Architectural Specification
+# SPWM-v0.7.3 Master Architectural Specification
 
-This document serves as the authoritative technical reference for **SPWM-v0.6.0 (Dual-Camera Active Perception Grasping & Spiking Predictive World Model for 3D Articulated Manipulation)** following the structural upgrade to a **Dual-Camera Neuromorphic Vision System (Static Global + Egocentric Wrist-Mounted Event Sensors, $C=4$)** resolving 3D kinematic unobservability (axial wrist roll symmetry and elbow flex depth foreshortening), alongside the **6-DOF Articulated Manipulator Arm**, **Procedural Object Spawning with Inertial Variance**, **Phasic Active Perception (Blind Approach $\to$ Sensory Heft $\to$ Blind Transport)**, **Sensory Injection in M1**, and the **4-Layer Strict Contract Architecture**. It is divided into three comprehensive sections:
+This document serves as the authoritative technical reference for **SPWM-v0.7.3 (Dual-Camera Active Perception Grasping & Spiking Predictive World Model for 3D Articulated Manipulation)** following the structural upgrade to an **Anthropomorphic 6-DOF Right Humanoid Manipulator Arm**, **Continuous Soft-Fade Sensory Handover**, **Zero-Lag Kinematic Readout**, and a **Dual-Camera Neuromorphic Vision System (Static Global + Egocentric Wrist-Mounted Event Sensors, $C=4$)** resolving 3D kinematic unobservability (axial wrist roll symmetry and elbow flex depth foreshortening), alongside **Procedural Object Spawning with Inertial Variance**, **Phasic Active Perception (Blind Approach $\to$ Sensory Heft $\to$ Blind Transport)**, **Sensory Injection in M1**, and the **4-Layer Strict Contract Architecture**. It is divided into three comprehensive sections:
 1. **The Workspace**: 4-layer directory topology, Unity simulation bridge, dependency invariants, file-level responsibilities, and CI/AST enforcement guards.
 2. **Models' Architecture**: End-to-end forward pass, tensor dimensionality contracts, and the mathematical and computational roles of `EventEncoder`, `SpikingLatentDynamics`, action-conditioned `LatentPredictor` (M1 Attractor Predictor with Active Perception sensory injection), and articulated `PhysicalDecoder`.
 3. **Loss Computation & Training Flow**: Granular breakdown of the isolated `train_representation` and `train_m1` phase strategies, action-conditioned phase-space vector field learning, exact loss formulations, and strict checkpoint scoping rules.
@@ -11,7 +11,7 @@ This document serves as the authoritative technical reference for **SPWM-v0.6.0 
 
 ### 1.1 Architectural Philosophy & Context Boundaries for Small LLMs
 
-SPWM-v0.5.0 is organized into four strictly ordered horizontal layers so that any developer or small context-window LLM can modify a neural module, loss function, or training phase by loading **at most 3 files** into context simultaneously:
+SPWM-v0.7.3 is organized into four strictly ordered horizontal layers so that any developer or small context-window LLM can modify a neural module, loss function, or training phase by loading **at most 3 files** into context simultaneously:
 1. The **contract file** in [`spwm/contracts/`](file:///Users/Mattia/Desktop/Studies/Temp/spwm/contracts/__init__.py) (immutable types, tensor shape validators, and `Protocol` interfaces).
 2. The **target implementation module** (e.g., [`spwm/training/phases/m1_nominal.py`](file:///Users/Mattia/Desktop/Studies/Temp/spwm/training/phases/m1_nominal.py), strictly $<150$ lines).
 3. The **corresponding unit test module** in `tests/`.

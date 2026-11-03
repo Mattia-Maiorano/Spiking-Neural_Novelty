@@ -1,12 +1,12 @@
 # Loss Formulations, Isolated Phase Strategies & Checkpoint Scoping (`spwm/training/`)
 
-This document details the mathematical formulations, gradient isolation guarantees, and checkpoint scoping rules implemented in Layer 2 ([`spwm/training/`](file:///Users/Mattia/Desktop/Studies/Temp/spwm/training/__init__.py)) for **SPWM-v0.5.0 (6-DOF Active Perception Grasping & Action-Conditioned Attractor Dynamics)**.
+This document details the mathematical formulations, gradient isolation guarantees, and checkpoint scoping rules implemented in Layer 2 ([`spwm/training/`](file:///Users/Mattia/Desktop/Studies/Temp/spwm/training/__init__.py)) for **SPWM-v0.7.3 (6-DOF Active Perception Grasping & Action-Conditioned Attractor Dynamics)**.
 
 ---
 
 ## 1. Isolated Phase Strategy Architecture (`spwm/training/phases/`)
 
-SPWM-v0.5.0 decouples representation learning from action-conditioned latent predictive dynamics, isolating each phase into a dedicated `< 150`-line strategy class inheriting from [`PhaseStrategy`](file:///Users/Mattia/Desktop/Studies/Temp/spwm/contracts/protocols.py):
+SPWM-v0.7.3 decouples representation learning from action-conditioned latent predictive dynamics, isolating each phase into a dedicated `< 150`-line strategy class inheriting from [`PhaseStrategy`](file:///Users/Mattia/Desktop/Studies/Temp/spwm/contracts/protocols.py):
 
 ```mermaid
 classDiagram

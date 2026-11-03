@@ -246,8 +246,8 @@ def test_ghost_visualizer_exporter_contract():
     assert np.allclose(frames[0]["ground_truth_q"], true_q[3], atol=1e-5)
 
 
-def test_evaluator_active_perception_sensory_injection_halts_m1_on_flag_1():
-    """Verify RolloutEvaluator active perception halts M1 during heft steps matching training."""
+def test_evaluator_active_perception_soft_fade_handover():
+    """Verify RolloutEvaluator active perception softly blends continuous M1 during sensory steps."""
     B, T = 2, 12
     model = SPWM(latent_dim=32, timescale_dims=(16, 16), encoder_dim=32, joint_count=6, action_dim=6)
     evaluator = RolloutEvaluator(model=model, horizons=[9], joint_count=6, temporal_burn_in=2)
@@ -270,8 +270,8 @@ def test_evaluator_active_perception_sensory_injection_halts_m1_on_flag_1():
     model.m1.forward = counted_m1_forward  # type: ignore[method-assign]
     traj = evaluator.rollout_trajectory(batch, horizon=9)
 
-    # first_heft = 5 -> t_start = 2 -> horizon = 9 steps.
-    # Out of 9 steps (next_idx = 3..11), 3 steps have flag == 1 (next_idx = 5, 6, 7), so M1 runs on 6 steps!
-    assert m1_call_count == 6
+    # In continuous soft-fade handover (SPWM-v0.7.2), M1 unrolls continuously across all horizon steps (9 steps)
+    # without binary interruption cliff, softly blending with grounded dynamics during active perception.
+    assert m1_call_count == 9
     assert traj.horizon == 9
     assert traj.t_start == 2

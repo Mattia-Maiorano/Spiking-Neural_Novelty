@@ -9,7 +9,7 @@ import dataclasses
 from dataclasses import dataclass, field, fields, is_dataclass, MISSING
 from pathlib import Path
 import sys
-from typing import Any, Dict, Optional, Tuple, Type, TypeVar, Union, get_type_hints
+from typing import Any, Dict, Optional, Tuple, Type, TypeVar, Union, get_origin, get_type_hints
 import yaml
 
 from spwm.contracts.tensors import C_EVENT, J, assert_phase_space_contract
@@ -37,7 +37,7 @@ def _strict_dict_to_dataclass(cls: Type[T], data: Dict[str, Any], context: str =
             if isinstance(f_type, type) and is_dataclass(f_type) and isinstance(val, dict):
                 kwargs[f_name] = _strict_dict_to_dataclass(f_type, val, context=f"{context}.{f_name}" if context else f_name)
             elif val is not None:
-                origin = getattr(f_type, "__origin__", None)
+                origin = get_origin(f_type)
                 if origin is tuple and isinstance(val, (list, tuple)):
                     val = tuple(val)
                 elif origin is list and isinstance(val, (list, tuple)):
@@ -60,7 +60,7 @@ def _strict_dict_to_dataclass(cls: Type[T], data: Dict[str, Any], context: str =
 @dataclass(frozen=True)
 class ProjectConfig:
     """Project-level identity, tracking tags, and pseudo-random reproducibility configuration."""
-    name: str = "spwm_v0_7_0"  #: Unique identifier/tag for the project and run artifacts.
+    name: str = "spwm_v0_7_3"  #: Unique identifier/tag for the project and run artifacts.
     seed: int = 42             #: Global pseudo-random seed for PyTorch, NumPy, and trajectory generation.
 
 
@@ -108,7 +108,8 @@ class DataConfig:
     num_workers: int = 0                            #: Number of subprocesses used by PyTorch DataLoaders.
     cache_data: bool = True                         #: Whether to cache rendered event frames in RAM to accelerate training epochs.
     strict_dataset: bool = True                     #: Whether to strictly require real exported Unity trajectories (fail if missing).
-    pre_contact_sensory_steps: int = 5              #: Number of approach steps before physical contact where Phase 1.5 sensory grounding begins.
+    pre_contact_sensory_steps: int = 7              #: Number of approach steps before physical contact where Phase 1.5 sensory grounding begins.
+    post_contact_sensory_steps: int = 3             #: Number of steps after physical contact where Phase 1.5 sensory grounding is maintained before release.
 
     def __post_init__(self) -> None:
         if self.joint_count <= 0:
@@ -137,10 +138,10 @@ class ModelConfig:
     p_dim: int = 96                                   #: Momentum/velocity subspace dimension; MUST be a multiple of q_dim.
     predictor_hidden_dim: int = 256                   #: Hidden layer dimensionality of the predictor residual MLP network.
     ema_decay: float = 0.9                            #: Exponential moving average decay for tracking latent spike statistics.
-    decoder_ema_alpha: float = 0.2                    #: EMA filter smoothing coefficient for PhysicalDecoder momentum readout.
-    decoder_pos_alpha: float = 0.2                    #: EMA filter smoothing coefficient for PhysicalDecoder position readout (0.0 to disable).
-    gate_ramp_steps: int = 5                          #: Number of transition steps for smooth sensory gate ramp.
-    max_k_gate: float = 1.0                           #: Maximum sensory injection gate weight to maintain inertial damping.
+    decoder_ema_alpha: float = 0.0                    #: EMA filter smoothing coefficient for PhysicalDecoder momentum readout (0.0 for raw/unfiltered).
+    decoder_pos_alpha: float = 0.0                    #: EMA filter smoothing coefficient for PhysicalDecoder position readout (0.0 to disable).
+    gate_ramp_steps: int = 4                          #: Number of transition steps for smooth sensory gate ramp (reaching full injection 3-4 steps ahead of contact).
+    max_k_gate: float = 0.35                          #: Maximum sensory injection gate weight to maintain inertial damping.
     max_correction_norm: float = 0.50                 #: Maximum Euclidean norm of single-step sensory correction in coordinate space.
     activity_threshold: float = 0.001                 #: Minimum event activity threshold below which sensory correction is suppressed (Anti-Evanescence gate).
     in_channels: int = C_EVENT                        #: Dual-camera event input polarity channels (4 = 2 static global + 2 egocentric wrist).

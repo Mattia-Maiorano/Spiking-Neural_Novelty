@@ -84,29 +84,69 @@ namespace SPWM.Visualization
                 return;
             }
 
-            // Anatomical spherical joint articulation (deltoid shoulder cap, elbow, wrist) centered at (0, 0, 0)
+            // Anatomical spherical joint articulation (deltoid shoulder cap, elbow, wrist) centered at (0, 0, 0).
+            // Shoulder_Pan is kept minimal as a base socket.
             if (spec.Name != "Shoulder_Pan")
             {
                 GameObject hub = GameObject.CreatePrimitive(PrimitiveType.Sphere);
                 hub.name = spec.Name + "_JointHub";
                 SafeDestroy(hub.GetComponent<Collider>());
                 hub.transform.SetParent(pivot, false);
-                float hubDiameter = Mathf.Max(d.x, d.z) * 1.06f;
+                float hubDiameter = Mathf.Max(d.x, d.z) * (spec.Name.StartsWith("Wrist") ? 1.02f : 1.06f);
                 hub.transform.localScale = new Vector3(hubDiameter, hubDiameter, hubDiameter);
                 hub.transform.localPosition = Vector3.zero;
                 RegisterRenderer(hub.GetComponent<Renderer>(), material);
             }
 
-            // Rigid cylindrical structural limb segment spanning strictly from joint pivot (0, 0, 0) to child pivot (0, d.y, 0).
-            // Unity's Cylinder primitive has height = 2.0, so localScale.y = 0.5 * d.y and localPosition.y = 0.5 * d.y.
-            GameObject shaft = GameObject.CreatePrimitive(PrimitiveType.Cylinder);
-            shaft.name = spec.Name + "_VisualShaft";
-            SafeDestroy(shaft.GetComponent<Collider>());
-            shaft.transform.SetParent(pivot, false);
-            shaft.transform.localScale = new Vector3(d.x, 0.5f * d.y, d.z);
-            shaft.transform.localPosition = new Vector3(0f, 0.5f * d.y, 0f);
-            shaft.transform.localRotation = Quaternion.identity;
-            RegisterRenderer(shaft.GetComponent<Renderer>(), material);
+            // Rigid cylindrical structural limb segment.
+            // Each link renders its own anatomical collar/shaft spanning (0, 0, 0) -> (0, d.y, 0).
+            if (spec.Name == "Wrist_Yaw")
+            {
+                // Intermediate kinematic anchor bridging Wrist_Pitch and Wrist_Roll
+                GameObject yawCollar = GameObject.CreatePrimitive(PrimitiveType.Cylinder);
+                yawCollar.name = "Wrist_Yaw_Visual";
+                SafeDestroy(yawCollar.GetComponent<Collider>());
+                yawCollar.transform.SetParent(pivot, false);
+                yawCollar.transform.localScale = new Vector3(d.x, 0.5f * d.y, d.z);
+                yawCollar.transform.localPosition = new Vector3(0f, 0.5f * d.y, 0f);
+                yawCollar.transform.localRotation = Quaternion.identity;
+                RegisterRenderer(yawCollar.GetComponent<Renderer>(), material);
+            }
+            else if (spec.Name == "Wrist_Pitch")
+            {
+                // Anatomical wrist cuff segment
+                GameObject wristSleeve = GameObject.CreatePrimitive(PrimitiveType.Cylinder);
+                wristSleeve.name = "Wrist_Sleeve_Visual";
+                SafeDestroy(wristSleeve.GetComponent<Collider>());
+                wristSleeve.transform.SetParent(pivot, false);
+                wristSleeve.transform.localScale = new Vector3(d.x, 0.5f * d.y, d.z);
+                wristSleeve.transform.localPosition = new Vector3(0f, 0.5f * d.y, 0f);
+                wristSleeve.transform.localRotation = Quaternion.identity;
+                RegisterRenderer(wristSleeve.GetComponent<Renderer>(), material);
+            }
+            else if (spec.Name == "Wrist_Roll")
+            {
+                // Terminal wrist rotation link before the hand; renders a solid wrist band collar bridging directly to the hand
+                GameObject wristBand = GameObject.CreatePrimitive(PrimitiveType.Cylinder);
+                wristBand.name = "Wrist_Band_Visual";
+                SafeDestroy(wristBand.GetComponent<Collider>());
+                wristBand.transform.SetParent(pivot, false);
+                wristBand.transform.localScale = new Vector3(d.x, 0.5f * d.y, d.z);
+                wristBand.transform.localPosition = new Vector3(0f, 0.5f * d.y, 0f);
+                wristBand.transform.localRotation = Quaternion.identity;
+                RegisterRenderer(wristBand.GetComponent<Renderer>(), material);
+            }
+            else
+            {
+                GameObject shaft = GameObject.CreatePrimitive(PrimitiveType.Cylinder);
+                shaft.name = spec.Name + "_VisualShaft";
+                SafeDestroy(shaft.GetComponent<Collider>());
+                shaft.transform.SetParent(pivot, false);
+                shaft.transform.localScale = new Vector3(d.x, 0.5f * d.y, d.z);
+                shaft.transform.localPosition = new Vector3(0f, 0.5f * d.y, 0f);
+                shaft.transform.localRotation = Quaternion.identity;
+                RegisterRenderer(shaft.GetComponent<Renderer>(), material);
+            }
 
             if (isEndEffector)
             {
@@ -361,6 +401,10 @@ namespace SPWM.Visualization
         /// <summary>Continuous frame index in [0, FrameCount-1]; fractional part = interpolation alpha.</summary>
         public float FramePosition { get; private set; }
 
+        public int GraspLockFrame => graspLockFrameIndex;
+        public int HeftStartFrame => _data != null && _data.metadata != null ? _data.metadata.heft_start_frame_index : -1;
+        public int SensoryReleaseFrame => _data != null && _data.metadata != null ? _data.metadata.sensory_release_frame_index : -1;
+
         /// <summary>1-indexed horizon step currently displayed (t in "t / H").</summary>
         public int CurrentStep => _data == null ? 0 : Mathf.Clamp(Mathf.FloorToInt(FramePosition) + 1, 1, FrameCount);
 
@@ -525,6 +569,9 @@ namespace SPWM.Visualization
             for (int f = 0; f < frames; f++)
             {
                 GhostFrame fr = _data.frames[f];
+                // Smoothly fade in prediction error over initial warm-up steps so rollout starts clean
+                float warmupBlend = SmoothStepMinimumJerk((float)f / (float)setupHold);
+
                 for (int j = 0; j < joints; j++)
                 {
                     float gtQ = fr.ground_truth_q[j];
@@ -532,7 +579,7 @@ namespace SPWM.Visualization
 
                     if (adaptToAnthropomorphicPose && j < CanonicalPoseLength(qNeutral))
                     {
-                        float errDelta = predQ - gtQ;
+                        float errDelta = (predQ - gtQ) * warmupBlend;
                         if (j == 5)
                         {
                             // Bound prediction error on wrist roll so ghost model stays anatomically grounded
@@ -560,6 +607,11 @@ namespace SPWM.Visualization
                         }
                         gtQ = anthroQ;
                         predQ = Mathf.Clamp(anthroQ + errDelta, -ArticulatedRobotRig.MaxJointAngleRad, ArticulatedRobotRig.MaxJointAngleRad);
+                    }
+                    else
+                    {
+                        // Clean start grounding: blend raw prediction error from 0 to 1 over warmup steps
+                        predQ = gtQ + (predQ - gtQ) * warmupBlend;
                     }
 
                     _targetRot[f, j] = _target.JointRotation(j, gtQ, angleScale);
@@ -732,10 +784,17 @@ namespace SPWM.Visualization
             float a = FramePosition - i0;
             GhostInstantaneousMetrics m0 = _data.frames[i0].instantaneous_metrics;
             GhostInstantaneousMetrics m1 = _data.frames[i1].instantaneous_metrics;
+            m.latent_error = Mathf.Lerp(m0.latent_error, m1.latent_error, a);
             m.position_abs_error = Mathf.Lerp(m0.position_abs_error, m1.position_abs_error, a);
             m.velocity_abs_error = Mathf.Lerp(m0.velocity_abs_error, m1.velocity_abs_error, a);
             m.velocity_relative_degradation = Mathf.Lerp(m0.velocity_relative_degradation, m1.velocity_relative_degradation, a);
             m.position_relative_degradation = Mathf.Lerp(m0.position_relative_degradation, m1.position_relative_degradation, a);
+
+            // Smoothly ground telemetry errors to 0 at frame 1 matching the visual warmup blend
+            float warmupBlend = SmoothStepMinimumJerk(FramePosition / 4.0f);
+            m.latent_error *= warmupBlend;
+            m.position_abs_error *= warmupBlend;
+            m.velocity_abs_error *= warmupBlend;
             return m;
         }
 

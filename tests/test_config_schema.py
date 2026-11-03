@@ -30,16 +30,22 @@ def test_experiment_config_instantiates_cleanly():
         "spwm_v0_6_2",
         "spwm_v0_6_3",
         "spwm_v0_7_0",
+        "spwm_v0_7_1",
+        "spwm_v0_7_2",
     )
     assert cfg.environment.joint_count == 6
     assert cfg.environment.action_dim == 6
     assert cfg.data.joint_count == 6
     assert cfg.data.action_dim == 6
+    assert cfg.data.pre_contact_sensory_steps == 7
+    assert cfg.data.post_contact_sensory_steps == 3
     assert cfg.model.in_channels == 4
     assert cfg.model.latent_dim == 128
     assert cfg.model.q_dim == 32
     assert cfg.model.p_dim == 96
     assert cfg.model.num_keypoints == 16
+    assert cfg.model.max_k_gate == 0.35
+    assert cfg.model.gate_ramp_steps == 4
     assert cfg.memory.num_timescales == 2
     assert cfg.memory.timescale_dims == (128, 128)
     assert cfg.training.mode == "train_m1"

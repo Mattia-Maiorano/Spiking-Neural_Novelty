@@ -257,3 +257,67 @@ def test_anti_evanescence_gate_suppression_and_ramp():
     assert torch.all(state_active.grounded_steps == 1.0)
 
 
+def test_reverted_momentum_preserves_membrane_continuity():
+    """
+    Verifies Option 1 Reversion (SPWM-v0.7.2):
+    Clean continuous momentum is maintained: p_{t+1} = LayerNorm(fuse_spikes + fuse_mems).
+    No raw finite-difference shocks bypass LayerNorm, ensuring max(|p|) <= 3.5.
+    """
+    dyn = SpikingLatentDynamics(
+        input_dim=32,
+        latent_dim=32,
+        q_dim=8,
+        p_dim=24,
+        dt=0.05,
+        timescale_dims=(16, 16),
+        betas=(0.90, 0.985),
+        gate_ramp_steps=4,
+        activity_threshold=0.001,
+    )
+    B = 2
+    state = dyn.init_state(B)
+    sens_input = torch.zeros(B, 32)
+    state.z_prev[:, :8] = 1.0
+    state.z_prev[:, 8:] = 0.0
+
+    target_skp = torch.ones(B, 8) * 1.5
+    for step in range(4):
+        z_next, state = dyn.step(
+            sensory_input=sens_input,
+            state=state,
+            sensory_keypoints=target_skp,
+            event_activity=torch.full((B, 1), 0.08),
+            in_sensory_phase=True,
+        )
+
+    # Coordinate q smoothly coupled toward target
+    assert torch.all(z_next[:, :8] > 1.0)
+    # Momentum p remains normalized by LayerNorm (never exploding above 3.5)
+    p_mem = z_next[:, 8:]
+    assert torch.all(torch.abs(p_mem) <= 3.5)
+
+
+def test_slow_gated_injection_schedule():
+    """
+    Verifies that _compute_default_phase_schedule produces sensory grounding:
+    - Starting 7 steps before contact
+    - Kept until 3 steps after contact
+    - Released for remainder of sequence
+    """
+    from spwm.data.datasets import _compute_default_phase_schedule
+    import numpy as np
+
+    T = 105
+    setup_steps, approach_end, heft_end, flags = _compute_default_phase_schedule(
+        T, rng=None, pre_contact_steps=7, post_contact_steps=3
+    )
+
+    heft_start = approach_end - 7
+    sensory_release = approach_end + 3
+    assert flags[heft_start - 1] == 0
+    assert np.all(flags[heft_start:sensory_release] == 1)
+    assert flags[sensory_release] == 2
+    assert np.all(flags[sensory_release:] == 2)
+
+
+

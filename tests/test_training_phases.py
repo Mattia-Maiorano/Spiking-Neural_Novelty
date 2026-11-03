@@ -136,8 +136,8 @@ def test_representation_and_m1_isolated_phase_strategies() -> None:
     assert all(p.grad is None for p in model_m1.physical_decoder.parameters())
 
 
-def test_m1_active_perception_sensory_injection_halts_m1_on_flag_1() -> None:
-    """Verify M1PhaseStrategy temporarily halts M1 during Phase 1.5 (flag == 1) and injects grounded dynamics."""
+def test_m1_active_perception_soft_fade_handover() -> None:
+    """Verify M1PhaseStrategy continuously unrolls M1 while softly blending grounded dynamics during Phase 1.5."""
     B, T = 2, 12
     cfg = _make_small_config("train_m1")
     model = SPWM.from_config(cfg)
@@ -160,9 +160,9 @@ def test_m1_active_perception_sensory_injection_halts_m1_on_flag_1() -> None:
 
     model.m1.forward = counted_m1_forward  # type: ignore[method-assign]
     loss, metrics = strategy._compute_m1_objectives(events, actions, flat_kin, phase_flags)
-    # first_heft = 5 -> init_frames = min(3, 4) = 3 -> t_start = 2 -> horizon = 12 - 1 - 2 = 9
-    # Out of 9 steps (next_idx = 3..11), 3 steps have flag == 1 (next_idx = 5, 6, 7), so M1 runs on 6 steps!
-    assert m1_call_count == 6
+    # In continuous soft-fade handover (SPWM-v0.7.2), M1 unrolls continuously across all 9 steps
+    # without stopping, maintaining motor inertia and continuous dynamics.
+    assert m1_call_count == 9
     assert loss.requires_grad
     assert metrics["loss"] >= 0.0
 

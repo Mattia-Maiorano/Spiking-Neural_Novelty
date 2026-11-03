@@ -15,8 +15,6 @@ namespace SPWM.Visualization
     {
         [Header("Target")]
         [SerializeField] private GhostPlaybackManager playback;
-        [Tooltip("Fallback target if no GhostPlaybackManager is assigned.")]
-        [SerializeField] private Transform fallbackTarget;
 
         [Header("Anthropomorphic Eye-Level Perspective")]
         [Tooltip("Positions the camera at human eye level relative to the shoulder mount, pointing forward toward the workspace.")]
@@ -28,7 +26,7 @@ namespace SPWM.Visualization
         [Tooltip("Subtle eye-gaze tracking weight toward the end-effector tip in the forward workspace (0 = strictly fixed head gaze).")]
         [SerializeField, Range(0f, 0.5f)] private float gazeFollowWeight = 0.20f;
 
-        [Header("Isometric Framing (Fallback Mode)")]
+        [Header("Isometric Framing")]
         [SerializeField, Range(0f, 89f)] private float elevationDeg = 15f;
         [SerializeField, Range(-180f, 180f)] private float azimuthDeg = 0f;
         [SerializeField, Min(0.5f)] private float minDistance = 0.65f;
@@ -119,9 +117,7 @@ namespace SPWM.Visualization
 
         private void UpdateAnthropomorphicEyeLevelCamera()
         {
-            Vector3 baseOrigin = playback != null
-                ? playback.transform.position
-                : (fallbackTarget != null ? fallbackTarget.position : Vector3.zero);
+            Vector3 baseOrigin = playback != null ? playback.transform.position : Vector3.zero;
 
             Vector3 eyePos = baseOrigin + new Vector3(
                 headOffsetFromShoulder.x,
@@ -175,12 +171,6 @@ namespace SPWM.Visualization
                 b.Encapsulate(playback.GhostRig.WorldBounds()); // keep ghost limbs in frame too
                 // Radius measured from the COM (not bounds centre) since that is what we track.
                 radius = Vector3.Distance(com, b.center) + b.extents.magnitude;
-                return true;
-            }
-            if (fallbackTarget != null)
-            {
-                com = fallbackTarget.position;
-                radius = 1.2f;
                 return true;
             }
             com = Vector3.zero;

@@ -179,7 +179,7 @@ namespace SPWM.Robotics
             }
             else
             {
-                // CPU fallback matching EventCameraLogDiff.compute and Python EventCameraSimulator
+                // CPU computation matching EventCameraLogDiff.compute and Python EventCameraSimulator
                 for (int i = 0; i < numPixels; i++)
                 {
                     float logL = grayscale[i];

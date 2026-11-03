@@ -55,8 +55,7 @@ namespace SPWM.Editor
             camSo.FindProperty("screenComposition").vector2Value = Vector2.zero;
             camSo.ApplyModifiedPropertiesWithoutUndo();
 
-            // 5. Canvas e EventSystem (ScreenSpaceOverlay so UI overlays cleanly on top of 3D geometry;
-            //    HeadlessRenderVideo uses a low planeDistance and UI layer 5 so sensory cameras exclude UI)
+            // 5. Canvas e EventSystem 
             var canvasGo = new GameObject("TelemetryCanvas");
             canvasGo.layer = 5; // UI layer
             var canvas = canvasGo.AddComponent<Canvas>();
@@ -82,81 +81,51 @@ namespace SPWM.Editor
             hudRect.anchorMax = new Vector2(0f, 0f);
             hudRect.pivot = new Vector2(0f, 0f);
             hudRect.anchoredPosition = new Vector2(40f, 40f);
-            hudRect.sizeDelta = new Vector2(440f, 500f);
+            hudRect.sizeDelta = new Vector2(440f, 540f);
 
             var font = Resources.GetBuiltinResource<Font>("LegacyRuntime.ttf");
 
-            // Header Title & Subtitle
-            var titleText = CreateText("Header_Title", hudPanelGo.transform, "SPWM v0.7.0 · GHOST EXECUTION", font, 20, FontStyle.Bold, Color.white);
-            PositionRect(titleText.rectTransform, new Vector2(0f, 1f), new Vector2(1f, 1f), new Vector2(0f, 1f), new Vector2(20f, -20f), new Vector2(-20f, 32f));
+            // 2.1 Header Title 
+            var titleText = CreateText("Header_Title", hudPanelGo.transform, "Spiking Predictor World Model", font, 20, FontStyle.Bold, Color.white);
+            PositionRect(titleText.rectTransform, new Vector2(0f, 1f), new Vector2(1f, 1f), new Vector2(0f, 1f), new Vector2(20f, -16f), new Vector2(-20f, 28f));
 
-            var subText = CreateText("Header_Subtitle", hudPanelGo.transform, "M1 autoregressive rollout · H=100 · Δt=50ms", font, 14, FontStyle.Normal, new Color(0.55f, 0.58f, 0.62f));
-            PositionRect(subText.rectTransform, new Vector2(0f, 1f), new Vector2(1f, 1f), new Vector2(0f, 1f), new Vector2(20f, -54f), new Vector2(-40f, 22f));
+            // 2.2 Frame and Phase 
+            var frameAndPhaseText = CreateText("Frame_And_Phase", hudPanelGo.transform, "1 - burn in", font, 16, FontStyle.Bold, new Color(0.22f, 0.74f, 0.97f));
+            PositionRect(frameAndPhaseText.rectTransform, new Vector2(0f, 1f), new Vector2(1f, 1f), new Vector2(0f, 1f), new Vector2(20f, -50f), new Vector2(-40f, 22f));
 
-            // Horizon Progress Group
-            var stepText = CreateText("StepCounter", hudPanelGo.transform, "1 / 100", font, 32, FontStyle.Bold, Color.white);
-            PositionRect(stepText.rectTransform, new Vector2(0f, 1f), new Vector2(0f, 1f), new Vector2(0f, 1f), new Vector2(20f, -92f), new Vector2(200f, 38f));
+            // 2.3 Latent Error Sparkline
+            var latentLabel = CreateText("Latent_Label", hudPanelGo.transform, "LATENT ERROR", font, 11, FontStyle.Bold, new Color(0.35f, 0.65f, 1f));
+            PositionRect(latentLabel.rectTransform, new Vector2(0f, 1f), new Vector2(1f, 1f), new Vector2(0f, 1f), new Vector2(20f, -100f), new Vector2(-40f, 20f));
 
-            var timeText = CreateText("TimeLabel", hudPanelGo.transform, "t = 0.05 s", font, 16, FontStyle.Normal, new Color(0.55f, 0.58f, 0.62f));
-            PositionRect(timeText.rectTransform, new Vector2(1f, 1f), new Vector2(1f, 1f), new Vector2(1f, 1f), new Vector2(-20f, -100f), new Vector2(160f, 26f));
-            timeText.alignment = TextAnchor.MiddleRight;
+            var latentSparklineGo = CreateUIElement("Latent_Sparkline", hudPanelGo.transform);
+            var latentSparkline = latentSparklineGo.AddComponent<UISparkline>();
+            PositionRect(latentSparklineGo.GetComponent<RectTransform>(), new Vector2(0f, 1f), new Vector2(1f, 1f), new Vector2(0f, 1f), new Vector2(20f, -130f), new Vector2(-40f, 75f));
 
-            var progressTrack = CreateUIElement("ProgressBar_Track", hudPanelGo.transform);
-            var trackImg = progressTrack.AddComponent<Image>();
-            trackImg.color = new Color(0.13f, 0.15f, 0.18f); // #21262D
-            PositionRect(progressTrack.GetComponent<RectTransform>(), new Vector2(0f, 1f), new Vector2(1f, 1f), new Vector2(0f, 1f), new Vector2(20f, -136f), new Vector2(-40f, 6f));
+            // 2.4 Position Error Sparkline
+            var posLabel = CreateText("Pos_Label", hudPanelGo.transform, "POSITION ERROR", font, 11, FontStyle.Bold, new Color(1f, 0.65f, 0.34f));
+            PositionRect(posLabel.rectTransform, new Vector2(0f, 1f), new Vector2(1f, 1f), new Vector2(0f, 1f), new Vector2(20f, -240f), new Vector2(-40f, 20f));
 
-            var progressFill = CreateUIElement("ProgressBar_Fill", progressTrack.transform);
-            var fillImg = progressFill.AddComponent<Image>();
-            fillImg.color = new Color(0f, 0.85f, 1f); // #00D9FF
-            var fillRect = progressFill.GetComponent<RectTransform>();
-            fillRect.anchorMin = new Vector2(0f, 0f);
-            fillRect.anchorMax = new Vector2(0f, 1f);
-            fillRect.pivot = new Vector2(0f, 0.5f);
-            fillRect.anchoredPosition = Vector2.zero;
-            fillRect.sizeDelta = new Vector2(0f, 0f);
+            var posSparklineGo = CreateUIElement("Position_Sparkline", hudPanelGo.transform);
+            var posSparkline = posSparklineGo.AddComponent<UISparkline>();
+            PositionRect(posSparklineGo.GetComponent<RectTransform>(), new Vector2(0f, 1f), new Vector2(1f, 1f), new Vector2(0f, 1f), new Vector2(20f, -270f), new Vector2(-40f, 75f));
 
-            // Attractor Convergence Group (Sparkline)
-            var convLabel = CreateText("Conv_Label", hudPanelGo.transform, "ATTRACTOR CONVERGENCE", font, 13, FontStyle.Bold, new Color(0.35f, 0.65f, 1f));
-            PositionRect(convLabel.rectTransform, new Vector2(0f, 1f), new Vector2(1f, 1f), new Vector2(0f, 1f), new Vector2(20f, -165f), new Vector2(-40f, 20f));
+            // 2.5 Velocity Error Sparkline
+            var velLabel = CreateText("Vel_Label", hudPanelGo.transform, "VELOCITY ERROR", font, 11, FontStyle.Bold, new Color(0.65f, 0.55f, 0.98f));
+            PositionRect(velLabel.rectTransform, new Vector2(0f, 1f), new Vector2(1f, 1f), new Vector2(0f, 1f), new Vector2(20f, -380f), new Vector2(-40f, 20f));
 
-            var velMetricText = CreateText("VelocityMetric", hudPanelGo.transform, "×1.00", font, 28, FontStyle.Bold, new Color(0.22f, 0.83f, 0.33f)); // #39D353
-            PositionRect(velMetricText.rectTransform, new Vector2(1f, 1f), new Vector2(1f, 1f), new Vector2(1f, 1f), new Vector2(-20f, -188f), new Vector2(120f, 34f));
-            velMetricText.alignment = TextAnchor.MiddleRight;
-
-            var sparklineGo = CreateUIElement("Sparkline", hudPanelGo.transform);
-            var sparkline = sparklineGo.AddComponent<UISparkline>();
-            PositionRect(sparklineGo.GetComponent<RectTransform>(), new Vector2(0f, 1f), new Vector2(1f, 1f), new Vector2(0f, 1f), new Vector2(20f, -225f), new Vector2(-40f, 80f));
-
-            // Phase Shift Group (Position Error)
-            var phaseLabel = CreateText("Phase_Label", hudPanelGo.transform, "PHASE SHIFT (POSITION DRIFT)", font, 13, FontStyle.Bold, new Color(1f, 0.65f, 0.34f));
-            PositionRect(phaseLabel.rectTransform, new Vector2(0f, 1f), new Vector2(1f, 1f), new Vector2(0f, 1f), new Vector2(36f, -325f), new Vector2(-56f, 20f));
-
-            var accentBarGo = CreateUIElement("AccentBar", hudPanelGo.transform);
-            var accentBarImg = accentBarGo.AddComponent<Image>();
-            accentBarImg.color = new Color(0.22f, 0.83f, 0.33f);
-            PositionRect(accentBarGo.GetComponent<RectTransform>(), new Vector2(0f, 1f), new Vector2(0f, 1f), new Vector2(0f, 1f), new Vector2(20f, -325f), new Vector2(6f, 75f));
-
-            var posErrText = CreateText("PositionErrorText", hudPanelGo.transform, "0.175 rad", font, 28, FontStyle.Bold, Color.white);
-            PositionRect(posErrText.rectTransform, new Vector2(0f, 1f), new Vector2(1f, 1f), new Vector2(0f, 1f), new Vector2(36f, -350f), new Vector2(-56f, 34f));
-
-            var posErrDegText = CreateText("PositionErrorDegText", hudPanelGo.transform, "≈ 10.1° joint-space drift", font, 15, FontStyle.Normal, new Color(0.55f, 0.58f, 0.62f));
-            PositionRect(posErrDegText.rectTransform, new Vector2(0f, 1f), new Vector2(1f, 1f), new Vector2(0f, 1f), new Vector2(36f, -384f), new Vector2(-56f, 22f));
+            var velSparklineGo = CreateUIElement("Velocity_Sparkline", hudPanelGo.transform);
+            var velSparkline = velSparklineGo.AddComponent<UISparkline>();
+            PositionRect(velSparklineGo.GetComponent<RectTransform>(), new Vector2(0f, 1f), new Vector2(1f, 1f), new Vector2(0f, 1f), new Vector2(20f, -410f), new Vector2(-40f, 75f));
 
             // 7. Wiring Componenti su TelemetryDisplay
             var telemetry = canvasGo.AddComponent<TelemetryDisplay>();
             var telemSo = new SerializedObject(telemetry);
             telemSo.FindProperty("playback").objectReferenceValue = playbackManager;
             telemSo.FindProperty("titleText").objectReferenceValue = titleText;
-            telemSo.FindProperty("subtitleText").objectReferenceValue = subText;
-            telemSo.FindProperty("stepCounterText").objectReferenceValue = stepText;
-            telemSo.FindProperty("timeText").objectReferenceValue = timeText;
-            telemSo.FindProperty("progressFill").objectReferenceValue = fillRect;
-            telemSo.FindProperty("velocitySparkline").objectReferenceValue = sparkline;
-            telemSo.FindProperty("velocityValueText").objectReferenceValue = velMetricText;
-            telemSo.FindProperty("positionErrorText").objectReferenceValue = posErrText;
-            telemSo.FindProperty("positionErrorDegText").objectReferenceValue = posErrDegText;
-            telemSo.FindProperty("positionErrorAccent").objectReferenceValue = accentBarImg;
+            telemSo.FindProperty("frameAndPhaseText").objectReferenceValue = frameAndPhaseText;
+            telemSo.FindProperty("latentErrorSparkline").objectReferenceValue = latentSparkline;
+            telemSo.FindProperty("positionErrorSparkline").objectReferenceValue = posSparkline;
+            telemSo.FindProperty("velocityErrorSparkline").objectReferenceValue = velSparkline;
             telemSo.ApplyModifiedPropertiesWithoutUndo();
 
             // 8. Costruzione Gerarchia Sensory Streams Panel (Top-Right)
@@ -568,4 +537,3 @@ namespace SPWM.Editor
     }
 }
 #endif
-

@@ -49,7 +49,7 @@ def step_ungrounded(
     """Execute a single ungrounded recurrent step using frozen dynamics with zero prediction error."""
     B = dyn_state.z_prev.shape[0]
     device = dyn_state.z_prev.device
-    encoder_dim = model.encoder_dim if hasattr(model, "encoder_dim") else dyn_state.z_prev.shape[-1]
+    encoder_dim = model.encoder_dim
     eps_zero = torch.zeros(B, encoder_dim, device=device, dtype=dyn_state.z_prev.dtype)
     return model.dynamics.step(eps_zero, state=dyn_state, sensory_keypoints=None, event_activity=None)
 
@@ -189,54 +189,76 @@ def rollout_latent(
             and hasattr(model, "sensory_predictor")
         )
 
+        prev_flag = torch.zeros(B, dtype=torch.long, device=z_init.device)
+        fade_counter = torch.zeros(B, dtype=torch.long, device=z_init.device)
+        w_max = 0.40
+        ramp_steps = model.dynamics.gate_ramp_steps
+
         for step in range(horizon):
             u_step = actions[:, step] if (actions is not None and actions.dim() == 3) else actions
 
             if has_active_perception:
                 flag_step = phase_flags[:, step] if phase_flags.dim() == 2 else phase_flags
                 event_step = events[:, step]
-                is_heft_all = bool((flag_step == 1).all())
-                is_heft_any = bool((flag_step == 1).any())
 
-                if is_heft_all:
+                # Autonomous M1 prediction
+                pred_out = predictor_fn(curr_z, u_step) if u_step is not None else predictor_fn(curr_z)
+                z_pred = pred_out.predicted_latent
+
+                # Update fade-out tracking across phase boundaries
+                fade_counter = torch.where(flag_step == 1, torch.zeros_like(fade_counter), fade_counter)
+                fade_counter = torch.where((prev_flag == 1) & (flag_step == 2), torch.ones_like(fade_counter), fade_counter)
+                fade_counter = torch.where((flag_step == 2) & (prev_flag == 2) & (fade_counter > 0), fade_counter + 1, fade_counter)
+
+                is_heft_any = bool((flag_step == 1).any())
+                is_fade1_any = bool(((flag_step == 2) & (fade_counter == 1)).any())
+
+                if dyn_state is not None:
                     sync_st = DynamicsState(
                         dyn_state.memory_state,
                         curr_z.detach(),
                         dyn_state.ema_spikes,
                         dyn_state.grounded_steps,
-                    ) if dyn_state is not None else None
-                    curr_z, dyn_state = step_grounded(model, event_step, sync_st, in_sensory_phase=True, action=u_step)
-                    active_models.append("grounded")
-                elif is_heft_any:
-                    pred_out = predictor_fn(curr_z, u_step) if u_step is not None else predictor_fn(curr_z)
-                    m1_z = pred_out.predicted_latent
-                    sync_st = DynamicsState(
-                        dyn_state.memory_state,
-                        curr_z.detach(),
-                        dyn_state.ema_spikes,
-                        dyn_state.grounded_steps,
-                    ) if dyn_state is not None else None
-                    g_z, dyn_state = step_grounded(model, event_step, sync_st, in_sensory_phase=True, action=u_step)
-                    curr_z = torch.where((flag_step == 1).unsqueeze(-1), g_z, m1_z)
-                    active_models.append("m1")
-                else:
-                    pred_out = predictor_fn(curr_z, u_step) if u_step is not None else predictor_fn(curr_z)
-                    curr_z = pred_out.predicted_latent
-                    if dyn_state is not None:
+                    )
+                    if is_heft_any or is_fade1_any:
+                        z_grounded, dyn_state = step_grounded(model, event_step, sync_st, in_sensory_phase=True, action=u_step)
+                    else:
                         sync_ungrounded = DynamicsState(
                             dyn_state.memory_state,
                             curr_z.detach(),
                             dyn_state.ema_spikes,
                             grounded_steps=torch.zeros_like(dyn_state.grounded_steps) if dyn_state.grounded_steps is not None else None,
                         )
-                        _, new_dyn = step_grounded(model, event_step, sync_ungrounded, in_sensory_phase=False, action=u_step)
+                        z_grounded, new_dyn = step_grounded(model, event_step, sync_ungrounded, in_sensory_phase=False, action=u_step)
                         dyn_state = DynamicsState(
                             new_dyn.memory_state,
                             curr_z.detach(),
                             new_dyn.ema_spikes,
                             grounded_steps=torch.zeros_like(new_dyn.grounded_steps) if new_dyn.grounded_steps is not None else None,
                         )
-                    active_models.append("m1")
+
+                    # Continuous soft blending weight w_t:
+                    # - flag == 1: ramps smoothly over gate_ramp_steps to w_max = 0.40
+                    # - transition into flag == 2: ramps down over 2 steps (0.20 -> 0.00)
+                    # - all other steps (flag == 0 or late flag 2): w_t = 0.00
+                    is_p1 = (flag_step == 1).unsqueeze(-1).to(dtype=curr_z.dtype)
+                    is_fade1 = ((flag_step == 2) & (fade_counter == 1)).unsqueeze(-1).to(dtype=curr_z.dtype)
+                    g_steps = dyn_state.grounded_steps if dyn_state.grounded_steps is not None else torch.zeros(B, 1, device=curr_z.device, dtype=curr_z.dtype)
+                    ramp = torch.clamp(g_steps / float(max(1, ramp_steps)), min=0.0, max=1.0)
+                    w_t = is_p1 * (ramp * w_max) + is_fade1 * (w_max * 0.50)
+
+                    curr_z = (1.0 - w_t) * z_pred + w_t * z_grounded
+                    dyn_state = DynamicsState(
+                        dyn_state.memory_state,
+                        curr_z.detach(),
+                        dyn_state.ema_spikes,
+                        dyn_state.grounded_steps,
+                    )
+                else:
+                    curr_z = z_pred
+
+                prev_flag = flag_step.clone()
+                active_models.append("grounded" if is_heft_any else "m1")
             else:
                 pred_out = predictor_fn(curr_z, u_step) if u_step is not None else predictor_fn(curr_z)
                 curr_z = pred_out.predicted_latent

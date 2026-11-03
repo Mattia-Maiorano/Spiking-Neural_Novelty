@@ -1,20 +1,22 @@
 """
-Ghost Execution Exporter for Unity (SPWM-v0.4.0).
+Ghost Execution Exporter for Unity (SPWM-v0.7.2).
 
-Runs the canonical RolloutEvaluator protocol on one test trajectory and serializes
-ground-truth vs. M1-predicted joint angles into `sim/Assets/StreamingAssets/trajectory_ghost_v0_4_0.json`.
+Runs the canonical RolloutEvaluator protocol on test trajectories and serializes
+ground-truth vs. M1-predicted joint angles into `sim/Assets/StreamingAssets/trajectory_ghost.json`
+(or multi-episode / injection comparison JSON files).
 
 Usage:
     python experiments/export_ghost_trajectory.py \
-        --checkpoint results/spwm_v0_4_0_train_m1/model.pt \
-        --config results/spwm_v0_4_0_train_m1/config.yaml \
-        [--batch-index 0] [--sample-index 0] [--horizon 100]
+        --checkpoint results/spwm_v0_7_2_train_m1/model.pt \
+        --config results/spwm_v0_7_2_train_m1/config.yaml \
+        [--episodes 5] [--compare-injection] [--horizon 100]
 """
 
 from __future__ import annotations
 
 import argparse
 from pathlib import Path
+from typing import Any, Mapping, Tuple
 
 import chronicle
 import torch
@@ -22,7 +24,7 @@ import torch
 from spwm.contracts.config import ExperimentConfig
 from spwm.data.datasets import create_dataloaders
 from spwm.evaluation.evaluator import RolloutEvaluator
-from spwm.evaluation.visualizer import DEFAULT_UNITY_PROJECT_DIR, GhostVisualizerExporter
+from spwm.evaluation.visualizer import DEFAULT_UNITY_PROJECT_DIR, GhostTrajectory, GhostVisualizerExporter
 from spwm.models.world_model import SPWM
 from spwm.utils.reproducibility import set_seed
 
@@ -33,6 +35,28 @@ MANIPULATOR_JOINT_NAMES = [
 ]
 
 
+def get_sample_from_loader(data_loader: Any, global_index: int) -> Tuple[Mapping[str, Any], int, int]:
+    current = 0
+    for b_idx, batch in enumerate(data_loader):
+        batch_len = int(batch["events"].shape[0])
+        if current + batch_len > global_index:
+            s_idx = global_index - current
+            return batch, b_idx, s_idx
+        current += batch_len
+    raise IndexError(f"global_index {global_index} exceeds total samples ({current}) in loader")
+
+
+def log_ghost_summary(ghost: GhostTrajectory, out_path: Path) -> None:
+    s = ghost.metadata["summary"]
+    inj_str = "with_injection" if ghost.metadata.get("has_sensory_injection", False) else "no_injection"
+    chronicle.log_success(f"Ghost trajectory written: {out_path} [{inj_str}]")
+    chronicle.log_success(
+        f"H={ghost.metadata['horizon']} | traj_id={ghost.metadata.get('trajectory_id')} | "
+        f"pos_err mean/final={s['mean_position_abs_error']:.4f}/{s['final_position_abs_error']:.4f} | "
+        f"vel_rel final={s['final_velocity_relative_degradation']:.3f}"
+    )
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(description="Export SPWM ghost trajectory for Unity playback.")
     parser.add_argument("--checkpoint", type=str, required=True, help="Path to model checkpoint (.pt) or run dir")
@@ -41,8 +65,15 @@ def main() -> None:
     parser.add_argument("--horizon", type=int, default=100, help="Rollout horizon H")
     parser.add_argument("--batch-index", type=int, default=0, help="Test-loader batch to sample from")
     parser.add_argument("--sample-index", type=int, default=0, help="Sample within the batch")
-    parser.add_argument("--model-version", type=str, default="spwm_v0_5_0")
+    parser.add_argument("--episodes", type=int, default=1, help="Number of distinct test episodes to export")
+    parser.add_argument("--episode-index", type=int, default=None, help="Specific episode index to export")
+    parser.add_argument("--contiguous", action="store_true", help="Sample consecutive episodes instead of spreading across the test set")
+    parser.add_argument("--compare-injection", action="store_true", help="Export each episode both with and without sensory injection")
+    parser.add_argument("--output", type=str, default=None, help="Path to save the trajectory JSON (for single export)")
+    parser.add_argument("--output-dir", type=str, default=None, help="Directory for exported trajectory files")
+    parser.add_argument("--model-version", type=str, default="spwm_v0_7_2")
     parser.add_argument("--device", type=str, default=None, help="Device (cpu, mps, cuda)")
+    parser.add_argument("--no-injection", action="store_true", help="Disable active perception sensory injection during rollout")
     args = parser.parse_args()
 
     cfg = ExperimentConfig.load(args.config)
@@ -106,16 +137,92 @@ def main() -> None:
         joint_names=joint_names,
     )
 
-    ghost = exporter.capture(dataloaders["test"], batch_index=args.batch_index, sample_index=args.sample_index)
-    out_path = exporter.save(ghost)
+    target_dir = Path(args.output_dir) if args.output_dir is not None else (Path(args.unity_project) / "Assets" / "StreamingAssets")
+    target_dir.mkdir(parents=True, exist_ok=True)
 
-    s = ghost.metadata["summary"]
-    chronicle.log_success(f"Ghost trajectory written: {out_path}")
-    chronicle.log_success(
-        f"H={ghost.metadata['horizon']} | traj_id={ghost.metadata.get('trajectory_id')} | "
-        f"pos_err mean/final={s['mean_position_abs_error']:.4f}/{s['final_position_abs_error']:.4f} | "
-        f"vel_rel final={s['final_velocity_relative_degradation']:.3f}"
-    )
+    is_multi_export = (args.episodes > 1) or args.compare_injection or (args.episode_index is not None)
+
+    test_len = len(dataloaders["test"].dataset)
+
+    if not is_multi_export:
+        # Standard legacy single-trajectory capture
+        ghost = exporter.capture(
+            dataloaders["test"],
+            batch_index=args.batch_index,
+            sample_index=args.sample_index,
+            with_active_perception=not args.no_injection,
+        )
+        out_path = exporter.save(ghost, path=args.output)
+        log_ghost_summary(ghost, out_path)
+    else:
+        if args.episode_index is not None:
+            episodes_to_export = [args.episode_index]
+        elif args.contiguous:
+            episodes_to_export = list(range(min(args.episodes, test_len)))
+        else:
+            # Spread episodes evenly across the full test partition for maximum trajectory and payload diversity
+            if args.episodes > 1:
+                step = (test_len - 1) / float(args.episodes - 1)
+                episodes_to_export = [int(round(i * step)) for i in range(args.episodes)]
+            else:
+                episodes_to_export = [0]
+
+        chronicle.log_info(
+            f"Exporting {len(episodes_to_export)} test episode(s) (indices: {episodes_to_export}, "
+            f"compare_injection={args.compare_injection}, horizon={args.horizon}) to {target_dir}..."
+        )
+
+        for i, ep_idx in enumerate(episodes_to_export):
+            batch, b_idx, s_idx = get_sample_from_loader(dataloaders["test"], ep_idx)
+            extra_meta = {"batch_index": b_idx, "episode_index": i, "test_dataset_index": ep_idx}
+
+            if args.compare_injection:
+                # 1. With active perception sensory injection
+                ghost_with = exporter.capture_batch(
+                    batch,
+                    sample_index=s_idx,
+                    extra_metadata=extra_meta,
+                    with_active_perception=True,
+                )
+                path_with = target_dir / f"trajectory_ghost_ep{i}_with_injection.json"
+                saved_with = exporter.save(ghost_with, path=path_with)
+                log_ghost_summary(ghost_with, saved_with)
+
+                # 2. Without active perception sensory injection
+                ghost_no = exporter.capture_batch(
+                    batch,
+                    sample_index=s_idx,
+                    extra_metadata=extra_meta,
+                    with_active_perception=False,
+                )
+                path_no = target_dir / f"trajectory_ghost_ep{i}_no_injection.json"
+                saved_no = exporter.save(ghost_no, path=path_no)
+                log_ghost_summary(ghost_no, saved_no)
+
+                if i == 0:
+                    # Update canonical trajectory_ghost.json for default Unity playback
+                    canonical_path = exporter.output_path
+                    exporter.save(ghost_with, path=canonical_path)
+                    chronicle.log_info(f"Updated default playback trajectory: {canonical_path}")
+            else:
+                active_perception = not args.no_injection
+                ghost = exporter.capture_batch(
+                    batch,
+                    sample_index=s_idx,
+                    extra_metadata=extra_meta,
+                    with_active_perception=active_perception,
+                )
+                tag = "with_injection" if active_perception else "no_injection"
+                if len(episodes_to_export) == 1 and args.output is not None:
+                    out_path = exporter.save(ghost, path=args.output)
+                else:
+                    out_path = exporter.save(ghost, path=target_dir / f"trajectory_ghost_ep{i}_{tag}.json")
+                log_ghost_summary(ghost, out_path)
+
+                if i == 0:
+                    canonical_path = exporter.output_path
+                    exporter.save(ghost, path=canonical_path)
+                    chronicle.log_info(f"Updated default playback trajectory: {canonical_path}")
 
 
 if __name__ == "__main__":

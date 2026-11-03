@@ -53,7 +53,9 @@ namespace SPWM.Robotics
         [SerializeField] private int setupHoldSteps = 6;
         [SerializeField] private int blindApproachSteps = 34;
         [Tooltip("Number of approach steps before contact to enter Phase 1.5 (sensory grounding).")]
-        [SerializeField] private int preContactSensorySteps = 5;
+        [SerializeField] private int preContactSensorySteps = 7;
+        [Tooltip("Number of steps after contact to maintain sensory grounding before releasing to autonomous prediction.")]
+        [SerializeField] private int postContactSensorySteps = 3;
         [SerializeField] private int sensoryHeftSteps = 12;
 
         [Header("Temporal & Controller Randomization (Anti-Memorization)")]
@@ -236,6 +238,7 @@ namespace SPWM.Robotics
             int curApproachSteps = Mathf.Max(1, _activeBlindApproachSteps > 0 ? _activeBlindApproachSteps : blindApproachSteps);
             int approachEnd = setupHoldSteps + curApproachSteps;
             int heftStart = Mathf.Max(setupHoldSteps + 1, approachEnd - preContactSensorySteps);
+            int sensoryReleaseStep = approachEnd + postContactSensorySteps;
             int heftEnd = approachEnd + sensoryHeftSteps;
             float gainMultiplier = 1.0f;
             float curKp = _activeApproachKp > 0f ? _activeApproachKp : proportionalGainKp;
@@ -260,32 +263,52 @@ namespace SPWM.Robotics
                     dqDes[i] = (_qGrasp[i] - _qNeutral[i]) * ds;
                 }
             }
-            else if (stepIndex < approachEnd)
+            else if (stepIndex < sensoryReleaseStep)
             {
-                // Phase 1.5 Pre-Contact (Sensory Grounding Approach):
-                // Enter Phase 1.5 n steps before contact to inject ground truth before reaching the object
+                // Phase 1.5 (Sensory Grounding Injection):
+                // Enters preContactSensorySteps before contact, reaches complete injection 3-4 steps ahead,
+                // and holds through contact until postContactSensorySteps after for a clean grasp.
                 _currentPhase = GraspTrajectoryPhase.SensoryHeft;
-                float tau = Mathf.Clamp01((float)(stepIndex - setupHoldSteps + 1) / curApproachSteps);
-                float s = SmoothStepMinimumJerk(tau);
-                float ds = SmoothStepMinimumJerkDerivative(tau) / Mathf.Max(dt * curApproachSteps, 1e-3f);
-                for (int i = 0; i < dof; i++)
+                if (stepIndex < approachEnd)
                 {
-                    qDes[i] = Mathf.Lerp(_qNeutral[i], _qGrasp[i], s);
-                    dqDes[i] = (_qGrasp[i] - _qNeutral[i]) * ds;
+                    float tau = Mathf.Clamp01((float)(stepIndex - setupHoldSteps + 1) / curApproachSteps);
+                    float s = SmoothStepMinimumJerk(tau);
+                    float ds = SmoothStepMinimumJerkDerivative(tau) / Mathf.Max(dt * curApproachSteps, 1e-3f);
+                    for (int i = 0; i < dof; i++)
+                    {
+                        qDes[i] = Mathf.Lerp(_qNeutral[i], _qGrasp[i], s);
+                        dqDes[i] = (_qGrasp[i] - _qNeutral[i]) * ds;
+                    }
+                }
+                else
+                {
+                    if (_spawner != null && !_spawner.IsPayloadGrasped)
+                    {
+                        _spawner.EnsureRigidGrasp(_rig);
+                    }
+                    float tau = Mathf.Clamp01((float)(stepIndex - approachEnd) / Mathf.Max(1, sensoryHeftSteps));
+                    float liftProgress = SmoothStepMinimumJerk(tau);
+                    float dLift = SmoothStepMinimumJerkDerivative(tau) / Mathf.Max(dt * sensoryHeftSteps, 1e-3f);
+                    curKp = proportionalGainKp;
+                    curKd = derivativeGainKd;
+                    for (int i = 0; i < dof; i++)
+                    {
+                        float deltaHeft = _qHeftPeak[i] - _qGrasp[i];
+                        qDes[i] = _qGrasp[i] + deltaHeft * liftProgress;
+                        dqDes[i] = deltaHeft * dLift;
+                    }
                 }
             }
             else if (stepIndex < heftEnd)
             {
-                // Phase 1.5 Post-Contact (The "Heft" Lift):
-                // Instant rigid lock at contact (stepIndex == approachEnd) + smooth upward lift
-                _currentPhase = GraspTrajectoryPhase.SensoryHeft;
+                // Released from sensory injection: autonomous prediction during remainder of upward lift
+                _currentPhase = GraspTrajectoryPhase.BlindTransport;
                 if (_spawner != null && !_spawner.IsPayloadGrasped)
                 {
                     _spawner.EnsureRigidGrasp(_rig);
                 }
 
                 float tau = Mathf.Clamp01((float)(stepIndex - approachEnd) / Mathf.Max(1, sensoryHeftSteps));
-                // Softened minimum-jerk upward lift profile (smooth across full heft window without harsh 1.35x compression)
                 float liftProgress = SmoothStepMinimumJerk(tau);
                 float dLift = SmoothStepMinimumJerkDerivative(tau) / Mathf.Max(dt * sensoryHeftSteps, 1e-3f);
                 curKp = proportionalGainKp;

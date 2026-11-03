@@ -39,18 +39,27 @@ def partition_trajectories(
 def _compute_default_phase_schedule(
     length: int,
     rng: Optional[np.random.Generator] = None,
-    pre_contact_steps: int = 5,
+    pre_contact_sensory_steps: int = 7,
+    post_contact_sensory_steps: int = 3,
+    pre_contact_steps: Optional[int] = None,
+    post_contact_steps: Optional[int] = None,
 ) -> Tuple[int, int, int, np.ndarray]:
     """
     Computes phase boundaries and integer phase flags [T] in {0, 1, 2}:
       - 0: Blind Approach (Phase 0 neutral setup + early Phase 1 approach)
-      - 1: Sensory Heft (Phase 1.5 entered n steps before contact for full ground truth injection,
-           followed by rigid lock and smooth upward heft lift)
-      - 2: Blind Transport (Phase 2 loaded transport with active wrist rotation)
+      - 1: Sensory Grounding Injection (starts pre_contact_sensory_steps before contact,
+           reaches full injection 3-4 steps ahead, maintained across contact until
+           post_contact_sensory_steps after contact for clean grasp, then released)
+      - 2: Blind Lift & Transport (Phase 2 loaded transport with sensory injection released)
 
     When rng is provided, wildly randomizes approach duration (~12 to ~56 steps)
     so the predictor cannot memorize a fixed lift tick and is forced to obey u_t.
     """
+    if pre_contact_steps is not None:
+        pre_contact_sensory_steps = pre_contact_steps
+    if post_contact_steps is not None:
+        post_contact_sensory_steps = post_contact_steps
+
     if rng is not None:
         setup_steps = int(rng.integers(3, 8))
         # Wildly varied approach duration matching C# [minApproachSteps=14, maxApproachSteps=58]
@@ -69,11 +78,12 @@ def _compute_default_phase_schedule(
         approach_end = max(2, length // 3)
         heft_end = max(approach_end + 1, (2 * length) // 3)
 
-    heft_start = max(setup_steps + 1, approach_end - pre_contact_steps)
+    heft_start = max(setup_steps + 1, approach_end - pre_contact_sensory_steps)
+    sensory_release = min(length - 1, approach_end + post_contact_sensory_steps)
 
     flags = np.zeros((length,), dtype=np.int64)
-    flags[heft_start:heft_end] = 1
-    flags[heft_end:] = 2
+    flags[heft_start:sensory_release] = 1
+    flags[sensory_release:] = 2
     return setup_steps, approach_end, heft_end, flags
 
 
@@ -381,6 +391,8 @@ def parse_unity_trajectory_file(
     sequence_length: Optional[int] = None,
     sensor_height: int = 32,
     sensor_width: int = 32,
+    pre_contact_sensory_steps: Optional[int] = None,
+    post_contact_sensory_steps: Optional[int] = None,
 ) -> RoboticTrajectory:
     """Parses an exported Unity trajectory (.json, .json.gz, or .npz) into a RoboticTrajectory."""
     path = Path(file_path)
@@ -430,7 +442,28 @@ def parse_unity_trajectory_file(
         elif "phase_flags" in doc and doc["phase_flags"]:
             phase_flags = np.array(doc["phase_flags"], dtype=np.int64)
         else:
-            phase_flags = _compute_default_phase_schedule(len(steps))[3]
+            pre_s = pre_contact_sensory_steps if pre_contact_sensory_steps is not None else 7
+            post_s = post_contact_sensory_steps if post_contact_sensory_steps is not None else 3
+            phase_flags = _compute_default_phase_schedule(
+                len(steps),
+                pre_contact_sensory_steps=pre_s,
+                post_contact_sensory_steps=post_s,
+            )[3]
+
+        if pre_contact_sensory_steps is not None or post_contact_sensory_steps is not None:
+            pre_s = pre_contact_sensory_steps if pre_contact_sensory_steps is not None else 7
+            post_s = post_contact_sensory_steps if post_contact_sensory_steps is not None else 3
+            expected_p1_len = pre_s + post_s
+            p1_indices = np.where(phase_flags == 1)[0]
+            if len(p1_indices) > 0 and len(p1_indices) != expected_p1_len:
+                t_old_start = int(p1_indices[0])
+                # In legacy v0.7.0 exports, t_old_start was t_contact - 5 (duration was 17)
+                t_contact = t_old_start + 5 if len(p1_indices) == 17 else int(p1_indices[0])
+                t_inj_start = max(1, t_contact - pre_s)
+                t_inj_end = min(len(steps) - 1, t_contact + post_s)
+                phase_flags = np.zeros(len(steps), dtype=np.int64)
+                phase_flags[t_inj_start:t_inj_end] = 1
+                phase_flags[t_inj_end:] = 2
 
         gray = None
         wrist_gray = None
@@ -508,6 +541,8 @@ class EventWorldDataset(Dataset):
         dt: float = 0.05,
         cache_data: bool = True,
         strict_dataset: bool = True,
+        pre_contact_sensory_steps: int = 7,
+        post_contact_sensory_steps: int = 3,
     ) -> None:
         super().__init__()
         self.trajectory_indices = list(trajectory_indices)
@@ -520,6 +555,8 @@ class EventWorldDataset(Dataset):
         self.dt = float(dt)
         self.cache_data = cache_data
         self.strict_dataset = strict_dataset
+        self.pre_contact_sensory_steps = int(pre_contact_sensory_steps)
+        self.post_contact_sensory_steps = int(post_contact_sensory_steps)
 
         if self.strict_dataset:
             if self.dataset_dir is None:
@@ -571,6 +608,8 @@ class EventWorldDataset(Dataset):
                 sequence_length=self.sequence_length,
                 sensor_height=self.event_simulator.height,
                 sensor_width=self.event_simulator.width,
+                pre_contact_sensory_steps=self.pre_contact_sensory_steps,
+                post_contact_sensory_steps=self.post_contact_sensory_steps,
             )
         else:
             traj = simulate_articulated_trajectory(

@@ -158,6 +158,7 @@ class RolloutEvaluator:
         max_horizon: int,
         phase_flags: Optional[torch.Tensor] = None,
         events: Optional[torch.Tensor] = None,
+        with_active_perception: bool = True,
     ) -> Optional[Tuple[RolloutResult, int, int]]:
         """Canonical benchmark rollout protocol shared by metrics and trajectory exporters.
 
@@ -202,7 +203,7 @@ class RolloutEvaluator:
         rollout_actions = actions[:, t_start : t_start + max_eval_h] if actions is not None else None
         rollout_flags = (
             phase_flags[:, t_start + 1 : t_start + 1 + max_eval_h]
-            if phase_flags is not None
+            if (phase_flags is not None and with_active_perception)
             else None
         )
         rollout_res = rollout_latent(
@@ -225,12 +226,14 @@ class RolloutEvaluator:
         self,
         batch: Mapping[str, Any],
         horizon: Optional[int] = None,
+        with_active_perception: bool = True,
     ) -> TrajectoryRollout:
         """Run the benchmark rollout on a single batch and return per-step trajectories.
 
         Args:
             batch: Collated batch with `events`, `flat_kinematics` and optionally `actions`, `phase_flags`.
             horizon: Requested rollout horizon (defaults to max configured horizon).
+            with_active_perception: Whether to allow sensory injection on phase_flags == 1 (default True).
 
         Raises:
             ValueError: if the sequence is too short or the model exposes no physical decoder.
@@ -241,7 +244,13 @@ class RolloutEvaluator:
         actions = batch["actions"].to(self.device) if "actions" in batch else None
         phase_flags = batch["phase_flags"].to(self.device) if "phase_flags" in batch else None
 
-        res = self._autonomous_rollout(events, actions, requested_h, phase_flags=phase_flags)
+        res = self._autonomous_rollout(
+            events,
+            actions,
+            requested_h,
+            phase_flags=phase_flags,
+            with_active_perception=with_active_perception,
+        )
         if res is None:
             raise ValueError(
                 f"rollout_trajectory: sequence length {events.shape[1]} too short for burn-in "
@@ -275,7 +284,7 @@ class RolloutEvaluator:
         tf_errors: List[float] = []
         spike_rates: List[float] = []
 
-        q_dim = self.model.q_dim if hasattr(self.model, "q_dim") else None
+        q_dim = self.model.q_dim
 
         batch_count = 0
         for batch in data_loader:
@@ -293,8 +302,7 @@ class RolloutEvaluator:
             tf_mse = float(torch.mean((pred_latents - target_latents) ** 2).item())
             tf_errors.append(tf_mse)
 
-            if hasattr(out, "mean_spike_rate"):
-                spike_rates.append(float(out.mean_spike_rate.item()))
+            spike_rates.append(float(out.mean_spike_rate.item()))
 
             rollout_out = self._autonomous_rollout(
                 events, actions, max(self.horizons), phase_flags=phase_flags

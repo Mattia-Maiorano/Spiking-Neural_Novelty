@@ -41,11 +41,13 @@ if [[ ! -x "${UNITY_BIN}" ]]; then
 fi
 
 # Defaults
-DEFAULT_MODEL_VERSION="spwm_v0_7_0"
+DEFAULT_MODEL_VERSION="spwm_v0_7_2"
 DEFAULT_EPOCHS=200
 DEFAULT_HORIZON=100
 DEFAULT_TOTAL_TRAJECTORIES=4000
 DEFAULT_EXPORT_DIR="ExportedTrajectories"
+DEFAULT_EPISODES=1
+DEFAULT_OUTPUT_DIR="results/videos"
 
 # Helper to automatically resolve the latest/best checkpoint directory:
 # strictly selects canonical directories ending in '_train_m1' (no trailing words/suffixes)
@@ -132,8 +134,13 @@ Basic Options:
   --checkpoint <path>    Path to model checkpoint (.pt) for export.
   --model-version <ver>  Model version tag (default: ${DEFAULT_MODEL_VERSION}).
   --horizon <H>          Rollout / render horizon steps (default: ${DEFAULT_HORIZON}).
+  --episodes <N>         Number of episodes to export / render (default: ${DEFAULT_EPISODES}).
+                         When > 1, renders distinct episodes both with and without ground truth injection.
+  --multi-episode        Render 5 episodes across different episodes, each with and without injection (10 videos total).
+  --compare-injection    Render/export trajectories both with and without ground truth sensory injection.
   --json-file <path>     JSON path for video rendering (default: sim/Assets/StreamingAssets/trajectory_ghost.json).
   --output-video <path>  Output MP4 file path (default: results/videos/robot_arm_simulation.mp4).
+  --output-dir <path>    Output directory for videos (default: ${DEFAULT_OUTPUT_DIR}).
   --logfile <path>       Log file for Unity headless batch export (default: export_sim.log).
   -h, --help             Show this help message.
 
@@ -152,7 +159,12 @@ Quick Start Examples:
   ./scripts/run_pipeline.sh video
   ./scripts/run_pipeline.sh video --horizon 150
 
-  # 5. Run train -> export-unity -> video end-to-end:
+  # 5. Render 5 distinct episodes both with and without ground truth injection (10 videos total):
+  ./scripts/run_pipeline.sh video --episodes 5
+  # or equivalently:
+  ./scripts/run_pipeline.sh video --multi-episode
+
+  # 6. Run train -> export-unity -> video end-to-end:
   ./scripts/run_pipeline.sh all
 EOF
 }
@@ -235,6 +247,8 @@ run_export_unity() {
     local ckpt="${CHECKPOINT_PATH:-}"
     local cfg="${CONFIG_PATH:-}"
     local horizon="${HORIZON:-$DEFAULT_HORIZON}"
+    local episodes="${EPISODES:-$DEFAULT_EPISODES}"
+    local compare_injection="${COMPARE_INJECTION:-0}"
 
     # Auto-resolve latest checkpoint and config if not explicitly provided
     if [[ -z "${ckpt}" || -z "${cfg}" ]]; then
@@ -257,56 +271,148 @@ run_export_unity() {
 
     echo "======================================================================"
     echo " Generating Ghost Trajectory JSON for Unity Demo..."
-    echo " Checkpoint: ${ckpt}"
-    echo " Config:     ${cfg}"
-    echo " Version:    ${model_ver}"
-    echo " Horizon:    ${horizon}"
+    echo " Checkpoint:        ${ckpt}"
+    echo " Config:            ${cfg}"
+    echo " Version:           ${model_ver}"
+    echo " Horizon:           ${horizon}"
+    echo " Episodes:          ${episodes}"
+    echo " Compare Injection: ${compare_injection}"
     echo "======================================================================"
 
-    "${PYTHON_BIN}" experiments/export_ghost_trajectory.py \
-        --checkpoint "${ckpt}" \
-        --config "${cfg}" \
-        --model-version "${model_ver}" \
+    local export_cmd=(
+        "${PYTHON_BIN}" experiments/export_ghost_trajectory.py
+        --checkpoint "${ckpt}"
+        --config "${cfg}"
+        --model-version "${model_ver}"
         --horizon "${horizon}"
+        --episodes "${episodes}"
+    )
+
+    if [[ "${compare_injection}" -eq 1 || "${episodes}" -gt 1 ]]; then
+        export_cmd+=("--compare-injection")
+    fi
+
+    "${export_cmd[@]}"
 
     echo ""
-    echo ">>> Ghost trajectory exported to sim/Assets/StreamingAssets/."
+    echo ">>> Ghost trajectory export completed."
 }
 
 # ------------------------------------------------------------------------------
 # Action 4: Render Simulation Video (.mp4)
 # ------------------------------------------------------------------------------
 run_video() {
-    local json_file="${JSON_FILE:-sim/Assets/StreamingAssets/trajectory_ghost.json}"
-    local output_video="${OUTPUT_VIDEO:-results/videos/robot_arm_simulation.mp4}"
+    local episodes="${EPISODES:-$DEFAULT_EPISODES}"
+    local compare_injection="${COMPARE_INJECTION:-0}"
     local horizon="${HORIZON:-$DEFAULT_HORIZON}"
+    local out_dir="${OUTPUT_DIR:-$DEFAULT_OUTPUT_DIR}"
 
-    echo "======================================================================"
-    echo " Rendering Unity Simulation Video (.mp4)..."
-    echo " Trajectory: ${json_file}"
-    if [[ ! -f "${json_file}" ]]; then
-        local alt_json="sim/Assets/StreamingAssets/trajectory_ghost_v0_4_0.json"
-        if [[ -f "${alt_json}" ]]; then
-            echo " Note: '${json_file}' not found, using '${alt_json}'."
-            json_file="${alt_json}"
-        else
-            echo "Error: '${json_file}' not found. Run 'export-unity' first to generate trajectory." >&2
-            exit 1
+    if [[ "${episodes}" -gt 1 || "${compare_injection}" -eq 1 ]]; then
+        local target_episodes="${episodes}"
+        if [[ "${target_episodes}" -lt 1 ]]; then
+            target_episodes=1
         fi
+
+        mkdir -p "${out_dir}"
+
+        echo "======================================================================"
+        echo " Rendering Multi-Episode Simulation Videos (.mp4)..."
+        echo " Episodes:          ${target_episodes}"
+        echo " Injection Modes:   with_injection & no_injection"
+        echo " Total Videos:      $(( target_episodes * 2 ))"
+        echo " Output Dir:        ${out_dir}"
+        echo " Horizon:           ${horizon}"
+        echo "======================================================================"
+
+        # Verify whether required trajectory JSON files exist and have sufficient horizon; if not, auto-export them
+        local missing_json=0
+        for ((i=0; i<target_episodes; i++)); do
+            for mode in "with_injection" "no_injection"; do
+                local expected_json="sim/Assets/StreamingAssets/trajectory_ghost_ep${i}_${mode}.json"
+                if [[ ! -f "${expected_json}" ]]; then
+                    missing_json=1
+                    break 2
+                fi
+                local file_horizon
+                file_horizon="$("${PYTHON_BIN}" -c "import json, sys; d=json.load(open(sys.argv[1])); print(d.get('metadata', {}).get('horizon', 0))" "${expected_json}" 2>/dev/null || echo "0")"
+                if [[ "${file_horizon}" -lt "${horizon}" ]]; then
+                    missing_json=1
+                    break 2
+                fi
+            done
+        done
+
+        if [[ "${missing_json}" -eq 1 ]]; then
+            echo "[video] Required trajectory JSON files missing or have horizon < ${horizon}. Auto-running export-unity for ${target_episodes} episodes..."
+            EPISODES="${target_episodes}" COMPARE_INJECTION=1 HORIZON="${horizon}" run_export_unity
+        fi
+
+        local base_prefix
+        if [[ -n "${OUTPUT_VIDEO}" ]]; then
+            local dir_part="$(dirname "${OUTPUT_VIDEO}")"
+            local name_part="$(basename "${OUTPUT_VIDEO}" .mp4)"
+            mkdir -p "${dir_part}"
+            base_prefix="${dir_part}/${name_part}"
+        else
+            base_prefix="${out_dir}/robot_arm_simulation"
+        fi
+
+        local video_idx=1
+        local total_videos=$(( target_episodes * 2 ))
+        for ((i=0; i<target_episodes; i++)); do
+            for mode in "with_injection" "no_injection"; do
+                local json_file="sim/Assets/StreamingAssets/trajectory_ghost_ep${i}_${mode}.json"
+                local output_video="${base_prefix}_ep${i}_${mode}.mp4"
+
+                echo ""
+                echo "----------------------------------------------------------------------"
+                echo " [${video_idx}/${total_videos}] Rendering Episode ${i} (${mode})..."
+                echo " Trajectory: ${json_file}"
+                echo " Output:     ${output_video}"
+                echo "----------------------------------------------------------------------"
+
+                "${PYTHON_BIN}" "scripts/render_simulation_video.py" \
+                    "--json-file" "${json_file}" \
+                    "--output" "${output_video}" \
+                    "--horizon" "${horizon}"
+
+                video_idx=$(( video_idx + 1 ))
+            done
+        done
+
+        echo ""
+        echo ">>> All ${total_videos} multi-episode videos rendered successfully into '${out_dir}'."
+    else
+        local json_file="${JSON_FILE:-sim/Assets/StreamingAssets/trajectory_ghost.json}"
+        local output_video="${OUTPUT_VIDEO:-results/videos/robot_arm_simulation.mp4}"
+
+        echo "======================================================================"
+        echo " Rendering Unity Simulation Video (.mp4)..."
+        echo " Trajectory: ${json_file}"
+        if [[ ! -f "${json_file}" ]]; then
+            local alt_json="sim/Assets/StreamingAssets/trajectory_ghost_v0_4_0.json"
+            if [[ -f "${alt_json}" ]]; then
+                echo " Note: '${json_file}' not found, using '${alt_json}'."
+                json_file="${alt_json}"
+            else
+                echo "[video] '${json_file}' not found. Auto-running export-unity first..."
+                run_export_unity
+            fi
+        fi
+        echo " Output:     ${output_video}"
+        echo " Horizon:    ${horizon}"
+        echo "======================================================================"
+
+        mkdir -p "$(dirname "${output_video}")"
+
+        "${PYTHON_BIN}" "scripts/render_simulation_video.py" \
+            "--json-file" "${json_file}" \
+            "--output" "${output_video}" \
+            "--horizon" "${horizon}"
+
+        echo ""
+        echo ">>> Video rendered successfully at: ${output_video}"
     fi
-    echo " Output:     ${output_video}"
-    echo " Horizon:    ${horizon}"
-    echo "======================================================================"
-
-    mkdir -p "$(dirname "${output_video}")"
-
-    "${PYTHON_BIN}" "scripts/render_simulation_video.py" \
-        "--json-file" "${json_file}" \
-        "--output" "${output_video}" \
-        "--horizon" "${horizon}"
-
-    echo ""
-    echo ">>> Video rendered successfully at: ${output_video}"
 }
 
 # ------------------------------------------------------------------------------
@@ -331,6 +437,9 @@ HORIZON=""
 VIDEO_SOURCE=""
 JSON_FILE=""
 OUTPUT_VIDEO=""
+EPISODES=""
+COMPARE_INJECTION=""
+OUTPUT_DIR=""
 
 while [[ $# -gt 0 ]]; do
     case "$1" in
@@ -366,6 +475,19 @@ while [[ $# -gt 0 ]]; do
             HORIZON="$2"
             shift 2
             ;;
+        --episodes|-e)
+            EPISODES="$2"
+            shift 2
+            ;;
+        --multi-episode|--multi-video)
+            EPISODES=5
+            COMPARE_INJECTION=1
+            shift 1
+            ;;
+        --compare-injection)
+            COMPARE_INJECTION=1
+            shift 1
+            ;;
         --source)
             VIDEO_SOURCE="$2"
             shift 2
@@ -376,6 +498,10 @@ while [[ $# -gt 0 ]]; do
             ;;
         --output-video)
             OUTPUT_VIDEO="$2"
+            shift 2
+            ;;
+        --output-dir)
+            OUTPUT_DIR="$2"
             shift 2
             ;;
         -h|--help)
@@ -389,6 +515,10 @@ while [[ $# -gt 0 ]]; do
             ;;
     esac
 done
+
+if [[ -n "${EPISODES}" && "${EPISODES}" -gt 1 ]]; then
+    COMPARE_INJECTION=1
+fi
 
 case "${COMMAND}" in
     sim-data|sim_data|export-data|export_data|data|exportTrajectories|export-trajectories)

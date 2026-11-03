@@ -76,13 +76,14 @@ classDiagram
 - **Forward Pass & Active Perception Injection**:
   1. Identifies trajectory phases from `phase_flags`:
      - Flag `0`: Blind Approach
-     - Flag `1`: Sensory Heft (initiated `pre_contact_sensory_steps = 5` prior to contact for grounding handover, followed by upward lift + wrist twist after grasp)
+     - Flag `1`: Sensory Grounding Injection (initiated `pre_contact_sensory_steps = 7` prior to contact, ramping to 100% injection over 4 steps, held across grasp contact through `post_contact_sensory_steps = 3`, then released)
      - Flag `2`: Blind Transport
   2. Computes the canonical schedule `(t_start, horizon)` via `compute_rollout_schedule(phase_flags, T)`.
   3. Grounds the initial state and dynamics memory $\hat{\mathbf{z}}_0$ through frozen Encoder & Dynamics over initial frames $t \in [0, t_{\text{start}}]$ via `ground_initial_state`.
   4. Delegates multi-step unrolling to [`rollout_latent`](file:///Users/Mattia/Desktop/Studies/Temp/spwm/models/rollout.py) (`with_grad=True`, `fixed_predictor=model.m1`):
-     - When `flag == 1` (Sensory Heft): Active sensory feedback is present. Grounded dynamics steps on real events $\mathbf{E}_{\text{next}}$ via `step_grounded`, synchronizing the recurrent state without running $M_1$.
-     - When `flag != 1` (Blind Approach / Transport): $M_1$ unrolls autoregressively conditioned on motor command $\mathbf{u}_t$.
+     - $M_1$ unrolls continuously across all horizon steps.
+     - When active perception events are present (`flag == 1`), `step_grounded` evaluates the sensory representation and softly blends the latent state: $\mathbf{z}_{t+1} = (1 - w_t) \cdot \mathbf{z}_{\text{pred}} + w_t \cdot \mathbf{z}_{\text{grounded}}$ with blend authority $w_t \in [0, 0.40]$ ramping up over 4 frames, and ramping down over 2 frames ($0.20 \to 0.00$) upon releasing into Phase 2 blind transport.
+     - When `w_t == 0` (Blind Approach / Transport): $\mathbf{z}_{t+1} = \mathbf{z}_{\text{pred}}$ unrolls autoregressively conditioned on motor command $\mathbf{u}_t$.
 - **Loss Constraint**:
   $$\mathcal{L}_{M_1} = \lambda_{\text{position}} \text{MSE}(\hat{\mathbf{q}}_{t_{\text{start}}+1:}, \mathbf{q}_{\text{target}, t_{\text{start}}+1:}) + \lambda_{\text{velocity}} \text{MSE}(\hat{\mathbf{p}}_{t_{\text{start}}+1:}, \mathbf{p}_{\text{target}, t_{\text{start}}+1:})$$
   where $\lambda_{\text{velocity}} = 1.5$ (in `LossConfig`) scales momentum subspace precision during multi-step unrolling.

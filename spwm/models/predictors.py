@@ -134,8 +134,8 @@ class PhysicalDecoder(nn.Module):
         p_dim: int = 96,
         joint_count: int = J,
         hidden_dim: int = 64,
-        alpha: float = 0.85,
-        pos_alpha: float = 0.20,
+        alpha: float = 0.0,
+        pos_alpha: float = 0.0,
     ) -> None:
         super().__init__()
         assert_phase_space_contract(latent_dim=latent_dim, q_dim=q_dim, p_dim=p_dim)

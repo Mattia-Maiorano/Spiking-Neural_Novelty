@@ -121,13 +121,16 @@ spwm/
 
 ### 1.3 Strict Dependency & Anti-Fallback Invariants (Enforced by CI)
 
-[`tests/test_architecture_contracts.py`](file:///Users/Mattia/Desktop/Studies/Temp/tests/test_architecture_contracts.py) and [`tests/test_dead_code.py`](file:///Users/Mattia/Desktop/Studies/Temp/tests/test_dead_code.py) enforce permanent invariants:
+[`tests/test_architecture_contracts.py`](file:///Users/Mattia/Desktop/Studies/Temp/tests/test_architecture_contracts.py), [`tests/test_anti_fallback.py`](file:///Users/Mattia/Desktop/Studies/Temp/tests/test_anti_fallback.py), and [`tests/test_dead_code.py`](file:///Users/Mattia/Desktop/Studies/Temp/tests/test_dead_code.py) enforce permanent invariants:
 1. **Unidirectional Layer Hierarchy**:
    - `spwm/contracts/` imports **zero** `spwm.*` packages.
    - `spwm/models/` and `spwm/data/` never import from `spwm.training`, `spwm.learning`, or `spwm.evaluation`.
    - `spwm/training/` never imports from `spwm.evaluation`.
 2. **Action Tensor Rigor**: When action conditioning is active, $\mathbf{u}_t$ tensors are validated for rank $\ge 2$, trailing dimension matching `action_dim` ($D_u=6$), and finiteness without NaNs or Infs.
-3. **Ban on Silent `getattr` Fallbacks**: 3-argument `getattr(obj, attr, default)` calls are banned across `spwm/models/`, `spwm/training/`, `spwm/core/`, and `spwm/learning/`.
+3. **Repository-Wide Ban on Silent Fallbacks**:
+   - 3-argument `getattr(obj, attr, default)` calls are banned across all of `spwm/`.
+   - Ternary `hasattr(...)` fallback expressions (`x if hasattr(...) else y`) are banned across `spwm/`.
+   - Silent exception handlers (`except TypeError:`, `except AttributeError:`, `except ...: pass`) are banned across `spwm/`.
 4. **Ban on `strict=False` Checkpoint Loading**: All checkpoints load with `strict=True`.
 5. **Zero Dead Code**: Pruned architectures (such as `CascadedTemporalRelay`, `ConvergenceFunnelLoss`, $M_2$, $M_3$) are statically verified as absent by AST scanning.
 
@@ -186,26 +189,33 @@ All tensor shapes are verified at runtime via [`assert_tensor_contract`](file://
   $M_1$ accepts the motor command $\mathbf{u}_t \in \mathbb{R}^6$ alongside $\mathbf{z}_t$, learning a parameterizable dissipative field $\gamma_t = \sigma(\text{Linear}(\mathbf{h}_t))$ and force vectors $(\mathbf{f}_p, \mathbf{f}_q)$:
   $$\mathbf{p}_{t+1} = (1 - \Delta t \cdot \gamma_t) \mathbf{p}_t + \mathbf{f}_p$$
   $$\mathbf{q}_{t+1} = \mathbf{q}_t + \Delta t \cdot (\mathbf{p}_{t+1}[..., :q\_dim] + \mathbf{f}_q)$$
-- **Active Perception Sensory Injection in Training & Evaluation**:
-  Unified across both [`M1PhaseStrategy`](file:///Users/Mattia/Desktop/Studies/Temp/spwm/training/phases/m1_nominal.py) and [`RolloutEvaluator`](file:///Users/Mattia/Desktop/Studies/Temp/spwm/evaluation/evaluator.py) via [`rollout_latent`](file:///Users/Mattia/Desktop/Studies/Temp/spwm/models/rollout.py), execution is partitioned into phasic regimes:
+- **Active Perception Continuous Soft-Fade Handover in Training & Evaluation**:
+  Unified across both [`M1PhaseStrategy`](file:///Users/Mattia/Desktop/Studies/Temp/spwm/training/phases/m1_nominal.py) and [`RolloutEvaluator`](file:///Users/Mattia/Desktop/Studies/Temp/spwm/evaluation/evaluator.py) via [`rollout_latent`](file:///Users/Mattia/Desktop/Studies/Temp/spwm/models/rollout.py):
   - **Phase 0 Initialization**: Canonical schedule computed by `compute_rollout_schedule(phase_flags, T)`. Initial frames $t \in [0, t_{\text{start}}]$ ground $\hat{\mathbf{z}}_0$ through frozen Encoder & Dynamics via `ground_initial_state`.
-  - **Sensory Heft (flag == 1)**: When active sensory feedback is present (the arm hefts the payload), $M_1$ predictor execution is halted. The unified rollout engine invokes `step_grounded` with real sensory events and synchronizes the recurrent dynamics state.
-  - **Blind Approach & Blind Transport (flag != 1)**: $M_1$ predicts future latents autoregressively conditioned on motor actions $\mathbf{u}_t$, carrying the grasped payload with the newly perceived inertial representation.
+  - **Continuous Soft-Fade Blending**: Rather than a binary branch that halts $M_1$, $M_1$ unrolls continuously across all horizon steps. When active perception events are present, latent state blending authority $w_t$ softly couples the prediction with grounded sensory dynamics:
+    $$\mathbf{z}_{t+1} = (1 - w_t) \cdot \mathbf{z}_{\text{pred}} + w_t \cdot \mathbf{z}_{\text{grounded}}$$
+    - During **Approach & Grasp Sensory Window (`flag == 1`)**: $w_t = \text{ramp}(g_{\text{steps}}) \cdot w_{\text{max}}$ with $w_{\text{max}} = 0.40$, ramping smoothly over `gate_ramp_steps = 4` ($0.10 \to 0.20 \to 0.30 \to 0.40$).
+    - During **Transition into Blind Transport (`flag == 2`)**: $w_t$ ramps down over 2 frames ($0.20 \to 0.00$) to eliminate handover discontinuity.
+    - All other steps (`flag == 0` or late transport): $w_t = 0.00$ ($M_1$ autonomous unrolling).
 
 #### B. Event-Gated `SpikingLatentDynamics` ([`spwm/models/dynamics.py`](file:///Users/Mattia/Desktop/Studies/Temp/spwm/models/dynamics.py))
 - **Continuous Kinematic Integration via Velocity Projection**:
   Momentum $p_{t+1} \in \mathbb{R}^{D_p}$ is mapped to coordinate velocity space $\mathbb{R}^{D_q}$ via linear projection `vel_proj`: $\mathbf{v}_p = \text{vel}(\mathbf{p}_{t+1})$.
-- **Event-Gated Sensory Correction ($K_{\text{gate}}$)**:
-  Rather than direct coordinate overwriting, sensory keypoint corrections are adaptively gated:
+- **Soft Position Coupling ($K_{\text{max}} = 0.35$)**:
+  Sensory keypoint corrections are adaptively gated:
   $$K_{\text{gate}} = \text{ramp}(g_{\text{steps}}) \cdot (1 - e^{-\text{scale} \cdot \text{act}}) \cdot K_{\text{max}}$$
   $$\mathbf{q}_{t+1} = \mathbf{q}_t + \Delta t \cdot \mathbf{v}_p + K_{\text{gate}} \cdot \text{bounded\_corr}$$
-  During quiescent phases (zero event activity), $K_{\text{gate}} \to 0$ and coordinates advance purely via inertial integration $\Delta t \cdot \mathbf{v}_p$. During rapid motion bursts, $K_{\text{gate}}$ opens up to bounded sensory correction, eliminating high-frequency coordinate jumps.
+  With $K_{\text{max}} = 0.35$, single-frame sensory corrections cannot jerk coordinate trajectories away from physical inertia.
+- **Normalized Continuous Momentum Subspace**:
+  Momentum $p_{t+1}$ remains clean, continuous, and strictly normalized by `LayerNorm(p_dim)`:
+  $$\mathbf{p}_{t+1} = \text{LayerNorm}(\text{fuse\_spikes}(\mathbf{s}_t) + \text{fuse\_mems}(\mathbf{m}_t))$$
+  Raw finite-difference momentum injection ($\mathbf{v}_p + \Delta\mathbf{q}/\Delta t$) has been reverted, ensuring $|p| \le 3.5$ and protecting ALIF membrane potentials from current shocks.
 
 #### C. Articulated `PhysicalDecoder` with Dual Low-Pass EMA Filtering ([`spwm/models/predictors.py`](file:///Users/Mattia/Desktop/Studies/Temp/spwm/models/predictors.py))
 - Reads out articulated joint angles $\mathbf{q}^* \in \mathbb{R}^6$ from coordinate subspace $\mathbf{q}$ and joint angular velocities $\mathbf{p}^* \in \mathbb{R}^6$ from momentum subspace $\mathbf{p}$ via 2-layer MLP projection heads with LayerNorm and SiLU.
 - **Dual Low-Pass Smoothing**:
-  - **Position Filtering**: Applies an EMA low-pass filter with smoothing factor `decoder_pos_alpha` ($\alpha_{\text{pos}} = 0.20$), suppressing single-step discrete joint jumps.
-  - **Velocity Filtering**: Applies an EMA low-pass filter with smoothing factor `decoder_ema_alpha` ($\alpha_{\text{vel}} = 0.20$) on momentum features before the velocity readout head.
+  - **Position Filtering**: Controlled by `decoder_pos_alpha` ($\alpha_{\text{pos}} = 0.0$ default in v0.7.2 Iteration 4; can be set $> 0.0$ if discrete single-step joint jump damping is needed).
+  - **Velocity Filtering**: Controlled by `decoder_ema_alpha` ($\alpha_{\text{vel}} = 0.0$ default in v0.7.2 Iteration 4; $r_t = p_t$, avoiding low-pass phase lag while preserving continuous momentum readout).
 
 ---
 

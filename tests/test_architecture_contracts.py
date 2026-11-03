@@ -127,7 +127,7 @@ def test_tensor_shape_and_phase_space_assertions():
     with pytest.raises(ValueError, match="action_dim"):
         assert_phase_space_contract(latent_dim=128, q_dim=32, p_dim=96, num_keypoints=16, action_dim=0)
 
-    q_valid = torch.uniform if hasattr(torch, "uniform") else (torch.rand(2, 32) * 2.0 - 1.0)
+    q_valid = torch.rand(2, 32) * 2.0 - 1.0
     assert_euclidean_coordinates(q_valid, "q_valid")
     with pytest.raises(ValueError, match="outside Euclidean arena bounds"):
         assert_euclidean_coordinates(torch.tensor([[1.5, -0.5]]), "q_oob")
@@ -209,10 +209,11 @@ def test_strict_4_layer_import_hierarchy():
 
 
 def test_zero_silent_fallbacks_ast_guard():
-    """AST static verification across spwm/:
-    1. No `getattr(obj, name, default)` with a 3rd fallback argument in spwm/models or spwm/training.
-    2. No `load_state_dict(..., strict=False)` in spwm/.
-    3. No `except TypeError:` or `except Exception: pass` in spwm/.
+    """AST static verification across entire spwm/ package:
+    1. No `getattr(obj, name, default)` with a 3rd fallback argument anywhere in spwm/.
+    2. No ternary `hasattr(...)` fallback expressions anywhere in spwm/.
+    3. No `load_state_dict(..., strict=False)` in spwm/.
+    4. No `except TypeError:`, `except AttributeError:`, or `except Exception: pass` in spwm/.
     """
     spwm_root = Path(__file__).resolve().parent.parent / "spwm"
 
@@ -222,14 +223,22 @@ def test_zero_silent_fallbacks_ast_guard():
         rel_path = py_file.relative_to(spwm_root)
 
         for node in ast.walk(tree):
-            # 1. Forbid 3-arg getattr(..., ..., default) in models, training, learning, core
+            # 1. Forbid 3-arg getattr(..., ..., default) anywhere in spwm/
             if isinstance(node, ast.Call) and isinstance(node.func, ast.Name) and node.func.id == "getattr":
-                if len(node.args) >= 3 and rel_path.parts[0] in ("models", "training", "learning", "core"):
+                if len(node.args) >= 3:
                     pytest.fail(
                         f"Forbidden 3-argument getattr(..., default) fallback in {rel_path}:{node.lineno}"
                     )
 
-            # 2. Forbid load_state_dict(..., strict=False)
+            # 2. Forbid ternary hasattr(...) fallbacks in spwm/
+            if isinstance(node, ast.IfExp):
+                test_src = ast.unparse(node.test)
+                if "hasattr" in test_src:
+                    pytest.fail(
+                        f"Forbidden ternary hasattr fallback in {rel_path}:{node.lineno}: '{test_src}'"
+                    )
+
+            # 3. Forbid load_state_dict(..., strict=False)
             if isinstance(node, ast.Call) and isinstance(node.func, ast.Attribute) and node.func.attr == "load_state_dict":
                 for kw in node.keywords:
                     if kw.arg == "strict" and isinstance(kw.value, ast.Constant) and kw.value.value is False:
@@ -237,11 +246,11 @@ def test_zero_silent_fallbacks_ast_guard():
                             f"Forbidden load_state_dict(..., strict=False) in {rel_path}:{node.lineno}"
                         )
 
-            # 3. Forbid silent `except TypeError:` or `except Exception: pass`
+            # 4. Forbid silent `except TypeError:`, `except AttributeError:`, or `except ...: pass`
             if isinstance(node, ast.ExceptHandler):
-                if isinstance(node.type, ast.Name) and node.type.id == "TypeError":
+                if isinstance(node.type, ast.Name) and node.type.id in ("TypeError", "AttributeError"):
                     pytest.fail(
-                        f"Forbidden silent 'except TypeError:' fallback in {rel_path}:{node.lineno}"
+                        f"Forbidden silent 'except {node.type.id}:' fallback in {rel_path}:{node.lineno}"
                     )
                 if len(node.body) == 1 and isinstance(node.body[0], ast.Pass):
                     pytest.fail(

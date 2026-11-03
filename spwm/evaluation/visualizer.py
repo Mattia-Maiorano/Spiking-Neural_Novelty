@@ -496,7 +496,8 @@ class GhostVisualizerExporter:
         horizon: int = 100,
         joint_names: Optional[Sequence[str]] = None,
         precision: int = 6,
-        pre_contact_sensory_steps: int = 5,
+        pre_contact_sensory_steps: int = 7,
+        post_contact_sensory_steps: int = 3,
     ) -> None:
         if horizon <= 0:
             raise ValueError(f"GhostVisualizerExporter: horizon must be positive, got {horizon}")
@@ -511,6 +512,7 @@ class GhostVisualizerExporter:
         self.joint_names = list(joint_names) if joint_names is not None else None
         self.precision = int(precision)
         self.pre_contact_sensory_steps = int(pre_contact_sensory_steps)
+        self.post_contact_sensory_steps = int(post_contact_sensory_steps)
 
     @property
     def output_path(self) -> Path:
@@ -523,9 +525,10 @@ class GhostVisualizerExporter:
         batch: Mapping[str, Any],
         sample_index: int = 0,
         extra_metadata: Optional[Dict[str, Any]] = None,
+        with_active_perception: bool = True,
     ) -> GhostTrajectory:
         """Run the benchmark rollout on `batch` and build the ghost payload for one sample."""
-        traj = self.evaluator.rollout_trajectory(batch, horizon=self.horizon)
+        traj = self.evaluator.rollout_trajectory(batch, horizon=self.horizon, with_active_perception=with_active_perception)
         b = traj.target_kinematics.shape[0]
         if not 0 <= sample_index < b:
             raise IndexError(f"sample_index {sample_index} out of range for batch of size {b}")
@@ -535,21 +538,24 @@ class GhostVisualizerExporter:
                 f"Increase sequence_length to >= temporal_burn_in + H + 1."
             )
         meta = dict(extra_metadata or {})
+        meta["has_sensory_injection"] = bool(with_active_perception)
         if "trajectory_ids" in batch:
             meta.setdefault("trajectory_id", int(batch["trajectory_ids"][sample_index]))
-        if "phase_flags" in batch:
+        if "phase_flags" in batch and with_active_perception:
             pf = batch["phase_flags"][sample_index]
             # Find the transition from approach (flag == 0) to heft / lift (flag == 1)
             # Offset by traj.t_start if evaluated past burn-in
             t_start = int(traj.t_start)
             h = min(self.horizon, traj.horizon)
-            sub_pf = pf[t_start : t_start + h].cpu().numpy() if hasattr(pf, "cpu") else pf[t_start : t_start + h]
+            sub_pf = pf[t_start : t_start + h].detach().cpu().numpy()
             heft_indices = np.where(sub_pf == 1)[0]
             if len(heft_indices) > 0:
                 first_heft = int(heft_indices[0])
                 meta["heft_start_frame_index"] = first_heft
                 contact_idx = min(first_heft + self.pre_contact_sensory_steps, int(heft_indices[-1]))
                 meta["grasp_lock_frame_index"] = contact_idx
+                sensory_rel_idx = min(contact_idx + self.post_contact_sensory_steps, int(heft_indices[-1]))
+                meta["sensory_release_frame_index"] = sensory_rel_idx
         return self.from_trajectory_rollout(traj, sample_index=sample_index, extra_metadata=meta)
 
     def capture(
@@ -557,11 +563,12 @@ class GhostVisualizerExporter:
         data_loader: Iterable[Mapping[str, Any]],
         batch_index: int = 0,
         sample_index: int = 0,
+        with_active_perception: bool = True,
     ) -> GhostTrajectory:
         """Select batch `batch_index` from `data_loader` and capture sample `sample_index`."""
         for i, batch in enumerate(data_loader):
             if i == batch_index:
-                return self.capture_batch(batch, sample_index, extra_metadata={"batch_index": batch_index})
+                return self.capture_batch(batch, sample_index, extra_metadata={"batch_index": batch_index}, with_active_perception=with_active_perception)
         raise IndexError(f"batch_index {batch_index} exceeds data loader length")
 
     def from_trajectory_rollout(
@@ -575,11 +582,15 @@ class GhostVisualizerExporter:
         h = min(self.horizon, traj.horizon)
         pred = traj.rollout.decoded_kinematics[sample_index, :h].detach().float().cpu().numpy()
         true = traj.target_kinematics[sample_index, :h].detach().float().cpu().numpy()
+        pred_z = traj.rollout.trajectory[sample_index, :h].detach().float().cpu().numpy()
+        true_z = traj.target_latents[sample_index, :h].detach().float().cpu().numpy()
         return self.from_arrays(
             predicted_q=pred[:, :j],
             ground_truth_q=true[:, :j],
             predicted_p=pred[:, j : 2 * j],
             ground_truth_p=true[:, j : 2 * j],
+            predicted_z=pred_z,
+            ground_truth_z=true_z,
             extra_metadata={"t_start": int(traj.t_start), "sample_index": int(sample_index), **(extra_metadata or {})},
         )
 
@@ -589,6 +600,8 @@ class GhostVisualizerExporter:
         ground_truth_q: np.ndarray,
         predicted_p: Optional[np.ndarray] = None,
         ground_truth_p: Optional[np.ndarray] = None,
+        predicted_z: Optional[np.ndarray] = None,
+        ground_truth_z: Optional[np.ndarray] = None,
         extra_metadata: Optional[Dict[str, Any]] = None,
     ) -> GhostTrajectory:
         """Build the payload from raw [H, J] arrays. Metrics follow `spwm.training.metrics` (per-step L2)."""
@@ -603,6 +616,13 @@ class GhostVisualizerExporter:
 
         pos_err = np.linalg.norm(q_hat - q_star, axis=-1)          # [H]
         vel_err = np.linalg.norm(p_hat - p_star, axis=-1)          # [H]
+        has_z = predicted_z is not None and ground_truth_z is not None
+        if has_z:
+            z_hat = np.asarray(predicted_z, dtype=np.float64)
+            z_star = np.asarray(ground_truth_z, dtype=np.float64)
+            lat_err = np.linalg.norm(z_hat - z_star, axis=-1)       # [H] L2 norm
+        else:
+            lat_err = np.zeros(h, dtype=np.float64)
         pos_ref = pos_err[0] if pos_err[0] > 1e-8 else 1.0
         vel_ref = vel_err[0] if vel_err[0] > 1e-8 else 1.0
         pos_rel = pos_err / pos_ref
@@ -619,6 +639,7 @@ class GhostVisualizerExporter:
                 "ground_truth_p": _vec(p_star[t], nd),
                 "predicted_p": _vec(p_hat[t], nd),
                 "instantaneous_metrics": {
+                    "latent_error": _finite(lat_err[t], nd),
                     "position_abs_error": _finite(pos_err[t], nd),
                     "velocity_abs_error": _finite(vel_err[t], nd),
                     "velocity_relative_degradation": _finite(vel_rel[t], nd),
@@ -642,6 +663,9 @@ class GhostVisualizerExporter:
             "batch_index": 0,
             "exported_at": datetime.now(timezone.utc).isoformat(timespec="seconds"),
             "summary": {
+                "mean_latent_error": _finite(lat_err.mean(), nd),
+                "final_latent_error": _finite(lat_err[-1], nd),
+                "max_latent_error": _finite(lat_err.max(), nd),
                 "mean_position_abs_error": _finite(pos_err.mean(), nd),
                 "final_position_abs_error": _finite(pos_err[-1], nd),
                 "max_position_abs_error": _finite(pos_err.max(), nd),

@@ -12,6 +12,7 @@ namespace SPWM.Visualization
     [Serializable]
     public sealed class GhostInstantaneousMetrics
     {
+        public float latent_error;                  // ||z_hat_t - z*_t||_2 (or MSE)
         public float position_abs_error;            // ||q_hat_t - q*_t||_2 (rad)
         public float velocity_abs_error;            // ||p_hat_t - p*_t||_2 (rad/s)
         public float velocity_relative_degradation; // E_v(t) / E_v(1)
@@ -36,6 +37,9 @@ namespace SPWM.Visualization
     [Serializable]
     public sealed class GhostSummary
     {
+        public float mean_latent_error;
+        public float final_latent_error;
+        public float max_latent_error;
         public float mean_position_abs_error;
         public float final_position_abs_error;
         public float max_position_abs_error;
@@ -61,7 +65,9 @@ namespace SPWM.Visualization
         public int sample_index;
         public int trajectory_id;
         public int batch_index;
+        public int heft_start_frame_index = -1;
         public int grasp_lock_frame_index = -1;
+        public int sensory_release_frame_index = -1;
         public string exported_at;
         public GhostSummary summary;
     }

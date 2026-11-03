@@ -23,10 +23,10 @@ Every Python module inside `spwm/` belongs to one of four strictly ordered layer
 
 ### 2.1 [`spwm/contracts/config.py`](file:///Users/Mattia/Desktop/Studies/Temp/spwm/contracts/config.py) — Immutable Single Source of Truth (SSOT)
 All configuration schemas are `@dataclass(frozen=True)` classes:
-- [`ProjectConfig`](file:///Users/Mattia/Desktop/Studies/Temp/spwm/contracts/config.py): `name` (`"spwm_v0_6_0"`), `seed` (`42`).
+- [`ProjectConfig`](file:///Users/Mattia/Desktop/Studies/Temp/spwm/contracts/config.py): `name` (`"spwm_v0_7_2"`), `seed` (`42`).
 - [`EnvironmentConfig`](file:///Users/Mattia/Desktop/Studies/Temp/spwm/contracts/config.py): `joint_count` ($J=6$), `action_dim` ($D_u=6$), `height`, `width`, `dt`, `event_threshold`. Validates in `__post_init__` that `height` and `width` are positive multiples of $4$ (matching the two stride-2 convolutions in `EventEncoder`).
-- [`DataConfig`](file:///Users/Mattia/Desktop/Studies/Temp/spwm/contracts/config.py): `dataset_dir` (`"sim/ExportedTrajectories"`), `joint_count` ($J=6$), `action_dim` ($D_u=6$), `total_trajectories`, `train_split`, `val_split`, `sequence_length`, `batch_size`, `standard_velocity_range`, `extrapolation_velocity_range`, `strict_dataset`, `pre_contact_sensory_steps`.
-- [`ModelConfig`](file:///Users/Mattia/Desktop/Studies/Temp/spwm/contracts/config.py): `in_channels`, `encoder_conv_channels`, `encoder_dim`, `latent_dim`, `q_dim`, `p_dim`, `num_keypoints`, `predictor_hidden_dim`, `ema_decay`, `decoder_ema_alpha`, `decoder_pos_alpha`, `gate_ramp_steps`, `max_k_gate`, `max_correction_norm`, `symplectic`. Validates phase-space invariants (`q_dim + p_dim == latent_dim`, `q_dim == 2 * num_keypoints`, and `p_dim` is a multiple of `q_dim`).
+- [`DataConfig`](file:///Users/Mattia/Desktop/Studies/Temp/spwm/contracts/config.py): `dataset_dir` (`"sim/ExportedTrajectories"`), `joint_count` ($J=6$), `action_dim` ($D_u=6$), `total_trajectories`, `train_split`, `val_split`, `sequence_length`, `batch_size`, `standard_velocity_range`, `extrapolation_velocity_range`, `strict_dataset`, `pre_contact_sensory_steps` ($7$), `post_contact_sensory_steps` ($3$).
+- [`ModelConfig`](file:///Users/Mattia/Desktop/Studies/Temp/spwm/contracts/config.py): `in_channels`, `encoder_conv_channels`, `encoder_dim`, `latent_dim`, `q_dim`, `p_dim`, `num_keypoints`, `predictor_hidden_dim`, `ema_decay`, `decoder_ema_alpha` ($0.0$), `decoder_pos_alpha` ($0.0$), `gate_ramp_steps` ($4$), `max_k_gate` ($0.35$), `max_correction_norm`, `symplectic`. Validates phase-space invariants (`q_dim + p_dim == latent_dim`, `q_dim == 2 * num_keypoints`, and `p_dim` is a multiple of `q_dim`).
 - [`LatentNeuronConfig`](file:///Users/Mattia/Desktop/Studies/Temp/spwm/contracts/config.py): `beta_mem`, `threshold`, `gamma`, `surrogate`, `surrogate_alpha`.
 - [`MemoryConfig`](file:///Users/Mattia/Desktop/Studies/Temp/spwm/contracts/config.py): `num_timescales`, `timescale_dims`, `betas`. Validates `len(timescale_dims) == num_timescales == len(betas)` and $0 < \beta_k < 1$.
 - [`TrainingConfig`](file:///Users/Mattia/Desktop/Studies/Temp/spwm/contracts/config.py): `mode` (`"train_representation"`, `"train_m1"`), `epochs`, `learning_rate`, `weight_decay`, `grad_clip_norm`, `probe_lr`, `probe_weight_decay`, `phase_horizon`, `temporal_burn_in`, `early_stopping_patience`, `representation_checkpoint`.
@@ -36,7 +36,8 @@ All configuration schemas are `@dataclass(frozen=True)` classes:
   - Cross-validates `data.sequence_length` against the active training phase (`train_representation` requires $T \ge 2$; `train_m1` requires $T \ge H + 1$).
   - Validates full phase-space contracts including `action_dim`.
   - Provides `cfg.with_overrides(**kwargs)` to create a new frozen configuration with updated fields and full re-validation.
-  - Rejects unknown dictionary keys in `ExperimentConfig.from_dict()` with an immediate `ValueError`.
+  - Rejects unknown dictionary keys in `ExperimentConfig.from_dict()` with an immediate `ValueError` (zero fallbacks allowed).
+  - Enforces zero duck typing and zero 3-argument `getattr` calls via standard `typing.get_origin`.
 
 ### 2.2 [`spwm/contracts/tensors.py`](file:///Users/Mattia/Desktop/Studies/Temp/spwm/contracts/tensors.py) — Runtime Tensor & Phase-Space Validators
 - `J`: Master 6-DOF manipulator joint count constant ($J=6$).

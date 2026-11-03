@@ -272,7 +272,8 @@ namespace SPWM.Robotics
                 return;
             }
 
-            // Anatomical spherical joint articulation (deltoid shoulder cap, elbow, wrist) right at pivot (0, 0, 0)
+            // Anatomical spherical joint articulation (deltoid shoulder cap, elbow, wrist) right at pivot (0, 0, 0).
+            // Shoulder_Pan is kept minimal as a base socket.
             if (spec.Name != "Shoulder_Pan")
             {
                 GameObject hub = GameObject.CreatePrimitive(PrimitiveType.Sphere);
@@ -281,19 +282,52 @@ namespace SPWM.Robotics
                 hub.transform.SetParent(linkPivot, false);
                 hub.transform.localPosition = Vector3.zero;
                 hub.transform.localRotation = Quaternion.identity;
-                float hubDiameter = Mathf.Max(d.x, d.z) * 1.06f;
+                float hubDiameter = Mathf.Max(d.x, d.z) * (spec.Name.StartsWith("Wrist") ? 1.02f : 1.06f);
                 hub.transform.localScale = new Vector3(hubDiameter, hubDiameter, hubDiameter);
             }
 
-            // Main structural limb segment spanning (0, 0, 0) -> (0, d.y, 0)
-            GameObject shaft = GameObject.CreatePrimitive(PrimitiveType.Cylinder);
-            shaft.name = spec.Name + "_Visual";
-            DestroyImmediate(shaft.GetComponent<Collider>());
-            shaft.transform.SetParent(linkPivot, false);
-            shaft.transform.localPosition = new Vector3(0f, 0.5f * d.y, 0f);
-            shaft.transform.localRotation = Quaternion.identity;
-            // Unity Cylinder primitive has height 2.0, so scale.y = 0.5 * d.y yields exact height d.y
-            shaft.transform.localScale = new Vector3(d.x, 0.5f * d.y, d.z);
+            // Main structural limb segment spanning (0, 0, 0) -> (0, d.y, 0).
+            if (spec.Name == "Wrist_Yaw")
+            {
+                GameObject yawCollar = GameObject.CreatePrimitive(PrimitiveType.Cylinder);
+                yawCollar.name = "Wrist_Yaw_Visual";
+                DestroyImmediate(yawCollar.GetComponent<Collider>());
+                yawCollar.transform.SetParent(linkPivot, false);
+                yawCollar.transform.localPosition = new Vector3(0f, 0.5f * d.y, 0f);
+                yawCollar.transform.localRotation = Quaternion.identity;
+                yawCollar.transform.localScale = new Vector3(d.x, 0.5f * d.y, d.z);
+            }
+            else if (spec.Name == "Wrist_Pitch")
+            {
+                GameObject wristSleeve = GameObject.CreatePrimitive(PrimitiveType.Cylinder);
+                wristSleeve.name = "Wrist_Sleeve_Visual";
+                DestroyImmediate(wristSleeve.GetComponent<Collider>());
+                wristSleeve.transform.SetParent(linkPivot, false);
+                wristSleeve.transform.localPosition = new Vector3(0f, 0.5f * d.y, 0f);
+                wristSleeve.transform.localRotation = Quaternion.identity;
+                wristSleeve.transform.localScale = new Vector3(d.x, 0.5f * d.y, d.z);
+            }
+            else if (spec.Name == "Wrist_Roll")
+            {
+                GameObject wristBand = GameObject.CreatePrimitive(PrimitiveType.Cylinder);
+                wristBand.name = "Wrist_Band_Visual";
+                DestroyImmediate(wristBand.GetComponent<Collider>());
+                wristBand.transform.SetParent(linkPivot, false);
+                wristBand.transform.localPosition = new Vector3(0f, 0.5f * d.y, 0f);
+                wristBand.transform.localRotation = Quaternion.identity;
+                wristBand.transform.localScale = new Vector3(d.x, 0.5f * d.y, d.z);
+            }
+            else
+            {
+                GameObject shaft = GameObject.CreatePrimitive(PrimitiveType.Cylinder);
+                shaft.name = spec.Name + "_Visual";
+                DestroyImmediate(shaft.GetComponent<Collider>());
+                shaft.transform.SetParent(linkPivot, false);
+                shaft.transform.localPosition = new Vector3(0f, 0.5f * d.y, 0f);
+                shaft.transform.localRotation = Quaternion.identity;
+                // Unity Cylinder primitive has height 2.0, so scale.y = 0.5 * d.y yields exact height d.y
+                shaft.transform.localScale = new Vector3(d.x, 0.5f * d.y, d.z);
+            }
 
             if (isLastLink)
             {

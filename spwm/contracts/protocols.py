@@ -130,6 +130,7 @@ class PhysicalDecoderProtocol(Protocol):
 class WorldModelProtocol(Protocol):
     """Contract for the composite SPWM world model."""
     latent_dim: int
+    encoder_dim: int
     q_dim: int
     p_dim: int
     joint_count: int

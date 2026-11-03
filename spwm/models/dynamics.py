@@ -153,7 +153,7 @@ class SpikingLatentDynamics(nn.Module):
         p_prev = state.z_prev[:, self.q_dim :]
 
         soma_current = self.input_proj(sensory_input) + self.recurrent_proj(p_prev) + self.q_proj(q_prev)
-        if action is not None and hasattr(self, "action_proj"):
+        if action is not None:
             soma_current = soma_current + self.action_proj(action)
 
         spikes, new_mem_state = self.memory(

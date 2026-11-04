@@ -3,6 +3,20 @@ from spwm.evaluation.evaluator import (
     RolloutEvaluationResult,
     TrajectoryRollout,
 )
+from spwm.evaluation.mppi import (
+    LatentMPPIController,
+    MPPIPlanResult,
+)
+from spwm.evaluation.robustness import (
+    MPPIPerturbationResult,
+    PerturbedEventDataset,
+    SensorPerturbationResult,
+    apply_background_activity_noise,
+    apply_refractory_dropout,
+    generate_threshold_events,
+    render_events_from_kinematics,
+    simulate_perturbed_kinematics,
+)
 from spwm.evaluation.visualizer import (
     GhostTrajectory,
     GhostVisualizerExporter,
@@ -27,6 +41,16 @@ __all__ = [
     "RolloutEvaluator",
     "RolloutEvaluationResult",
     "TrajectoryRollout",
+    "LatentMPPIController",
+    "MPPIPlanResult",
+    "SensorPerturbationResult",
+    "MPPIPerturbationResult",
+    "PerturbedEventDataset",
+    "apply_background_activity_noise",
+    "apply_refractory_dropout",
+    "generate_threshold_events",
+    "simulate_perturbed_kinematics",
+    "render_events_from_kinematics",
     "GhostTrajectory",
     "GhostVisualizerExporter",
     "generate_metrics_resume",

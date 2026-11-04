@@ -17,8 +17,21 @@ from spwm.contracts.states import (
     SPWMStepOutput,
     TelemetryContainer,
 )
+from spwm.models.ann_ablation import (
+    AblationRolloutResult,
+    ANNWorldModel,
+    ContinuousRateDynamics,
+    ContinuousRateMemory,
+    ContinuousRateState,
+)
 from spwm.models.dynamics import SpikingLatentDynamics
 from spwm.models.encoder import EventEncoder, SpatialSoftmax
+from spwm.models.kinematics import (
+    CANONICAL_ANCHORS,
+    CANONICAL_JOINT_AXES,
+    DifferentiableForwardKinematics,
+    END_EFFECTOR_TIP_OFFSET,
+)
 from spwm.models.memory import MultiTimescaleMemory
 from spwm.models.neurons import ALIFCell, SurrogateSpike, surrogate_spike
 from spwm.models.predictors import (
@@ -48,7 +61,16 @@ __all__ = [
     "LatentPredictor",
     "PhysicalDecoder",
     "PredictorOutput",
+    "DifferentiableForwardKinematics",
+    "CANONICAL_ANCHORS",
+    "CANONICAL_JOINT_AXES",
+    "END_EFFECTOR_TIP_OFFSET",
     "SPWM",
+    "ANNWorldModel",
+    "ContinuousRateMemory",
+    "ContinuousRateDynamics",
+    "ContinuousRateState",
+    "AblationRolloutResult",
     "SPWMState",
     "SPWMStepOutput",
     "SPWMSequenceOutput",

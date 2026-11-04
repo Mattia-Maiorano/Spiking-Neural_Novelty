@@ -398,6 +398,41 @@ class SPWM(nn.Module):
             keypoints=keypoints,
         )
 
+    @torch.no_grad()
+    def rollout(
+        self,
+        events: torch.Tensor,
+        actions: Optional[torch.Tensor] = None,
+        horizon: int = 100,
+        t_start: int = 5,
+        phase_flags: Optional[torch.Tensor] = None,
+    ) -> RolloutResult:
+        """
+        Executes burn-in with sensory observations up to t_start, then rolls out autonomously using M1.
+        """
+        from spwm.models.rollout import ground_initial_state, rollout_latent
+
+        curr_z, dyn_state, z_prefix = ground_initial_state(self, events, t_start)
+        decoder_state = self.physical_decoder.warm_up_filter(z_prefix)
+        rollout_actions = actions[:, t_start : t_start + horizon] if actions is not None else None
+        rollout_events = events[:, t_start + 1 : t_start + 1 + horizon]
+        rollout_flags = phase_flags[:, t_start + 1 : t_start + 1 + horizon] if phase_flags is not None else None
+
+        rollout_res = rollout_latent(
+            model=self,
+            z_init=curr_z,
+            horizon=horizon,
+            actions=rollout_actions,
+            events=rollout_events,
+            phase_flags=rollout_flags,
+            initial_dynamics_state=dyn_state,
+            with_grad=False,
+            decode_kinematics=True,
+            initial_decoder_state=decoder_state,
+            fixed_predictor=self.predictor,
+        )
+        return rollout_res
+
     def predict_future(
         self,
         initial_latent: torch.Tensor,

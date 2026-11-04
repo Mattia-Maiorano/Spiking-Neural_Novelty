@@ -320,6 +320,7 @@ class ExperimentConfig:
         phase_horizon: Optional[int] = None,
         temporal_burn_in: Optional[int] = None,
         sequence_length: Optional[int] = None,
+        total_trajectories: Optional[int] = None,
     ) -> "ExperimentConfig":
         """
         Creates a new validated, frozen ExperimentConfig with explicit overrides.
@@ -331,7 +332,13 @@ class ExperimentConfig:
         if seed is not None:
             proj_updates["seed"] = seed
         proj = dataclasses.replace(self.project, **proj_updates) if proj_updates else self.project
-        data = dataclasses.replace(self.data, sequence_length=sequence_length) if sequence_length is not None else self.data
+
+        data_updates: Dict[str, Any] = {}
+        if sequence_length is not None:
+            data_updates["sequence_length"] = sequence_length
+        if total_trajectories is not None:
+            data_updates["total_trajectories"] = total_trajectories
+        data = dataclasses.replace(self.data, **data_updates) if data_updates else self.data
 
         train_updates: Dict[str, Any] = {}
         if mode is not None:

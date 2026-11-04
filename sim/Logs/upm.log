@@ -1,12 +1,10 @@
-[2026-11-03T21:12:03.831Z][INFO] Command-line: /Applications/Unity/Hub/Editor/6000.5.7f1/Unity.app/Contents/Helpers/PackageManager/Server/UnityPackageManager server -s 24451 --ipc-path /tmp/Unity-Upm-24451.sock -l 2 --log-file /Users/Mattia/Desktop/Studies/Temp/sim/Logs/upm.log
-[2026-11-03T21:12:03.836Z][INFO] Detected environment variables:
-  GIT_ASKPASS=/Applications/Antigravity IDE.app/Contents/Resources/app/extensions/git/dist/askpass.sh
-[2026-11-03T21:12:03.850Z][INFO] IPC server started (IPC path=/tmp/Unity-Upm-24451.sock).
-[2026-11-03T21:12:03.850Z][INFO] Hint: To connect to this UPM instance, launch Unity with the command-line parameter -upmIpcPath Upm-24451.
-[2026-11-03T21:12:05.317Z][INFO] project:list-packages <-- Request received
+[2026-11-04T14:43:22.291Z][INFO] Command-line: /Applications/Unity/Hub/Editor/6000.5.7f1/Unity.app/Contents/Helpers/PackageManager/Server/UnityPackageManager server -s 4300 --ipc-path /tmp/Unity-Upm-4300.sock -l 2 --log-file /Users/Mattia/Desktop/Studies/Temp/sim/Logs/upm.log
+[2026-11-04T14:43:22.304Z][INFO] IPC server started (IPC path=/tmp/Unity-Upm-4300.sock).
+[2026-11-04T14:43:22.304Z][INFO] Hint: To connect to this UPM instance, launch Unity with the command-line parameter -upmIpcPath Upm-4300.
+[2026-11-04T14:43:23.216Z][INFO] project:list-packages <-- Request received
 params: {}
-[2026-11-03T21:12:05.400Z][INFO] project:list-packages --> 200 (84 ms)
-[2026-11-03T21:12:06.787Z][INFO] project:list-packages <-- Request received
+[2026-11-04T14:43:23.276Z][INFO] project:list-packages --> 200 (60 ms)
+[2026-11-04T14:43:27.118Z][INFO] project:list-packages <-- Request received
 params: {}
-[2026-11-03T21:12:06.818Z][INFO] project:list-packages --> 200 (31 ms)
-[2026-11-03T21:12:12.697Z][INFO] Received shutdown request (SIGTERM), shutting down Unity Package Manager
+[2026-11-04T14:43:27.147Z][INFO] project:list-packages --> 200 (29 ms)
+[2026-11-04T14:43:29.041Z][INFO] Received shutdown request (SIGTERM), shutting down Unity Package Manager

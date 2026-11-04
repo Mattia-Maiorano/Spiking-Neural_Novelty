@@ -75,6 +75,68 @@ def energy_estimate(total_spikes: int, avg_fan_out: int = 128, energy_per_sop_pj
     return float(energy_pj / 1000.0)
 
 
+def compute_sops(spike_count: int, fan_out: int) -> int:
+    """Computes total Synaptic Operations (SOPs) given emitted spike count and synaptic fan-out.
+
+    Formula: SOPs = sum_{l} s_{l-1} * F_{out, l}
+    """
+    if spike_count < 0 or fan_out < 0:
+        raise ValueError(f"spike_count ({spike_count}) and fan_out ({fan_out}) must be non-negative.")
+    return int(spike_count * fan_out)
+
+
+def compute_neuromorphic_energy_nj(
+    sops: int,
+    num_neurons: int,
+    energy_per_sop_pj: float = 0.9,
+    energy_leak_pj: float = 0.1,
+) -> float:
+    """Computes neuromorphic hardware energy in nanojoules (nJ) using Intel Loihi-2 benchmarks.
+
+    Formula: E_neuro = SOPs * E_SOP + N_neurons * E_leak
+    """
+    if sops < 0 or num_neurons < 0:
+        raise ValueError(f"sops ({sops}) and num_neurons ({num_neurons}) must be non-negative.")
+    energy_pj = float(sops * energy_per_sop_pj + num_neurons * energy_leak_pj)
+    return float(energy_pj / 1000.0)
+
+
+def compute_dense_energy_nj(
+    flops: int,
+    energy_per_flop_pj: float = 4.0,
+) -> float:
+    """Computes GPU/Edge accelerator dense energy in nanojoules (nJ) (e.g. Nvidia Jetson Orin / RTX).
+
+    Formula: E_GPU = FLOPs * E_FLOP
+    """
+    if flops < 0:
+        raise ValueError(f"flops ({flops}) must be non-negative.")
+    energy_pj = float(flops * energy_per_flop_pj)
+    return float(energy_pj / 1000.0)
+
+
+def calculate_linear_macs_and_flops(in_features: int, out_features: int, has_bias: bool = True) -> tuple[int, int]:
+    """Calculates MACs and FLOPs for a Linear layer."""
+    macs = in_features * out_features
+    flops = 2 * macs + (out_features if has_bias else 0)
+    return macs, flops
+
+
+def calculate_conv2d_macs_and_flops(
+    in_channels: int,
+    out_channels: int,
+    kernel_size: tuple[int, int],
+    out_hw: tuple[int, int],
+    has_bias: bool = True,
+) -> tuple[int, int]:
+    """Calculates MACs and FLOPs for a Conv2D layer."""
+    kh, kw = kernel_size
+    oh, ow = out_hw
+    macs = in_channels * out_channels * kh * kw * oh * ow
+    flops = 2 * macs + (out_channels * oh * ow if has_bias else 0)
+    return macs, flops
+
+
 __all__ = [
     "one_step_mse",
     "multi_step_mse",
@@ -84,4 +146,9 @@ __all__ = [
     "active_neuron_fraction",
     "parameter_count",
     "energy_estimate",
+    "compute_sops",
+    "compute_neuromorphic_energy_nj",
+    "compute_dense_energy_nj",
+    "calculate_linear_macs_and_flops",
+    "calculate_conv2d_macs_and_flops",
 ]

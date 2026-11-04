@@ -76,6 +76,7 @@ def parse_args() -> argparse.Namespace:
     )
     parser.add_argument("--phase-horizon", type=int, default=None, help="Predictor unroll horizon during training")
     parser.add_argument("--temporal-burn-in", type=int, default=None, help="Override temporal burn-in steps for recurrent warm-up")
+    parser.add_argument("--total-trajectories", type=int, default=None, help="Override total trajectories in dataset")
     return parser.parse_args()
 
 
@@ -257,6 +258,8 @@ def main() -> None:
         overrides["phase_horizon"] = args.phase_horizon
     if args.temporal_burn_in is not None:
         overrides["temporal_burn_in"] = args.temporal_burn_in
+    if args.total_trajectories is not None:
+        overrides["total_trajectories"] = args.total_trajectories
 
     if overrides:
         cfg = cfg.with_overrides(**overrides)

@@ -1,0 +1,4 @@
+| Model Architecture | Memory Dynamics | Params | Latency (ms) | Best Val Loss | Pos MSE (H=1) | Pos MSE (H=5) | Pos MSE (H=10) | Pos MSE (H=25) | Pos MSE (H=50) | Pos MSE (H=100) | Vel MSE (H=1) | Vel MSE (H=5) | Vel MSE (H=10) | Vel MSE (H=25) | Vel MSE (H=50) | Vel MSE (H=100) | Drift Ratio (H=100) |
+| :--- | :---: | :---: | :---: | :---: | :---: | :---: | :---: | :---: | :---: | :---: | :---: | :---: | :---: | :---: | :---: | :---: | :---: |
+| **SPWM-v0.7.3 (SNN-ALIF)** | ALIF (Spiking, 14.6% rate) | 328.7k | 2.61 | 0.00204 | 0.10635 | 0.03859 | 0.02117 | 0.01856 | 0.01425 | 0.01728 | 0.00027 | 0.00033 | 0.01118 | 0.01239 | 0.01262 | 0.01153 | -0.8375 |
+| **ANN-Rate (Continuous Leaky)** | Leaky Rate Units (Continuous) | 328.7k | 2.10 | 0.00098 | 0.00151 | 0.00412 | 0.00872 | 0.01757 | 0.01282 | 0.01842 | 0.00228 | 0.00274 | 0.02106 | 0.02340 | 0.01996 | 0.01685 | 11.2123 |

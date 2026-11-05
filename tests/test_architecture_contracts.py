@@ -1,4 +1,4 @@
-"""TDD Contract & Layering Tests for SPWM-v0.3.1 4-Layer Architecture.
+"""TDD Contract & Layering Tests for SPWM-v0.7.3 4-Layer Architecture.
 Enforces:
 1. Layer 0 (`spwm.contracts`) immutability, frozen dataclasses, and cross-domain validation.
 2. Runtime tensor shape & phase-space mathematical contracts (`assert_tensor_contract`, `assert_phase_space_contract`).

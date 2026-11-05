@@ -3,7 +3,7 @@ TDD Unit Tests for Layer 1 (`spwm.models`) Neural Primitives & Contracts.
 Verifies:
 1. Dynamic SpatialSoftmax coordinate grids across arbitrary valid sensor resolutions (e.g. 16x16, 32x32, 64x64).
 2. Deterministic `encode_step` and `forward` returning `(features, keypoints)` without side-effect attributes (`last_keypoints`).
-3. Strict tensor shape assertions on inputs and outputs of `EventEncoder`, `SpikingLatentDynamics`, `CascadedTemporalRelay`, and `PhysicalDecoder`.
+3. Strict tensor shape assertions on inputs and outputs of `EventEncoder`, `SpikingLatentDynamics`, `LatentPredictor`, and `PhysicalDecoder`.
 4. Absence of dead Hebbian plasticity buffers (`delta_w_buffer`, `B_kin_feedback`) on `SPWM`.
 5. Differentiable forward pass through `SPWM` when gradients are enabled (`torch.enable_grad()`).
 """

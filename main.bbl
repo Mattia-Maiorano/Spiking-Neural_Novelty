@@ -1,0 +1,275 @@
+\begin{thebibliography}{40}
+\providecommand{\natexlab}[1]{#1}
+\providecommand{\url}[1]{\texttt{#1}}
+\expandafter\ifx\csname urlstyle\endcsname\relax
+  \providecommand{\doi}[1]{doi: #1}\else
+  \providecommand{\doi}{doi: \begingroup \urlstyle{rm}\Url}\fi
+
+\bibitem[Hafner et~al.(2019)Hafner, Lillicrap, Ba, and
+  Norouzi]{hafner2019dreamer}
+D.~Hafner, T.~Lillicrap, J.~Ba, and M.~Norouzi.
+\newblock Dream to control: Learning behaviors by latent imagination.
+\newblock \emph{arXiv preprint arXiv:1912.01603}, 2019.
+
+\bibitem[Hafner et~al.(2023)Hafner, Pasukonis, Ba, and
+  Lillicrap]{hafner2025dreamerv3}
+D.~Hafner, J.~Pasukonis, J.~Ba, and T.~Lillicrap.
+\newblock Mastering diverse domains through world models.
+\newblock \emph{arXiv preprint arXiv:2301.04104}, 2023.
+
+\bibitem[Cho et~al.(2014)Cho, van Merrienboer, Gulcehre, Bahdanau, Bougares,
+  Schwenk, and Bengio]{cho2014learning}
+K.~Cho, B.~van Merrienboer, C.~Gulcehre, D.~Bahdanau, F.~Bougares, H.~Schwenk,
+  and Y.~Bengio.
+\newblock Learning phrase representations using rnn encoder-decoder for
+  statistical machine translation.
+\newblock \emph{arXiv preprint arXiv:1406.1078}, 2014.
+
+\bibitem[Shi et~al.(2015)Shi, Chen, Wang, Yeung, Wong, and
+  Woo]{shi2015convolutional}
+X.~Shi, Z.~Chen, H.~Wang, D.-Y. Yeung, W.-k. Wong, and W.-c. Woo.
+\newblock Convolutional lstm network: A machine learning approach for
+  precipitation nowcasting.
+\newblock \emph{Advances in Neural Information Processing Systems}, 28, 2015.
+
+\bibitem[Gallego et~al.(2020)Gallego, Delbr{\"u}ck, Orchard, Bartolozzi, Taba,
+  Censi, Leutenegger, Catalini, and Scaramuzza]{gallego2020event}
+G.~Gallego, T.~Delbr{\"u}ck, G.~Orchard, C.~Bartolozzi, B.~Taba, A.~Censi,
+  S.~Leutenegger, T.~Catalini, and D.~Scaramuzza.
+\newblock Event-based vision: A survey.
+\newblock \emph{IEEE Transactions on Pattern Analysis and Machine
+  Intelligence}, 44\penalty0 (1):\penalty0 154--180, 2020.
+
+\bibitem[Maass(1997)]{maass1997networks}
+W.~Maass.
+\newblock Networks of spiking neurons: The third generation of neural network
+  models.
+\newblock \emph{Neural Networks}, 10\penalty0 (9):\penalty0 1659--1671, 1997.
+
+\bibitem[Finn et~al.(2016)Finn, Tan, Duan, Darrell, and
+  Levine]{finn2016spatial}
+C.~Finn, X.~Y. Tan, Y.~Duan, T.~Darrell, and S.~Levine.
+\newblock Deep spatial autoencoders for visuomotor learning.
+\newblock In \emph{IEEE International Conference on Robotics and Automation
+  (ICRA)}, pages 512--519, 2016.
+
+\bibitem[Bellec et~al.(2018)Bellec, Salaj, Subramoney, Legenstein, and
+  Maass]{bellec2018long}
+G.~Bellec, D.~Salaj, A.~Subramoney, R.~Legenstein, and W.~Maass.
+\newblock Long short-term memory and learning-to-learn in networks of spiking
+  neurons.
+\newblock \emph{Advances in Neural Information Processing Systems}, 31, 2018.
+
+\bibitem[Bellec et~al.(2020)Bellec, Scherr, Subramoney, Hajek, Salaj,
+  Legenstein, and Maass]{bellec2020solution}
+G.~Bellec, F.~Scherr, A.~Subramoney, E.~Hajek, D.~Salaj, R.~Legenstein, and
+  W.~Maass.
+\newblock A solution to the learning dilemma for recurrent networks of spiking
+  neurons.
+\newblock \emph{Nature Communications}, 11\penalty0 (1):\penalty0 3625, 2020.
+
+\bibitem[Davies et~al.(2018)Davies, Srinivasa, Lin, Chinya, Cao, Choday, Dimou,
+  Joshi, Imam, Jain, et~al.]{davies2018loihi}
+M.~Davies, N.~Srinivasa, T.-H. Lin, G.~Chinya, Y.~Cao, S.~H. Choday, G.~Dimou,
+  P.~Joshi, N.~Imam, S.~Jain, et~al.
+\newblock Loihi: A neuromorphic manycore processor with on-chip learning.
+\newblock \emph{IEEE Micro}, 38\penalty0 (1):\penalty0 82--99, 2018.
+
+\bibitem[Orchard et~al.(2021)Orchard, Frady, Rubin, Sanborn, Shrestha, Sommer,
+  and Davies]{orchad2021loihi2}
+G.~Orchard, E.~P. Frady, D.~B. Rubin, S.~Sanborn, S.~B. Shrestha, F.~T. Sommer,
+  and M.~Davies.
+\newblock Efficient neuromorphic processing with loihi 2.
+\newblock In \emph{IEEE International Conference on Rebooting Computing
+  (ICRC)}, 2021.
+
+\bibitem[Williams et~al.(2018)Williams, Aldrich, and
+  Theodorou]{williams2017information}
+G.~Williams, A.~Aldrich, and E.~A. Theodorou.
+\newblock Information-theoretic model predictive control: Theory and
+  applications to autonomous flight.
+\newblock In \emph{IEEE Transactions on Robotics}, volume~34, pages 1603--1622,
+  2018.
+
+\bibitem[Ha and Schmidhuber(2018)]{ha2018world}
+D.~Ha and J.~Schmidhuber.
+\newblock Recurrent world models facilitate policy evolution.
+\newblock \emph{Advances in Neural Information Processing Systems}, 31, 2018.
+
+\bibitem[Hafner et~al.(2020)Hafner, Lillicrap, Norouzi, and
+  Ba]{hafner2020mastering}
+D.~Hafner, T.~Lillicrap, M.~Norouzi, and J.~Ba.
+\newblock Mastering atari with discrete world models.
+\newblock \emph{arXiv preprint arXiv:2010.02193}, 2020.
+
+\bibitem[Finn et~al.(2016)Finn, Goodfellow, and Levine]{finn2016unsupervised}
+C.~Finn, I.~Goodfellow, and S.~Levine.
+\newblock Unsupervised learning for physical interaction through video
+  prediction.
+\newblock In \emph{Advances in Neural Information Processing Systems},
+  volume~29, 2016.
+
+\bibitem[Wu et~al.(2023)Wu, Escontrela, Hafner, Goldberg, and
+  Abbeel]{wu2023daydreamer}
+P.~Wu, A.~Escontrela, D.~Hafner, K.~Goldberg, and P.~Abbeel.
+\newblock Daydreamer: World models for physical robot learning.
+\newblock In \emph{Conference on Robot Learning (CoRL)}, pages 2226--2240,
+  2023.
+
+\bibitem[Bengio et~al.(2015)Bengio, Vinyals, Jaitly, and
+  Shazeer]{bengio2015scheduled}
+S.~Bengio, O.~Vinyals, N.~Jaitly, and N.~Shazeer.
+\newblock Scheduled sampling for sequence prediction with recurrent neural
+  networks.
+\newblock In \emph{Advances in Neural Information Processing Systems},
+  volume~28, 2015.
+
+\bibitem[Greydanus et~al.(2019)Greydanus, Dzamba, and
+  Yosinski]{greydanus2019hamiltonian}
+S.~Greydanus, M.~Dzamba, and J.~Yosinski.
+\newblock Hamiltonian neural networks.
+\newblock \emph{Advances in Neural Information Processing Systems}, 32, 2019.
+
+\bibitem[Zhong et~al.(2020)Zhong, Dey, and Chakraborty]{zhong2020symplectic}
+Y.~D. Zhong, B.~Dey, and A.~Chakraborty.
+\newblock Symplectic ode-net: Learning hamiltonian dynamics with control.
+\newblock In \emph{International Conference on Learning Representations
+  (ICLR)}, 2020.
+
+\bibitem[Duong and Atanasov(2021)]{duong2021hamiltonian}
+T.~Duong and N.~Atanasov.
+\newblock Hamiltonian generative networks.
+\newblock In \emph{International Conference on Learning Representations
+  (ICLR)}, 2021.
+
+\bibitem[Bardes et~al.(2024)Bardes, Garrido, Ponce, Chen, Rabbat, LeCun,
+  Assran, and Ballas]{bardes2024vjepa}
+A.~Bardes, Q.~Garrido, J.~Ponce, X.~Chen, M.~Rabbat, Y.~LeCun, M.~Assran, and
+  N.~Ballas.
+\newblock V-jepa: Video joint-embedding predictive architecture.
+\newblock \emph{arXiv preprint arXiv:2404.08471}, 2024.
+
+\bibitem[Lichtsteiner et~al.(2008)Lichtsteiner, Posch, and
+  Delbruck]{lichtsteiner2008128}
+P.~Lichtsteiner, C.~Posch, and T.~Delbruck.
+\newblock A 128$\times$128 120 db 15 $\mu$s latency asynchronous temporal
+  contrast vision sensor.
+\newblock \emph{IEEE Journal of Solid-State Circuits}, 43\penalty0
+  (2):\penalty0 566--576, 2008.
+
+\bibitem[Roy et~al.(2019)Roy, Jaiswal, and Panda]{roy2019towards}
+K.~Roy, A.~Jaiswal, and P.~Panda.
+\newblock Towards spike-based machine intelligence with neuromorphic computing.
+\newblock \emph{Nature}, 575\penalty0 (7784):\penalty0 607--617, 2019.
+
+\bibitem[Sanket et~al.(2020)Sanket, Parameshwara, Singh, Kurmi, Ferm{\"u}ller,
+  and Aloimonos]{sanket2020evdodge}
+N.~J. Sanket, C.~M. Parameshwara, C.~D. Singh, A.~Kurmi, C.~Ferm{\"u}ller, and
+  Y.~Aloimonos.
+\newblock Ev-dodgenet: Deep dynamic obstacle dodging with event cameras.
+\newblock In \emph{IEEE International Conference on Robotics and Automation
+  (ICRA)}, pages 10651--10657, 2020.
+
+\bibitem[Vitale et~al.(2021)Vitale, Renner, Buechel, and
+  Sandamirskaya]{vitale2021event}
+A.~Vitale, A.~Renner, C.~Buechel, and Y.~Sandamirskaya.
+\newblock Event-driven vision and control for high-speed robotic grasping.
+\newblock In \emph{IEEE International Conference on Robotics and Automation
+  (ICRA)}, pages 5882--5888, 2021.
+
+\bibitem[Paredes-Vall{\'e}s et~al.(2023)Paredes-Vall{\'e}s, Hagenaars,
+  Dupeyroux, and De~Croon]{paredessalles2023fully}
+F.~Paredes-Vall{\'e}s, J.~Hagenaars, J.~Dupeyroux, and G.~De~Croon.
+\newblock A fully neuromorphic closed-loop controller for target reaching in
+  robotics.
+\newblock \emph{IEEE Robotics and Automation Letters}, 8\penalty0 (5):\penalty0
+  2501--2508, 2023.
+
+\bibitem[Tieck et~al.(2018)Tieck, Steffen, Kaiser, Roennau, and
+  Dillmann]{tieck2018controlling}
+J.~C.~V. Tieck, L.~Steffen, J.~Kaiser, A.~Roennau, and R.~Dillmann.
+\newblock Controlling a robot arm with a spiking neural network on spinnaker.
+\newblock In \emph{International Conference on Artificial Neural Networks
+  (ICANN)}, pages 280--290, 2018.
+
+\bibitem[DeWolf et~al.(2016)DeWolf, Stewart, Slotine, and
+  Eliasmith]{dewolf2016spiking}
+T.~DeWolf, T.~C. Stewart, J.-J. Slotine, and C.~Eliasmith.
+\newblock A spiking neural model of adaptive arm control.
+\newblock \emph{Frontiers in Neurorobotics}, 10:\penalty0 24, 2016.
+
+\bibitem[Neftci et~al.(2019)Neftci, Mostafa, and Zenke]{neftci2019surrogate}
+E.~O. Neftci, H.~Mostafa, and F.~Zenke.
+\newblock Surrogate gradient learning in spiking neural networks.
+\newblock \emph{IEEE Signal Processing Magazine}, 36\penalty0 (6):\penalty0
+  51--63, 2019.
+
+\bibitem[Zenke and Ganguli(2018)]{zenke2018superspike}
+F.~Zenke and S.~Ganguli.
+\newblock Superspike: Supervised learning in multilayer spiking neural
+  networks.
+\newblock \emph{Neural Computation}, 30\penalty0 (6):\penalty0 1514--1541,
+  2018.
+
+\bibitem[Wu and Amari(2008)]{wu2008dynamics}
+S.~Wu and S.-i. Amari.
+\newblock Dynamics of spiking neural networks with synaptic depression and
+  facilitation.
+\newblock \emph{Neural Computation}, 17:\penalty0 101--122, 2008.
+
+\bibitem[Sun et~al.(2025)Sun, Zhao, and Wang]{sun2025spikingwm}
+H.~Sun, R.~Zhao, and L.~Wang.
+\newblock Spiking world models: Predictive state representation via
+  event-driven recurrent dynamics.
+\newblock In \emph{IEEE Conference on Computer Vision and Pattern Recognition
+  (CVPR)}, 2025.
+
+\bibitem[Rubinstein and Kroese(2004)]{rubinstein1999cross}
+R.~Y. Rubinstein and D.~P. Kroese.
+\newblock \emph{The Cross-Entropy Method: A Unified Approach to Combinatorial
+  Optimization, Monte-Carlo Simulation and Machine Learning}.
+\newblock Springer Science \& Business Media, 2004.
+
+\bibitem[Chua et~al.(2018)Chua, Calandra, McAllister, and Levine]{chua2018deep}
+K.~Chua, R.~Calandra, R.~McAllister, and S.~Levine.
+\newblock Deep reinforcement learning in a handful of trials using
+  probabilistic dynamics models.
+\newblock \emph{Advances in Neural Information Processing Systems}, 31, 2018.
+
+\bibitem[Williams et~al.(2016)Williams, Drews, Goldfain, Rehg, and
+  Theodorou]{williams2016aggressive}
+G.~Williams, P.~Drews, B.~Goldfain, J.~M. Rehg, and E.~A. Theodorou.
+\newblock Aggressive driving with model predictive path integral control.
+\newblock In \emph{IEEE International Conference on Robotics and Automation
+  (ICRA)}, pages 1433--1440, 2016.
+
+\bibitem[Todorov et~al.(2012)Todorov, Erez, and Tassa]{todorov2012mujoco}
+E.~Todorov, T.~Erez, and Y.~Tassa.
+\newblock Mujoco: A physics engine for model-based control.
+\newblock In \emph{IEEE/RSJ International Conference on Intelligent Robots and
+  Systems (IROS)}, pages 5026--5033, 2012.
+
+\bibitem[Hafner et~al.(2019)Hafner, Lillicrap, Fischer, Villegas, Ha, Lee, and
+  Davidson]{hafner2019learning}
+D.~Hafner, T.~Lillicrap, I.~Fischer, R.~Villegas, D.~Ha, H.~Lee, and
+  J.~Davidson.
+\newblock Learning latent dynamics for planning from pixels.
+\newblock In \emph{International Conference on Machine Learning (ICML)}, pages
+  2555--2565, 2019.
+
+\bibitem[Hansen et~al.(2022)Hansen, Wang, and Su]{hansen2022temporal}
+N.~Hansen, X.~Wang, and H.~Su.
+\newblock Temporal difference learning for model predictive control.
+\newblock \emph{arXiv preprint arXiv:2203.04955}, 2022.
+
+\bibitem[Hansen et~al.(2023)Hansen, Su, and Wang]{hansen2024tdmpc2}
+N.~Hansen, H.~Su, and X.~Wang.
+\newblock Td-mpc2: Scalable, robust world models for continuous control.
+\newblock \emph{arXiv preprint arXiv:2310.16828}, 2023.
+
+\bibitem[{NVIDIA Corporation}(2022)]{physx2022}
+{NVIDIA Corporation}.
+\newblock Nvidia physx 5 sdk documentation.
+\newblock \url{https://developer.nvidia.com/physx-sdk}, 2022.
+
+\end{thebibliography}

@@ -7,9 +7,9 @@ Darwin version:          25.3.0
 Architecture:            arm64
 Running under Rosetta:   NO
 Available memory:        8192 MB
-Date:                    2026-11-04T14:42:47Z
+Date:                    2026-11-04T14:43:28Z
 [Licensing::Module] Trying to connect to existing licensing client channel...
-[Licensing::IpcConnector] Successfully connected to: "LicenseClient-Mattia" at "2026-11-04T14:42:47.633614Z"
+[Licensing::IpcConnector] Successfully connected to: "LicenseClient-Mattia" at "2026-11-04T14:43:28.15537Z"
 
 COMMAND LINE ARGUMENTS:
 /Applications/Unity/Hub/Editor/6000.5.7f1/Unity.app/Contents/MacOS/Unity
@@ -23,9 +23,9 @@ AssetImportWorkerHW0
 -logFile
 Logs/AssetImportWorkerHW0.log
 -srvPort
-49353
+49367
 -parentPid
-4215
+4300
 -analyticsCloudUserId
 anonymous
 -analyticsLocalProjectId
@@ -85,7 +85,7 @@ Successfully changed project path to: /Users/Mattia/Desktop/Studies/Temp/sim
     "memorysetup-job-temp-allocator-reduction-small-platforms=262144"
 Player connection [8435446016]  Target information:
 
-Player connection [8435446016]  * "[IP] 192.168.0.210 [Port] 0 [Flags] 2 [Guid] 1588641582 [EditorId] 1588641582 [Version] 1048832 [Id] OSXEditor(0,Mac.Home) [Debug] 1 [PackageName] OSXEditor [ProjectName] Editor" 
+Player connection [8435446016]  * "[IP] 192.168.0.210 [Port] 0 [Flags] 2 [Guid] 2108735047 [EditorId] 2108735047 [Version] 1048832 [Id] OSXEditor(0,Mac.Home) [Debug] 1 [PackageName] OSXEditor [ProjectName] Editor" 
 
 Player connection [8435446016] Host joined multi-casting on [225.0.0.222:54997]...
 Player connection [8435446016] Host joined alternative multi-casting on [225.0.0.222:34997]...
@@ -121,18 +121,18 @@ Mono path[0] = '/Applications/Unity/Hub/Editor/6000.5.7f1/Unity.app/Contents/Res
 Mono path[1] = '/Applications/Unity/Hub/Editor/6000.5.7f1/Unity.app/Contents/Resources/Scripting/BCLExtensions/runtime/netstandard2.1'
 Mono path[2] = '/Applications/Unity/Hub/Editor/6000.5.7f1/Unity.app/Contents/Resources/Scripting/MonoBleedingEdge/lib/mono/unityjit-macos'
 Mono config path = '/Applications/Unity/Hub/Editor/6000.5.7f1/Unity.app/Contents/Resources/Scripting/MonoBleedingEdge/etc'
-Using monoOptions --debugger-agent=transport=dt_socket,embedding=1,server=y,suspend=n,address=127.0.0.1:56231
-CodeReloadManager initialized
-Begin MonoManager ReloadAssembly
+Using monoOptions --debugger-agent=transport=dt_socket,embedding=1,server=y,suspend=n,address=127.0.0.1:56327
 [Licensing::Client] Handshaking with LicensingClient:
   Version:                 1.18.1+9fbee8e
-  Session Id:              fd4112228fa94ea5b174570ddb04c15d
-  Correlation Id:          73c8d2a9ec344f0b0230ca2032e780e6
-  External correlation Id: 3731594410047629650
+  Session Id:              0f1c8be9725147bea5ab67a444a56630
+  Correlation Id:          b43ca3addcb3f9ea6eddef9d4d0b4d47
+  External correlation Id: 1343064196351886891
   Machine Id:              akHTT4IUiXCher4YM61DlpXpRJk=
-[Licensing::Module] Successfully connected to LicensingClient on channel: "LicenseClient-Mattia" (connect: 0.00s, validation: 0.00s, handshake: 0.39s)
-[Licensing::IpcConnector] Successfully connected to: "LicenseClient-Mattia-notifications" at "2026-11-04T14:42:48.026392Z"
-[Licensing::Module] Licensing Background thread has ended after 0.39s
+[Licensing::Module] Successfully connected to LicensingClient on channel: "LicenseClient-Mattia" (connect: 0.00s, validation: 0.00s, handshake: 0.34s)
+[Licensing::IpcConnector] Successfully connected to: "LicenseClient-Mattia-notifications" at "2026-11-04T14:43:28.49703Z"
+[Licensing::Module] Licensing Background thread has ended after 0.34s
+CodeReloadManager initialized
+Begin MonoManager ReloadAssembly
 Registering precompiled unity dll's ...
 Register platform support module: /Applications/Unity/Hub/Editor/6000.5.7f1/PlaybackEngines/MacStandaloneSupport/UnityEditor.OSXStandalone.Extensions.dll
-Registered in 0.000422 seconds.
+Registered in 0.000450 seconds.

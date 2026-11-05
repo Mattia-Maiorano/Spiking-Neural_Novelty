@@ -14,7 +14,7 @@ The simulation environment provides a **PhysX 4 Featherstone ArticulationBody co
 flowchart LR
     subgraph Unity["Unity 3D Continuous Articulated Robotics Engine (sim/)"]
         Rig["ArticulatedRobotRig\nFeatherstone 6-DOF Manipulator Chain\n(Joint count J = 6)"]
-        Spawner["ProceduralObjectSpawner\nPayload (Sphere, Box, Cylinder)\nMass: 0.2kg - 3.5kg, Inertia Tensor"]
+        Spawner["ProceduralObjectSpawner\nPayload (Sphere, Box, Cylinder)\nMass: 1.20kg - 4.50kg, Inertia Tensor"]
         Ctrl["ActionConditionedController\nSequential Waypoint PD Controller u_t\n(Approach -> Heft -> Transport)"]
         Phys["PhysX 4 Physics Integration\ndt = 0.05s, Contact Friction, Gravity"]
         Spawner --> Phys
@@ -30,7 +30,7 @@ flowchart LR
     end
 
     subgraph Output["Dataset & Training Pipeline"]
-        Spikes --> Dense["Dense Event Tensor\n[B, T, 2, H, W]"]
+        Spikes --> Dense["Dense Event Tensor\n[B, T, 4, H, W]"]
         Phys -.->|"Ground-Truth Telemetry"| Kin["Joint Angles q* & Velocities p*\nMotor Actions u_t\nPhase Flags"]
         Dense & Kin --> Dataset["EventWorldDataset\nStrict Trajectory Partitioning\n(Zero Temporal Leakage)"]
     end
@@ -153,7 +153,7 @@ Defined in [`spwm/contracts/config.py`](file:///Users/Mattia/Desktop/Studies/Tem
 | `dt` | `float` | `0.05` | Simulation timestep duration (seconds) | $\Delta t = 50\,\text{ms}$ per discrete step |
 | `event_threshold`| `float` | `0.08` | Log-intensity change threshold $\theta$ | Positive float |
 
-### 5.2 [`DataConfig`](file:///Users/Mattia/Desktop/Studies/Temp/spwm/contracts/config.py#L93-L128)
+### 5.2 [`DataConfig`](file:///Users/Mattia/Desktop/Studies/Temp/spwm/contracts/config.py#L93-L124)
 
 | Parameter | Type | Default | Description |
 | :--- | :--- | :--- | :--- |
@@ -167,6 +167,7 @@ Defined in [`spwm/contracts/config.py`](file:///Users/Mattia/Desktop/Studies/Tem
 | `batch_size` | `int` | `32` | Batch size $B$ for PyTorch DataLoaders |
 | `standard_velocity_range` | `(float, float)`| `(-1.0, 1.0)` | Joint angular velocity scaling range for standard trajectories |
 | `extrapolation_velocity_range` | `(float, float)`| `(-2.0, 2.0)` | Velocity range for out-of-distribution stress testing |
+| `num_workers` | `int` | `0` | Number of subprocesses used by PyTorch DataLoaders |
 | `cache_data` | `bool` | `True` | Whether to pre-render and cache event tensors in memory |
 | `strict_dataset` | `bool` | `True` | Whether to strictly require real exported Unity trajectories (fail if missing) |
 | `pre_contact_sensory_steps` | `int` | `7` | Number of approach steps before physical contact where Phase 1.5 sensory grounding begins |

@@ -27,7 +27,7 @@ from spwm.models.predictors import (
 
 class SPWM(nn.Module):
     """
-    SPWM: Spiking Predictive World Model (v0.6.0).
+    SPWM: Spiking Predictive World Model (v0.7.3).
     Unified composition of:
       1. Dual-Camera Visual Fusion SpatialSoftmax Keypoint EventEncoder
       2. Top-down Predictive Coding sensory feedback (`sensory_predictor`)

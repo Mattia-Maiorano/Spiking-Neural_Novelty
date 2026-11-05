@@ -91,15 +91,20 @@ spwm/
 │   ├── dynamics.py             # SpikingLatentDynamics symplectic (q, p) integrator
 │   ├── predictors.py           # Action-conditioned LatentPredictor (M1) & Articulated PhysicalDecoder
 │   ├── rollout.py              # Action-conditioned unified rollout_latent, ground_initial_state, compute_rollout_schedule, step_grounded
+│   ├── kinematics.py           # Differentiable forward kinematics (FK) mapping joint angles to 3D Cartesian coordinates
+│   ├── ann_ablation.py         # Matched continuous leaky rate ANN world model ablation (ANNWorldModel)
+│   ├── baselines.py            # Comparative non-spiking world models (ContinuousRSSM, DeepGRUPredictor, ContinuousConvLSTM)
+│   ├── spwm.py                 # Compatibility facade re-exporting SPWM from world_model
 │   └── world_model.py          # Composite SPWM world model with action conditioning
 │
 ├── data/                       # LAYER 1: Robotic trajectory parser & neuromorphic vision bridge
+│   ├── __init__.py             # Public exports for data loaders and simulators
 │   ├── event_camera.py         # EventCameraSimulator & RoboticTrajectory container with phase_flags
 │   └── datasets.py             # EventWorldDataset (Unity telemetry ingestion & 6-DOF grasp simulation)
 │
 ├── training/                   # LAYER 2: Training orchestration, losses, isolated phases
 │   ├── __init__.py             # Public exports for Layer 2 training components
-│   ├── losses.py               # PredictorLoss, SPWMLoss
+│   ├── losses.py               # PredictorLoss, SPWMLoss, decompose_latent_loss, _frozen
 │   ├── metrics.py              # Joint position/velocity errors, spike sparsity, SOP energy
 │   ├── diagnostics.py          # inspect_gradients, collect_spike_statistics
 │   ├── rollout.py              # Re-export of unified rollout_latent and helper functions for Layer 2 consumers
@@ -110,8 +115,11 @@ spwm/
 │       └── m1_nominal.py       # M1PhaseStrategy (Phase 1: Action-conditioned M1 with sensory injection)
 │
 ├── evaluation/                 # LAYER 3: Multi-horizon benchmarks & plotting
+│   ├── __init__.py             # Public exports for evaluation benchmarks
 │   ├── evaluator.py            # RolloutEvaluator & RolloutEvaluationResult
 │   ├── metrics_resume.py       # Segmented training/evaluation JSON summary generator
+│   ├── mppi.py                 # LatentMPPIController & MPPIPlanResult for closed-loop downstream control
+│   ├── robustness.py           # Sim-to-real sensor noise & mechanical dynamics perturbation suites
 │   └── visualizer.py           # GhostVisualizerExporter & Matplotlib publication figure generators
 │
 ├── config/                     # Thin compatibility facade re-exporting spwm.contracts.config
@@ -235,20 +243,22 @@ The architecture focuses on two clean, decoupled training phases:
 #### Phase 0 (`train_representation`) Objective
 In [`RepresentationPhaseStrategy`](file:///Users/Mattia/Desktop/Studies/Temp/spwm/training/phases/representation.py), the spiking network is trained strictly as a continuous state estimator over sensory input streams:
 1. **Articulated Kinematic Supervision**:
-   $$\mathcal{L}_{\text{kinematic}} = \frac{1}{BT}\sum_{t=0}^{T-1} \left\|\text{decode\_pos}(\mathbf{q}_t) - \mathbf{q}_t^*\right\|_2^2 + \frac{1}{s_v^2} \left\|\text{decode\_vel}(\mathbf{p}_t) - \mathbf{p}_t^*\right\|_2^2$$
-   where $s_v = \text{velocity\_loss\_scale} = 1.0\,\text{rad/s}$ (configurable in `LossConfig`) normalizes angular velocity magnitudes relative to normalized joint coordinates.
+   $$\mathcal{L}_{\text{kinematic}} = \frac{1}{BT}\sum_{b=0}^{B-1}\sum_{t=0}^{T-1} \left( \|\text{decode\_pos}(\mathbf{q}_{b, t}) - \mathbf{q}_{b, t}^*\|_2^2 + \frac{1}{s_v^2} \|\text{decode\_vel}(\mathbf{p}_{b, t}) - \mathbf{p}_{b, t}^*\|_2^2 \right)$$
+   where $s_v = \text{velocity\_loss\_scale} = 1.0\,\text{rad/s}$ (configurable in `LossConfig`, default 1.0) normalizes angular velocity magnitudes relative to normalized joint coordinates.
 2. **Phase-Space Derivative Constraint**:
-   $$\mathcal{L}_{\text{derivative}} = \frac{1}{B(T-1)}\sum_{t=0}^{T-2} \left\|(\mathbf{q}_{t+1} - \mathbf{q}_t) - dt \cdot \mathbf{p}_t\right\|_2^2$$
+   $$\mathcal{L}_{\text{derivative}} = \frac{1}{B(T-1)}\sum_{b=0}^{B-1}\sum_{t=0}^{T-2} \|(\mathbf{q}_{b, t+1} - \mathbf{q}_{b, t}) - \Delta t \cdot \mathbf{p}_{b, t}[..., :q\_dim]\|_2^2$$
 3. **ALIF Momentum Smoothness**:
-   $$\mathcal{L}_{\text{smoothness}} = \frac{1}{B(T-1)}\sum_{t=0}^{T-2} \left\|\mathbf{p}_{t+1} - \mathbf{p}_t\right\|_2^2$$
+   $$\mathcal{L}_{\text{smoothness}} = \frac{1}{B(T-1)}\sum_{b=0}^{B-1}\sum_{t=0}^{T-2} \text{Smooth}_{L1}(\mathbf{p}_{b, t+1} - \mathbf{p}_{b, t}, \beta=0.1)$$
 4. **Sensory Prediction Reconstruction**:
-   $$\mathcal{L}_{\text{sensory}} = \frac{1}{BT}\sum_{t=0}^{T-1} \left\|\boldsymbol{\epsilon}_t\right\|_2^2$$
+   $$\mathcal{L}_{\text{sensory}} = \frac{1}{BT}\sum_{b=0}^{B-1}\sum_{t=0}^{T-1} \|\boldsymbol{\epsilon}_{b, t}\|_2^2$$
 
 $$\mathcal{L}_{\text{Phase 0}} = \lambda_{\text{kinematic}}\mathcal{L}_{\text{kinematic}} + \lambda_{\text{derivative}}\mathcal{L}_{\text{derivative}} + \lambda_{\text{smoothness}}\mathcal{L}_{\text{smoothness}} + \lambda_{\text{sensory}}\mathcal{L}_{\text{sensory}}$$
+with default weights $\lambda_{\text{kinematic}} = 5.0, \; \lambda_{\text{derivative}} = 1.0, \; \lambda_{\text{smoothness}} = 0.1, \; \lambda_{\text{sensory}} = 1.0$.
 
 #### Phase 1 (`train_m1`) Objective
 In [`M1PhaseStrategy`](file:///Users/Mattia/Desktop/Studies/Temp/spwm/training/phases/m1_nominal.py), all representation modules are **strictly frozen**. Pristine ground-truth latents $\mathbf{z}_{0:T}^*$ are generated via `forward_representation` and detached: $\mathbf{z}_{\text{target}} = \text{stop\_grad}(\mathbf{z}^*)$. Starting from grounded initial state $\hat{\mathbf{z}}_0$ (via `ground_initial_state`), $M_1$ unrolls via unified `rollout_latent(model, with_grad=True, fixed_predictor=model.m1, events=events, phase_flags=phase_flags)` conditioned on actions $\mathbf{u}_t$, synchronizing with grounded sensory dynamics during Phase 1.5 heft (flag == 1) and executing autonomous M1 steps during blind transport:
-$$\mathcal{L}_{M_1} = \lambda_{\text{position}} \text{MSE}(\hat{\mathbf{q}}_{t_{\text{start}}+1:}, \mathbf{q}_{\text{target}, t_{\text{start}}+1:}) + \lambda_{\text{velocity}} \text{MSE}(\hat{\mathbf{p}}_{t_{\text{start}}+1:}, \mathbf{p}_{\text{target}, t_{\text{start}}+1:})$$
+$$\mathcal{L}_{M_1} = \lambda_{\text{position}} \frac{1}{BH}\sum_{b=0}^{B-1}\sum_{h=1}^H w_{\text{heft}}(b, h) \|\hat{\mathbf{q}}_{b, h} - \mathbf{q}_{\text{target}, b, h}\|_2^2 + \lambda_{\text{velocity}} \frac{1}{BH}\sum_{b=0}^{B-1}\sum_{h=1}^H w_{\text{heft}}(b, h) \|\hat{\mathbf{p}}_{b, h} - \mathbf{p}_{\text{target}, b, h}\|_2^2$$
+where $w_{\text{heft}}(b, h) = 2.0$ over $[t_{\text{heft}} - 5, t_{\text{heft}} + 10]$ around contact grasp lock (and $1.0$ otherwise), and $\lambda_{\text{velocity}} = 1.5$ (in `LossConfig`) scales momentum subspace precision during multi-step unrolling.
 $$\mathcal{L}_{\text{total}} = \lambda_{\text{latent}} \mathcal{L}_{M_1}$$
 
 ### 3.3 Scoped `strict=True` Checkpoint Protocol
@@ -356,11 +366,14 @@ To demonstrate downstream closed-loop control without relying on an external phy
   where $\mathbf{z}_0$ is grounded from the latest sensory frames via active perception. Neither the visual encoder nor ALIF spiking dynamics are executed during the $K \times H$ mental simulation, enabling ultra-fast vectorization.
 
 ### 8.2 Path Integral Cost Function
-The cumulative trajectory cost $\mathcal{C}_k$ for candidate $k$ balances target tracking, velocity damping, and control smoothness:
-$$\mathcal{C}_k = \sum_{\tau=1}^H \left[ w_{\text{pos}} \|\mathbf{x}_{\text{ee}}(\tau) - \mathbf{x}_{\text{goal}}\|_2 + w_{\text{vel}} \|\hat{\mathbf{p}}_\tau\|_2 + w_{\text{act}} \|\mathbf{u}_\tau - \mathbf{u}_{\tau-1}\|_2 \right]$$
-with weights $w_{\text{pos}} = 1.0$, $w_{\text{vel}} = 0.1$, and $w_{\text{act}} = 0.05$.
+The cumulative trajectory cost $\mathcal{C}_k$ for candidate $k$ balances Cartesian tracking, terminal placement error, velocity damping, and control smoothness:
+$$\mathcal{C}_k = \sum_{\tau=1}^H \left[ w_{\text{pos}} \|\mathbf{x}_{\text{ee}}(\tau) - \mathbf{x}_{\text{goal}}\|_2 + w_{\text{vel}} \|\hat{\mathbf{p}}_\tau\|_2 + w_{\text{act}} \|\mathbf{u}_\tau - \mathbf{u}_{\tau-1}\|_2 \right] + w_{\text{term\_pos}} \|\mathbf{x}_{\text{ee}}(H) - \mathbf{x}_{\text{goal}}\|_2$$
 
-Candidate weights $w_k$ are computed via Boltzmann temperature scaling ($\lambda = 0.15$):
+- **Controller Parameters**:
+  - Class defaults in [`LatentMPPIController`](file:///Users/Mattia/Desktop/Studies/Temp/spwm/evaluation/mppi.py): $w_{\text{pos}} = 1.0, w_{\text{term\_pos}} = 1.0, w_{\text{vel}} = 0.10, w_{\text{act}} = 0.05$, sampling noise $\sigma = 0.28$, temperature $\lambda = 0.10$.
+  - Benchmark profile in [`benchmark_mppi_control.py`](file:///Users/Mattia/Desktop/Studies/Temp/experiments/benchmark_mppi_control.py): $w_{\text{pos}} = 1.0, w_{\text{term\_pos}} = 5.0, w_{\text{vel}} = 0.08, w_{\text{act}} = 0.02$, sampling noise $\sigma = 0.20$, temperature $\lambda = 0.03$.
+
+Candidate weights $w_k$ are computed via Boltzmann temperature scaling:
 $$\beta = \min_{j} \mathcal{C}_j, \quad w_k = \frac{\exp\left(-\frac{1}{\lambda} (\mathcal{C}_k - \beta)\right)}{\sum_{j=1}^K \exp\left(-\frac{1}{\lambda} (\mathcal{C}_j - \beta)\right)}$$
 The nominal action sequence is updated as:
 $$\mathbf{u}_\tau^* = \sum_{k=1}^K w_k \mathbf{u}_{\tau, k}$$

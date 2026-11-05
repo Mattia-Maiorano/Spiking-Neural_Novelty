@@ -34,6 +34,8 @@ class MPPIPlanResult:
     min_cost: float
     mean_cost: float
     latency_ms: float
+    candidate_ee_trajectories: torch.Tensor  # [K, H, 3] FK end-effector paths of the final MPPI iteration
+    candidate_weights: torch.Tensor          # [K] normalized path-integral weights of the final MPPI iteration
 
 
 class LatentMPPIController:
@@ -168,6 +170,8 @@ class LatentMPPIController:
 
         best_z_traj = torch.zeros(H, self.predictor.latent_dim, device=self.device)
         best_ee_traj = torch.zeros(H, 3, device=self.device)
+        candidate_ee = torch.zeros(K, H, 3, device=self.device)
+        candidate_w = torch.zeros(K, device=self.device)
 
         for _ in range(self.num_iterations):
             # 1. Sample action perturbations: [K, H, D_u]
@@ -231,6 +235,8 @@ class LatentMPPIController:
             weights = torch.exp(-(total_costs - beta) / self.temperature)
             denom = torch.sum(weights)
             norm_weights = weights / (denom + 1e-10)  # [K]
+            candidate_ee = ee_pos
+            candidate_w = norm_weights
 
             # 7. Update Nominal Action Sequence
             curr_nominal = torch.sum(norm_weights.view(K, 1, 1) * candidates, dim=0)
@@ -254,6 +260,8 @@ class LatentMPPIController:
             min_cost=min_cost_val,
             mean_cost=mean_cost_val,
             latency_ms=latency,
+            candidate_ee_trajectories=candidate_ee,
+            candidate_weights=candidate_w,
         )
 
 

@@ -121,7 +121,7 @@ python experiments/evaluate.py \
     --checkpoint results/spwm_v0_7_3_train_m1/model.pt \
     --config results/spwm_v0_7_3_train_m1/config.yaml
 
-# Benchmark downstream closed-loop Latent MPPI control (80.0% grasp success, 2.17 cm accuracy)
+# Benchmark downstream closed-loop Latent MPPI control (80.0% grasp success, 2.17 cm min distance)
 python experiments/benchmark_mppi_control.py \
     --checkpoint results/spwm_v0_7_3_train_m1/model.pt \
     --config results/spwm_v0_7_3_train_m1/config.yaml
@@ -144,9 +144,9 @@ python experiments/benchmark_robustness_stress_test.py
 
 ### Execution Confirmation & Validation Criteria
 
-- **Action-Conditioned Attractor Rollout**: Negative drift ratio across extended horizons ($H=1 \to 100$), confirming that dissipative phase-space dynamics form a contractive attractor basin.
+- **Action-Conditioned Velocity Stabilization**: Discrete spike thresholding and symplectic factorization bound velocity drift over 100 autoregressive steps ($H=100$), achieving $0.01153\,\text{rad}^2/\text{s}^2$ velocity MSE ($4.2\times$ lower than Continuous RSSM and $14\times$ lower than Deep GRU).
 - **6-DOF Kinematic Reconstruction**: High accuracy decoding of continuous articulated joint angles $\mathbf{q}^*$ and angular rates $\mathbf{p}^*$ across all $J=6$ manipulator joints.
-- **Closed-Loop MPPI Control**: Direct mental simulation in latent space achieves an 80.0% grasp success rate with $2.17\,\text{cm}$ placement accuracy under a $38.9\,\text{ms}$ step latency budget.
+- **Closed-Loop MPPI Control**: Direct mental simulation in latent space achieves an 80.0% grasp success rate ($2.17\,\text{cm}$ minimum placement distance, $6.72\,\text{cm}$ final terminal error) under a $38.9\,\text{ms}$ step latency budget.
 - **Neuromorphic Energy Efficiency**: Achieves $12.81\,\text{nJ/step}$ on Intel Loihi-2 at a $14.6\%$ spike rate, yielding an **80.8x energy reduction** relative to dense GPU execution on Nvidia Jetson Orin.
 
 ---

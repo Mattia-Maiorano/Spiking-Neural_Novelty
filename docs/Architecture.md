@@ -378,6 +378,6 @@ $$\beta = \min_{j} \mathcal{C}_j, \quad w_k = \frac{\exp\left(-\frac{1}{\lambda}
 The nominal action sequence is updated as:
 $$\mathbf{u}_\tau^* = \sum_{k=1}^K w_k \mathbf{u}_{\tau, k}$$
 - **Warm-Starting & Temporal Smoothing**: At each control step, the nominal action sequence is advanced by one step and smoothed using temporal inertia ($\beta_{\text{warm}} = 0.75$), preventing high-frequency control chattering.
-- **Performance**: Achieves an **80.0% grasp success rate** ($< 3.0\,\text{cm}$ terminal error, $< 1.5\,\text{rad/s}$ terminal velocity) with **$2.17\,\text{cm}$ mean placement accuracy** and **$38.9\,\text{ms}$ step latency** across unseen payload masses ($1.20 - 4.50\,\text{kg}$).
+- **Performance**: Achieves an **80.0% grasp success rate** ($\le 3.0\,\text{cm}$ minimum placement distance along rollout, $< 1.5\,\text{rad/s}$ terminal velocity) with **$2.17 \pm 1.80\,\text{cm}$ minimum placement distance** ($6.72\,\text{cm}$ final terminal error) and **$38.9\,\text{ms}$ step latency** across unseen payload masses ($1.20 - 4.50\,\text{kg}$).
 
 

@@ -323,15 +323,15 @@ Evaluated on the 400 held-out test set trajectories under the production `SPWM-v
 | **$H = 5$** ($0.25\,\text{s}$) | Position Error (rad)<br>Velocity Error (rad/s)<br>Latent Phase MSE | $0.4300$<br>$0.0404$<br>$0.0022$ | $0.3442$<br>$0.0916$<br>— | —<br>—<br>— |
 | **$H = 10$** ($0.50\,\text{s}$) | Position Error (rad)<br>Velocity Error (rad/s)<br>Latent Phase MSE | $0.2730$<br>$0.1441$<br>$0.0048$ | $0.2269$<br>$0.2099$<br>— | —<br>—<br>— |
 | **$H = 25$** ($1.25\,\text{s}$) | Position Error (rad)<br>Velocity Error (rad/s)<br>Latent Phase MSE | $0.2583$<br>$0.1733$<br>$0.0158$ | $0.2275$<br>$0.2227$<br>— | $0.2582$<br>$0.3863$<br>— |
-| **$H = 50$** ($2.50\,\text{s}$) | Position Error (rad)<br>Velocity Error (rad/s)<br>Latent Phase MSE | **$0.2385$**<br>$0.1870$<br>$0.0323$ | $0.2204$<br>$0.2214$<br>— | —<br>—<br>— |
-| **$H = 100$** ($5.00\,\text{s}$) | Position Error (rad)<br>Velocity Error (rad/s)<br>Latent Phase MSE | $0.2740$<br>**$0.1846$**<br>$0.0616$ | $0.2575$<br>$0.2087$<br>— | $0.2863$<br>$0.4215$<br>— |
-| **Canonical Test Trajectory**<br>(TID 3600, $H=100$) | Mean Position Error<br>Final Position Error<br>Mean Velocity Error<br>Mean Latent Error | **$0.2450\,\text{rad}$**<br>$0.4151\,\text{rad}$<br>**$0.1432\,\text{rad/s}$**<br>$3.5459$ | $0.2069\,\text{rad}$<br>$0.4119\,\text{rad}$<br>$0.1745\,\text{rad/s}$<br>$3.5121$ | $0.5872\,\text{rad}$<br>$0.8410\,\text{rad}$<br>$0.3120\,\text{rad/s}$<br>— |
+| **$H = 50$** ($2.50\,\text{s}$) | Position Error (rad)<br>Velocity Error (rad/s)<br>Latent Phase MSE | $0.2385$<br>**$0.1870$**<br>$0.0323$ | **$0.2204$**<br>$0.2214$<br>— | —<br>—<br>— |
+| **$H = 100$** ($5.00\,\text{s}$) | Position Error (rad)<br>Velocity Error (rad/s)<br>Latent Phase MSE | $0.2740$<br>**$0.1846$**<br>$0.0616$ | **$0.2575$**<br>$0.2087$<br>— | $0.2863$<br>$0.4215$<br>— |
+| **Canonical Test Trajectory**<br>(TID 3600, $H=100$) | Mean Position Error<br>Final Position Error<br>Mean Velocity Error<br>Mean Latent Error | $0.2450\,\text{rad}$<br>$0.4151\,\text{rad}$<br>**$0.1432\,\text{rad/s}$**<br>$3.5459$ | **$0.2069\,\text{rad}$**<br>**$0.4119\,\text{rad}$**<br>$0.1745\,\text{rad/s}$<br>$3.5121$ | $0.5872\,\text{rad}$<br>$0.8410\,\text{rad}$<br>$0.3120\,\text{rad/s}$<br>— |
 
 > [!NOTE]
 > **Observation on Initial $H=1$ vs Extended $H=50$ Error**: In early frames ($t \in [0, 4]$), the initial coordinate offset between resting posture and active visual tracking creates a transient position error ($0.7983\,\text{rad}$), while velocity error remains near zero ($0.0393\,\text{rad/s}$). As the arm articulates, dynamic attractor prediction rapidly converges, achieving a minimum tracking error of $0.2385\,\text{rad}$ at $H=50$ and maintaining $0.2740\,\text{rad}$ out to $H=100$.
 
 ### 4.2 Active Perception Sensory Injection Ablation
-To verify the hypothesis that active perception heft micro-movements inject payload mass/inertia information into the latent dynamics, tracking performance was benchmarked across 5 diverse test episodes with vs. without sensory grounding injection:
+To verify the hypothesis that active perception heft micro-movements inject payload mass/inertia information into the latent dynamics, tracking performance was benchmarked across 5 diverse test episodes with vs. without sensory grounding injection (evaluated under the `SPWM-v0.7.2` benchmark run, Iteration 7):
 
 | Episode Index | Trajectory ID | Payload Geometry | Payload Mass | Elevation Plane | With-Injection Pos Err (Mean / Final) | Pure Open-Loop Pos Err (Mean / Final) | Tracking Error Reduction ($\Delta\%$) |
 | :---: | :---: | :---: | :---: | :---: | :---: | :---: | :---: |

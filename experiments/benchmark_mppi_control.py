@@ -78,6 +78,31 @@ def load_trajectory_metadata(dataset_dir: Path, traj_id: int) -> Tuple[float, st
     shape = str(doc["payload_shape"])
     return mass, shape
 
+def compute_rot_error(
+    fk: DifferentiableForwardKinematics, 
+    q: torch.Tensor, 
+    target_pose_mat: torch.Tensor
+) -> float:
+    """
+    Computes SE(3) rotation error matching the MPPI cost function formulation.
+    Returns a value >= 0.0, where 0.0 is perfect alignment.
+    """
+    # Forward kinematics for current joint angles [1, 6]
+    T_ee = fk.forward_homogeneous(q.unsqueeze(0))[0] # [4, 4]
+    R_ee = T_ee[:3, :3]
+    target_rot = target_pose_mat[:3, :3]
+
+    # Extract forward (+Z) and up (+Y) vectors[span_1](start_span)[span_1](end_span)
+    ee_fwd = R_ee[:, 2]
+    ee_up = R_ee[:, 1]
+    t_fwd = target_rot[:, 2]
+    t_up = target_rot[:, 1]
+
+    # Cosine similarity penalty (1.0 - dot_product)[span_2](start_span)[span_2](end_span)
+    fwd_err = 1.0 - torch.sum(ee_fwd * t_fwd, dim=-1)
+    up_err = 1.0 - torch.sum(ee_up * t_up, dim=-1)
+    
+    return float((fwd_err + up_err).item())
 
 def run_episode(
     model: SPWM,
@@ -97,7 +122,8 @@ def run_episode(
     p1_indices = (phase_flags == 1).nonzero()
     t_c = int(p1_indices[0].item()) if len(p1_indices) > 0 else 50
     t_grasp = min(t_c + 7, q_gt.shape[0] - 1)
-    target_pos_t = fk(q_gt[t_c : t_c + 1])[0].detach()
+    target_pose_mat = fk.forward_homogeneous(q_gt[t_c : t_c + 1])[0].detach()
+    target_pos_t = target_pose_mat[:3, 3]
     target_pos = (float(target_pos_t[0].item()), float(target_pos_t[1].item()), float(target_pos_t[2].item()))
     elevation = classify_elevation(target_pos[1])
 
@@ -125,8 +151,8 @@ def run_episode(
             action=prev_u.unsqueeze(0),
         )
 
-        # 2. Latent MPPI Mental Unroll Planning
-        res = controller.plan_step(z_t, target_pos_t, prev_action=prev_u)
+        # 2. Latent MPPI Mental Unroll Planning with SE(3) target pose
+        res = controller.plan_step(z_t, target_pose_mat, prev_action=prev_u)
         prev_u = res.action
         latencies.append(res.latency_ms)
 
@@ -143,8 +169,21 @@ def run_episode(
     min_err = min(step_errors)
     terminal_err = step_errors[-1]
 
-    # Grasp Success: intersects target payload bounding tolerance (< 3.0 cm) with low terminal velocity (< 1.5 rad/s)
-    is_success = bool((min_err < 3.0) and (final_vel < 1.5))
+    # 1. Settling Window: Ensure the arm stays within tolerance for the final N steps (e.g., 3 steps = 150ms at dt=0.05)
+    settling_steps = 3
+    window_errors = step_errors[-settling_steps:] if len(step_errors) >= settling_steps else step_errors
+    is_spatially_stable = all(err < 3.0 for err in window_errors)
+
+    # 2. Terminal Kinematic Stability: Low joint velocity at the moment of grasp
+    is_kinematically_stable = (final_vel < 1.5)
+    
+    # Pass the decoded joint positions (first 6 dims) to the function
+    final_rot_err = compute_rot_error(fk, dec_t[0, :6], target_pose_mat) 
+    
+    # Require rotation error to be low (e.g., < 0.05, representing minor angular deviation)
+    is_orientation_aligned = final_rot_err < 0.05 
+
+    is_success = bool(is_spatially_stable and is_kinematically_stable and is_orientation_aligned)
 
     return EpisodeResult(
         trajectory_id=traj_id,
@@ -279,6 +318,24 @@ def main() -> None:
         help="MPPI sample-and-update iterations per control step (default: 3).",
     )
     parser.add_argument(
+        "--noise-beta",
+        type=float,
+        default=0.75,
+        help="Temporal correlation parameter beta for AR(1) action noise (default: 0.75).",
+    )
+    parser.add_argument(
+        "--w-act",
+        type=float,
+        default=0.005,
+        help="Action rate-of-change smoothness penalty weight (default: 0.005).",
+    )
+    parser.add_argument(
+        "--w-rot",
+        type=float,
+        default=0.5,
+        help="SE(3) orientation alignment penalty weight (default: 0.5).",
+    )
+    parser.add_argument(
         "--device",
         type=str,
         default="cpu",
@@ -301,6 +358,12 @@ def main() -> None:
     model.eval()
 
     fk = DifferentiableForwardKinematics().to(device)
+    # Construct the anisotropic noise vector from base, shoulder, and elbow
+    s_base = 0.1226
+    s_shoulder = 0.5894
+    s_elbow = 0.2172
+    anisotropic_sigmas = [s_base, s_shoulder, s_elbow, s_base, s_base, s_base]
+
     controller = LatentMPPIController(
         predictor=model.m1,
         physical_decoder=model.physical_decoder,
@@ -308,14 +371,18 @@ def main() -> None:
         num_samples=args.num_samples,
         horizon=args.horizon,
         num_iterations=args.num_iterations,
-        noise_sigma=[0.24, 0.44, 0.38, 0.24, 0.24, 0.24],
-        temperature=0.15,
+        noise_sigma=anisotropic_sigmas,
+        noise_beta=0.3778,
+        temperature=0.0410,
         w_pos=1.0,
-        w_term_pos=5.0,
-        w_vel=0.08,
-        w_act=0.02,
+        w_rot=2.4498,
+        w_term_pos=5.7514,
+        w_term_rot=2.4498 * 4.0,  # 9.799
+        w_vel=0.00231,
+        w_act=0.00224,
         device=device,
     )
+
 
     chronicle.log_info(f"Creating test DataLoader for {args.num_episodes} evaluation episodes...")
     loaders = create_dataloaders(

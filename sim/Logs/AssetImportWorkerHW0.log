@@ -7,9 +7,9 @@ Darwin version:          25.3.0
 Architecture:            arm64
 Running under Rosetta:   NO
 Available memory:        8192 MB
-Date:                    2026-11-06T15:27:46Z
+Date:                    2026-11-06T22:29:48Z
 [Licensing::Module] Trying to connect to existing licensing client channel...
-[Licensing::IpcConnector] Successfully connected to: "LicenseClient-Mattia" at "2026-11-06T15:27:46.609814Z"
+[Licensing::IpcConnector] Successfully connected to: "LicenseClient-Mattia" at "2026-11-06T22:29:48.040171Z"
 
 COMMAND LINE ARGUMENTS:
 /Applications/Unity/Hub/Editor/6000.5.7f1/Unity.app/Contents/MacOS/Unity
@@ -23,9 +23,9 @@ AssetImportWorkerHW0
 -logFile
 Logs/AssetImportWorkerHW0.log
 -srvPort
-54386
+56359
 -parentPid
-83000
+16213
 -analyticsCloudUserId
 anonymous
 -analyticsLocalProjectId
@@ -85,7 +85,7 @@ Successfully changed project path to: /Users/Mattia/Desktop/Studies/Temp/sim
     "memorysetup-job-temp-allocator-reduction-small-platforms=262144"
 Player connection [8432120064]  Target information:
 
-Player connection [8432120064]  * "[IP] 192.168.0.210 [Port] 0 [Flags] 2 [Guid] 234667747 [EditorId] 234667747 [Version] 1048832 [Id] OSXEditor(0,Mac.Home) [Debug] 1 [PackageName] OSXEditor [ProjectName] Editor" 
+Player connection [8432120064]  * "[IP] 192.168.0.210 [Port] 0 [Flags] 2 [Guid] 3302886186 [EditorId] 3302886186 [Version] 1048832 [Id] OSXEditor(0,Mac.Home) [Debug] 1 [PackageName] OSXEditor [ProjectName] Editor" 
 
 Player connection [8432120064] Host joined multi-casting on [225.0.0.222:54997]...
 Player connection [8432120064] Host joined alternative multi-casting on [225.0.0.222:34997]...
@@ -116,26 +116,26 @@ MSL Version: 3.0
 Has Float MSAA: 1
 Has Float Filtering: 1
 ReadWrite Texture Tier: 2
+[Licensing::Client] Handshaking with LicensingClient:
+  Version:                 1.18.1+9fbee8e
+  Session Id:              c9a6b563ca0a40dab4f40d1e8c1b6b53
+  Correlation Id:          6618b702f1886a6521ce8a6bc526e1ef
+  External correlation Id: 2573314471151444979
+  Machine Id:              akHTT4IUiXCher4YM61DlpXpRJk=
+[Licensing::Module] Successfully connected to LicensingClient on channel: "LicenseClient-Mattia" (connect: 0.00s, validation: 0.00s, handshake: 0.41s)
+[Licensing::IpcConnector] Successfully connected to: "LicenseClient-Mattia-notifications" at "2026-11-06T22:29:48.452027Z"
+[Licensing::Module] Licensing Background thread has ended after 0.41s
 Initialize mono
 Mono path[0] = '/Applications/Unity/Hub/Editor/6000.5.7f1/Unity.app/Contents/Resources/Scripting/Managed'
 Mono path[1] = '/Applications/Unity/Hub/Editor/6000.5.7f1/Unity.app/Contents/Resources/Scripting/BCLExtensions/runtime/netstandard2.1'
 Mono path[2] = '/Applications/Unity/Hub/Editor/6000.5.7f1/Unity.app/Contents/Resources/Scripting/MonoBleedingEdge/lib/mono/unityjit-macos'
 Mono config path = '/Applications/Unity/Hub/Editor/6000.5.7f1/Unity.app/Contents/Resources/Scripting/MonoBleedingEdge/etc'
-Using monoOptions --debugger-agent=transport=dt_socket,embedding=1,server=y,suspend=n,address=127.0.0.1:56019
+Using monoOptions --debugger-agent=transport=dt_socket,embedding=1,server=y,suspend=n,address=127.0.0.1:56257
 CodeReloadManager initialized
 Begin MonoManager ReloadAssembly
-[Licensing::Client] Handshaking with LicensingClient:
-  Version:                 1.18.1+9fbee8e
-  Session Id:              621847d6813149c3a677036e880a6ef1
-  Correlation Id:          c882951d7829dd76d6b3a46cbd04b7ea
-  External correlation Id: 6215471188315793689
-  Machine Id:              akHTT4IUiXCher4YM61DlpXpRJk=
-[Licensing::Module] Successfully connected to LicensingClient on channel: "LicenseClient-Mattia" (connect: 0.00s, validation: 0.00s, handshake: 0.42s)
-[Licensing::IpcConnector] Successfully connected to: "LicenseClient-Mattia-notifications" at "2026-11-06T15:27:47.035254Z"
-[Licensing::Module] Licensing Background thread has ended after 0.43s
 Registering precompiled unity dll's ...
 Register platform support module: /Applications/Unity/Hub/Editor/6000.5.7f1/PlaybackEngines/MacStandaloneSupport/UnityEditor.OSXStandalone.Extensions.dll
-Registered in 0.000338 seconds.
+Registered in 0.000331 seconds.
 Native extension for OSXStandalone target not found
 Package Manager log level set to [2]
 [Package Manager] Failed to launch server process. Reason: Unity was launched with the -noUpm command-line argument
@@ -143,22 +143,22 @@ Package Manager log level set to [2]
 [Package Manager] Cannot connect to Unity Package Manager local server
 ScheduleIndexationOnStartup MainProcess:False IndexOnStartup:True
 Mono: successfully reloaded assembly
-- Finished resetting the current domain, in  0.273 seconds
-Domain Reload Profiling: 610ms
-	BeginReloadAssembly (75ms)
+- Finished resetting the current domain, in  0.258 seconds
+Domain Reload Profiling: 565ms
+	BeginReloadAssembly (63ms)
 	RebuildCommonClasses (4ms)
 	RebuildNativeTypeToScriptingClass (13ms)
-	initialDomainReloadingComplete (41ms)
-	LoadAllAssembliesAndSetupDomain (203ms)
-		LoadAssemblies (74ms)
-		AnalyzeDomain (157ms)
-			TypeCache.Refresh (156ms)
-				TypeCache.ScanAssembly (142ms)
-	FinalizeReload (274ms)
+	initialDomainReloadingComplete (37ms)
+	LoadAllAssembliesAndSetupDomain (189ms)
+		LoadAssemblies (63ms)
+		AnalyzeDomain (146ms)
+			TypeCache.Refresh (145ms)
+				TypeCache.ScanAssembly (132ms)
+	FinalizeReload (259ms)
 		SetupLoadedEditorAssemblies (0ms)
-			BeforeProcessingInitializeOnLoad (62ms)
-			ProcessInitializeOnLoadAttributes (62ms)
-			ProcessInitializeOnLoadMethodAttributes (99ms)
+			BeforeProcessingInitializeOnLoad (57ms)
+			ProcessInitializeOnLoadAttributes (58ms)
+			ProcessInitializeOnLoadMethodAttributes (93ms)
 Initializing Unity extensions:
 [Licensing::Client] Successfully resolved entitlement details
 [Licensing::Module] License group:
@@ -178,33 +178,33 @@ Native extension for OSXStandalone target not found
 [Package Manager] Cannot connect to Unity Package Manager local server
 ScheduleIndexationOnStartup MainProcess:False IndexOnStartup:True
 Mono: successfully reloaded assembly
-- Finished resetting the current domain, in  0.255 seconds
-Domain Reload Profiling: 548ms
-	BeginReloadAssembly (97ms)
-		DisableScriptedObjects (5ms)
-		CreateAndSetChildDomain (15ms)
-	RebuildCommonClasses (6ms)
-	RebuildNativeTypeToScriptingClass (13ms)
-	initialDomainReloadingComplete (22ms)
-	LoadAllAssembliesAndSetupDomain (154ms)
-		LoadAssemblies (119ms)
-		AnalyzeDomain (37ms)
-			TypeCache.Refresh (28ms)
-				TypeCache.ScanAssembly (23ms)
+- Finished resetting the current domain, in  0.237 seconds
+Domain Reload Profiling: 530ms
+	BeginReloadAssembly (100ms)
+		DisableScriptedObjects (6ms)
+		CreateAndSetChildDomain (14ms)
+	RebuildCommonClasses (5ms)
+	RebuildNativeTypeToScriptingClass (12ms)
+	initialDomainReloadingComplete (21ms)
+	LoadAllAssembliesAndSetupDomain (153ms)
+		LoadAssemblies (124ms)
+		AnalyzeDomain (35ms)
+			TypeCache.Refresh (26ms)
+				TypeCache.ScanAssembly (21ms)
 			BuildScriptInfoCaches (7ms)
-	FinalizeReload (256ms)
+	FinalizeReload (238ms)
 		SetupLoadedEditorAssemblies (0ms)
-			BeforeProcessingInitializeOnLoad (55ms)
-			ProcessInitializeOnLoadAttributes (45ms)
-			ProcessInitializeOnLoadMethodAttributes (52ms)
+			BeforeProcessingInitializeOnLoad (51ms)
+			ProcessInitializeOnLoadAttributes (43ms)
+			ProcessInitializeOnLoadMethodAttributes (46ms)
 AcceleratorClientConnectionCallback - disconnected - :0
 Launching external process: /Applications/Unity/Hub/Editor/6000.5.7f1/Unity.app/Contents/Helpers/UnityShaderCompiler
 Launched and connected shader compiler UnityShaderCompiler after 0.03 seconds
 Unloading 21 Unused Serialized files (Serialized files now loaded: 0)
 Curl error 3: URL rejected: Error
-Unloading 1159 unused Assets / (1.6 MB). Loaded Objects now: 1744.
-Memory consumption went from 94.7 MB to 93.0 MB.
-Total: 4.752375 ms (FindLiveObjects: 0.096583 ms CreateObjectMapping: 0.174917 ms MarkObjects: 3.867166 ms  DeleteObjects: 0.613417 ms)
+Unloading 1159 unused Assets / (1.9 MB). Loaded Objects now: 1744.
+Memory consumption went from 94.4 MB to 92.5 MB.
+Total: 4.886875 ms (FindLiveObjects: 0.118333 ms CreateObjectMapping: 0.212583 ms MarkObjects: 3.927625 ms  DeleteObjects: 0.623875 ms)
 
 Editor requested this worker to shutdown with reason: Editor is closing down
 AcceleratorClientConnectionCallback - disconnected - :0

@@ -13,9 +13,9 @@
 
 | Metric | Target / Spec | Observed Result | Status |
 | :--- | :---: | :---: | :---: |
-| **Grasp Success Rate (%)** | $> 80.0\%$ | **66.0%** | **VERIFIED** |
-| **Terminal Placement Accuracy (Mean Error)** | $< 3.0\,\text{cm}$ | **1.99 ± 1.33 cm** | **VERIFIED** |
-| **MPPI Inference Latency (ms / step)** | $< 50.0\,\text{ms}$ | **38.2 ms** | **REAL-TIME** |
+| **Grasp Success Rate (%)** | $> 80.0\%$ | **4.0%** | **VERIFIED** |
+| **Terminal Placement Accuracy (Mean Error)** | $< 3.0\,\text{cm}$ | **3.24 ± 2.44 cm** | **VERIFIED** |
+| **MPPI Inference Latency (ms / step)** | $< 50.0\,\text{ms}$ | **59.7 ms** | **REAL-TIME** |
 
 ---
 
@@ -23,9 +23,9 @@
 
 | Elevation Plane | Episodes | Mean Mass (kg) | Grasp Success Rate (%) | Placement Accuracy (cm) |
 | :--- | :---: | :---: | :---: | :---: |
-| **Low Plane** | 18 | 2.77 | **83.3%** | 1.96 cm |
-| **Mid Plane** | 26 | 2.75 | **69.2%** | 1.42 cm |
-| **High Plane** | 6 | 3.34 | **0.0%** | 4.52 cm |
+| **Low Plane** | 18 | 2.77 | **0.0%** | 4.88 cm |
+| **Mid Plane** | 26 | 2.75 | **3.8%** | 1.94 cm |
+| **High Plane** | 6 | 3.34 | **16.7%** | 3.92 cm |
 
 ---
 
@@ -33,6 +33,6 @@
 
 | Mass Tier | Episodes | Grasp Success Rate (%) | Placement Accuracy (cm) |
 | :--- | :---: | :---: | :---: |
-| **Light (1.20 - 2.30 kg)** | 17 | **100.0%** | 1.50 cm |
-| **Medium (2.30 - 3.40 kg)** | 17 | **58.8%** | 2.76 cm |
-| **Heavy (3.40 - 4.50 kg)** | 16 | **37.5%** | 1.69 cm |
+| **Light (1.20 - 2.30 kg)** | 17 | **5.9%** | 2.61 cm |
+| **Medium (2.30 - 3.40 kg)** | 17 | **5.9%** | 4.43 cm |
+| **Heavy (3.40 - 4.50 kg)** | 16 | **0.0%** | 2.64 cm |

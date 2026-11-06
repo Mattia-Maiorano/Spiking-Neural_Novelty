@@ -593,3 +593,14 @@
 - **new results (if any)**: No runs made - code only (python AST parse checked; Unity not compiled). Existing ghost JSONs must be re-exported.
 - **verdict on change made**: Preserved.
 - **follow-up (title/model coherence)**: `model_version_b` was accepted by the CLI but never exported. Now written to ghost metadata (required in dual mode, raises otherwise); HUD title shows `A: <ver>` (cyan) vs `B: <ver>` (amber) in compare mode, and `model_version` in single mode. No runs made; Unity not compiled.
+
+
+## SPWM-v0.7.3 — Iteration (MPPI Cost Overhaul: Terminal Window, Stasis Gate, Altitude Heuristic)
+- **version afflicted**: `SPWM-v0.7.3`
+- **iteration on version**: MPPI Cost Function Overhaul (Terminal-Only Pos Cost, In-Itinere Velocity Damping Zeroed, Anti-Gravity Altitude Heuristic)
+- **changes made**: Overhauled trajectory cost equation in `LatentMPPIController` (`spwm/evaluation/mppi.py`):
+  1. Eliminated running Cartesian/SE(3) position error across early timesteps; evaluated position and orientation error strictly across the final 3–5 steps (`terminal_steps=4`, default $H=30$).
+  2. Zeroed velocity damping penalty in itinere ($w_{\text{vel}}=0$ along trajectory transit); enforced velocity limit exclusively at the terminal step ($H$).
+  3. Added directional altitude heuristic ($w_{\text{altitude}}=2.0$): when the target elevation $y_{\text{target}} > y_{\text{ee}}(0)$, penalizes/subtracts cost for each positive vertical displacement ($\Delta y > 0$) along the rollout.
+- **new results (if any)**: No runs made - code refactoring / configuration only.
+- **verdict on change made**: Preserved.

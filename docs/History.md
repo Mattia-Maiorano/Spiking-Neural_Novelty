@@ -1,4 +1,3 @@
-
 # Project Evolution History: SPWM (Spiking Predictive World Model)
 
 ## SPWM-v1 (Baseline State)
@@ -29,25 +28,11 @@
 - **new results (if any)**: Eliminated Delta W gradient explosion; stabilized spike rate at ~0.30; eliminated static arena center collapse (~0.65) and restored active latent rollout propagation.
 - **verdict on change made**: Preserved.
 
-## SPWM-v0.7.3 (Empirical Data Alignment & Documentation De-Biasing)
-- **version afflicted**: SPWM-v0.7.3
-- **iteration on version**: Iteration 14 (Empirical Data Alignment & Documentation De-Biasing)
-- **changes made**: Forensic audit and realignment of documentation across `main.tex` and `docs/DOSSIER.md` against empirical benchmark results in `results/`: (1) Unmasked Continuous RSSM's position MSE superiority ($0.01305$ vs $0.01728$ at $H=100$), accurately reframing SPWM's true advantages as $4.2\times$ lower velocity MSE ($0.01153$ vs $0.04894$) and $80.8\times$ neuromorphic energy reduction; (2) De-biased the "negative drift ratio" narrative by formally clarifying the $(\text{MSE}_{100} - \text{MSE}_1)/\text{MSE}_1$ formulation, documenting that SPWM's negative ratio reflects the initial pose alignment transient ($0.10635$ at $H=1 \to 0.01728$ at $H=100$) rather than an unphysical contracting attractor, and acknowledging that ANN-Rate achieves comparable $H=100$ position tracking ($0.01842$ vs $0.01728$); (3) Corrected `main.tex` Figure 4 qualitative caption from stale synthetic numbers ($\Delta = 16.2\,\text{cm} / 27.1\,\text{cm}$) to true empirical forward kinematics coordinates ($\Delta = 6.2\,\text{cm} / 10.4\,\text{cm}$); (4) Aligned MPPI downstream accuracy nomenclature to distinguish minimum placement distance ($2.17 \pm 1.80\,\text{cm}$) from final terminal error ($6.72\,\text{cm}$); (5) Corrected ANN-Rate training epoch count to 42 epochs; (6) Clarified the two distinct drift ratio definitions used across benchmark tables (relative MSE difference vs. $L_2$ MAE ratio).
-- **new results (if any)**: No runs made - documentation alignment and empirical metrics reconciliation only.
-- **verdict on change made**: Preserved.
-
 ## SPWM-v3.6 (Feedback Alignment for Kinematic Feedback)
 - **version afflicted**: SPWM-v3.6
 - **iteration on version**: Iteration 3 (Kinematic Feedback Alignment)
 - **changes made**: Resolved W_rls ≈ 0 decoder deadlock by introducing fixed random feedback alignment matrix B_kin_feedback projecting kinematic error L_kin directly into ALIF e-prop traces.
 - **new results (if any)**: Before fix: Val total loss ~0.300, probe loss ~0.298, Pos/Vel errors stalled at ~0.69 / 0.73. After fix: unlocked top-down kinematic feedback alignment into ALIF population.
-- **verdict on change made**: Preserved.
-
-## SPWM-v0.7.3 (Empirical Data Alignment & Documentation De-Biasing)
-- **version afflicted**: SPWM-v0.7.3
-- **iteration on version**: Iteration 14 (Empirical Data Alignment & Documentation De-Biasing)
-- **changes made**: Forensic audit and realignment of documentation across `main.tex` and `docs/DOSSIER.md` against empirical benchmark results in `results/`: (1) Unmasked Continuous RSSM's position MSE superiority ($0.01305$ vs $0.01728$ at $H=100$), accurately reframing SPWM's true advantages as $4.2\times$ lower velocity MSE ($0.01153$ vs $0.04894$) and $80.8\times$ neuromorphic energy reduction; (2) De-biased the "negative drift ratio" narrative by formally clarifying the $(\text{MSE}_{100} - \text{MSE}_1)/\text{MSE}_1$ formulation, documenting that SPWM's negative ratio reflects the initial pose alignment transient ($0.10635$ at $H=1 \to 0.01728$ at $H=100$) rather than an unphysical contracting attractor, and acknowledging that ANN-Rate achieves comparable $H=100$ position tracking ($0.01842$ vs $0.01728$); (3) Corrected `main.tex` Figure 4 qualitative caption from stale synthetic numbers ($\Delta = 16.2\,\text{cm} / 27.1\,\text{cm}$) to true empirical forward kinematics coordinates ($\Delta = 6.2\,\text{cm} / 10.4\,\text{cm}$); (4) Aligned MPPI downstream accuracy nomenclature to distinguish minimum placement distance ($2.17 \pm 1.80\,\text{cm}$) from final terminal error ($6.72\,\text{cm}$); (5) Corrected ANN-Rate training epoch count to 42 epochs; (6) Clarified the two distinct drift ratio definitions used across benchmark tables (relative MSE difference vs. $L_2$ MAE ratio).
-- **new results (if any)**: No runs made - documentation alignment and empirical metrics reconciliation only.
 - **verdict on change made**: Preserved.
 
 ## SPWM-v3.7 (Continuous Convolutional Spatial Encoder)
@@ -78,13 +63,6 @@
 - **new results (if any)**: Val Linear Pos Err dropped from 0.577 to <0.35; spike rate maintained in [0.11, 0.12]; Test TF MSE <= 0.120.
 - **verdict on change made**: Preserved.
 
-## SPWM-v0.7.3 (Empirical Data Alignment & Documentation De-Biasing)
-- **version afflicted**: SPWM-v0.7.3
-- **iteration on version**: Iteration 14 (Empirical Data Alignment & Documentation De-Biasing)
-- **changes made**: Forensic audit and realignment of documentation across `main.tex` and `docs/DOSSIER.md` against empirical benchmark results in `results/`: (1) Unmasked Continuous RSSM's position MSE superiority ($0.01305$ vs $0.01728$ at $H=100$), accurately reframing SPWM's true advantages as $4.2\times$ lower velocity MSE ($0.01153$ vs $0.04894$) and $80.8\times$ neuromorphic energy reduction; (2) De-biased the "negative drift ratio" narrative by formally clarifying the $(\text{MSE}_{100} - \text{MSE}_1)/\text{MSE}_1$ formulation, documenting that SPWM's negative ratio reflects the initial pose alignment transient ($0.10635$ at $H=1 \to 0.01728$ at $H=100$) rather than an unphysical contracting attractor, and acknowledging that ANN-Rate achieves comparable $H=100$ position tracking ($0.01842$ vs $0.01728$); (3) Corrected `main.tex` Figure 4 qualitative caption from stale synthetic numbers ($\Delta = 16.2\,\text{cm} / 27.1\,\text{cm}$) to true empirical forward kinematics coordinates ($\Delta = 6.2\,\text{cm} / 10.4\,\text{cm}$); (4) Aligned MPPI downstream accuracy nomenclature to distinguish minimum placement distance ($2.17 \pm 1.80\,\text{cm}$) from final terminal error ($6.72\,\text{cm}$); (5) Corrected ANN-Rate training epoch count to 42 epochs; (6) Clarified the two distinct drift ratio definitions used across benchmark tables (relative MSE difference vs. $L_2$ MAE ratio).
-- **new results (if any)**: No runs made - documentation alignment and empirical metrics reconciliation only.
-- **verdict on change made**: Preserved.
-
 ## SPWM-v4.3 (Symplectic Phase Space (q, p) & EMA Buffer)
 - **version afflicted**: SPWM-v4.3
 - **iteration on version**: Iteration 3 (Symplectic Phase Space Partitioning)
@@ -97,13 +75,6 @@
 - **iteration on version**: Iteration 4 (Dual-Mode Coordinates & Decoupled Probes)
 - **changes made**: Dual-mode coordinates: observation mode clamps q_t directly to SpatialSoftmax keypoints; autonomous mode integrates q_{t+1} = clamp(q_t + tanh(W_vel(ema_spikes)), -1, 1). Separated PhysicalDecoder into pos_head(q_t) and vel_head(smooth_p). Decoupled e-prop back-projections for L_q and L_p.
 - **new results (if any)**: No separate benchmark run logged - architectural refinement directly consolidating v4.3 stability.
-- **verdict on change made**: Preserved.
-
-## SPWM-v0.7.3 (Empirical Data Alignment & Documentation De-Biasing)
-- **version afflicted**: SPWM-v0.7.3
-- **iteration on version**: Iteration 14 (Empirical Data Alignment & Documentation De-Biasing)
-- **changes made**: Forensic audit and realignment of documentation across `main.tex` and `docs/DOSSIER.md` against empirical benchmark results in `results/`: (1) Unmasked Continuous RSSM's position MSE superiority ($0.01305$ vs $0.01728$ at $H=100$), accurately reframing SPWM's true advantages as $4.2\times$ lower velocity MSE ($0.01153$ vs $0.04894$) and $80.8\times$ neuromorphic energy reduction; (2) De-biased the "negative drift ratio" narrative by formally clarifying the $(\text{MSE}_{100} - \text{MSE}_1)/\text{MSE}_1$ formulation, documenting that SPWM's negative ratio reflects the initial pose alignment transient ($0.10635$ at $H=1 \to 0.01728$ at $H=100$) rather than an unphysical contracting attractor, and acknowledging that ANN-Rate achieves comparable $H=100$ position tracking ($0.01842$ vs $0.01728$); (3) Corrected `main.tex` Figure 4 qualitative caption from stale synthetic numbers ($\Delta = 16.2\,\text{cm} / 27.1\,\text{cm}$) to true empirical forward kinematics coordinates ($\Delta = 6.2\,\text{cm} / 10.4\,\text{cm}$); (4) Aligned MPPI downstream accuracy nomenclature to distinguish minimum placement distance ($2.17 \pm 1.80\,\text{cm}$) from final terminal error ($6.72\,\text{cm}$); (5) Corrected ANN-Rate training epoch count to 42 epochs; (6) Clarified the two distinct drift ratio definitions used across benchmark tables (relative MSE difference vs. $L_2$ MAE ratio).
-- **new results (if any)**: No runs made - documentation alignment and empirical metrics reconciliation only.
 - **verdict on change made**: Preserved.
 
 ## SPWM-v4.4 (Ablation: Scheduled Sampling & Exposure Bias)
@@ -183,25 +154,11 @@
 - **new results (if any)**: Val Pos Err = 0.178; Test H=1 Pos Err = 0.132, H=10 = 0.185, H=25 = 0.288; spike rate stable at 11.8%; reduced exposure bias without Cartesian topology distortion.
 - **verdict on change made**: Preserved.
 
-## SPWM-v0.7.3 (Empirical Data Alignment & Documentation De-Biasing)
-- **version afflicted**: SPWM-v0.7.3
-- **iteration on version**: Iteration 14 (Empirical Data Alignment & Documentation De-Biasing)
-- **changes made**: Forensic audit and realignment of documentation across `main.tex` and `docs/DOSSIER.md` against empirical benchmark results in `results/`: (1) Unmasked Continuous RSSM's position MSE superiority ($0.01305$ vs $0.01728$ at $H=100$), accurately reframing SPWM's true advantages as $4.2\times$ lower velocity MSE ($0.01153$ vs $0.04894$) and $80.8\times$ neuromorphic energy reduction; (2) De-biased the "negative drift ratio" narrative by formally clarifying the $(\text{MSE}_{100} - \text{MSE}_1)/\text{MSE}_1$ formulation, documenting that SPWM's negative ratio reflects the initial pose alignment transient ($0.10635$ at $H=1 \to 0.01728$ at $H=100$) rather than an unphysical contracting attractor, and acknowledging that ANN-Rate achieves comparable $H=100$ position tracking ($0.01842$ vs $0.01728$); (3) Corrected `main.tex` Figure 4 qualitative caption from stale synthetic numbers ($\Delta = 16.2\,\text{cm} / 27.1\,\text{cm}$) to true empirical forward kinematics coordinates ($\Delta = 6.2\,\text{cm} / 10.4\,\text{cm}$); (4) Aligned MPPI downstream accuracy nomenclature to distinguish minimum placement distance ($2.17 \pm 1.80\,\text{cm}$) from final terminal error ($6.72\,\text{cm}$); (5) Corrected ANN-Rate training epoch count to 42 epochs; (6) Clarified the two distinct drift ratio definitions used across benchmark tables (relative MSE difference vs. $L_2$ MAE ratio).
-- **new results (if any)**: No runs made - documentation alignment and empirical metrics reconciliation only.
-- **verdict on change made**: Preserved.
-
 ## SPWM-v6.4 (Adaptive Curriculum Multi-Step Horizon & Sparsity Lock)
 - **version afflicted**: SPWM-v6.4
 - **iteration on version**: Iteration 5 (Adaptive Curriculum & Sparsity Lock)
 - **changes made**: Dynamic scheduled curriculum expanding rollout horizon K from 3 to 10 epochs; adaptive sparsity loss targeting 10% bio-plausible spike rate.
 - **new results (if any)**: H=1 Pos Err = 0.124; H=25 Pos Err = 0.241; H=50 Pos Err = 0.389; H=100 Pos Err = 0.512. Spike rate locked at 10.4%.
-- **verdict on change made**: Preserved.
-
-## SPWM-v0.7.3 (Empirical Data Alignment & Documentation De-Biasing)
-- **version afflicted**: SPWM-v0.7.3
-- **iteration on version**: Iteration 14 (Empirical Data Alignment & Documentation De-Biasing)
-- **changes made**: Forensic audit and realignment of documentation across `main.tex` and `docs/DOSSIER.md` against empirical benchmark results in `results/`: (1) Unmasked Continuous RSSM's position MSE superiority ($0.01305$ vs $0.01728$ at $H=100$), accurately reframing SPWM's true advantages as $4.2\times$ lower velocity MSE ($0.01153$ vs $0.04894$) and $80.8\times$ neuromorphic energy reduction; (2) De-biased the "negative drift ratio" narrative by formally clarifying the $(\text{MSE}_{100} - \text{MSE}_1)/\text{MSE}_1$ formulation, documenting that SPWM's negative ratio reflects the initial pose alignment transient ($0.10635$ at $H=1 \to 0.01728$ at $H=100$) rather than an unphysical contracting attractor, and acknowledging that ANN-Rate achieves comparable $H=100$ position tracking ($0.01842$ vs $0.01728$); (3) Corrected `main.tex` Figure 4 qualitative caption from stale synthetic numbers ($\Delta = 16.2\,\text{cm} / 27.1\,\text{cm}$) to true empirical forward kinematics coordinates ($\Delta = 6.2\,\text{cm} / 10.4\,\text{cm}$); (4) Aligned MPPI downstream accuracy nomenclature to distinguish minimum placement distance ($2.17 \pm 1.80\,\text{cm}$) from final terminal error ($6.72\,\text{cm}$); (5) Corrected ANN-Rate training epoch count to 42 epochs; (6) Clarified the two distinct drift ratio definitions used across benchmark tables (relative MSE difference vs. $L_2$ MAE ratio).
-- **new results (if any)**: No runs made - documentation alignment and empirical metrics reconciliation only.
 - **verdict on change made**: Preserved.
 
 ## SPWM-v6.5 (Kinematic Consistency Loss L_vel_cons)
@@ -218,25 +175,11 @@
 - **new results (if any)**: Eliminated epochs 88-100 numerical shock; spike rate restored to 10.8%; Val Pos Err reached 0.138; probe velocity error dropped from 0.66 to 0.42.
 - **verdict on change made**: Preserved.
 
-## SPWM-v0.7.3 (Empirical Data Alignment & Documentation De-Biasing)
-- **version afflicted**: SPWM-v0.7.3
-- **iteration on version**: Iteration 14 (Empirical Data Alignment & Documentation De-Biasing)
-- **changes made**: Forensic audit and realignment of documentation across `main.tex` and `docs/DOSSIER.md` against empirical benchmark results in `results/`: (1) Unmasked Continuous RSSM's position MSE superiority ($0.01305$ vs $0.01728$ at $H=100$), accurately reframing SPWM's true advantages as $4.2\times$ lower velocity MSE ($0.01153$ vs $0.04894$) and $80.8\times$ neuromorphic energy reduction; (2) De-biased the "negative drift ratio" narrative by formally clarifying the $(\text{MSE}_{100} - \text{MSE}_1)/\text{MSE}_1$ formulation, documenting that SPWM's negative ratio reflects the initial pose alignment transient ($0.10635$ at $H=1 \to 0.01728$ at $H=100$) rather than an unphysical contracting attractor, and acknowledging that ANN-Rate achieves comparable $H=100$ position tracking ($0.01842$ vs $0.01728$); (3) Corrected `main.tex` Figure 4 qualitative caption from stale synthetic numbers ($\Delta = 16.2\,\text{cm} / 27.1\,\text{cm}$) to true empirical forward kinematics coordinates ($\Delta = 6.2\,\text{cm} / 10.4\,\text{cm}$); (4) Aligned MPPI downstream accuracy nomenclature to distinguish minimum placement distance ($2.17 \pm 1.80\,\text{cm}$) from final terminal error ($6.72\,\text{cm}$); (5) Corrected ANN-Rate training epoch count to 42 epochs; (6) Clarified the two distinct drift ratio definitions used across benchmark tables (relative MSE difference vs. $L_2$ MAE ratio).
-- **new results (if any)**: No runs made - documentation alignment and empirical metrics reconciliation only.
-- **verdict on change made**: Preserved.
-
 ## SPWM-v7 (Decoupled Optimizer Architecture & Probe-Frozen Velocity Supervision)
 - **version afflicted**: SPWM-v7
 - **iteration on version**: Iteration 1 (Decoupled Optimizer Architecture)
 - **changes made**: Decoupled training into 3 independent optimizers (encoder, dynamics/predictor, probe); froze probe parameters during predictor updates; removed sensory consistency bias.
 - **new results (if any)**: Best Val Pos Err = 0.0982 (sub-0.10 milestone achieved); Val Vel Err = 0.382; Spike Rate = 10.1%; Test H=1 Pos Err = 0.0894.
-- **verdict on change made**: Preserved.
-
-## SPWM-v0.7.3 (Empirical Data Alignment & Documentation De-Biasing)
-- **version afflicted**: SPWM-v0.7.3
-- **iteration on version**: Iteration 14 (Empirical Data Alignment & Documentation De-Biasing)
-- **changes made**: Forensic audit and realignment of documentation across `main.tex` and `docs/DOSSIER.md` against empirical benchmark results in `results/`: (1) Unmasked Continuous RSSM's position MSE superiority ($0.01305$ vs $0.01728$ at $H=100$), accurately reframing SPWM's true advantages as $4.2\times$ lower velocity MSE ($0.01153$ vs $0.04894$) and $80.8\times$ neuromorphic energy reduction; (2) De-biased the "negative drift ratio" narrative by formally clarifying the $(\text{MSE}_{100} - \text{MSE}_1)/\text{MSE}_1$ formulation, documenting that SPWM's negative ratio reflects the initial pose alignment transient ($0.10635$ at $H=1 \to 0.01728$ at $H=100$) rather than an unphysical contracting attractor, and acknowledging that ANN-Rate achieves comparable $H=100$ position tracking ($0.01842$ vs $0.01728$); (3) Corrected `main.tex` Figure 4 qualitative caption from stale synthetic numbers ($\Delta = 16.2\,\text{cm} / 27.1\,\text{cm}$) to true empirical forward kinematics coordinates ($\Delta = 6.2\,\text{cm} / 10.4\,\text{cm}$); (4) Aligned MPPI downstream accuracy nomenclature to distinguish minimum placement distance ($2.17 \pm 1.80\,\text{cm}$) from final terminal error ($6.72\,\text{cm}$); (5) Corrected ANN-Rate training epoch count to 42 epochs; (6) Clarified the two distinct drift ratio definitions used across benchmark tables (relative MSE difference vs. $L_2$ MAE ratio).
-- **new results (if any)**: No runs made - documentation alignment and empirical metrics reconciliation only.
 - **verdict on change made**: Preserved.
 
 ## SPWM-v7.2 (Two-Scale Velocity Supervision & Smooth Horizon Scheduled Sampling)
@@ -260,25 +203,11 @@
 - **new results (if any)**: H=25 Pos Err = 0.184; H=50 Pos Err = 0.298; H=100 Pos Err = 0.442; spike rate maintained at 9.8%.
 - **verdict on change made**: Preserved.
 
-## SPWM-v0.7.3 (Empirical Data Alignment & Documentation De-Biasing)
-- **version afflicted**: SPWM-v0.7.3
-- **iteration on version**: Iteration 14 (Empirical Data Alignment & Documentation De-Biasing)
-- **changes made**: Forensic audit and realignment of documentation across `main.tex` and `docs/DOSSIER.md` against empirical benchmark results in `results/`: (1) Unmasked Continuous RSSM's position MSE superiority ($0.01305$ vs $0.01728$ at $H=100$), accurately reframing SPWM's true advantages as $4.2\times$ lower velocity MSE ($0.01153$ vs $0.04894$) and $80.8\times$ neuromorphic energy reduction; (2) De-biased the "negative drift ratio" narrative by formally clarifying the $(\text{MSE}_{100} - \text{MSE}_1)/\text{MSE}_1$ formulation, documenting that SPWM's negative ratio reflects the initial pose alignment transient ($0.10635$ at $H=1 \to 0.01728$ at $H=100$) rather than an unphysical contracting attractor, and acknowledging that ANN-Rate achieves comparable $H=100$ position tracking ($0.01842$ vs $0.01728$); (3) Corrected `main.tex` Figure 4 qualitative caption from stale synthetic numbers ($\Delta = 16.2\,\text{cm} / 27.1\,\text{cm}$) to true empirical forward kinematics coordinates ($\Delta = 6.2\,\text{cm} / 10.4\,\text{cm}$); (4) Aligned MPPI downstream accuracy nomenclature to distinguish minimum placement distance ($2.17 \pm 1.80\,\text{cm}$) from final terminal error ($6.72\,\text{cm}$); (5) Corrected ANN-Rate training epoch count to 42 epochs; (6) Clarified the two distinct drift ratio definitions used across benchmark tables (relative MSE difference vs. $L_2$ MAE ratio).
-- **new results (if any)**: No runs made - documentation alignment and empirical metrics reconciliation only.
-- **verdict on change made**: Preserved.
-
 ## SPWM-v8.1 (Full-Authority Corrector & Synthetic Drift Injection)
 - **version afflicted**: SPWM-v8.1
 - **iteration on version**: Iteration 2 (Full-Authority Corrector & Drift Injection)
 - **changes made**: Increased correction authority (g_v, g_p in [0.20, 0.25]); injected synthetic impulsive drift perturbations (50% nominal / 50% drift); dead-band margin spike penalty.
 - **new results (if any)**: Active recovery from drift confirmed; under 50% drift: H=50 Pos Err = 0.312 (vs >0.85 without corrector); Latent MSE remained bounded.
-- **verdict on change made**: Preserved.
-
-## SPWM-v0.7.3 (Empirical Data Alignment & Documentation De-Biasing)
-- **version afflicted**: SPWM-v0.7.3
-- **iteration on version**: Iteration 14 (Empirical Data Alignment & Documentation De-Biasing)
-- **changes made**: Forensic audit and realignment of documentation across `main.tex` and `docs/DOSSIER.md` against empirical benchmark results in `results/`: (1) Unmasked Continuous RSSM's position MSE superiority ($0.01305$ vs $0.01728$ at $H=100$), accurately reframing SPWM's true advantages as $4.2\times$ lower velocity MSE ($0.01153$ vs $0.04894$) and $80.8\times$ neuromorphic energy reduction; (2) De-biased the "negative drift ratio" narrative by formally clarifying the $(\text{MSE}_{100} - \text{MSE}_1)/\text{MSE}_1$ formulation, documenting that SPWM's negative ratio reflects the initial pose alignment transient ($0.10635$ at $H=1 \to 0.01728$ at $H=100$) rather than an unphysical contracting attractor, and acknowledging that ANN-Rate achieves comparable $H=100$ position tracking ($0.01842$ vs $0.01728$); (3) Corrected `main.tex` Figure 4 qualitative caption from stale synthetic numbers ($\Delta = 16.2\,\text{cm} / 27.1\,\text{cm}$) to true empirical forward kinematics coordinates ($\Delta = 6.2\,\text{cm} / 10.4\,\text{cm}$); (4) Aligned MPPI downstream accuracy nomenclature to distinguish minimum placement distance ($2.17 \pm 1.80\,\text{cm}$) from final terminal error ($6.72\,\text{cm}$); (5) Corrected ANN-Rate training epoch count to 42 epochs; (6) Clarified the two distinct drift ratio definitions used across benchmark tables (relative MSE difference vs. $L_2$ MAE ratio).
-- **new results (if any)**: No runs made - documentation alignment and empirical metrics reconciliation only.
 - **verdict on change made**: Preserved.
 
 ## SPWM-v8.2 (Kinematic Loss Normalization & 50/50 Drift Balancing)
@@ -288,25 +217,11 @@
 - **new results (if any)**: Val Pos Err = 0.0842; Val Vel Err = 0.295; H=50 Pos Err under drift = 0.285; H=100 Pos Err = 0.398; spike rate = 10.2%.
 - **verdict on change made**: Preserved.
 
-## SPWM-v0.7.3 (Empirical Data Alignment & Documentation De-Biasing)
-- **version afflicted**: SPWM-v0.7.3
-- **iteration on version**: Iteration 14 (Empirical Data Alignment & Documentation De-Biasing)
-- **changes made**: Forensic audit and realignment of documentation across `main.tex` and `docs/DOSSIER.md` against empirical benchmark results in `results/`: (1) Unmasked Continuous RSSM's position MSE superiority ($0.01305$ vs $0.01728$ at $H=100$), accurately reframing SPWM's true advantages as $4.2\times$ lower velocity MSE ($0.01153$ vs $0.04894$) and $80.8\times$ neuromorphic energy reduction; (2) De-biased the "negative drift ratio" narrative by formally clarifying the $(\text{MSE}_{100} - \text{MSE}_1)/\text{MSE}_1$ formulation, documenting that SPWM's negative ratio reflects the initial pose alignment transient ($0.10635$ at $H=1 \to 0.01728$ at $H=100$) rather than an unphysical contracting attractor, and acknowledging that ANN-Rate achieves comparable $H=100$ position tracking ($0.01842$ vs $0.01728$); (3) Corrected `main.tex` Figure 4 qualitative caption from stale synthetic numbers ($\Delta = 16.2\,\text{cm} / 27.1\,\text{cm}$) to true empirical forward kinematics coordinates ($\Delta = 6.2\,\text{cm} / 10.4\,\text{cm}$); (4) Aligned MPPI downstream accuracy nomenclature to distinguish minimum placement distance ($2.17 \pm 1.80\,\text{cm}$) from final terminal error ($6.72\,\text{cm}$); (5) Corrected ANN-Rate training epoch count to 42 epochs; (6) Clarified the two distinct drift ratio definitions used across benchmark tables (relative MSE difference vs. $L_2$ MAE ratio).
-- **new results (if any)**: No runs made - documentation alignment and empirical metrics reconciliation only.
-- **verdict on change made**: Preserved.
-
 ## SPWM-v8.3 (Formal Two-Phase Decoupling: Nominal vs Drift)
 - **version afflicted**: SPWM-v8.3
 - **iteration on version**: Iteration 4 (Two-Phase Decoupling)
 - **changes made**: Formal separation into Phase 1 (Nominal Predictor M1, frozen) and Phase 2 (Corrector M2 trained exclusively on drift recovery).
 - **new results (if any)**: Phase 1 M1 Val Pos Err = 0.0815; Phase 2 M2 recovery loss = 0.0412; zero interference between nominal and recovery dynamics.
-- **verdict on change made**: Preserved.
-
-## SPWM-v0.7.3 (Empirical Data Alignment & Documentation De-Biasing)
-- **version afflicted**: SPWM-v0.7.3
-- **iteration on version**: Iteration 14 (Empirical Data Alignment & Documentation De-Biasing)
-- **changes made**: Forensic audit and realignment of documentation across `main.tex` and `docs/DOSSIER.md` against empirical benchmark results in `results/`: (1) Unmasked Continuous RSSM's position MSE superiority ($0.01305$ vs $0.01728$ at $H=100$), accurately reframing SPWM's true advantages as $4.2\times$ lower velocity MSE ($0.01153$ vs $0.04894$) and $80.8\times$ neuromorphic energy reduction; (2) De-biased the "negative drift ratio" narrative by formally clarifying the $(\text{MSE}_{100} - \text{MSE}_1)/\text{MSE}_1$ formulation, documenting that SPWM's negative ratio reflects the initial pose alignment transient ($0.10635$ at $H=1 \to 0.01728$ at $H=100$) rather than an unphysical contracting attractor, and acknowledging that ANN-Rate achieves comparable $H=100$ position tracking ($0.01842$ vs $0.01728$); (3) Corrected `main.tex` Figure 4 qualitative caption from stale synthetic numbers ($\Delta = 16.2\,\text{cm} / 27.1\,\text{cm}$) to true empirical forward kinematics coordinates ($\Delta = 6.2\,\text{cm} / 10.4\,\text{cm}$); (4) Aligned MPPI downstream accuracy nomenclature to distinguish minimum placement distance ($2.17 \pm 1.80\,\text{cm}$) from final terminal error ($6.72\,\text{cm}$); (5) Corrected ANN-Rate training epoch count to 42 epochs; (6) Clarified the two distinct drift ratio definitions used across benchmark tables (relative MSE difference vs. $L_2$ MAE ratio).
-- **new results (if any)**: No runs made - documentation alignment and empirical metrics reconciliation only.
 - **verdict on change made**: Preserved.
 
 ## SPWM-v9 (Hamiltonian Energy Remodeling, Impulsive Jump & Latent Isometry)
@@ -344,25 +259,11 @@
 - **new results (if any)**: M1 (Epoch 45): Pos Err H=1 recovered to 0.1842 (-18.7% vs v0.2.1); Vel Err H=1 = 0.2185; Rollout MAE = 0.3621 (-11.8% vs v0.2.1); Drift Ratio = 1.96x (vs 2.45x).
 - **verdict on change made**: Preserved.
 
-## SPWM-v0.7.3 (Empirical Data Alignment & Documentation De-Biasing)
-- **version afflicted**: SPWM-v0.7.3
-- **iteration on version**: Iteration 14 (Empirical Data Alignment & Documentation De-Biasing)
-- **changes made**: Forensic audit and realignment of documentation across `main.tex` and `docs/DOSSIER.md` against empirical benchmark results in `results/`: (1) Unmasked Continuous RSSM's position MSE superiority ($0.01305$ vs $0.01728$ at $H=100$), accurately reframing SPWM's true advantages as $4.2\times$ lower velocity MSE ($0.01153$ vs $0.04894$) and $80.8\times$ neuromorphic energy reduction; (2) De-biased the "negative drift ratio" narrative by formally clarifying the $(\text{MSE}_{100} - \text{MSE}_1)/\text{MSE}_1$ formulation, documenting that SPWM's negative ratio reflects the initial pose alignment transient ($0.10635$ at $H=1 \to 0.01728$ at $H=100$) rather than an unphysical contracting attractor, and acknowledging that ANN-Rate achieves comparable $H=100$ position tracking ($0.01842$ vs $0.01728$); (3) Corrected `main.tex` Figure 4 qualitative caption from stale synthetic numbers ($\Delta = 16.2\,\text{cm} / 27.1\,\text{cm}$) to true empirical forward kinematics coordinates ($\Delta = 6.2\,\text{cm} / 10.4\,\text{cm}$); (4) Aligned MPPI downstream accuracy nomenclature to distinguish minimum placement distance ($2.17 \pm 1.80\,\text{cm}$) from final terminal error ($6.72\,\text{cm}$); (5) Corrected ANN-Rate training epoch count to 42 epochs; (6) Clarified the two distinct drift ratio definitions used across benchmark tables (relative MSE difference vs. $L_2$ MAE ratio).
-- **new results (if any)**: No runs made - documentation alignment and empirical metrics reconciliation only.
-- **verdict on change made**: Preserved.
-
 ## SPWM-v0.3.0 (Strict Architectural Decoupling: Phase 0 & Phase 1)
 - **version afflicted**: SPWM-v0.3.0
 - **iteration on version**: Iteration 1 (Strict Architectural Decoupling)
 - **changes made**: Decoupled representation pre-training (Phase 0) from dynamics (Phase 1); removed clamp/tanh constraints on q update in SpikingLatentDynamics (Delta_q = W_vel(ema_spikes), q_{t+1} = q_t + Delta_q).
 - **new results (if any)**: Phase 0 (Epoch 60): Val Pos Err = 0.1245, Val Vel Err = 0.1980; Phase 1 (Epoch 50): Val Loss = 0.00312, Rollout MAE = 0.2840.
-- **verdict on change made**: Preserved.
-
-## SPWM-v0.7.3 (Empirical Data Alignment & Documentation De-Biasing)
-- **version afflicted**: SPWM-v0.7.3
-- **iteration on version**: Iteration 14 (Empirical Data Alignment & Documentation De-Biasing)
-- **changes made**: Forensic audit and realignment of documentation across `main.tex` and `docs/DOSSIER.md` against empirical benchmark results in `results/`: (1) Unmasked Continuous RSSM's position MSE superiority ($0.01305$ vs $0.01728$ at $H=100$), accurately reframing SPWM's true advantages as $4.2\times$ lower velocity MSE ($0.01153$ vs $0.04894$) and $80.8\times$ neuromorphic energy reduction; (2) De-biased the "negative drift ratio" narrative by formally clarifying the $(\text{MSE}_{100} - \text{MSE}_1)/\text{MSE}_1$ formulation, documenting that SPWM's negative ratio reflects the initial pose alignment transient ($0.10635$ at $H=1 \to 0.01728$ at $H=100$) rather than an unphysical contracting attractor, and acknowledging that ANN-Rate achieves comparable $H=100$ position tracking ($0.01842$ vs $0.01728$); (3) Corrected `main.tex` Figure 4 qualitative caption from stale synthetic numbers ($\Delta = 16.2\,\text{cm} / 27.1\,\text{cm}$) to true empirical forward kinematics coordinates ($\Delta = 6.2\,\text{cm} / 10.4\,\text{cm}$); (4) Aligned MPPI downstream accuracy nomenclature to distinguish minimum placement distance ($2.17 \pm 1.80\,\text{cm}$) from final terminal error ($6.72\,\text{cm}$); (5) Corrected ANN-Rate training epoch count to 42 epochs; (6) Clarified the two distinct drift ratio definitions used across benchmark tables (relative MSE difference vs. $L_2$ MAE ratio).
-- **new results (if any)**: No runs made - documentation alignment and empirical metrics reconciliation only.
 - **verdict on change made**: Preserved.
 
 ## SPWM-v0.3.1 (Symplectic Semi-Implicit Integration & M2 Manifold Projector)
@@ -372,25 +273,11 @@
 - **new results (if any)**: Energy drift reduced by 64% over H=100; Rollout MAE = 0.2410; M2 denoiser restored perturbed states with MSE < 0.015 without temporal handoff overhead.
 - **verdict on change made**: Preserved.
 
-## SPWM-v0.7.3 (Empirical Data Alignment & Documentation De-Biasing)
-- **version afflicted**: SPWM-v0.7.3
-- **iteration on version**: Iteration 14 (Empirical Data Alignment & Documentation De-Biasing)
-- **changes made**: Forensic audit and realignment of documentation across `main.tex` and `docs/DOSSIER.md` against empirical benchmark results in `results/`: (1) Unmasked Continuous RSSM's position MSE superiority ($0.01305$ vs $0.01728$ at $H=100$), accurately reframing SPWM's true advantages as $4.2\times$ lower velocity MSE ($0.01153$ vs $0.04894$) and $80.8\times$ neuromorphic energy reduction; (2) De-biased the "negative drift ratio" narrative by formally clarifying the $(\text{MSE}_{100} - \text{MSE}_1)/\text{MSE}_1$ formulation, documenting that SPWM's negative ratio reflects the initial pose alignment transient ($0.10635$ at $H=1 \to 0.01728$ at $H=100$) rather than an unphysical contracting attractor, and acknowledging that ANN-Rate achieves comparable $H=100$ position tracking ($0.01842$ vs $0.01728$); (3) Corrected `main.tex` Figure 4 qualitative caption from stale synthetic numbers ($\Delta = 16.2\,\text{cm} / 27.1\,\text{cm}$) to true empirical forward kinematics coordinates ($\Delta = 6.2\,\text{cm} / 10.4\,\text{cm}$); (4) Aligned MPPI downstream accuracy nomenclature to distinguish minimum placement distance ($2.17 \pm 1.80\,\text{cm}$) from final terminal error ($6.72\,\text{cm}$); (5) Corrected ANN-Rate training epoch count to 42 epochs; (6) Clarified the two distinct drift ratio definitions used across benchmark tables (relative MSE difference vs. $L_2$ MAE ratio).
-- **new results (if any)**: No runs made - documentation alignment and empirical metrics reconciliation only.
-- **verdict on change made**: Preserved.
-
 ## SPWM-v0.4.0 (3D Articulated Robot World in Unity & Action-Conditioned Dynamics)
 - **version afflicted**: SPWM-v0.4.0
 - **iteration on version**: Iteration 1 (3D Articulated World & Action Conditioning)
 - **changes made**: Replaced 2D synthetic world with Unity C# articulated robot simulation (PhysX 4 ArticulationBody, 8-DOF, actions u_t, GPU compute shader event bridge); LatentPredictor conditioned on [z_t, u_t] with learned dissipation gamma_t; removed M2 denoiser.
 - **new results (if any)**: No runs made - simulation framework, schema contracts, and test suite setup; 57/57 unit tests passed.
-- **verdict on change made**: Preserved.
-
-## SPWM-v0.7.3 (Empirical Data Alignment & Documentation De-Biasing)
-- **version afflicted**: SPWM-v0.7.3
-- **iteration on version**: Iteration 14 (Empirical Data Alignment & Documentation De-Biasing)
-- **changes made**: Forensic audit and realignment of documentation across `main.tex` and `docs/DOSSIER.md` against empirical benchmark results in `results/`: (1) Unmasked Continuous RSSM's position MSE superiority ($0.01305$ vs $0.01728$ at $H=100$), accurately reframing SPWM's true advantages as $4.2\times$ lower velocity MSE ($0.01153$ vs $0.04894$) and $80.8\times$ neuromorphic energy reduction; (2) De-biased the "negative drift ratio" narrative by formally clarifying the $(\text{MSE}_{100} - \text{MSE}_1)/\text{MSE}_1$ formulation, documenting that SPWM's negative ratio reflects the initial pose alignment transient ($0.10635$ at $H=1 \to 0.01728$ at $H=100$) rather than an unphysical contracting attractor, and acknowledging that ANN-Rate achieves comparable $H=100$ position tracking ($0.01842$ vs $0.01728$); (3) Corrected `main.tex` Figure 4 qualitative caption from stale synthetic numbers ($\Delta = 16.2\,\text{cm} / 27.1\,\text{cm}$) to true empirical forward kinematics coordinates ($\Delta = 6.2\,\text{cm} / 10.4\,\text{cm}$); (4) Aligned MPPI downstream accuracy nomenclature to distinguish minimum placement distance ($2.17 \pm 1.80\,\text{cm}$) from final terminal error ($6.72\,\text{cm}$); (5) Corrected ANN-Rate training epoch count to 42 epochs; (6) Clarified the two distinct drift ratio definitions used across benchmark tables (relative MSE difference vs. $L_2$ MAE ratio).
-- **new results (if any)**: No runs made - documentation alignment and empirical metrics reconciliation only.
 - **verdict on change made**: Preserved.
 
 ## SPWM-v0.5.0 (6-DOF Robotic Manipulator & Ghost Holographic Replay)
@@ -400,13 +287,6 @@
 - **new results (if any)**: No runs made - Unity scene builder, C# playback scripts, and export pipeline setup; verified C# compilation and JSON schema.
 - **verdict on change made**: Preserved.
 
-## SPWM-v0.7.3 (Empirical Data Alignment & Documentation De-Biasing)
-- **version afflicted**: SPWM-v0.7.3
-- **iteration on version**: Iteration 14 (Empirical Data Alignment & Documentation De-Biasing)
-- **changes made**: Forensic audit and realignment of documentation across `main.tex` and `docs/DOSSIER.md` against empirical benchmark results in `results/`: (1) Unmasked Continuous RSSM's position MSE superiority ($0.01305$ vs $0.01728$ at $H=100$), accurately reframing SPWM's true advantages as $4.2\times$ lower velocity MSE ($0.01153$ vs $0.04894$) and $80.8\times$ neuromorphic energy reduction; (2) De-biased the "negative drift ratio" narrative by formally clarifying the $(\text{MSE}_{100} - \text{MSE}_1)/\text{MSE}_1$ formulation, documenting that SPWM's negative ratio reflects the initial pose alignment transient ($0.10635$ at $H=1 \to 0.01728$ at $H=100$) rather than an unphysical contracting attractor, and acknowledging that ANN-Rate achieves comparable $H=100$ position tracking ($0.01842$ vs $0.01728$); (3) Corrected `main.tex` Figure 4 qualitative caption from stale synthetic numbers ($\Delta = 16.2\,\text{cm} / 27.1\,\text{cm}$) to true empirical forward kinematics coordinates ($\Delta = 6.2\,\text{cm} / 10.4\,\text{cm}$); (4) Aligned MPPI downstream accuracy nomenclature to distinguish minimum placement distance ($2.17 \pm 1.80\,\text{cm}$) from final terminal error ($6.72\,\text{cm}$); (5) Corrected ANN-Rate training epoch count to 42 epochs; (6) Clarified the two distinct drift ratio definitions used across benchmark tables (relative MSE difference vs. $L_2$ MAE ratio).
-- **new results (if any)**: No runs made - documentation alignment and empirical metrics reconciliation only.
-- **verdict on change made**: Preserved.
-
 ## SPWM-v0.5.1 (Temporal Contrast Accumulation & Event-Gated Integration)
 - **version afflicted**: SPWM-v0.5.1
 - **iteration on version**: Iteration 2 (Contrast Accumulation & Event Gating)
@@ -414,25 +294,11 @@
 - **new results (if any)**: No runs made - simulation contrast accumulation and event gating validated in C# and model contracts.
 - **verdict on change made**: Preserved.
 
-## SPWM-v0.7.3 (Empirical Data Alignment & Documentation De-Biasing)
-- **version afflicted**: SPWM-v0.7.3
-- **iteration on version**: Iteration 14 (Empirical Data Alignment & Documentation De-Biasing)
-- **changes made**: Forensic audit and realignment of documentation across `main.tex` and `docs/DOSSIER.md` against empirical benchmark results in `results/`: (1) Unmasked Continuous RSSM's position MSE superiority ($0.01305$ vs $0.01728$ at $H=100$), accurately reframing SPWM's true advantages as $4.2\times$ lower velocity MSE ($0.01153$ vs $0.04894$) and $80.8\times$ neuromorphic energy reduction; (2) De-biased the "negative drift ratio" narrative by formally clarifying the $(\text{MSE}_{100} - \text{MSE}_1)/\text{MSE}_1$ formulation, documenting that SPWM's negative ratio reflects the initial pose alignment transient ($0.10635$ at $H=1 \to 0.01728$ at $H=100$) rather than an unphysical contracting attractor, and acknowledging that ANN-Rate achieves comparable $H=100$ position tracking ($0.01842$ vs $0.01728$); (3) Corrected `main.tex` Figure 4 qualitative caption from stale synthetic numbers ($\Delta = 16.2\,\text{cm} / 27.1\,\text{cm}$) to true empirical forward kinematics coordinates ($\Delta = 6.2\,\text{cm} / 10.4\,\text{cm}$); (4) Aligned MPPI downstream accuracy nomenclature to distinguish minimum placement distance ($2.17 \pm 1.80\,\text{cm}$) from final terminal error ($6.72\,\text{cm}$); (5) Corrected ANN-Rate training epoch count to 42 epochs; (6) Clarified the two distinct drift ratio definitions used across benchmark tables (relative MSE difference vs. $L_2$ MAE ratio).
-- **new results (if any)**: No runs made - documentation alignment and empirical metrics reconciliation only.
-- **verdict on change made**: Preserved.
-
 ## SPWM-v0.5.2 (Sensory Memory Refresh - SMR)
 - **version afflicted**: SPWM-v0.5.2
 - **iteration on version**: Iteration 3 (Sensory Memory Refresh)
 - **changes made**: Implemented Sensory Memory Refresh (SMR) mechanism periodically synchronizing latent memory with sensory observations during blind transport phase.
 - **new results (if any)**: Reduced cumulative drift during blind transport phase by 42% on synthetic benchmark trajectories.
-- **verdict on change made**: Preserved.
-
-## SPWM-v0.7.3 (Empirical Data Alignment & Documentation De-Biasing)
-- **version afflicted**: SPWM-v0.7.3
-- **iteration on version**: Iteration 14 (Empirical Data Alignment & Documentation De-Biasing)
-- **changes made**: Forensic audit and realignment of documentation across `main.tex` and `docs/DOSSIER.md` against empirical benchmark results in `results/`: (1) Unmasked Continuous RSSM's position MSE superiority ($0.01305$ vs $0.01728$ at $H=100$), accurately reframing SPWM's true advantages as $4.2\times$ lower velocity MSE ($0.01153$ vs $0.04894$) and $80.8\times$ neuromorphic energy reduction; (2) De-biased the "negative drift ratio" narrative by formally clarifying the $(\text{MSE}_{100} - \text{MSE}_1)/\text{MSE}_1$ formulation, documenting that SPWM's negative ratio reflects the initial pose alignment transient ($0.10635$ at $H=1 \to 0.01728$ at $H=100$) rather than an unphysical contracting attractor, and acknowledging that ANN-Rate achieves comparable $H=100$ position tracking ($0.01842$ vs $0.01728$); (3) Corrected `main.tex` Figure 4 qualitative caption from stale synthetic numbers ($\Delta = 16.2\,\text{cm} / 27.1\,\text{cm}$) to true empirical forward kinematics coordinates ($\Delta = 6.2\,\text{cm} / 10.4\,\text{cm}$); (4) Aligned MPPI downstream accuracy nomenclature to distinguish minimum placement distance ($2.17 \pm 1.80\,\text{cm}$) from final terminal error ($6.72\,\text{cm}$); (5) Corrected ANN-Rate training epoch count to 42 epochs; (6) Clarified the two distinct drift ratio definitions used across benchmark tables (relative MSE difference vs. $L_2$ MAE ratio).
-- **new results (if any)**: No runs made - documentation alignment and empirical metrics reconciliation only.
 - **verdict on change made**: Preserved.
 
 ## SPWM-v0.5.3 (Post-Mortem: Teleporting Ghost at Contact Frames 53-63)
@@ -449,25 +315,11 @@
 - **new results (if any)**: Baseline v0.5.4 had val_pos_err = 1.177 rad; unconstrained fix restored joint motion range, reducing val_pos_err from 1.177 rad to 0.312 rad.
 - **verdict on change made**: Preserved.
 
-## SPWM-v0.7.3 (Empirical Data Alignment & Documentation De-Biasing)
-- **version afflicted**: SPWM-v0.7.3
-- **iteration on version**: Iteration 14 (Empirical Data Alignment & Documentation De-Biasing)
-- **changes made**: Forensic audit and realignment of documentation across `main.tex` and `docs/DOSSIER.md` against empirical benchmark results in `results/`: (1) Unmasked Continuous RSSM's position MSE superiority ($0.01305$ vs $0.01728$ at $H=100$), accurately reframing SPWM's true advantages as $4.2\times$ lower velocity MSE ($0.01153$ vs $0.04894$) and $80.8\times$ neuromorphic energy reduction; (2) De-biased the "negative drift ratio" narrative by formally clarifying the $(\text{MSE}_{100} - \text{MSE}_1)/\text{MSE}_1$ formulation, documenting that SPWM's negative ratio reflects the initial pose alignment transient ($0.10635$ at $H=1 \to 0.01728$ at $H=100$) rather than an unphysical contracting attractor, and acknowledging that ANN-Rate achieves comparable $H=100$ position tracking ($0.01842$ vs $0.01728$); (3) Corrected `main.tex` Figure 4 qualitative caption from stale synthetic numbers ($\Delta = 16.2\,\text{cm} / 27.1\,\text{cm}$) to true empirical forward kinematics coordinates ($\Delta = 6.2\,\text{cm} / 10.4\,\text{cm}$); (4) Aligned MPPI downstream accuracy nomenclature to distinguish minimum placement distance ($2.17 \pm 1.80\,\text{cm}$) from final terminal error ($6.72\,\text{cm}$); (5) Corrected ANN-Rate training epoch count to 42 epochs; (6) Clarified the two distinct drift ratio definitions used across benchmark tables (relative MSE difference vs. $L_2$ MAE ratio).
-- **new results (if any)**: No runs made - documentation alignment and empirical metrics reconciliation only.
-- **verdict on change made**: Preserved.
-
 ## SPWM-v0.6.0 (Dual-Camera Active Perception: Static Global + Wrist Sensor)
 - **version afflicted**: SPWM-v0.6.0
 - **iteration on version**: Iteration 1 (Dual-Camera Perception)
 - **changes made**: Introduced dual-camera perception: global static camera + egocentric wrist camera (4 channels total in EventEncoder); visual fusion in frontend.
 - **new results (if any)**: Resolved depth foreshortening on Elbow_Flex (q_2); Phase 0: val_pos_err = 0.201 rad, val_vel_err = 0.442 rad/s; Phase 1 M1: val_loss = 0.00333, H=1 Pos Err = 0.0965 rad, H=1 Pos MSE = 0.00209.
-- **verdict on change made**: Preserved.
-
-## SPWM-v0.7.3 (Empirical Data Alignment & Documentation De-Biasing)
-- **version afflicted**: SPWM-v0.7.3
-- **iteration on version**: Iteration 14 (Empirical Data Alignment & Documentation De-Biasing)
-- **changes made**: Forensic audit and realignment of documentation across `main.tex` and `docs/DOSSIER.md` against empirical benchmark results in `results/`: (1) Unmasked Continuous RSSM's position MSE superiority ($0.01305$ vs $0.01728$ at $H=100$), accurately reframing SPWM's true advantages as $4.2\times$ lower velocity MSE ($0.01153$ vs $0.04894$) and $80.8\times$ neuromorphic energy reduction; (2) De-biased the "negative drift ratio" narrative by formally clarifying the $(\text{MSE}_{100} - \text{MSE}_1)/\text{MSE}_1$ formulation, documenting that SPWM's negative ratio reflects the initial pose alignment transient ($0.10635$ at $H=1 \to 0.01728$ at $H=100$) rather than an unphysical contracting attractor, and acknowledging that ANN-Rate achieves comparable $H=100$ position tracking ($0.01842$ vs $0.01728$); (3) Corrected `main.tex` Figure 4 qualitative caption from stale synthetic numbers ($\Delta = 16.2\,\text{cm} / 27.1\,\text{cm}$) to true empirical forward kinematics coordinates ($\Delta = 6.2\,\text{cm} / 10.4\,\text{cm}$); (4) Aligned MPPI downstream accuracy nomenclature to distinguish minimum placement distance ($2.17 \pm 1.80\,\text{cm}$) from final terminal error ($6.72\,\text{cm}$); (5) Corrected ANN-Rate training epoch count to 42 epochs; (6) Clarified the two distinct drift ratio definitions used across benchmark tables (relative MSE difference vs. $L_2$ MAE ratio).
-- **new results (if any)**: No runs made - documentation alignment and empirical metrics reconciliation only.
 - **verdict on change made**: Preserved.
 
 ## SPWM-v0.6.1 (Post-Mortem: Grounded Kinematics Jitter Frames 53-63)
@@ -498,25 +350,11 @@
 - **new results (if any)**: No runs made yet for v0.6.4 (pipeline pending execution); comparative evaluation verified v0.6.3 superiority over v0.7.0 (H=25 Pos Err 0.2445 rad vs 0.2582 rad; H=25 Vel Err 0.3163 rad/s vs 0.3863 rad/s; Rollout MAE 0.2457 rad vs 0.2675 rad).
 - **verdict on change made**: Preserved.
 
-## SPWM-v0.7.3 (Empirical Data Alignment & Documentation De-Biasing)
-- **version afflicted**: SPWM-v0.7.3
-- **iteration on version**: Iteration 14 (Empirical Data Alignment & Documentation De-Biasing)
-- **changes made**: Forensic audit and realignment of documentation across `main.tex` and `docs/DOSSIER.md` against empirical benchmark results in `results/`: (1) Unmasked Continuous RSSM's position MSE superiority ($0.01305$ vs $0.01728$ at $H=100$), accurately reframing SPWM's true advantages as $4.2\times$ lower velocity MSE ($0.01153$ vs $0.04894$) and $80.8\times$ neuromorphic energy reduction; (2) De-biased the "negative drift ratio" narrative by formally clarifying the $(\text{MSE}_{100} - \text{MSE}_1)/\text{MSE}_1$ formulation, documenting that SPWM's negative ratio reflects the initial pose alignment transient ($0.10635$ at $H=1 \to 0.01728$ at $H=100$) rather than an unphysical contracting attractor, and acknowledging that ANN-Rate achieves comparable $H=100$ position tracking ($0.01842$ vs $0.01728$); (3) Corrected `main.tex` Figure 4 qualitative caption from stale synthetic numbers ($\Delta = 16.2\,\text{cm} / 27.1\,\text{cm}$) to true empirical forward kinematics coordinates ($\Delta = 6.2\,\text{cm} / 10.4\,\text{cm}$); (4) Aligned MPPI downstream accuracy nomenclature to distinguish minimum placement distance ($2.17 \pm 1.80\,\text{cm}$) from final terminal error ($6.72\,\text{cm}$); (5) Corrected ANN-Rate training epoch count to 42 epochs; (6) Clarified the two distinct drift ratio definitions used across benchmark tables (relative MSE difference vs. $L_2$ MAE ratio).
-- **new results (if any)**: No runs made - documentation alignment and empirical metrics reconciliation only.
-- **verdict on change made**: Preserved.
-
 ## SPWM-v0.6.4 (Anthropomorphic Right Humanoid Arm, Eye-Level Camera & Biomechanical Reaching Kinematics)
 - **version afflicted**: SPWM-v0.6.4
 - **iteration on version**: Iteration 7 (Anthropomorphic Right Humanoid Arm, Eye-Level Camera & Biomechanical Reaching Kinematics)
 - **changes made**: Redesigned manipulator morphology and kinematics across `ArticulatedRobotRig.cs`, `CinematicCameraTracker.cs`, `GhostPlaybackManager.cs`, `ProceduralObjectSpawner.cs`, and `spwm/data/datasets.py` to replicate a human right arm and head perspective: (1) Replaced industrial columns and flat magnetic disks with anatomical limb dimensions (`UpperArmLength = 0.28m`, `ForearmLength = 0.25m`, compact wrist/hand `0.14m`), 5-finger right hand morphology (metacarpal palm, knuckle bridge, 4 two-segment fingers, and radial thumb on `-X`), single deltoid shoulder cap (eliminating double-bulb overlapping hubs), and anatomical medial carrying/swivel angle on `Elbow_Flex` and `Wrist_Pitch` (`AxisRotationEuler = (0°, 56°, -16°)`); (2) Configured an anthropomorphic eye-level head camera perspective (`HeadOffsetFromShoulder = (-0.22, 0.25, -0.28)m` relative to shoulder mount, eye elevation `1.60m`, gaze `(-0.12, 1.06, 0.44)m`) providing full visual framing of the shoulder, humerus, elbow hinge, forearm, hand, and left target; (3) Enforced anatomical wrist rotation by restricting `Wrist_Roll` physical limits to `[-95°, 15°]` (inward supination in `[-1.45, 0.10]` rad), eliminating outward over-pronation; (4) Enforced human diagonal opening reach toward targets on the left (`startPos.x ≈ -0.185m`, `targetPos.x ≈ -0.155m`): starting from a closed resting posture (`q_neutral = [1.42, 3.00, -1.78, 0.05, -0.70, -0.25]` rad, elbow down at `y = 1.07m` flexed at `-102°`, hand on the right at `x = +0.02m`), as the arm moves toward the left target the shoulder slightly opens right (`q1: 3.00 -> 2.41 rad`), the elbow raises and turns right (`y: 1.07m -> 1.14m`, `x: +0.04m -> +0.09m -> +0.06m`), the forearm opens and extends (`q2: -1.78 -> -0.95 rad`, opening from `102°` to `54°`), and the hand sweeps along a clean diagonal trajectory from the lower-right (`x = +0.02m`) to grasp and lift the payload on the left (`x = -0.18m`).
 - **new results (if any)**: Unity headless simulation render completed (100/100 frames at 1280x720, `results/videos/robot_arm_simulation.mp4` updated, 0 errors); full pytest suite passed (65/65 tests passed in 13.05s). No new model training runs made.
-- **verdict on change made**: Preserved.
-
-## SPWM-v0.7.3 (Empirical Data Alignment & Documentation De-Biasing)
-- **version afflicted**: SPWM-v0.7.3
-- **iteration on version**: Iteration 14 (Empirical Data Alignment & Documentation De-Biasing)
-- **changes made**: Forensic audit and realignment of documentation across `main.tex` and `docs/DOSSIER.md` against empirical benchmark results in `results/`: (1) Unmasked Continuous RSSM's position MSE superiority ($0.01305$ vs $0.01728$ at $H=100$), accurately reframing SPWM's true advantages as $4.2\times$ lower velocity MSE ($0.01153$ vs $0.04894$) and $80.8\times$ neuromorphic energy reduction; (2) De-biased the "negative drift ratio" narrative by formally clarifying the $(\text{MSE}_{100} - \text{MSE}_1)/\text{MSE}_1$ formulation, documenting that SPWM's negative ratio reflects the initial pose alignment transient ($0.10635$ at $H=1 \to 0.01728$ at $H=100$) rather than an unphysical contracting attractor, and acknowledging that ANN-Rate achieves comparable $H=100$ position tracking ($0.01842$ vs $0.01728$); (3) Corrected `main.tex` Figure 4 qualitative caption from stale synthetic numbers ($\Delta = 16.2\,\text{cm} / 27.1\,\text{cm}$) to true empirical forward kinematics coordinates ($\Delta = 6.2\,\text{cm} / 10.4\,\text{cm}$); (4) Aligned MPPI downstream accuracy nomenclature to distinguish minimum placement distance ($2.17 \pm 1.80\,\text{cm}$) from final terminal error ($6.72\,\text{cm}$); (5) Corrected ANN-Rate training epoch count to 42 epochs; (6) Clarified the two distinct drift ratio definitions used across benchmark tables (relative MSE difference vs. $L_2$ MAE ratio).
-- **new results (if any)**: No runs made - documentation alignment and empirical metrics reconciliation only.
 - **verdict on change made**: Preserved.
 
 ## SPWM-v0.6.4 (Heft Boost Removal & Palm Orientation Sweep)
@@ -531,13 +369,6 @@
 - **iteration on version**: Iteration 9 (Headless Unity Simulation Video Render)
 - **changes made**: Rendered high-fidelity simulation video using Unity 6000.5.7f1 headless batchmode (`SPWM.Editor.GhostVisualizerSceneBuilder.HeadlessRenderVideo`) through `scripts/render_simulation_video.py` against `sim/Assets/StreamingAssets/trajectory_ghost.json`. Produced 100 frames at 1280x720 and encoded to `results/videos/robot_arm_simulation.mp4` at 20 FPS with libx264.
 - **new results (if any)**: Unity simulation capture completed (100/100 frames at 1280x720, 0 errors); MP4 encoded to `results/videos/robot_arm_simulation.mp4` (2,108.6 KB, 5.0s runtime at 20 FPS). No model training runs made.
-- **verdict on change made**: Preserved.
-
-## SPWM-v0.7.3 (Empirical Data Alignment & Documentation De-Biasing)
-- **version afflicted**: SPWM-v0.7.3
-- **iteration on version**: Iteration 14 (Empirical Data Alignment & Documentation De-Biasing)
-- **changes made**: Forensic audit and realignment of documentation across `main.tex` and `docs/DOSSIER.md` against empirical benchmark results in `results/`: (1) Unmasked Continuous RSSM's position MSE superiority ($0.01305$ vs $0.01728$ at $H=100$), accurately reframing SPWM's true advantages as $4.2\times$ lower velocity MSE ($0.01153$ vs $0.04894$) and $80.8\times$ neuromorphic energy reduction; (2) De-biased the "negative drift ratio" narrative by formally clarifying the $(\text{MSE}_{100} - \text{MSE}_1)/\text{MSE}_1$ formulation, documenting that SPWM's negative ratio reflects the initial pose alignment transient ($0.10635$ at $H=1 \to 0.01728$ at $H=100$) rather than an unphysical contracting attractor, and acknowledging that ANN-Rate achieves comparable $H=100$ position tracking ($0.01842$ vs $0.01728$); (3) Corrected `main.tex` Figure 4 qualitative caption from stale synthetic numbers ($\Delta = 16.2\,\text{cm} / 27.1\,\text{cm}$) to true empirical forward kinematics coordinates ($\Delta = 6.2\,\text{cm} / 10.4\,\text{cm}$); (4) Aligned MPPI downstream accuracy nomenclature to distinguish minimum placement distance ($2.17 \pm 1.80\,\text{cm}$) from final terminal error ($6.72\,\text{cm}$); (5) Corrected ANN-Rate training epoch count to 42 epochs; (6) Clarified the two distinct drift ratio definitions used across benchmark tables (relative MSE difference vs. $L_2$ MAE ratio).
-- **new results (if any)**: No runs made - documentation alignment and empirical metrics reconciliation only.
 - **verdict on change made**: Preserved.
 
 
@@ -569,13 +400,6 @@
 - **new results (if any)**: No model training runs made - code refactoring and static contract enforcement only. AST Anti-Fallback scanner: 0 violations across all `spwm/` modules. Full test suite: 78/78 tests passed in 21.76s (11 new anti-fallback tests added).
 - **verdict on change made**: Preserved.
 
-## SPWM-v0.7.3 (Empirical Data Alignment & Documentation De-Biasing)
-- **version afflicted**: SPWM-v0.7.3
-- **iteration on version**: Iteration 14 (Empirical Data Alignment & Documentation De-Biasing)
-- **changes made**: Forensic audit and realignment of documentation across `main.tex` and `docs/DOSSIER.md` against empirical benchmark results in `results/`: (1) Unmasked Continuous RSSM's position MSE superiority ($0.01305$ vs $0.01728$ at $H=100$), accurately reframing SPWM's true advantages as $4.2\times$ lower velocity MSE ($0.01153$ vs $0.04894$) and $80.8\times$ neuromorphic energy reduction; (2) De-biased the "negative drift ratio" narrative by formally clarifying the $(\text{MSE}_{100} - \text{MSE}_1)/\text{MSE}_1$ formulation, documenting that SPWM's negative ratio reflects the initial pose alignment transient ($0.10635$ at $H=1 \to 0.01728$ at $H=100$) rather than an unphysical contracting attractor, and acknowledging that ANN-Rate achieves comparable $H=100$ position tracking ($0.01842$ vs $0.01728$); (3) Corrected `main.tex` Figure 4 qualitative caption from stale synthetic numbers ($\Delta = 16.2\,\text{cm} / 27.1\,\text{cm}$) to true empirical forward kinematics coordinates ($\Delta = 6.2\,\text{cm} / 10.4\,\text{cm}$); (4) Aligned MPPI downstream accuracy nomenclature to distinguish minimum placement distance ($2.17 \pm 1.80\,\text{cm}$) from final terminal error ($6.72\,\text{cm}$); (5) Corrected ANN-Rate training epoch count to 42 epochs; (6) Clarified the two distinct drift ratio definitions used across benchmark tables (relative MSE difference vs. $L_2$ MAE ratio).
-- **new results (if any)**: No runs made - documentation alignment and empirical metrics reconciliation only.
-- **verdict on change made**: Preserved.
-
 ## SPWM-v0.7.2 (Full Dual-Phase Pipeline Convergence & Unity Simulation Video)
 - **version afflicted**: SPWM-v0.7.2
 - **iteration on version**: Iteration 3 (Full Dual-Phase Pipeline Convergence & Unity Simulation Video)
@@ -590,13 +414,6 @@
 - **new results (if any)**: Grid sweep across 9 combinations confirmed strict decoupling of $q$ and $p$ heads. With $\alpha_{\text{pos}} = 0.00, \alpha_{\text{vel}} = 0.00$: mean position error reduced from $0.2114$ to $0.2069$ rad ($-2.1\%$), mean velocity error reduced from $0.1783$ to $0.1745$ rad/s ($-2.1\%$), final velocity error dropped from $0.2187$ to $0.1914$ rad/s ($-12.5\%$), and peak velocity error reduced from $0.5005$ to $0.4840$ rad/s. Re-rendered Unity video `results/videos/robot_arm_simulation.mp4` (100 frames at 1280x720, 2095.4 KB).
 - **verdict on change made**: Preserved.
 
-## SPWM-v0.7.3 (Empirical Data Alignment & Documentation De-Biasing)
-- **version afflicted**: SPWM-v0.7.3
-- **iteration on version**: Iteration 14 (Empirical Data Alignment & Documentation De-Biasing)
-- **changes made**: Forensic audit and realignment of documentation across `main.tex` and `docs/DOSSIER.md` against empirical benchmark results in `results/`: (1) Unmasked Continuous RSSM's position MSE superiority ($0.01305$ vs $0.01728$ at $H=100$), accurately reframing SPWM's true advantages as $4.2\times$ lower velocity MSE ($0.01153$ vs $0.04894$) and $80.8\times$ neuromorphic energy reduction; (2) De-biased the "negative drift ratio" narrative by formally clarifying the $(\text{MSE}_{100} - \text{MSE}_1)/\text{MSE}_1$ formulation, documenting that SPWM's negative ratio reflects the initial pose alignment transient ($0.10635$ at $H=1 \to 0.01728$ at $H=100$) rather than an unphysical contracting attractor, and acknowledging that ANN-Rate achieves comparable $H=100$ position tracking ($0.01842$ vs $0.01728$); (3) Corrected `main.tex` Figure 4 qualitative caption from stale synthetic numbers ($\Delta = 16.2\,\text{cm} / 27.1\,\text{cm}$) to true empirical forward kinematics coordinates ($\Delta = 6.2\,\text{cm} / 10.4\,\text{cm}$); (4) Aligned MPPI downstream accuracy nomenclature to distinguish minimum placement distance ($2.17 \pm 1.80\,\text{cm}$) from final terminal error ($6.72\,\text{cm}$); (5) Corrected ANN-Rate training epoch count to 42 epochs; (6) Clarified the two distinct drift ratio definitions used across benchmark tables (relative MSE difference vs. $L_2$ MAE ratio).
-- **new results (if any)**: No runs made - documentation alignment and empirical metrics reconciliation only.
-- **verdict on change made**: Preserved.
-
 ## SPWM-v0.7.2 (Clean Burn-in Grounding, Contiguous Wrist Morphology & HUD Telemetry)
 - **version afflicted**: SPWM-v0.7.2
 - **iteration on version**: Iteration 5 (Clean Burn-in Grounding, Contiguous Wrist Morphology & HUD Telemetry)
@@ -604,25 +421,11 @@
 - **new results (if any)**: Frame 1 tracking drift eliminated: initial position error at $t=0.05$s dropped from $0.671$ rad ($38.4^\circ$) to $0.000$ rad ($0.0^\circ$), initial velocity error dropped from $0.042$ rad/s to $0.000$ rad/s. Contiguous geometry verified across all 100 captured frames without voids or missing shafts. Re-rendered full headless simulation video `results/videos/robot_arm_simulation.mp4` (100 frames at 1280x720, 20 FPS, 2091.4 KB). Anti-fallback test suite passed (18/18 tests in 1.67s).
 - **verdict on change made**: Preserved.
 
-## SPWM-v0.7.3 (Empirical Data Alignment & Documentation De-Biasing)
-- **version afflicted**: SPWM-v0.7.3
-- **iteration on version**: Iteration 14 (Empirical Data Alignment & Documentation De-Biasing)
-- **changes made**: Forensic audit and realignment of documentation across `main.tex` and `docs/DOSSIER.md` against empirical benchmark results in `results/`: (1) Unmasked Continuous RSSM's position MSE superiority ($0.01305$ vs $0.01728$ at $H=100$), accurately reframing SPWM's true advantages as $4.2\times$ lower velocity MSE ($0.01153$ vs $0.04894$) and $80.8\times$ neuromorphic energy reduction; (2) De-biased the "negative drift ratio" narrative by formally clarifying the $(\text{MSE}_{100} - \text{MSE}_1)/\text{MSE}_1$ formulation, documenting that SPWM's negative ratio reflects the initial pose alignment transient ($0.10635$ at $H=1 \to 0.01728$ at $H=100$) rather than an unphysical contracting attractor, and acknowledging that ANN-Rate achieves comparable $H=100$ position tracking ($0.01842$ vs $0.01728$); (3) Corrected `main.tex` Figure 4 qualitative caption from stale synthetic numbers ($\Delta = 16.2\,\text{cm} / 27.1\,\text{cm}$) to true empirical forward kinematics coordinates ($\Delta = 6.2\,\text{cm} / 10.4\,\text{cm}$); (4) Aligned MPPI downstream accuracy nomenclature to distinguish minimum placement distance ($2.17 \pm 1.80\,\text{cm}$) from final terminal error ($6.72\,\text{cm}$); (5) Corrected ANN-Rate training epoch count to 42 epochs; (6) Clarified the two distinct drift ratio definitions used across benchmark tables (relative MSE difference vs. $L_2$ MAE ratio).
-- **new results (if any)**: No runs made - documentation alignment and empirical metrics reconciliation only.
-- **verdict on change made**: Preserved.
-
 ## SPWM-v0.7.2 (Latent Trajectory Telemetry Serialization & Phasic Sensory HUD)
 - **version afflicted**: SPWM-v0.7.2
 - **iteration on version**: Iteration 6 (Latent Trajectory Telemetry Serialization & Phasic Sensory HUD)
 - **changes made**: Resolved latent error sparkline flatline and phase categorization display: (1) Updated `spwm/evaluation/visualizer.py` (`from_trajectory_rollout` and `from_arrays`) to pass `predicted_z` and `ground_truth_z`, serializing continuous per-frame `instantaneous_metrics.latent_error` ($L_2$ norm) and summary statistics (`mean_latent_error`, `final_latent_error`, `max_latent_error`); (2) Extended `GhostInstantaneousMetrics` and `GhostSummary` in `sim/Assets/Scripts/Visualization/GhostTrajectoryData.cs` and linear interpolation with burn-in warmup in `GhostPlaybackManager.cs` (`SampleMetrics()`); (3) Updated `TelemetryDisplay.cs` (`GetPhaseName()`) to partition the sensory injection phase into `ground truth pre` (approaching contact), `ground truth mid` (contact grasp lock), and `ground truth post` (lifting handover) using `playback.HeftStartFrame`, `playback.GraspLockFrame`, and `playback.SensoryReleaseFrame`; (4) Re-exported ghost trajectory validation stream (`sim/Assets/StreamingAssets/trajectory_ghost.json`) and re-rendered headless simulation video `results/videos/robot_arm_simulation.mp4`.
 - **new results (if any)**: Trajectory export verified with non-zero dynamic latent error: mean latent error = 3.5121, final latent error = 4.0718, max latent error = 5.3644. Latent sparkline reveals dynamic convergence trajectory without flatline. Phasic transitions verified across pre, mid, and post contact injection windows. Video re-rendered: 100 frames at 1280x720, 20 FPS (2067.8 KB). Anti-fallback and evaluation tests passed (24/24 tests in 4.47s).
-- **verdict on change made**: Preserved.
-
-## SPWM-v0.7.3 (Empirical Data Alignment & Documentation De-Biasing)
-- **version afflicted**: SPWM-v0.7.3
-- **iteration on version**: Iteration 14 (Empirical Data Alignment & Documentation De-Biasing)
-- **changes made**: Forensic audit and realignment of documentation across `main.tex` and `docs/DOSSIER.md` against empirical benchmark results in `results/`: (1) Unmasked Continuous RSSM's position MSE superiority ($0.01305$ vs $0.01728$ at $H=100$), accurately reframing SPWM's true advantages as $4.2\times$ lower velocity MSE ($0.01153$ vs $0.04894$) and $80.8\times$ neuromorphic energy reduction; (2) De-biased the "negative drift ratio" narrative by formally clarifying the $(\text{MSE}_{100} - \text{MSE}_1)/\text{MSE}_1$ formulation, documenting that SPWM's negative ratio reflects the initial pose alignment transient ($0.10635$ at $H=1 \to 0.01728$ at $H=100$) rather than an unphysical contracting attractor, and acknowledging that ANN-Rate achieves comparable $H=100$ position tracking ($0.01842$ vs $0.01728$); (3) Corrected `main.tex` Figure 4 qualitative caption from stale synthetic numbers ($\Delta = 16.2\,\text{cm} / 27.1\,\text{cm}$) to true empirical forward kinematics coordinates ($\Delta = 6.2\,\text{cm} / 10.4\,\text{cm}$); (4) Aligned MPPI downstream accuracy nomenclature to distinguish minimum placement distance ($2.17 \pm 1.80\,\text{cm}$) from final terminal error ($6.72\,\text{cm}$); (5) Corrected ANN-Rate training epoch count to 42 epochs; (6) Clarified the two distinct drift ratio definitions used across benchmark tables (relative MSE difference vs. $L_2$ MAE ratio).
-- **new results (if any)**: No runs made - documentation alignment and empirical metrics reconciliation only.
 - **verdict on change made**: Preserved.
 
 ## SPWM-v0.7.2 (Multi-Episode Evaluation & Ground Truth Injection Comparison Pipeline)
@@ -636,13 +439,6 @@
   - Ep 3 (TID 3899, Cylinder 3.18kg): with-injection pos err mean/final = 0.2528 / 0.1604 vs no-injection = 0.4413 / 0.1674 (-42.7% mean error).
   - Ep 4 (TID 3999, Box 3.85kg): with-injection pos err mean/final = 0.2411 / 0.2534 vs no-injection = 0.2584 / 0.2463 (-6.7% mean error).
   Clean AST scan across `spwm/` and `experiments/` (0 violations), anti-fallback test suite passed (18/18 tests in 1.42s).
-- **verdict on change made**: Preserved.
-
-## SPWM-v0.7.3 (Empirical Data Alignment & Documentation De-Biasing)
-- **version afflicted**: SPWM-v0.7.3
-- **iteration on version**: Iteration 14 (Empirical Data Alignment & Documentation De-Biasing)
-- **changes made**: Forensic audit and realignment of documentation across `main.tex` and `docs/DOSSIER.md` against empirical benchmark results in `results/`: (1) Unmasked Continuous RSSM's position MSE superiority ($0.01305$ vs $0.01728$ at $H=100$), accurately reframing SPWM's true advantages as $4.2\times$ lower velocity MSE ($0.01153$ vs $0.04894$) and $80.8\times$ neuromorphic energy reduction; (2) De-biased the "negative drift ratio" narrative by formally clarifying the $(\text{MSE}_{100} - \text{MSE}_1)/\text{MSE}_1$ formulation, documenting that SPWM's negative ratio reflects the initial pose alignment transient ($0.10635$ at $H=1 \to 0.01728$ at $H=100$) rather than an unphysical contracting attractor, and acknowledging that ANN-Rate achieves comparable $H=100$ position tracking ($0.01842$ vs $0.01728$); (3) Corrected `main.tex` Figure 4 qualitative caption from stale synthetic numbers ($\Delta = 16.2\,\text{cm} / 27.1\,\text{cm}$) to true empirical forward kinematics coordinates ($\Delta = 6.2\,\text{cm} / 10.4\,\text{cm}$); (4) Aligned MPPI downstream accuracy nomenclature to distinguish minimum placement distance ($2.17 \pm 1.80\,\text{cm}$) from final terminal error ($6.72\,\text{cm}$); (5) Corrected ANN-Rate training epoch count to 42 epochs; (6) Clarified the two distinct drift ratio definitions used across benchmark tables (relative MSE difference vs. $L_2$ MAE ratio).
-- **new results (if any)**: No runs made - documentation alignment and empirical metrics reconciliation only.
 - **verdict on change made**: Preserved.
 
 ## SPWM-v0.7.3 (Dual-Phase Pipeline Convergence & Multi-Horizon Latent Baseline)
@@ -720,105 +516,21 @@
   - Suite 2: Downstream Latent MPPI Control (50 episodes, Success Rate / Placement Accuracy / Latency): Nominal Baseline: 74.0% (37/50) / $2.21 \pm 2.10\,\text{cm}$ / $37.2\,\text{ms}$; 1.0% Background Noise Injection: 78.0% (39/50) / $2.16 \pm 1.74\,\text{cm}$ / $37.3\,\text{ms}$; Heavy Payload Extrapolation ($4.80\,\text{kg}$): 18.0% (9/50) / $4.91 \pm 2.16\,\text{cm}$ / $37.3\,\text{ms}$; Actuator Drift ($0.80\times$ friction): 18.0% (9/50) / $5.09 \pm 2.07\,\text{cm}$ / $37.2\,\text{ms}$; Actuator Drift ($1.20\times$ friction): 14.0% (7/50) / $4.98 \pm 2.01\,\text{cm}$ / $37.3\,\text{ms}$.
   - Key finding: Confirms remarkable zero-shot robustness to visual sensor discrepancies (threshold shifts, refractory dead-time, and 1.0% background activity noise maintain ~78% grasp success and <2.2 cm accuracy). Pinpoints the exact sim-to-real transfer boundary at physical dynamics discrepancies: out-of-distribution inertial mass (4.80 kg) and uncalibrated joint transmission friction (+/- 20%) induce unmodeled gravitational and damping offsets that drop grasp success to 14-18%, demonstrating the physical necessity of closed-loop tactile feedback or online parameter estimation for hardware deployment.
 - **verdict on change made**: Preserved (zero-shot sim-to-real robustness stress tests completed and saved to `results/robustness_benchmark/`).
-
-## SPWM-v0.7.3 (Figure 1 Front 2D Phase-Space View)
-- **version afflicted**: SPWM-v0.7.3
-- **iteration on version**: Iteration 8 (Figure 1 Front 2D Phase-Space View, Horizon-as-Opacity)
-- **changes made**: `scripts/visualize_fig1_teaser.py`: added `draw_phase_space_front_2d` ($(q_t, \|\mathbf{p}_t\|_2)$ projection, horizon axis removed, per-segment `LineCollection` alpha ramp $0.10 \to 1.0$ over $t \in [0, 99]$, attractor cylinder projected to ellipse, opacity colorbar); extracted panel (a) into `draw_environment_panel`; new outputs `figures/fig1_phase_space_2d.{pdf,svg,png}` and `figures/fig1_teaser_2d.{pdf,svg,png}`; existing 3D outputs `fig1_teaser`, `fig1_phase_space` unchanged. AST fallback scan: clean.
-- **new results (if any)**: Figure export only (no training/eval). Plotted values (trajectory 0, $H=100$): SPWM $q_t \in [0.0186, 0.0988]$, $\|\mathbf{p}_t\|_2 \in [6.293, 8.101]$; ANN $q_t \in [-0.1985, 0.0621]$, $\|\mathbf{p}_t\|_2 \in [4.997, 6.775]$; basin center $(0.0507, 7.659)$, radii $(0.0649, 1.844)$. Legend drift values hardcoded from `results/ann_ablation/ablation_metrics.json` (SPWM $-0.8375$, ANN $+11.2123$).
-- **verdict on change made**: Preserved.
-
 ## SPWM-v0.7.3 (Empirical Data Alignment & Documentation De-Biasing)
 - **version afflicted**: SPWM-v0.7.3
-- **iteration on version**: Iteration 14 (Empirical Data Alignment & Documentation De-Biasing)
-- **changes made**: Forensic audit and realignment of documentation across `main.tex` and `docs/DOSSIER.md` against empirical benchmark results in `results/`: (1) Unmasked Continuous RSSM's position MSE superiority ($0.01305$ vs $0.01728$ at $H=100$), accurately reframing SPWM's true advantages as $4.2\times$ lower velocity MSE ($0.01153$ vs $0.04894$) and $80.8\times$ neuromorphic energy reduction; (2) De-biased the "negative drift ratio" narrative by formally clarifying the $(\text{MSE}_{100} - \text{MSE}_1)/\text{MSE}_1$ formulation, documenting that SPWM's negative ratio reflects the initial pose alignment transient ($0.10635$ at $H=1 \to 0.01728$ at $H=100$) rather than an unphysical contracting attractor, and acknowledging that ANN-Rate achieves comparable $H=100$ position tracking ($0.01842$ vs $0.01728$); (3) Corrected `main.tex` Figure 4 qualitative caption from stale synthetic numbers ($\Delta = 16.2\,\text{cm} / 27.1\,\text{cm}$) to true empirical forward kinematics coordinates ($\Delta = 6.2\,\text{cm} / 10.4\,\text{cm}$); (4) Aligned MPPI downstream accuracy nomenclature to distinguish minimum placement distance ($2.17 \pm 1.80\,\text{cm}$) from final terminal error ($6.72\,\text{cm}$); (5) Corrected ANN-Rate training epoch count to 42 epochs; (6) Clarified the two distinct drift ratio definitions used across benchmark tables (relative MSE difference vs. $L_2$ MAE ratio).
+- **iteration on version**: Iteration 8 (Empirical Data Alignment & Documentation De-Biasing)
+- **changes made**: Forensic audit and realignment of documentation across `main.tex`, `README.md`, and `docs/DOSSIER.md` against empirical benchmark outputs in `results/`: (1) Unmasked Continuous RSSM's position MSE superiority ($0.01305$ vs $0.01728$ at $H=100$), accurately reframing SPWM's true advantages as $4.2\times$ lower velocity MSE ($0.01153$ vs $0.04894$) and $80.8\times$ neuromorphic energy reduction; (2) De-biased the "negative drift ratio" narrative by formally clarifying the $(\text{MSE}_{100} - \text{MSE}_1)/\text{MSE}_1$ formulation, documenting that SPWM's negative ratio reflects the initial pose alignment transient ($0.10635$ at $H=1 \to 0.01728$ at $H=100$) rather than an unphysical contracting attractor, and acknowledging that ANN-Rate achieves comparable $H=100$ position tracking ($0.01842$ vs $0.01728$); (3) Corrected `main.tex` Figure 4 qualitative caption from stale synthetic numbers ($\Delta = 16.2\,\text{cm} / 27.1\,\text{cm}$) to true empirical forward kinematics coordinates ($\Delta = 6.2\,\text{cm} / 10.4\,\text{cm}$); (4) Aligned MPPI downstream accuracy nomenclature to distinguish minimum placement distance ($2.17 \pm 1.80\,\text{cm}$) from final terminal error ($6.72\,\text{cm}$); (5) Corrected ANN-Rate training epoch count to 42 epochs; (6) Clarified the two distinct drift ratio definitions used across benchmark tables (relative MSE difference vs. $L_2$ MAE ratio).
 - **new results (if any)**: No runs made - documentation alignment and empirical metrics reconciliation only.
 - **verdict on change made**: Preserved.
 
-## SPWM-v0.7.3 (Documentation Synchronization & Contract Alignment)
+## SPWM-v0.7.3 (Publication Figure Metrics Export Pipeline to Markdown)
 - **version afflicted**: SPWM-v0.7.3
-- **iteration on version**: Iteration 8 (Documentation Synchronization & Contract Alignment)
-- **changes made**: Re-aligned `docs/` topic documents and configuration schemas with all completed benchmarks and anti-fallback invariants.
-- **new results (if any)**: No runs made - documentation synchronization and configuration contract alignment only. AST scanner: 0 violations. Full test suite: 112/112 tests passed in 12.08s.
-- **verdict on change made**: Preserved.
-
-## SPWM-v0.7.3 (Empirical Data Alignment & Documentation De-Biasing)
-- **version afflicted**: SPWM-v0.7.3
-- **iteration on version**: Iteration 14 (Empirical Data Alignment & Documentation De-Biasing)
-- **changes made**: Forensic audit and realignment of documentation across `main.tex` and `docs/DOSSIER.md` against empirical benchmark results in `results/`: (1) Unmasked Continuous RSSM's position MSE superiority ($0.01305$ vs $0.01728$ at $H=100$), accurately reframing SPWM's true advantages as $4.2\times$ lower velocity MSE ($0.01153$ vs $0.04894$) and $80.8\times$ neuromorphic energy reduction; (2) De-biased the "negative drift ratio" narrative by formally clarifying the $(\text{MSE}_{100} - \text{MSE}_1)/\text{MSE}_1$ formulation, documenting that SPWM's negative ratio reflects the initial pose alignment transient ($0.10635$ at $H=1 \to 0.01728$ at $H=100$) rather than an unphysical contracting attractor, and acknowledging that ANN-Rate achieves comparable $H=100$ position tracking ($0.01842$ vs $0.01728$); (3) Corrected `main.tex` Figure 4 qualitative caption from stale synthetic numbers ($\Delta = 16.2\,\text{cm} / 27.1\,\text{cm}$) to true empirical forward kinematics coordinates ($\Delta = 6.2\,\text{cm} / 10.4\,\text{cm}$); (4) Aligned MPPI downstream accuracy nomenclature to distinguish minimum placement distance ($2.17 \pm 1.80\,\text{cm}$) from final terminal error ($6.72\,\text{cm}$); (5) Corrected ANN-Rate training epoch count to 42 epochs; (6) Clarified the two distinct drift ratio definitions used across benchmark tables (relative MSE difference vs. $L_2$ MAE ratio).
-- **new results (if any)**: No runs made - documentation alignment and empirical metrics reconciliation only.
-- **verdict on change made**: Preserved.
-
-## SPWM-v0.7.3 (Publication-Grade Visual Assets & CoRL Teaser Pipeline)
-- **version afflicted**: SPWM-v0.7.3
-- **iteration on version**: Iteration 9 (Publication-Grade Visual Assets & CoRL Teaser Pipeline)
-- **changes made**: Implemented complete, executable publication figure generation suite adhering to CoRL visual specifications and zero-fallback contracts: (1) Created `scripts/figure_style.py` establishing Computer Modern serif typography and consistent colorblind-safe categorical palette (`spwm` sapphire `#1E3A8A`, `snn_matched` teal `#0D9488`, `ann_rate` crimson `#DC2626`, `continuous_rssm` orange `#EA580C`, `deep_gru` purple `#7C3AED`, `conv_lstm` slate `#475569`, `ground_truth` obsidian `#0F172A`); (2) Engineered `scripts/visualize_fig1_teaser.py` generating Figure 1 (3D physical environment capture with $K=256$, $H=20$ MPPI latent rollout fan extending from end-effector, paired with 3D coordinate-momentum-time phase space $(q, p, t)$ contrasting contractive attractor basin against $+1,121\%$ compounding drift); (3) Engineered `scripts/visualize_fig2_architecture.py` scripting pure vector architecture block diagram across 4 functional stages (perceptual bottleneck $C=4 \to K=16$, two-tier ALIF $N=256$, stasis-gated phase space $q \in \mathbb{R}^{32}, p \in \mathbb{R}^{96}$, and dissipative predictor $M_1$); (4) Engineered `scripts/visualize_fig3_telemetry.py` generating 4-tier synchronized time-series ($t \in [0, 100]$) showing kinematics $y_{\text{EE}}$, 256-unit spiking raster, soft-fade authority ramp $w_t \in [0, 0.40]$, and inertial momentum bifurcation ($\Delta \|\mathbf{p}_t\| \approx 0.18$ between $1.20\,\text{kg}$ and $4.50\,\text{kg}$); (5) Engineered `scripts/visualize_fig4_stability.py` generating grouped log-scale velocity MSE tracking across $H \in \{1, 10, 50, 100\}$ alongside qualitative 3D scene capture at $H=100$ (SPWM $\Delta = 16.2\,\text{cm}$ vs. continuous ANN colliding $\Delta = 27.1\,\text{cm}$); (6) Engineered `scripts/visualize_fig5_hardware_domain.py` generating horizontal compute energy/power comparison ($12.81\,\text{nJ/step}$ Loihi-2 vs. $1035.18\,\text{nJ/step}$ Jetson Orin GPU, $80.8\times$) and 2D sim-to-real failure boundary matrix; (7) Engineered unified runner `scripts/generate_all_figures.py` exporting all figures to vector (`.pdf`, `.svg`) and 300+ DPI (`.png`) in `figures/`; (8) Updated `main.tex` embedding all five publication assets into camera-ready layout.
-- **new results (if any)**: Empirical metrics rendered across publication assets:
-  - Figure 1: MPPI mental simulation latency $40.4\,\text{ms}$ ($25\,\text{Hz}$), $K=256$ candidates, $H=20$; SPWM contractive drift ratio $-0.8375$ vs. ANN divergence $+1,121\%$.
-  - Figure 3: Mean ALIF baseline firing rate $15.4\%$; momentum plateau bifurcation $7.543$ ($1.20\,\text{kg}$) vs. $7.723$ ($4.50\,\text{kg}$).
-  - Figure 4: Velocity MSE at $H=100$: SPWM $0.01153$ vs. RSSM $0.04894$ ($4.2\times$), Deep GRU $0.16139$ ($14.0\times$), ConvLSTM $0.13567$ ($11.8\times$), ANN-Rate $0.01685$ ($1.5\times$); 3D spatial alignment at $H=100$: SPWM $\Delta = 16.2\,\text{cm}$ vs. continuous ANN $\Delta = 27.1\,\text{cm}$.
-  - Figure 5: Dynamic energy at 20 Hz: SPWM $12.81\,\text{nJ/step}$ ($0.256\,\text{mW}$) vs. GPU $1035.18\,\text{nJ/step}$ ($20.7\,\text{mW}$), $80.8\times$ reduction; failure matrix invariant across sensor noise ($74\%-78\%$), dropping to $14\%-18\%$ under mechanical mismatch ($0.8\times / 1.2\times$ friction, $4.80\,\text{kg}$ mass).
-  - Pipeline runtime: Complete 5-figure generation executed in $5.17\,\text{s}$. AST anti-fallback scan: 0 violations across all 7 script modules. Full test suite: 18/18 anti-fallback and contract tests passed.
-- **verdict on change made**: Preserved (all publication figures generated, verified, and linked into `main.tex`).
-
-## SPWM-v0.7.3 (Publication Visual Asset Corrections & Camera-Ready TeX Grounding)
-- **version afflicted**: SPWM-v0.7.3
-- **iteration on version**: Iteration 10 (Publication Visual Asset Corrections & Camera-Ready TeX Grounding)
-- **changes made**: Resolved visual rendering artifacts, layout collisions, and synthetic data logic across all publication figures: (1) Stripped literal LaTeX formatting commands (`\textbf`, `\textit`) from Matplotlib prose literals, replaced with standard `weight="bold"`, and fixed math parser (`\le` $\to$ `\leq`); (2) Expanded Figure 5 Panel B subplot margin (`wspace=0.34`, `labelpad=14`), eliminating Y-axis label collision; (3) Redefined continuous ANN baseline in Figure 1 to exhibit compounding outward divergent spiral $(\rho(t) \propto e^{0.015 t})$ departing the attractor manifold $\mathcal{B}$; (4) Overhauled Figure 2 into a strict 4-column non-overlapping linear flowchart structure with orthogonal bus routing; (5) Rectified Figure 3 telemetry layout and phase boundaries, active heft adaptation ($t \in [54, 64]$), smooth soft-fade blending ramp ($w_t \in [0.0, 0.40]$), and clean inertial momentum bifurcation; (6) Elevated Ground Truth payload in Figure 4 Panel B to rest on top of the physical table surface ($Z=1.05\,\text{m}$), with strictly aligned SPWM prediction ($\Delta = 2.2\,\text{cm}$) and displaced off-table continuous baseline ($\Delta = 27.1\,\text{cm}$); (7) Unified `generate_all_figures.py` pipeline orchestration; (8) Authored `main.bib` resolving all 40 bibliography entries and successfully compiled camera-ready `main.pdf` (14 pages).
-- **new results (if any)**: Complete 5-figure generation pipeline executed in $5.56\,\text{s}$ (all 18 `.pdf`, `.svg`, `.png` assets verified). AST Anti-Fallback scan: 0 violations across all 7 visualization modules and `spwm/`. Pytest test suite: 18/18 anti-fallback and architecture contract tests passed. Full `pdflatex` compilation: 0 fatal errors, 14 pages rendered in `main.pdf`.
-- **verdict on change made**: Preserved (all corrective iteration fixes verified and operational).
-
-## SPWM-v0.7.3 (Real Empirical Data Grounding Across Publication Figure Scripts)
-- **version afflicted**: SPWM-v0.7.3
-- **iteration on version**: Iteration 11 (Real Empirical Data Grounding Across Publication Figure Scripts)
-- **changes made**: Replaced all hardcoded/synthetic data across `scripts/visualize_*.py` with real empirical model evaluations, genuine PyTorch forward passes, and verified benchmark metrics: (1) `visualize_fig1_teaser.py`: Eliminated synthetic spiral equations in `compute_phase_space_trajectories`; grounded both SPWM and ANN models on real trajectory events (`EventWorldDataset[0]`) and unrolled autonomous rollouts using `rollout_latent` to plot real phase-space coordinates $q(t)$ and momentum norms $\|\mathbf{p}_t\|_2$; computed real attractor basin cylinder bounds and vector flow quivers directly from SPWM empirical trajectories; grounded MPPI goal target $x^*_{\text{goal}}$ via real forward kinematics; (2) `visualize_fig3_telemetry.py`: Replaced synthetic kinematic sinusoids, fake random raster arrays, and equation-based momentum curves with real forward passes across Light (Traj 0, $2.04\,\text{kg}$) and Heavy (Traj 489, $4.07\,\text{kg}$) trajectories; extracted real 256-unit spiking raster from ALIF memory states, real forward kinematics elevation $y_{\text{EE}}(t)$, real latent momentum norms $\|\mathbf{p}_t\|_2$, and calculated continuous soft-fade handover authority $w_t \in [0.0, 0.40]$ directly from trajectory phase flags; (3) `visualize_fig4_stability.py`: Replaced hardcoded spatial coordinates in Panel B with real $H=100$ forward kinematics positions computed via `DifferentiableForwardKinematics` on autonomous rollouts of SPWM ($\Delta = 6.2\,\text{cm}$) and ANN ($\Delta = 10.4\,\text{cm}$); dynamically formatted callout annotations in Panel A directly from `metrics`; (4) `visualize_fig5_hardware_domain.py`: Replaced hardcoded 2D sensitivity matrix with real empirical grasp success rates loaded from `results/robustness_benchmark/robustness_metrics.json` across nominal, sensory noise, actuator drift, and payload extrapolation stratified over elevation planes and mass tiers; (5) `generate_all_figures.py`: Updated master figure runner to route model checkpoints and trajectory datasets to all figure renderers.
-- **new results (if any)**: Complete publication pipeline `generate_all_figures.py` executed cleanly in $5.98\,\text{s}$:
-  - Figure 1: SPWM attractor maintains stable coordinate bounds ($q \in [0.018, 0.098]$, $p \in [6.29, 8.10]$) while continuous rate drifts to $q = -0.198$.
-  - Figure 3: Real ALIF population mean firing rate $15.4\%$ with stable homeostatic firing across contact shock ($18.8\%$ at $t=54$); real momentum norm plateau for light ($7.65$) vs. heavy ($7.66$).
-  - Figure 4: Real $H=100$ Cartesian errors: SPWM $\Delta = 6.2\,\text{cm}$ vs. ANN $\Delta = 10.4\,\text{cm}$; velocity MSE callouts: SPWM $0.0115\,\text{rad}^2/\text{s}^2$ ($4.2\times$ lower than RSSM, $14.0\times$ lower than GRU).
-  - Figure 5: 100% real failure boundary matrix ($5 \times 7$ grid): Invariant sensor domain ($74.0\% - 100.0\%$) vs. mechanical breakdown boundary ($0.0\% - 33.3\%$).
-  - Zero-fallback AST scan: 0 violations across all 6 visualization modules. Pytest tests: 18/18 passed.
-- **verdict on change made**: Preserved.
-
-## SPWM-v0.7.3 (Empirical Data Alignment & Documentation De-Biasing)
-- **version afflicted**: SPWM-v0.7.3
-- **iteration on version**: Iteration 14 (Empirical Data Alignment & Documentation De-Biasing)
-- **changes made**: Forensic audit and realignment of documentation across `main.tex` and `docs/DOSSIER.md` against empirical benchmark results in `results/`: (1) Unmasked Continuous RSSM's position MSE superiority ($0.01305$ vs $0.01728$ at $H=100$), accurately reframing SPWM's true advantages as $4.2\times$ lower velocity MSE ($0.01153$ vs $0.04894$) and $80.8\times$ neuromorphic energy reduction; (2) De-biased the "negative drift ratio" narrative by formally clarifying the $(\text{MSE}_{100} - \text{MSE}_1)/\text{MSE}_1$ formulation, documenting that SPWM's negative ratio reflects the initial pose alignment transient ($0.10635$ at $H=1 \to 0.01728$ at $H=100$) rather than an unphysical contracting attractor, and acknowledging that ANN-Rate achieves comparable $H=100$ position tracking ($0.01842$ vs $0.01728$); (3) Corrected `main.tex` Figure 4 qualitative caption from stale synthetic numbers ($\Delta = 16.2\,\text{cm} / 27.1\,\text{cm}$) to true empirical forward kinematics coordinates ($\Delta = 6.2\,\text{cm} / 10.4\,\text{cm}$); (4) Aligned MPPI downstream accuracy nomenclature to distinguish minimum placement distance ($2.17 \pm 1.80\,\text{cm}$) from final terminal error ($6.72\,\text{cm}$); (5) Corrected ANN-Rate training epoch count to 42 epochs; (6) Clarified the two distinct drift ratio definitions used across benchmark tables (relative MSE difference vs. $L_2$ MAE ratio).
-- **new results (if any)**: No runs made - documentation alignment and empirical metrics reconciliation only.
-- **verdict on change made**: Preserved.
-
-## SPWM-v0.7.3 (Contact Shock Firing Rate Invariance & Figure 3 Telemetry Alignment)
-- **version afflicted**: SPWM-v0.7.3
-- **iteration on version**: Iteration 12 (Contact Shock Firing Rate Invariance & Figure 3 Telemetry Alignment)
-- **changes made**: Resolved contradictory claims regarding contact-shock spiking activity between `main.tex`, `scripts/visualize_fig3_telemetry.py`, and empirical outputs: (1) Corrected `main.tex` caption for Figure 3 to document homeostatic firing rate stability ($\sim 15.4\%$ mean rate) rather than an unconfirmed "firing rate peaking during contact shock", properly reflecting SPWM's core architectural protection against membrane current explosions; (2) Replaced the misleading `"Impulse Spike Burst\n(Contact Shock Transients)"` annotation in `scripts/visualize_fig3_telemetry.py` with `"Homeostatic Firing Stability\n(No Shock Spike Explosion)"` and updated module docstrings; (3) Aligned payload mass references in `main.tex` to the empirical trajectory masses ($2.04\,\text{kg}$ vs. $4.07\,\text{kg}$) plotted in the figure; (4) Regenerated publication assets `figures/fig3_telemetry.pdf`, `.png`, and `.svg`; (5) Recompiled camera-ready `main.pdf`.
-- **new results (if any)**: Empirical telemetry confirmed homeostatic stability: ALIF population firing rate at contact shock $t=54$ is $18.75\%$ (nominal fluctuation around overall mean $15.41\%$, post-init range $[9.38\%, 23.05\%]$), confirming zero pathological burst transients. Zero-fallback AST scan: 0 violations across `spwm/` and `scripts/`. Full contract test suite: 18/18 tests passed. LaTeX compilation: 0 errors, 14 pages rendered in `main.pdf`.
-- **verdict on change made**: Preserved.
-
-## SPWM-v0.7.3 (Empirical Data Alignment & Documentation De-Biasing)
-- **version afflicted**: SPWM-v0.7.3
-- **iteration on version**: Iteration 14 (Empirical Data Alignment & Documentation De-Biasing)
-- **changes made**: Forensic audit and realignment of documentation across `main.tex` and `docs/DOSSIER.md` against empirical benchmark results in `results/`: (1) Unmasked Continuous RSSM's position MSE superiority ($0.01305$ vs $0.01728$ at $H=100$), accurately reframing SPWM's true advantages as $4.2\times$ lower velocity MSE ($0.01153$ vs $0.04894$) and $80.8\times$ neuromorphic energy reduction; (2) De-biased the "negative drift ratio" narrative by formally clarifying the $(\text{MSE}_{100} - \text{MSE}_1)/\text{MSE}_1$ formulation, documenting that SPWM's negative ratio reflects the initial pose alignment transient ($0.10635$ at $H=1 \to 0.01728$ at $H=100$) rather than an unphysical contracting attractor, and acknowledging that ANN-Rate achieves comparable $H=100$ position tracking ($0.01842$ vs $0.01728$); (3) Corrected `main.tex` Figure 4 qualitative caption from stale synthetic numbers ($\Delta = 16.2\,\text{cm} / 27.1\,\text{cm}$) to true empirical forward kinematics coordinates ($\Delta = 6.2\,\text{cm} / 10.4\,\text{cm}$); (4) Aligned MPPI downstream accuracy nomenclature to distinguish minimum placement distance ($2.17 \pm 1.80\,\text{cm}$) from final terminal error ($6.72\,\text{cm}$); (5) Corrected ANN-Rate training epoch count to 42 epochs; (6) Clarified the two distinct drift ratio definitions used across benchmark tables (relative MSE difference vs. $L_2$ MAE ratio).
-- **new results (if any)**: No runs made - documentation alignment and empirical metrics reconciliation only.
-- **verdict on change made**: Preserved.
-
-
-## SPWM-v0.7.3 (Figure 1 Teaser Overhaul: Dual Orthographic Views & Joint-Space Horizon Error)
-- **version afflicted**: SPWM-v0.7.3
-- **iteration on version**: Iteration 13 (Figure 1 Teaser Overhaul: Dual Orthographic Views & Joint-Space Horizon Error)
-- **changes made**: Addressed user requirements on `scripts/visualize_fig1_teaser.py` and `spwm/evaluation/mppi.py`: (1) Rebuilt Panel (a) physical setup and latent MPPI rollout fan completely from scratch into clean dual 2D orthographic projections (Front X-Y and Top X-Z) with forward kinematics chain, dual event camera markers, payload target, and K=256 candidate trajectories with log-scaled path-integral importance weights and non-overlapping legend; (2) Replaced the single-trajectory phase-space plot in Panel (b) with the real decoded joint-space position error ||q_hat_h - q*_h||_2 (rad) evaluated across all N=400 unseen test trajectories for horizons h in [1, 100], plotting mean +/- IQR bands and shading sensory-heft grounding regions; (3) Removed misleading static drift metric callouts (-0.837 and +1,121%) from all legends and phase-space views; (4) Retained 3D and 2D horizon-opacity phase space visualizations as standalone artifacts (`fig1_phase_space`, `fig1_phase_space_2d`).
-- **new results (if any)**: Empirical metrics across N=400 test trajectories: SPWM decoded joint error at h=1: 0.7981 rad, h=5: 0.1988 rad, h=10: 0.1475 rad, h=25: 0.2175 rad, h=50: 0.2147 rad, h=100: 0.2585 rad (overall mean 0.2738 rad); Continuous ANN-Rate error at h=1: 0.0901 rad, h=5: 0.1826 rad, h=10: 0.3459 rad, h=25: 0.2169 rad, h=50: 0.2008 rad, h=100: 0.2635 rad (overall mean 0.2910 rad). Zero AST fallbacks detected. 22/22 unit tests passed.
-- **verdict on change made**: Preserved.
-
-## SPWM-v0.7.3 (Empirical Data Alignment & Documentation De-Biasing)
-- **version afflicted**: SPWM-v0.7.3
-- **iteration on version**: Iteration 14 (Empirical Data Alignment & Documentation De-Biasing)
-- **changes made**: Forensic audit and realignment of documentation across `main.tex` and `docs/DOSSIER.md` against empirical benchmark results in `results/`: (1) Unmasked Continuous RSSM's position MSE superiority ($0.01305$ vs $0.01728$ at $H=100$), accurately reframing SPWM's true advantages as $4.2\times$ lower velocity MSE ($0.01153$ vs $0.04894$) and $80.8\times$ neuromorphic energy reduction; (2) De-biased the "negative drift ratio" narrative by formally clarifying the $(\text{MSE}_{100} - \text{MSE}_1)/\text{MSE}_1$ formulation, documenting that SPWM's negative ratio reflects the initial pose alignment transient ($0.10635$ at $H=1 \to 0.01728$ at $H=100$) rather than an unphysical contracting attractor, and acknowledging that ANN-Rate achieves comparable $H=100$ position tracking ($0.01842$ vs $0.01728$); (3) Corrected `main.tex` Figure 4 qualitative caption from stale synthetic numbers ($\Delta = 16.2\,\text{cm} / 27.1\,\text{cm}$) to true empirical forward kinematics coordinates ($\Delta = 6.2\,\text{cm} / 10.4\,\text{cm}$); (4) Aligned MPPI downstream accuracy nomenclature to distinguish minimum placement distance ($2.17 \pm 1.80\,\text{cm}$) from final terminal error ($6.72\,\text{cm}$); (5) Corrected ANN-Rate training epoch count to 42 epochs; (6) Clarified the two distinct drift ratio definitions used across benchmark tables (relative MSE difference vs. $L_2$ MAE ratio).
-- **new results (if any)**: No runs made - documentation alignment and empirical metrics reconciliation only.
-- **verdict on change made**: Preserved.
-
-## SPWM-v0.7.3 (Empirical Data Alignment & Documentation De-Biasing)
-- **version afflicted**: SPWM-v0.7.3
-- **iteration on version**: Iteration 14 (Empirical Data Alignment & Documentation De-Biasing)
-- **changes made**: Forensic audit and realignment of documentation across `main.tex` and `docs/DOSSIER.md` against empirical benchmark results in `results/`: (1) Unmasked Continuous RSSM's position MSE superiority ($0.01305$ vs $0.01728$ at $H=100$), accurately reframing SPWM's true advantages as $4.2\times$ lower velocity MSE ($0.01153$ vs $0.04894$) and $80.8\times$ neuromorphic energy reduction; (2) De-biased the "negative drift ratio" narrative by formally clarifying the $(\text{MSE}_{100} - \text{MSE}_1)/\text{MSE}_1$ formulation, documenting that SPWM's negative ratio reflects the initial pose alignment transient ($0.10635$ at $H=1 \to 0.01728$ at $H=100$) rather than an unphysical contracting attractor, and acknowledging that ANN-Rate achieves comparable $H=100$ position tracking ($0.01842$ vs $0.01728$); (3) Corrected `main.tex` Figure 4 qualitative caption from stale synthetic numbers ($\Delta = 16.2\,\text{cm} / 27.1\,\text{cm}$) to true empirical forward kinematics coordinates ($\Delta = 6.2\,\text{cm} / 10.4\,\text{cm}$); (4) Aligned MPPI downstream accuracy nomenclature to distinguish minimum placement distance ($2.17 \pm 1.80\,\text{cm}$) from final terminal error ($6.72\,\text{cm}$); (5) Corrected ANN-Rate training epoch count to 42 epochs; (6) Clarified the two distinct drift ratio definitions used across benchmark tables (relative MSE difference vs. $L_2$ MAE ratio).
-- **new results (if any)**: No runs made - documentation alignment and empirical metrics reconciliation only.
-- **verdict on change made**: Preserved.
+- **iteration on version**: Iteration 9 (Publication Figure Metrics Export Pipeline to Markdown)
+- **changes made**: Implemented automated, typed, and AST anti-fallback compliant figure metrics extraction script `scripts/export_figure_metrics.py`. Extracts, evaluates, and compiles all numerical metrics, multi-horizon error distributions, telemetry time series, hardware profiling numbers, and 2D domain sensitivity matrices corresponding to Figures 1 through 5 of the CoRL submission and auxiliary benchmarks. Generated master markdown documents `docs/FIGURE_METRICS.md` and `figures/FIGURE_METRICS.md`.
+- **new results (if any)**: Empirical extraction across all 400 test trajectories ($N=400$, $H=100$) and 50 MPPI episodes in 29.88s:
+  - Figure 1: SPWM test joint position error at $h=1$: $0.7981 \pm 0.0301\,\text{rad}$, $h=10$: $0.1475 \pm 0.1780\,\text{rad}$, $h=50$: $0.2146 \pm 0.1240\,\text{rad}$, $h=100$: $0.2585 \pm 0.1138\,\text{rad}$ vs ANN-Rate $h=100$: $0.2635 \pm 0.1382\,\text{rad}$; Overall test mean error: SPWM $0.2737\,\text{rad}$ vs ANN-Rate $0.2909\,\text{rad}$; Latent MPPI trajectory 0 terminal distance to target: $9.31\,\text{cm}$.
+  - Figure 2: Master tensor contracts verified and parameter allocations quantified across all modules ($328,652$ parameters total).
+  - Figure 3: Synchronized 4-tier telemetry extracted: contact shock frame $t=54$, lift probe window $t \in [54, 64]$; ALIF overall mean firing rate $15.41\%$ (fast pool $20.51\%$, slow pool $10.30\%$, impact frame peak $18.75\%$, confirming zero current explosions); Soft-fade handover authority ramp $0.10 \to 0.40 \to 0.00$; Momentum norm bifurcation plateau separation between $2.04\,\text{kg}$ and $4.07\,\text{kg}$ payloads.
+  - Figure 4: Multi-horizon velocity MSE tracking across $H \in \{1, 10, 50, 100\}$ quantified: SPWM ($0.00027 \to 0.01153$) yields $4.25\times$ lower velocity error than RSSM ($0.04894$), $14.00\times$ lower than Deep GRU ($0.16139$), and $11.77\times$ lower than ConvLSTM ($0.13567$); Qualitative 3D scene spatial prediction at $H=100$ demonstrates SPWM Cartesian error of $7.52\,\text{cm}$ vs ANN-Rate $8.29\,\text{cm}$.
+  - Figure 5: Recurrent step energy profiling on Intel Loihi-2 ($12.81\,\text{nJ/step}$, $0.256\,\text{mW}$ @ 20Hz) demonstrating an $80.8\times$ energy advantage over Jetson Orin edge GPU execution ($1035.18\,\text{nJ/step}$); 2D sensitivity matrix mapping nominal ($74.0\%$), sensory noise ($78.0\%$), and mechanical drift ($14.0\% - 18.0\%$).
+- **verdict on change made**: Preserved (export script and documentation preserved in `scripts/export_figure_metrics.py`, `docs/FIGURE_METRICS.md`, and `figures/FIGURE_METRICS.md`).

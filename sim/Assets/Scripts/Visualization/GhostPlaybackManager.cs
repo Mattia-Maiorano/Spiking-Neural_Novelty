@@ -296,6 +296,8 @@ namespace SPWM.Visualization
         [SerializeField] private Material targetMaterial;
         [Tooltip("HolographicGhost material (SPWM/HolographicGhost shader) for the predicted robot.")]
         [SerializeField] private Material ghostMaterial;
+        [Tooltip("Material for Model B (Amber/Orange).")]
+        [SerializeField] private Material ghostBMaterial;
         [Tooltip("World offset of the ghost relative to the target. Zero = perfect overlay (recommended).")]
         [SerializeField] private Vector3 ghostOffset = Vector3.zero;
         [Tooltip("Rotate every joint about local X (sagittal pitch) instead of the sim's anchor axis.")]
@@ -323,9 +325,13 @@ namespace SPWM.Visualization
         [SerializeField] private bool loop = true;
         [SerializeField, Min(0f)] private float holdAtEndSeconds = 2.0f;
 
+        public bool ForceCompareModelsMode { get; set; } // Settable via headless CLI
+
         private GhostTrajectoryData _data;
         private KinematicRobotRig _target;
         private KinematicRobotRig _ghost;
+        private KinematicRobotRig _ghostB;
+        private Quaternion[,] _ghostBRot; // [frame, joint] precomputed
         private Quaternion[,] _targetRot; // [frame, joint] precomputed
         private Quaternion[,] _ghostRot;
         private Transform _groundVisual;
@@ -449,6 +455,12 @@ namespace SPWM.Visualization
                 _ghost = new KinematicRobotRig("GhostRig_SPWM", transform, archetype, ghostMaterial, ghostOffset, forceSagittalAxis);
                 _ghost.SetShadowCasting(false);
             }
+            bool hasDual = (_data.metadata != null && _data.metadata.has_dual_models) || ForceCompareModelsMode;
+            if (hasDual && _ghostB == null)
+            {
+                _ghostB = new KinematicRobotRig("GhostRig_SPWM_B", transform, archetype, ghostBMaterial, ghostOffset, forceSagittalAxis);
+                _ghostB.SetShadowCasting(false);
+            }
 
             if (_target.JointCount != _data.JointCount)
             {
@@ -506,6 +518,13 @@ namespace SPWM.Visualization
                 }
                 ghostMaterial = new Material(holo) { name = "HolographicGhost (runtime)" };
             }
+            if (ghostBMaterial == null && ghostMaterial != null)
+            {
+                ghostBMaterial = new Material(ghostMaterial) { name = "HolographicGhost_B (runtime)" };
+                // Amber/Orange
+                ghostBMaterial.SetColor("_Color", new Color(1.0f, 0.45f, 0.0f, 1.0f));
+                ghostBMaterial.SetColor("_RimColor", new Color(1.0f, 0.65f, 0.15f, 1.0f));
+            }
         }
 
         private static float SmoothStepMinimumJerk(float tau)
@@ -519,6 +538,7 @@ namespace SPWM.Visualization
             int frames = _data.FrameCount, joints = _data.JointCount;
             _targetRot = new Quaternion[frames, joints];
             _ghostRot = new Quaternion[frames, joints];
+            if (_ghostB != null) _ghostBRot = new Quaternion[frames, joints];
 
             int seed = (_data.metadata != null && _data.metadata.trajectory_id > 0)
                 ? _data.metadata.trajectory_id
@@ -575,6 +595,7 @@ namespace SPWM.Visualization
                 for (int j = 0; j < joints; j++)
                 {
                     float gtQ = fr.ground_truth_q[j];
+                    float rawGtQ = gtQ;
                     float predQ = fr.predicted_q[j];
 
                     if (adaptToAnthropomorphicPose && j < CanonicalPoseLength(qNeutral))
@@ -616,6 +637,27 @@ namespace SPWM.Visualization
 
                     _targetRot[f, j] = _target.JointRotation(j, gtQ, angleScale);
                     _ghostRot[f, j] = _ghost.JointRotation(j, predQ, angleScale);
+
+                    if (_ghostB != null)
+                    {
+                        if (fr.predicted_b_q == null || fr.predicted_b_q.Length <= j)
+                        {
+                            throw new System.InvalidOperationException(
+                                $"[GhostPlaybackManager] Compare-models mode requires predicted_b_q for frame {f}, joint {j}.");
+                        }
+                        float predBQ = fr.predicted_b_q[j];
+                        if (adaptToAnthropomorphicPose && j < CanonicalPoseLength(qNeutral))
+                        {
+                            float errDeltaB = (predBQ - rawGtQ) * warmupBlend;
+                            if (j == 5) errDeltaB = Mathf.Clamp(errDeltaB, -0.15f, 0.15f);
+                            predBQ = Mathf.Clamp(gtQ + errDeltaB, -ArticulatedRobotRig.MaxJointAngleRad, ArticulatedRobotRig.MaxJointAngleRad);
+                        }
+                        else
+                        {
+                            predBQ = gtQ + (predBQ - gtQ) * warmupBlend;
+                        }
+                        _ghostBRot[f, j] = _ghostB.JointRotation(j, predBQ, angleScale);
+                    }
                 }
             }
         }
@@ -753,6 +795,10 @@ namespace SPWM.Visualization
             {
                 _target.SetJointLocalRotation(j, Quaternion.Slerp(_targetRot[i0, j], _targetRot[i1, j], alpha));
                 _ghost.SetJointLocalRotation(j, Quaternion.Slerp(_ghostRot[i0, j], _ghostRot[i1, j], alpha));
+                if (_ghostB != null)
+                {
+                    _ghostB.SetJointLocalRotation(j, Quaternion.Slerp(_ghostBRot[i0, j], _ghostBRot[i1, j], alpha));
+                }
             }
 
             if (_payloadVisual != null)

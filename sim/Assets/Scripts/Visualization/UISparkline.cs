@@ -36,6 +36,8 @@ namespace SPWM.Visualization
         [SerializeField, Range(0f, 0.3f)] private float verticalPadding = 0.08f;
 
         private readonly List<float> _values = new List<float>();
+        private readonly List<float> _values2 = new List<float>(); // optional overlay series (model B)
+        private Color _color2 = new Color(1f, 0.45f, 0f, 1f);
         private float _playhead; // continuous index into _values
         private float _lo, _hi;
 
@@ -54,6 +56,25 @@ namespace SPWM.Visualization
             SetVerticesDirty();
         }
 
+        /// <summary>Overlay a second series (same x-axis, shared y-scale). Pass null to clear.</summary>
+        public void SetSecondarySeries(IList<float> values, Color color)
+        {
+            _values2.Clear();
+            if (values != null) _values2.AddRange(values);
+            _color2 = color;
+            RecomputeRange();
+            SetVerticesDirty();
+        }
+
+        /// <summary>Recolor the primary series (line, fill, halo).</summary>
+        public void SetPrimaryColor(Color c)
+        {
+            lineColor = c;
+            fillTopColor = new Color(c.r, c.g, c.b, 0.25f);
+            fillBottomColor = new Color(c.r, c.g, c.b, 0f);
+            SetVerticesDirty();
+        }
+
         /// <summary>Continuous index (e.g. GhostPlaybackManager.FramePosition). Fractional part interpolates the head.</summary>
         public void SetPlayhead(float index)
         {
@@ -68,6 +89,7 @@ namespace SPWM.Visualization
             if (!autoScale || _values.Count == 0) { _lo = yMin; _hi = yMax; return; }
             _lo = float.MaxValue; _hi = float.MinValue;
             foreach (float v in _values) { _lo = Mathf.Min(_lo, v); _hi = Mathf.Max(_hi, v); }
+            foreach (float v in _values2) { _lo = Mathf.Min(_lo, v); _hi = Mathf.Max(_hi, v); }
             if (includeZero) _lo = Mathf.Min(_lo, 0f);
             if (showReferenceLine) { _lo = Mathf.Min(_lo, referenceValue); _hi = Mathf.Max(_hi, referenceValue); }
             if (_hi - _lo < 1e-5f) _hi = _lo + 1f;
@@ -83,11 +105,20 @@ namespace SPWM.Visualization
             return new Vector2(r.xMin + x * r.width, r.yMin + y * r.height);
         }
 
-        private float SampleAt(float index)
+        private static float SampleAt(IList<float> vals, float index)
         {
             int i0 = Mathf.FloorToInt(index);
-            int i1 = Mathf.Min(i0 + 1, _values.Count - 1);
-            return Mathf.Lerp(_values[i0], _values[i1], index - i0);
+            int i1 = Mathf.Min(i0 + 1, vals.Count - 1);
+            return Mathf.Lerp(vals[i0], vals[i1], index - i0);
+        }
+
+        private List<Vector2> Revealed(Rect r, IList<float> vals)
+        {
+            int whole = Mathf.Min(Mathf.FloorToInt(_playhead), vals.Count - 1);
+            var pts = new List<Vector2>(whole + 2);
+            for (int i = 0; i <= whole; i++) pts.Add(ToLocal(r, i, vals[i]));
+            if (_playhead - whole > 1e-4f && whole < vals.Count - 1) pts.Add(ToLocal(r, _playhead, SampleAt(vals, _playhead)));
+            return pts;
         }
 
         protected override void OnPopulateMesh(VertexHelper vh)
@@ -101,10 +132,7 @@ namespace SPWM.Visualization
             for (int i = 0; i < _values.Count; i++) preview.Add(ToLocal(r, i, _values[i]));
 
             // Revealed portion up to fractional playhead.
-            int whole = Mathf.FloorToInt(_playhead);
-            var revealed = new List<Vector2>(whole + 2);
-            for (int i = 0; i <= whole; i++) revealed.Add(ToLocal(r, i, _values[i]));
-            if (_playhead - whole > 1e-4f) revealed.Add(ToLocal(r, _playhead, SampleAt(_playhead)));
+            var revealed = Revealed(r, _values);
 
             if (showReferenceLine && referenceValue >= _lo && referenceValue <= _hi)
                 AddDashedLine(vh, r, ToLocal(r, 0, referenceValue).y, referenceColor, 2f, 10f, 8f);
@@ -112,6 +140,19 @@ namespace SPWM.Visualization
             AddPolyline(vh, preview, lineThickness * 0.6f, previewColor);
             AddAreaFill(vh, revealed, r.yMin, fillTopColor, fillBottomColor);
             AddPolyline(vh, revealed, lineThickness, lineColor);
+
+            if (_values2.Count == _values.Count)
+            {
+                var prev2 = new List<Vector2>(_values2.Count);
+                for (int i = 0; i < _values2.Count; i++) prev2.Add(ToLocal(r, i, _values2[i]));
+                var rev2 = Revealed(r, _values2);
+                AddPolyline(vh, prev2, lineThickness * 0.6f, previewColor);
+                AddAreaFill(vh, rev2, r.yMin, new Color(_color2.r, _color2.g, _color2.b, 0.25f), new Color(_color2.r, _color2.g, _color2.b, 0f));
+                AddPolyline(vh, rev2, lineThickness, _color2);
+                Vector2 head2 = rev2[rev2.Count - 1];
+                AddDisc(vh, head2, headRadius * 2.2f, new Color(_color2.r, _color2.g, _color2.b, 0.25f));
+                AddDisc(vh, head2, headRadius, _color2);
+            }
 
             Vector2 head = revealed[revealed.Count - 1];
             AddDisc(vh, head, headRadius * 2.2f, new Color(lineColor.r, lineColor.g, lineColor.b, 0.25f)); // halo

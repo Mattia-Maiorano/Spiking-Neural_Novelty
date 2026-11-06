@@ -50,7 +50,19 @@ namespace SPWM.Visualization
             // 2.1 Title
             if (titleText != null) 
             {
-                titleText.text = "Spiking Predictor World Model";
+                var md = pm.Data != null ? pm.Data.metadata : null;
+                bool dualTitle = md != null && (md.has_dual_models || pm.ForceCompareModelsMode);
+                if (dualTitle)
+                {
+                    if (string.IsNullOrEmpty(md.model_version_b))
+                        throw new System.InvalidOperationException("[TelemetryDisplay] Compare mode requires metadata.model_version_b; re-export the trajectory.");
+                    titleText.supportRichText = true;
+                    titleText.text = $"<color=#00D9FF>A: {md.model_version}</color>  vs  <color=#FF7300>B: {md.model_version_b}</color>";
+                }
+                else
+                {
+                    titleText.text = md != null && !string.IsNullOrEmpty(md.model_version) ? md.model_version : "Spiking Predictor World Model";
+                }
             }
 
             GhostTrajectoryData data = pm.Data;
@@ -70,6 +82,28 @@ namespace SPWM.Visualization
                     latentSeries[i] = metrics.latent_error; 
                     posSeries[i] = metrics.position_abs_error;
                     velSeries[i] = metrics.velocity_abs_error; 
+                }
+
+                bool dual = (data.metadata != null && data.metadata.has_dual_models) || pm.ForceCompareModelsMode;
+                if (dual)
+                {
+                    var latB = new float[data.FrameCount];
+                    var posB = new float[data.FrameCount];
+                    var velB = new float[data.FrameCount];
+                    for (int i = 0; i < data.FrameCount; i++)
+                    {
+                        var mb = data.frames[i].instantaneous_metrics;
+                        latB[i] = mb.latent_error_b;
+                        posB[i] = mb.position_abs_error_b;
+                        velB[i] = mb.velocity_abs_error_b;
+                    }
+                    var blue = new Color(0.0f, 0.85f, 1.0f, 1f); // model A: HolographicGhost default _Color (cyan)
+                    var orange = new Color(1.0f, 0.45f, 0.0f, 1f); // model B: ghostBMaterial _Color (amber)
+                    foreach (var sp in new[] { latentErrorSparkline, positionErrorSparkline, velocityErrorSparkline })
+                        if (sp != null) sp.SetPrimaryColor(blue);
+                    if (latentErrorSparkline != null) latentErrorSparkline.SetSecondarySeries(latB, orange);
+                    if (positionErrorSparkline != null) positionErrorSparkline.SetSecondarySeries(posB, orange);
+                    if (velocityErrorSparkline != null) velocityErrorSparkline.SetSecondarySeries(velB, orange);
                 }
 
                 if (latentErrorSparkline != null) latentErrorSparkline.SetSeries(latentSeries);

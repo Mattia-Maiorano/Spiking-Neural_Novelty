@@ -30,6 +30,7 @@ def capture_unity_simulation_frames(
     unity_bin: str = DEFAULT_UNITY_BINARY,
     width: int = 1280,
     height: int = 720,
+    compare_models: bool = False,
 ) -> List[Path]:
     """
     Executes Unity in headless batchmode to step through the trajectory
@@ -74,8 +75,10 @@ def capture_unity_simulation_frames(
         str(height),
         "-logfile",
         str(output_frames_dir / "unity_render.log"),
-        "-quit",
     ]
+    if compare_models:
+        cmd.append("-compareModels")  # Trigger dual-rig generation in C#
+    cmd.append("-quit")
 
     print(f"[Unity Renderer] Launching Unity simulation capture ({width}x{height})...")
     res = subprocess.run(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
@@ -171,6 +174,11 @@ def main() -> None:
         action="store_true",
         help="Retain raw exported frame PNGs on disk after encoding",
     )
+    parser.add_argument(
+        "--compare-models",
+        action="store_true",
+        help="Enable dual-model trajectory overlay with distinct holographic materials",
+    )
     args = parser.parse_args()
 
     project_path = Path(args.unity_project)
@@ -196,6 +204,7 @@ def main() -> None:
             unity_bin=args.unity_bin,
             width=args.width,
             height=args.height,
+            compare_models=args.compare_models,
         )
 
         encode_frames_to_video(

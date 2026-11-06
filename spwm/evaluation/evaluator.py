@@ -176,7 +176,7 @@ class RolloutEvaluator:
             max_eval_h = min(max_horizon, max_avail_h)
             if max_eval_h <= 0:
                 return None
-            z_start, dyn_state, z_prefix = ground_initial_state(self.model, ev, t_start)
+            z_start, dyn_state, z_prefix = ground_initial_state(self.model, ev, t_start, actions=actions)
             rollout_events = ev[:, t_start + 1 : t_start + 1 + max_eval_h]
         else:
             latents = events_or_latents
@@ -261,7 +261,8 @@ class RolloutEvaluator:
             raise ValueError("rollout_trajectory: model has no physical_decoder; cannot decode joint angles.")
 
         with torch.no_grad():
-            z_star, _ = self.model.forward_representation(events[:, : t_start + 1 + eval_h])
+            roll_acts = actions[:, : t_start + 1 + eval_h] if actions is not None else None
+            z_star, _ = self.model.forward_representation(events[:, : t_start + 1 + eval_h], actions=roll_acts)
 
         return TrajectoryRollout(
             rollout=rollout_res,

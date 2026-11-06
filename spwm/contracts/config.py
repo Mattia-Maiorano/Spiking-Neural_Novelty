@@ -109,7 +109,8 @@ class DataConfig:
     cache_data: bool = True                         #: Whether to cache rendered event frames in RAM to accelerate training epochs.
     strict_dataset: bool = True                     #: Whether to strictly require real exported Unity trajectories (fail if missing).
     pre_contact_sensory_steps: int = 7              #: Number of approach steps before physical contact where Phase 1.5 sensory grounding begins.
-    post_contact_sensory_steps: int = 3             #: Number of steps after physical contact where Phase 1.5 sensory grounding is maintained before release.
+    post_contact_sensory_steps: int = 7             #: Number of steps after physical contact where Phase 1.5 sensory grounding is maintained before release.
+    weighted_sampling: bool = False                 #: Whether to apply weighted oversampling for heavy payloads and mid-plane reach trajectories.
 
     def __post_init__(self) -> None:
         if self.joint_count <= 0:
@@ -321,6 +322,7 @@ class ExperimentConfig:
         temporal_burn_in: Optional[int] = None,
         sequence_length: Optional[int] = None,
         total_trajectories: Optional[int] = None,
+        weighted_sampling: Optional[bool] = None,
     ) -> "ExperimentConfig":
         """
         Creates a new validated, frozen ExperimentConfig with explicit overrides.
@@ -338,6 +340,8 @@ class ExperimentConfig:
             data_updates["sequence_length"] = sequence_length
         if total_trajectories is not None:
             data_updates["total_trajectories"] = total_trajectories
+        if weighted_sampling is not None:
+            data_updates["weighted_sampling"] = weighted_sampling
         data = dataclasses.replace(self.data, **data_updates) if data_updates else self.data
 
         train_updates: Dict[str, Any] = {}

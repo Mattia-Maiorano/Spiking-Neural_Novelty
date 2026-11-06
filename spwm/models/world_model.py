@@ -412,7 +412,7 @@ class SPWM(nn.Module):
         """
         from spwm.models.rollout import ground_initial_state, rollout_latent
 
-        curr_z, dyn_state, z_prefix = ground_initial_state(self, events, t_start)
+        curr_z, dyn_state, z_prefix = ground_initial_state(self, events, t_start, actions=actions)
         decoder_state = self.physical_decoder.warm_up_filter(z_prefix)
         rollout_actions = actions[:, t_start : t_start + horizon] if actions is not None else None
         rollout_events = events[:, t_start + 1 : t_start + 1 + horizon]

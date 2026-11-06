@@ -90,6 +90,7 @@ def run_episode(
     payload_mass: float,
     payload_shape: str,
     device: torch.device,
+    actions: Optional[torch.Tensor] = None,
     approach_window: int = 20,
 ) -> EpisodeResult:
     """Executes closed-loop latent MPPI reaching on a single test trajectory."""
@@ -101,7 +102,7 @@ def run_episode(
     elevation = classify_elevation(target_pos[1])
 
     t_start = max(5, t_c - approach_window)
-    z_start, dyn_state, _ = ground_initial_state(model, events, t_start=t_start)
+    z_start, dyn_state, _ = ground_initial_state(model, events, t_start=t_start, actions=actions)
 
     dec_start = model.physical_decoder(z_start)
     initial_bias = dec_start[0, :6] / 3.14
@@ -307,8 +308,8 @@ def main() -> None:
         num_samples=args.num_samples,
         horizon=args.horizon,
         num_iterations=args.num_iterations,
-        noise_sigma=0.20,
-        temperature=0.03,
+        noise_sigma=[0.24, 0.44, 0.38, 0.24, 0.24, 0.24],
+        temperature=0.15,
         w_pos=1.0,
         w_term_pos=5.0,
         w_vel=0.08,
@@ -366,6 +367,7 @@ def main() -> None:
             payload_mass=mass,
             payload_shape=shape,
             device=device,
+            actions=batch["actions"].to(device) if "actions" in batch else None,
         )
         results.append(ep_res)
 

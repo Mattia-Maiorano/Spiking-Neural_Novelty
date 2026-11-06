@@ -23,6 +23,7 @@ import torch
 
 from spwm.contracts.config import ExperimentConfig
 from spwm.data.datasets import create_dataloaders
+from spwm.data.unity_episode_meta import episode_meta, weight_class
 from spwm.evaluation.evaluator import RolloutEvaluator
 from spwm.evaluation.visualizer import DEFAULT_UNITY_PROJECT_DIR, GhostTrajectory, GhostVisualizerExporter
 from spwm.models.world_model import SPWM
@@ -74,7 +75,19 @@ def main() -> None:
     parser.add_argument("--model-version", type=str, default="spwm_v0_7_3")
     parser.add_argument("--device", type=str, default=None, help="Device (cpu, mps, cuda)")
     parser.add_argument("--no-injection", action="store_true", help="Disable active perception sensory injection during rollout")
+    parser.add_argument("--checkpoint-b", type=str, default=None, help="Path to secondary model checkpoint")
+    parser.add_argument("--config-b", type=str, default=None, help="Path to secondary config YAML")
+    parser.add_argument("--model-version-b", type=str, default="spwm_v0_7_3_B")
+    parser.add_argument(
+        "--variants",
+        type=str,
+        default=None,
+        help="Comma list of <low|mid|high>:<light|normal|heavy>; exports one matching test episode per variant "
+        "to <output-dir>/trajectory_ghost_<height>_<weight>.json",
+    )
     args = parser.parse_args()
+    if bool(args.checkpoint_b) != bool(args.config_b):
+        parser.error("--checkpoint-b and --config-b must be provided together")
 
     cfg = ExperimentConfig.load(args.config)
     set_seed(cfg.project.seed)
@@ -99,6 +112,28 @@ def main() -> None:
         state_dict = state_dict["model_state"]
     model.load_state_dict(state_dict, strict=True)
     model.eval()
+
+    evaluator_b = None
+    if args.checkpoint_b and args.config_b:
+        chronicle.log_info(f"Loading Model B checkpoint: {args.checkpoint_b}")
+        cfg_b = ExperimentConfig.load(args.config_b)
+        ckpt_b = Path(args.checkpoint_b)
+        if ckpt_b.is_dir():
+            ckpt_b = ckpt_b / "model.pt"
+        model_b = SPWM.from_config(cfg_b).to(device)
+        state_dict_b = torch.load(ckpt_b, map_location=device, weights_only=False)
+        if isinstance(state_dict_b, dict) and "model_state" in state_dict_b:
+            state_dict_b = state_dict_b["model_state"]
+        model_b.load_state_dict(state_dict_b, strict=True)
+        model_b.eval()
+        evaluator_b = RolloutEvaluator(
+            model=model_b,
+            device=device,
+            horizons=[args.horizon],
+            joint_count=cfg_b.environment.joint_count,
+            temporal_burn_in=cfg_b.training.temporal_burn_in,
+            fixed_predictor=model_b.m1,
+        )
 
     seq_len = max(cfg.data.sequence_length, cfg.training.temporal_burn_in + args.horizon + 1)
     dataloaders = create_dataloaders(
@@ -132,6 +167,7 @@ def main() -> None:
         evaluator=evaluator,
         unity_project_dir=args.unity_project,
         model_version=args.model_version,
+        model_version_b=args.model_version_b if evaluator_b is not None else None,
         dt=cfg.environment.dt,
         horizon=args.horizon,
         joint_names=joint_names,
@@ -144,13 +180,40 @@ def main() -> None:
 
     test_len = len(dataloaders["test"].dataset)
 
-    if not is_multi_export:
+    if args.variants is not None:
+        test_ids = list(dataloaders["test"].dataset.trajectory_indices)
+        meta = {tid: episode_meta(tid) for tid in test_ids}
+        for variant in args.variants.split(","):
+            height, weight = variant.strip().split(":")
+            matches = [
+                pos for pos, tid in enumerate(test_ids)
+                if meta[tid][0] == height and weight_class(meta[tid][1]) == weight
+            ]
+            if not matches:
+                raise ValueError(f"No test episode with target height '{height}' and weight '{weight}'")
+            pos = matches[0]
+            batch, b_idx, s_idx = get_sample_from_loader(dataloaders["test"], pos)
+            chronicle.log_info(
+                f"Variant {height}_{weight}: test index {pos}, trajectory_id={test_ids[pos]}, "
+                f"mass={meta[test_ids[pos]][1]:.2f} kg"
+            )
+            ghost = exporter.capture_batch(
+                batch,
+                sample_index=s_idx,
+                extra_metadata={"batch_index": b_idx, "episode_index": 0, "test_dataset_index": pos,
+                                "target_height": height, "weight_class": weight},
+                with_active_perception=not args.no_injection,
+                evaluator_b=evaluator_b,
+            )
+            log_ghost_summary(ghost, exporter.save(ghost, path=target_dir / f"trajectory_ghost_{height}_{weight}.json"))
+    elif not is_multi_export:
         # Standard legacy single-trajectory capture
         ghost = exporter.capture(
             dataloaders["test"],
             batch_index=args.batch_index,
             sample_index=args.sample_index,
             with_active_perception=not args.no_injection,
+            evaluator_b=evaluator_b,
         )
         out_path = exporter.save(ghost, path=args.output)
         log_ghost_summary(ghost, out_path)
@@ -183,6 +246,7 @@ def main() -> None:
                     sample_index=s_idx,
                     extra_metadata=extra_meta,
                     with_active_perception=True,
+                    evaluator_b=evaluator_b,
                 )
                 path_with = target_dir / f"trajectory_ghost_ep{i}_with_injection.json"
                 saved_with = exporter.save(ghost_with, path=path_with)
@@ -194,6 +258,7 @@ def main() -> None:
                     sample_index=s_idx,
                     extra_metadata=extra_meta,
                     with_active_perception=False,
+                    evaluator_b=evaluator_b,
                 )
                 path_no = target_dir / f"trajectory_ghost_ep{i}_no_injection.json"
                 saved_no = exporter.save(ghost_no, path=path_no)
@@ -211,6 +276,7 @@ def main() -> None:
                     sample_index=s_idx,
                     extra_metadata=extra_meta,
                     with_active_perception=active_perception,
+                    evaluator_b=evaluator_b,
                 )
                 tag = "with_injection" if active_perception else "no_injection"
                 if len(episodes_to_export) == 1 and args.output is not None:

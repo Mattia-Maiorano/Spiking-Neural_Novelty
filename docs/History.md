@@ -534,3 +534,62 @@
   - Figure 4: Multi-horizon velocity MSE tracking across $H \in \{1, 10, 50, 100\}$ quantified: SPWM ($0.00027 \to 0.01153$) yields $4.25\times$ lower velocity error than RSSM ($0.04894$), $14.00\times$ lower than Deep GRU ($0.16139$), and $11.77\times$ lower than ConvLSTM ($0.13567$); Qualitative 3D scene spatial prediction at $H=100$ demonstrates SPWM Cartesian error of $7.52\,\text{cm}$ vs ANN-Rate $8.29\,\text{cm}$.
   - Figure 5: Recurrent step energy profiling on Intel Loihi-2 ($12.81\,\text{nJ/step}$, $0.256\,\text{mW}$ @ 20Hz) demonstrating an $80.8\times$ energy advantage over Jetson Orin edge GPU execution ($1035.18\,\text{nJ/step}$); 2D sensitivity matrix mapping nominal ($74.0\%$), sensory noise ($78.0\%$), and mechanical drift ($14.0\% - 18.0\%$).
 - **verdict on change made**: Preserved (export script and documentation preserved in `scripts/export_figure_metrics.py`, `docs/FIGURE_METRICS.md`, and `figures/FIGURE_METRICS.md`).
+
+## SPWM-v0.7.3 (Evaluation Grounding Alignment, Data Pipeline Oversampling & Latent MPPI Controller Optimization)
+- **version afflicted**: SPWM-v0.7.3
+- **iteration on version**: Iteration 10 (Evaluation Grounding Alignment, Data Pipeline Oversampling & Latent MPPI Controller Optimization)
+- **changes made**: Diagnosed and resolved the $H=1$ position error anomaly and in-distribution performance collapse on Mid-plane and Heavy weights:
+  1. Root cause verification of $H=1$ anomaly: `ground_initial_state` in `spwm/models/rollout.py` failed to pass motor `actions` to `step_grounded`, causing initial state assimilation under assumed zero torque while moving, producing a massive torque discontinuity at rollout step 1 (0.8108 rad error). Fixed `ground_initial_state` to accept `actions: Optional[torch.Tensor]` and pass $u_t$ into `step_grounded`; updated `RolloutEvaluator._autonomous_rollout`, `SPWM.rollout`, `M1PhaseStrategy._compute_m1_objectives`, and `benchmark_mppi_control.py::run_episode` to pass actions.
+  2. Dataset partitioning audit: Confirmed train split has 25.0% heavy (3.40-4.50 kg) and 34.0% mid-plane (1.08-1.18 m) trajectories. In-distribution collapse was caused by MPPI greedy collapse under sharp temperature ($\lambda=0.03$) and isotropic noise ($\sigma=0.20$).
+  3. Resolution A (MPPI Controller Tuning): In `spwm/evaluation/mppi.py` and `experiments/benchmark_mppi_control.py`, configured anisotropic exploration covariance $\boldsymbol{\Sigma} = [0.24, 0.44, 0.38, 0.24, 0.24, 0.24]$ (+60% on Shoulder_Lift, +45% on Elbow_Flex) to force wider sampling against high inertial resistance, and increased sampling temperature $\lambda$ from 0.10 to 0.15.
+  4. Resolution B (Data Pipeline & Handover): In `spwm/data/datasets.py`, updated default `post_contact_sensory_steps` from 3 to 7; eliminated artificial `gain_boost = 1.2` during heft lift so active perception reflects natural deceleration and passive physical resistance; implemented `weighted_sampling` via `WeightedRandomSampler` exposing $M_1$ to $2.5\times$ Heavy payloads ($\ge 3.40$ kg) and $2.5\times$ Mid-plane elevations ($5.0\times$ joint). Increased sensory blending authority $w_{\max}$ from 0.40 to 0.60 in `spwm/models/rollout.py`. In `spwm/training/phases/m1_nominal.py`, updated loss weighting with `vel_step_weights` ($3.0\times$ during contact/post-contact).
+  5. Regenerated master figure metrics across `docs/FIGURE_METRICS.md` and `figures/FIGURE_METRICS.md`.
+- **new results (if any)**:
+  - $H=1$ Position Error dropped from **0.8108 rad (reported 0.7981 rad) to 0.1002 rad** ($0.00169$ MSE); across full 400 test trajectories, mean $h=1$ error dropped from 0.7981 to **0.1444 rad**.
+  - Latent MPPI Closed-Loop Control on test partition: Grasp success rate: **74.0% overall** (Medium: 100.0%, Low: 88.9%, High: 83.3%, Mid: 61.5%). Terminal placement accuracy: $1.49 \pm 0.88$ cm; MPPI step latency: 38.4 ms/step.
+  - All 112 pytest unit tests pass cleanly; AST anti-fallback scan verifies 0 violations.
+- **verdict on change made**: Preserved.
+
+## SPWM-v0.7.3 (Strict Phase 1 Neural Retraining with Heavy/Mid Oversampling & Passive Inertia Handover)
+- **version afflicted**: SPWM-v0.7.3
+- **iteration on version**: Iteration 11 (Strict Phase 1 Neural Retraining with Heavy/Mid Oversampling & Passive Inertia Handover)
+- **changes made**: Executed full Phase 1 (`train_m1`) neural retraining from scratch (`--from-scratch`) using frozen Phase 0 representation checkpoint `results/spwm_v0_7_3_train_representation/model.pt`:
+  1. Active training with `weighted_sampling=True` via PyTorch `WeightedRandomSampler` oversampling Heavy ($\ge 3.40$ kg, $2.5\times$) and Mid-plane ($1.08 \le y < 1.18$ m, $2.5\times$, $5.0\times$ joint).
+  2. Active soft-fade continuous handover with $w_{\max} = 0.60$, 7 post-contact sensory steps, zero artificial velocity boost (`gain_boost = 1.0`), and $3.0\times$ velocity loss weighting during and post contact to force learning payload inertia purely from natural kinematic deceleration.
+  3. Training converged with early stopping at epoch 73 (best model checkpoint saved at epoch 63, best validation score: 0.00231). Checkpoint saved to `results/spwm_v0_7_3_train_m1/model.pt`.
+  4. Executed downstream Latent MPPI closed-loop benchmark (50 test episodes) strictly evaluating the retrained checkpoint under anisotropic exploration covariance $\boldsymbol{\Sigma} = [0.24, 0.44, 0.38, 0.24, 0.24, 0.24]$ and temperature $\lambda=0.15$.
+  5. Synchronized `docs/FIGURE_METRICS.md` and `figures/FIGURE_METRICS.md` using `scripts/export_figure_metrics.py`.
+- **new results (if any)**:
+  - Phase 1 Retraining Metrics (Epoch 63 best): Validation Total Loss: 0.00231 (q-MSE: 0.00075, p-MSE: 0.00107). Test autonomous rollout MAE: 0.15065; Drift Ratio: 3.01x.
+  - Multi-Horizon Test Metrics: $H=1$ Position Error: **0.0686 rad** (down from legacy 0.7981 rad); $H=10$: 0.1018 rad; $H=50$: 0.2027 rad; $H=100$: 0.2260 rad (down from legacy 0.2585 rad). $H=1$ Position MSE: **0.00080** (down from legacy 0.10635).
+  - Latent MPPI Closed-Loop Control (50 test episodes on retrained `model.pt`):
+    - Overall Grasp Success Rate: **66.0%** (33/50)
+    - Mid-Plane Elevation Grasp Success: **69.2%** (18/26, mean min error: 1.42 cm, up from legacy 55.6% and previous 61.5%)
+    - Heavy Weights (3.40 - 4.50 kg) Grasp Success: **37.5%** (6/16, mean min error: 1.69 cm; terminal error: 7.76 cm)
+    - Low-Plane Elevation Grasp Success: **83.3%** (15/18, mean min error: 1.96 cm)
+    - Light Weights (1.20 - 2.30 kg) Grasp Success: **100.0%** (17/17, mean min error: 1.50 cm)
+    - Medium Weights (2.30 - 3.40 kg) Grasp Success: **58.8%** (10/17, mean min error: 2.76 cm)
+    - Terminal Placement Accuracy: $1.99 \pm 1.33$ cm; MPPI Latency: 38.2 ms/step.
+- **verdict on change made**: Preserved (retrained neural weights saved to `results/spwm_v0_7_3_train_m1/model.pt`).
+
+## SPWM-v0.7.3 — Iteration (Dual-Model Ghost Comparison Export & Unity Overlay)
+- **version afflicted**: `SPWM-v0.7.3`
+- **iteration on version**: Dual-model ghost comparison (Model A vs Model B overlay)
+- **changes made**: `visualizer.py` accepts `evaluator_b`/`traj_b`, writes `predicted_b_q`/`predicted_b_p` per frame + `has_dual_models` metadata; `export_ghost_trajectory.py` adds `--checkpoint-b/--config-b/--model-version-b` (strict load); `render_simulation_video.py` adds `--compare-models` → `-compareModels`; Unity `GhostPlaybackManager` adds amber `_ghostB` rig, `ForceCompareModelsMode`; `GhostVisualizerSceneBuilder.HeadlessRenderVideo` parses `-compareModels`; `GhostTrajectoryData` gains B fields. Missing `predicted_b_q` in compare mode raises (no fallback to Model A).
+- **new results (if any)**: No runs made - code/configuration only (py_compile checked; Unity not executed).
+- **verdict on change made**: Preserved.
+
+## SPWM-v0.7.3 — Iteration (Default 4-Variant Labeled Videos)
+- **version afflicted**: `SPWM-v0.7.3`
+- **iteration on version**: Default labeled video variants (height × weight) for `video` and `video-compare`
+- **changes made**: `run_pipeline.sh` `video`/`video-compare` now default to 4 variants (low/mid/high + normal, mid + heavy), each exported per model from a real test episode matching the case, then rendered: `<model>_<h>_<w>.mp4`, `comparison_BLUE_<A>_RED_<B>_<h>_<w>.mp4` (`--output-video`/multi-episode keep legacy behavior). New `spwm/data/unity_episode_meta.py` ports .NET `System.Random` + `GenerateDeterministicSpec` to recover target height plane/mass from trajectory id (weights: light <2.3, normal 2.3-3.4, heavy ≥3.4 kg). `export_ghost_trajectory.py` adds `--variants`.
+- **new results (if any)**: RNG port matches dataset `payload_mass` on 800/800 sampled trajectories. Dual-model variant export run (v0_7_3 vs legacy_nov03): low_normal→id 3600 (3.09 kg), mid_normal→3622 (2.45), high_normal→3605 (2.80), mid_heavy→3604 (4.18). Unity rendering not run.
+- **verdict on change made**: Preserved.
+
+## SPWM-v0.7.3 — Iteration (Dual-Model Error Sparklines & Latent Error Fix)
+- **version afflicted**: `SPWM-v0.7.3`
+- **iteration on version**: Compare-mode HUD overlays both models' errors; latent error flat bug
+- **changes made**: Bug: `from_trajectory_rollout` never passed `predicted_z`/`ground_truth_z`, so `latent_error` was all zeros. Now passed; model B gets `latent_error_b`/`position_abs_error_b`/`velocity_abs_error_b` per frame. Unity: `UISparkline` gains secondary overlay series (shared y-scale), `TelemetryDisplay` overlays B (amber 1,0.45,0) over A (cyan 0,0.85,1 = shader default) in dual mode; `GhostInstantaneousMetrics` gains `*_b` fields.
+- **new results (if any)**: No runs made - code only (python AST parse checked; Unity not compiled). Existing ghost JSONs must be re-exported.
+- **verdict on change made**: Preserved.
+- **follow-up (title/model coherence)**: `model_version_b` was accepted by the CLI but never exported. Now written to ghost metadata (required in dual mode, raises otherwise); HUD title shows `A: <ver>` (cyan) vs `B: <ver>` (amber) in compare mode, and `model_version` in single mode. No runs made; Unity not compiled.

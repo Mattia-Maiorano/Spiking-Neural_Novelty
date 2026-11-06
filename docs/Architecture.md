@@ -362,19 +362,29 @@ To demonstrate downstream closed-loop control without relying on an external phy
 
 ### 8.1 Controller Formulation & Mental Simulation
 - **Candidate Trajectories**: $K = 256$ candidate action sequences sampled per control cycle.
-- **Planning Horizon**: $H = 20$ timesteps ($1.0\,\text{s}$ at $20\,\text{Hz}$).
+- **Planning Horizon**: $H = 30$ timesteps ($1.5\,\text{s}$ at $20\,\text{Hz}$).
 - **Refinement Iterations**: $N_{\text{iter}} = 3$ iterations of importance sampling per step.
+- **Temporally Correlated Noise Generation**: Action samples incorporate AR(1) temporal noise smoothing:
+  $$\boldsymbol{\epsilon}_\tau = \beta \boldsymbol{\epsilon}_{\tau-1} + \sqrt{1 - \beta^2} \boldsymbol{\eta}_\tau, \quad \boldsymbol{\eta}_\tau \sim \mathcal{N}(\mathbf{0}, \boldsymbol{\Sigma})$$
+  with $\beta = 0.75$, allowing the controller to explore and sustain smooth, continuous torques required for heavy payloads without high-frequency white noise cancellation.
 - **Mental Simulation Unroll**: Trajectory candidates are evaluated strictly inside the isolated symplectic `LatentPredictor` ($M_1$):
   $$\mathbf{z}_{\tau+1} = M_1(\mathbf{z}_\tau, \mathbf{u}_\tau), \quad \hat{\mathbf{y}}_\tau = \text{PhysicalDecoder}(\mathbf{z}_\tau)$$
   where $\mathbf{z}_0$ is grounded from the latest sensory frames via active perception. Neither the visual encoder nor ALIF spiking dynamics are executed during the $K \times H$ mental simulation, enabling ultra-fast vectorization.
 
 ### 8.2 Path Integral Cost Function
-The cumulative trajectory cost $\mathcal{C}_k$ for candidate $k$ balances Cartesian tracking, terminal placement error, velocity damping, and control smoothness:
-$$\mathcal{C}_k = \sum_{\tau=1}^H \left[ w_{\text{pos}} \|\mathbf{x}_{\text{ee}}(\tau) - \mathbf{x}_{\text{goal}}\|_2 + w_{\text{vel}} \|\hat{\mathbf{p}}_\tau\|_2 + w_{\text{act}} \|\mathbf{u}_\tau - \mathbf{u}_{\tau-1}\|_2 \right] + w_{\text{term\_pos}} \|\mathbf{x}_{\text{ee}}(H) - \mathbf{x}_{\text{goal}}\|_2$$
+The cumulative trajectory cost $\mathcal{C}_k$ for candidate $k$ eliminates intermediate position penalties and velocity damping, focusing on terminal accuracy, terminal stasis, anti-gravity altitude reward, and control smoothness:
+$$\mathcal{C}_k = \sum_{\tau=H-H_{\text{term}}+1}^H \left[ w_{\text{term\_pos}} \|\mathbf{x}_{\text{ee}}(\tau) - \mathbf{x}_{\text{goal}}\|_2 + w_{\text{term\_rot}} \mathcal{L}_{\text{rot}}(\mathbf{R}_{\text{ee}}(\tau), \mathbf{R}_{\text{goal}}) \right] + w_{\text{vel}} \|\hat{\mathbf{p}}_H\|_2 + \sum_{\tau=1}^H w_{\text{act}} \|\mathbf{u}_\tau - \mathbf{u}_{\tau-1}\|_2 - \mathcal{R}_{\text{alt}}$$
+
+where:
+- **Terminal Cost Horizon**: Position and SE(3) orientation errors are evaluated exclusively over the terminal horizon window ($H_{\text{term}} = 4$, last 3–5 steps) with no running in-itinere position cost.
+- **Terminal Stasis Gate**: Joint velocity damping is zero during transit ($w_{\text{vel\_itinere}} = 0$) and applied solely at the final step $\tau = H$.
+- **Anti-Gravity Altitude Heuristic**: When the target is higher than the initial end-effector position ($y_{\text{goal}} > y_{\text{ee}}(0)$), upward altitude increments are explicitly rewarded to cancel gravity droop:
+  $$\mathcal{R}_{\text{alt}} = w_{\text{altitude}} \cdot \mathbb{I}(y_{\text{goal}} > y_{\text{ee}}(0)) \sum_{\tau=1}^{H-1} \max(0, y_{\text{ee}}(\tau+1) - y_{\text{ee}}(\tau))$$
+- $\mathcal{L}_{\text{rot}}(\mathbf{R}_{\text{ee}}, \mathbf{R}_{\text{goal}}) = (1 - \mathbf{f}_{\text{ee}}^\top \mathbf{f}_{\text{goal}}) + (1 - \mathbf{u}_{\text{ee}}^\top \mathbf{u}_{\text{goal}})$ enforces orientation alignment across end-effector forward (+Z) and up (+Y) coordinate frames.
 
 - **Controller Parameters**:
-  - Class defaults in [`LatentMPPIController`](file:///Users/Mattia/Desktop/Studies/Temp/spwm/evaluation/mppi.py): $w_{\text{pos}} = 1.0, w_{\text{term\_pos}} = 1.0, w_{\text{vel}} = 0.10, w_{\text{act}} = 0.05$, sampling noise $\sigma = 0.28$, temperature $\lambda = 0.10$.
-  - Benchmark profile in [`benchmark_mppi_control.py`](file:///Users/Mattia/Desktop/Studies/Temp/experiments/benchmark_mppi_control.py): $w_{\text{pos}} = 1.0, w_{\text{term\_pos}} = 5.0, w_{\text{vel}} = 0.08, w_{\text{act}} = 0.02$, sampling noise $\sigma = 0.20$, temperature $\lambda = 0.03$.
+  - Class defaults in [`LatentMPPIController`](file:///Users/Mattia/Desktop/Studies/Temp/spwm/evaluation/mppi.py): $H = 30, H_{\text{term}} = 4, \beta = 0.75, w_{\text{pos}} = 0.0, w_{\text{rot}} = 0.0, w_{\text{term\_pos}} = 5.0, w_{\text{term\_rot}} = 2.0, w_{\text{vel}} = 0.08, w_{\text{act}} = 0.005, w_{\text{altitude}} = 2.0$, sampling noise $\boldsymbol{\Sigma} = [0.24, 0.44, 0.38, 0.24, 0.24, 0.24]$, temperature $\lambda = 0.15$.
+  - Benchmark profile in [`benchmark_mppi_control.py`](file:///Users/Mattia/Desktop/Studies/Temp/experiments/benchmark_mppi_control.py): matches controller defaults with full SE(3) target pose extracted via `DifferentiableForwardKinematics.forward_homogeneous`.
 
 Candidate weights $w_k$ are computed via Boltzmann temperature scaling:
 $$\beta = \min_{j} \mathcal{C}_j, \quad w_k = \frac{\exp\left(-\frac{1}{\lambda} (\mathcal{C}_k - \beta)\right)}{\sum_{j=1}^K \exp\left(-\frac{1}{\lambda} (\mathcal{C}_j - \beta)\right)}$$

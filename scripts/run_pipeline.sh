@@ -225,6 +225,8 @@ Commands:
                      low/mid/high + normal, and mid + heavy.
   video-compare      Auto-detect two models and render the 4 labeled variants as
                      comparison_BLUE_<modelA>_RED_<modelB>_<height>_<weight>.mp4.
+  video-mppi         Export and render closed-loop Latent MPPI control video
+                     (<output-video> or results/videos/<model>_mppi_control.mp4).
   all                Run complete pipeline: train -> export-unity -> video.
 
 Basic Options:
@@ -237,6 +239,7 @@ Basic Options:
   --checkpoint-b <path>  Path to model B checkpoint (.pt) for dual-arm comparison.
   --model-version, -a    Model A version tag (default: ${DEFAULT_MODEL_VERSION}).
   --model-version-b      Model B version tag (default: ${DEFAULT_MODEL_VERSION_B}).
+  --trajectory-id <ID>   Specific trajectory ID to export/render for MPPI (default: auto-detected best test episode).
   --horizon <H>          Rollout / render horizon steps (default: ${DEFAULT_HORIZON}).
   --episodes <N>         Number of episodes to export / render (default: ${DEFAULT_EPISODES}).
   --multi-episode        Render 5 episodes across different episodes, each with and without injection.
@@ -566,6 +569,61 @@ run_video_compare() {
 }
 
 # ------------------------------------------------------------------------------
+# Action 6: Closed-Loop Latent MPPI Simulation Video
+# ------------------------------------------------------------------------------
+run_video_mppi() {
+    local horizon="${HORIZON:-$DEFAULT_HORIZON}"
+    local traj_id="${TRAJECTORY_ID:-3622}"
+    local out_dir="${OUTPUT_DIR:-$DEFAULT_OUTPUT_DIR}"
+    local output_video="${OUTPUT_VIDEO:-${out_dir}/${MODEL_VERSION:-$DEFAULT_MODEL_VERSION}_mppi_control.mp4}"
+    local json_file="${JSON_FILE:-sim/Assets/StreamingAssets/trajectory_ghost_mppi.json}"
+
+    local ckpt="${CHECKPOINT_PATH:-}"
+    local cfg="${CONFIG_PATH:-}"
+    local ver="${MODEL_VERSION:-}"
+
+    if [[ -z "${ckpt}" || -z "${cfg}" ]]; then
+        local detected
+        if detected="$(find_latest_m1_dir "${ver}")"; then
+            local dir_a
+            dir_a="$(echo "${detected}" | cut -f1)"
+            [[ -z "${ckpt}" ]] && ckpt="${dir_a}/model.pt"
+            [[ -z "${cfg}" ]] && cfg="${dir_a}/config.yaml"
+            [[ -z "${ver}" ]] && ver="$(echo "${detected}" | cut -f2)"
+        else
+            echo "Error: Could not automatically detect a valid M1 checkpoint." >&2
+            exit 1
+        fi
+    fi
+
+    echo "======================================================================"
+    echo " Rendering Closed-Loop Latent MPPI Simulation Video (.mp4)..."
+    echo " Checkpoint:     ${ckpt} (${ver})"
+    echo " Config:         ${cfg}"
+    echo " Trajectory ID:  ${traj_id}"
+    echo " Horizon:        ${horizon}"
+    echo " Output Video:   ${output_video}"
+    echo "======================================================================"
+
+    mkdir -p "$(dirname "${json_file}")"
+    mkdir -p "$(dirname "${output_video}")"
+
+    "${PYTHON_BIN}" experiments/export_mppi_trajectory.py \
+        --checkpoint "${ckpt}" \
+        --config "${cfg}" \
+        --trajectory-id "${traj_id}" \
+        --horizon "${horizon}" \
+        --output "${json_file}"
+
+    "${PYTHON_BIN}" scripts/render_simulation_video.py \
+        --json-file "${json_file}" \
+        --output "${output_video}" \
+        --horizon "${horizon}"
+
+    echo ">>> Latent MPPI simulation video rendered successfully at: ${output_video}"
+}
+
+# ------------------------------------------------------------------------------
 # Argument Parsing
 # ------------------------------------------------------------------------------
 if [[ $# -eq 0 ]]; then
@@ -593,11 +651,16 @@ OUTPUT_VIDEO=""
 EPISODES=""
 COMPARE_INJECTION=""
 OUTPUT_DIR=""
+TRAJECTORY_ID=""
 
 while [[ $# -gt 0 ]]; do
     case "$1" in
         --trajectories|-t)
             TOTAL_TRAJECTORIES="$2"
+            shift 2
+            ;;
+        --trajectory-id)
+            TRAJECTORY_ID="$2"
             shift 2
             ;;
         --export-dir)
@@ -697,6 +760,9 @@ case "${COMMAND}" in
         ;;
     video-compare|video-comparison|compare-video)
         run_video_compare
+        ;;
+    video-mppi|mppi-video|mppi)
+        run_video_mppi
         ;;
     3|export-unity|export_unity|unity)
         run_export_unity

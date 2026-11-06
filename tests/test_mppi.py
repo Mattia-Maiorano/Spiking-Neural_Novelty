@@ -66,6 +66,29 @@ def test_mppi_single_step_planning(mppi_setup):
     assert result.latency_ms > 0.0
 
 
+def test_mppi_se3_orientation_planning(mppi_setup):
+    controller, _, _, fk = mppi_setup
+    controller.reset()
+
+    z_t = torch.randn(128)
+    target_q = torch.tensor([0.1, -0.2, 0.3, 0.0, 0.1, -0.1])
+    target_T = fk.forward_homogeneous(target_q.unsqueeze(0))[0]
+
+    # Test passing 4x4 SE(3) matrix
+    result_se3 = controller.plan_step(z_t, target_T)
+    assert isinstance(result_se3, MPPIPlanResult)
+    assert result_se3.action.shape == (6,)
+    assert result_se3.min_cost > 0.0
+
+    # Test passing 3D pos + 3x3 rotation matrix
+    target_pos = target_T[:3, 3]
+    target_rot = target_T[:3, :3]
+    result_pos_rot = controller.plan_step(z_t, target_pos, target_rot=target_rot)
+    assert isinstance(result_pos_rot, MPPIPlanResult)
+    assert result_pos_rot.action.shape == (6,)
+    assert result_pos_rot.min_cost > 0.0
+
+
 def test_mppi_reset_with_bias(mppi_setup):
     controller, _, _, _ = mppi_setup
     bias = torch.tensor([0.2, -0.3, 0.1, 0.0, 0.5, -0.1])

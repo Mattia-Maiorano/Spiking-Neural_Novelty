@@ -340,14 +340,16 @@ namespace SPWM.Editor
             string trajJsonPath = "sim/Assets/StreamingAssets/trajectory_ghost.json";
             int width = 1280;
             int height = 720;
+            bool compareModels = false;
 
             string[] args = System.Environment.GetCommandLineArgs();
-            for (int i = 0; i < args.Length - 1; i++)
+            for (int i = 0; i < args.Length; i++)
             {
-                if (args[i] == "-framesDir") framesDir = args[i + 1];
-                else if (args[i] == "-trajectoryJson") trajJsonPath = args[i + 1];
-                else if (args[i] == "-width" && int.TryParse(args[i + 1], out int w)) width = w;
-                else if (args[i] == "-height" && int.TryParse(args[i + 1], out int h)) height = h;
+                if (args[i] == "-framesDir" && i < args.Length - 1) framesDir = args[i + 1];
+                else if (args[i] == "-trajectoryJson" && i < args.Length - 1) trajJsonPath = args[i + 1];
+                else if (args[i] == "-width" && i < args.Length - 1 && int.TryParse(args[i + 1], out int w)) width = w;
+                else if (args[i] == "-height" && i < args.Length - 1 && int.TryParse(args[i + 1], out int h)) height = h;
+                else if (args[i] == "-compareModels") compareModels = true;
             }
 
             if (!System.IO.File.Exists(trajJsonPath))
@@ -368,6 +370,8 @@ namespace SPWM.Editor
                 return;
             }
 
+            // Apply the flag before LoadTrajectory so the second rig is created
+            playback.ForceCompareModelsMode = compareModels;
             playback.LoadTrajectory(trajJsonPath);
 
             var camObj = GameObject.FindWithTag("MainCamera");

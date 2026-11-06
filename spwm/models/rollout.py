@@ -59,9 +59,11 @@ def ground_initial_state(
     model: nn.Module,
     events: torch.Tensor,
     t_start: int,
+    actions: Optional[torch.Tensor] = None,
 ) -> Tuple[torch.Tensor, DynamicsState, torch.Tensor]:
     """
     Ground initial latent state z_start and dynamics state from initial frames t in [0, t_start].
+    Sensory-driven state assimilation with action conditioning u_t across burn-in frames.
     Returns (z_start, dyn_state, z_prefix) where z_prefix is [B, t_start + 1, latent_dim].
     """
     B = events.shape[0]
@@ -70,7 +72,15 @@ def ground_initial_state(
     curr_z = dyn_state.z_prev
     latents = []
     for t in range(t_start + 1):
-        curr_z, dyn_state = step_grounded(model, events[:, t], dyn_state, in_sensory_phase=True, unconstrained=True)
+        u_t = actions[:, t] if (actions is not None and actions.dim() == 3) else actions
+        curr_z, dyn_state = step_grounded(
+            model,
+            events[:, t],
+            dyn_state,
+            in_sensory_phase=True,
+            unconstrained=True,
+            action=u_t,
+        )
         latents.append(curr_z)
     z_prefix = torch.stack(latents, dim=1)
     return curr_z, dyn_state, z_prefix
@@ -191,7 +201,7 @@ def rollout_latent(
 
         prev_flag = torch.zeros(B, dtype=torch.long, device=z_init.device)
         fade_counter = torch.zeros(B, dtype=torch.long, device=z_init.device)
-        w_max = 0.40
+        w_max = 0.60
         ramp_steps = model.dynamics.gate_ramp_steps
 
         for step in range(horizon):
@@ -238,8 +248,8 @@ def rollout_latent(
                         )
 
                     # Continuous soft blending weight w_t:
-                    # - flag == 1: ramps smoothly over gate_ramp_steps to w_max = 0.40
-                    # - transition into flag == 2: ramps down over 2 steps (0.20 -> 0.00)
+                    # - flag == 1: ramps smoothly over gate_ramp_steps to w_max = 0.60
+                    # - transition into flag == 2: ramps down over 2 steps (0.30 -> 0.00)
                     # - all other steps (flag == 0 or late flag 2): w_t = 0.00
                     is_p1 = (flag_step == 1).unsqueeze(-1).to(dtype=curr_z.dtype)
                     is_fade1 = ((flag_step == 2) & (fade_counter == 1)).unsqueeze(-1).to(dtype=curr_z.dtype)

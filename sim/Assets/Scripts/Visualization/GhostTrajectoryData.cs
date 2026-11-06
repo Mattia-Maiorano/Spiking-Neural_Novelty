@@ -13,6 +13,9 @@ namespace SPWM.Visualization
     public sealed class GhostInstantaneousMetrics
     {
         public float latent_error;                  // ||z_hat_t - z*_t||_2 (or MSE)
+        public float latent_error_b;                // model B (compare mode)
+        public float position_abs_error_b;
+        public float velocity_abs_error_b;
         public float position_abs_error;            // ||q_hat_t - q*_t||_2 (rad)
         public float velocity_abs_error;            // ||p_hat_t - p*_t||_2 (rad/s)
         public float velocity_relative_degradation; // E_v(t) / E_v(1)
@@ -28,6 +31,8 @@ namespace SPWM.Visualization
         public float[] predicted_q;
         public float[] ground_truth_p;
         public float[] predicted_p;
+        public float[] predicted_b_q;
+        public float[] predicted_b_p;
         public GhostInstantaneousMetrics instantaneous_metrics;
         public float[] global_events;
         public float[] wrist_events;
@@ -55,12 +60,14 @@ namespace SPWM.Visualization
     {
         public string schema;
         public string model_version;
+        public string model_version_b;
         public int horizon;
         public float dt;
         public int joint_count;
         public string[] joint_names;
         public string angle_unit;
         public bool has_velocities;
+        public bool has_dual_models;
         public int t_start;
         public int sample_index;
         public int trajectory_id;

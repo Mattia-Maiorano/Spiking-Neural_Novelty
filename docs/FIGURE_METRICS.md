@@ -3,8 +3,8 @@
 **Publication Title**: Resolving Velocity Drift in 3D Manipulation: Phase-Space Spiking World Models with Active Perception and Latent MPC  
 **Target Venue**: 10th Conference on Robot Learning (CoRL 2026)  
 **Production Baseline**: `SPWM-v0.7.3`  
-**Generated**: 2026-11-06 06:20:09 UTC  
-**Pipeline Extraction Time**: 30.66 seconds  
+**Generated**: 2026-11-06 11:37:25 UTC  
+**Pipeline Extraction Time**: 31.93 seconds  
 **AST Anti-Fallback Status**: STRICT COMPLIANCE (0 violations)  
 
 ---
@@ -47,18 +47,18 @@ Figure 1 (`figures/fig1_teaser.pdf`, `fig1_mppi_setup.pdf`, `fig1_joint_error_ho
 | :--- | :---: | :---: | :--- |
 | **Trajectory ID** | $\text{TID}$ | `0` | Canonical test episode |
 | **Payload Mass** | $m_{\text{payload}}$ | `2.044 kg` | Inertial mass transferred to arm |
-| **Planning Step** | $t_{\text{plan}}$ | `34` | Control invocation timestep ($t = 0.05 \text{s} \times 34 = 1.70 \text{s}$) |
-| **Contact Step** | $t_{\text{contact}}$ | `54` | Physical grasp contact timestamp |
-| **Target 3D Position** | $\mathbf{x}_{\text{target}}$ | `(-0.1715, 1.0123, 0.4148) m` | Forward Kinematics at grasp contact |
-| **Initial EE Position** | $\mathbf{x}_{\text{ee}}(t_{\text{plan}})$ | `(-0.0775, 1.0698, 0.4102) m` | Starting tip position |
-| **Decoded Latent EE Position** | $\hat{\mathbf{x}}_{\text{ee}}(\mathbf{z}_{t})$ | `(-0.1919, 1.1944, 0.4855) m` | Decoded tip position from grounded $\mathbf{z}_t$ |
-| **Best Rollout Terminal EE** | $\hat{\mathbf{x}}_{\text{ee}}(t+H)$ | `(-0.1192, 1.0790, 0.4534) m` | Terminal tip position of best rollout |
-| **Best Terminal Distance** | $\|\hat{\mathbf{x}}_{H} - \mathbf{x}_{\text{target}}\|_2$ | **`9.31 cm`** | Accuracy achieved within 20 latent steps |
-| **Initial Distance to Target** | $\|\mathbf{x}_0 - \mathbf{x}_{\text{target}}\|_2$ | `11.02 cm` | Initial approach distance |
+| **Planning Step** | $t_{\text{plan}}$ | `27` | Control invocation timestep ($t = 0.05 \text{s} \times 27 = 1.35 \text{s}$) |
+| **Contact Step** | $t_{\text{contact}}$ | `47` | Physical grasp contact timestamp |
+| **Target 3D Position** | $\mathbf{x}_{\text{target}}$ | `(-0.1557, 1.0253, 0.4161) m` | Forward Kinematics at grasp contact |
+| **Initial EE Position** | $\mathbf{x}_{\text{ee}}(t_{\text{plan}})$ | `(-0.0306, 1.1030, 0.3976) m` | Starting tip position |
+| **Decoded Latent EE Position** | $\hat{\mathbf{x}}_{\text{ee}}(\mathbf{z}_{t})$ | `(-0.1882, 1.2020, 0.4967) m` | Decoded tip position from grounded $\mathbf{z}_t$ |
+| **Best Rollout Terminal EE** | $\hat{\mathbf{x}}_{\text{ee}}(t+H)$ | `(-0.1780, 1.0156, 0.4553) m` | Terminal tip position of best rollout |
+| **Best Terminal Distance** | $\|\hat{\mathbf{x}}_{H} - \mathbf{x}_{\text{target}}\|_2$ | **`4.61 cm`** | Accuracy achieved within 20 latent steps |
+| **Initial Distance to Target** | $\|\mathbf{x}_0 - \mathbf{x}_{\text{target}}\|_2$ | `14.84 cm` | Initial approach distance |
 | **Sample Trajectories** | $K$ | `256` | Candidate perturbations sampled per step |
 | **Planning Horizon** | $H$ | `20` | Autonomous rollout steps ($1.0 \text{s}$) |
 | **Refinement Iterations** | $N_{\text{iter}}$ | `3` | Cross-entropy temperature updates |
-| **Max Normalized Weight** | $\max_k w_k$ | `0.9989` | Peak importance weight |
+| **Max Normalized Weight** | $\max_k w_k$ | `0.9906` | Peak importance weight |
 | **Min Normalized Weight** | $\min_k w_k$ | `0.000000` | Minimum importance weight |
 | **Effective Sample Size** | $N_{\text{eff}} = 1 / \sum w_k^2$ | **`1.0 / 256`** | Path-integral trajectory diversity |
 
@@ -68,30 +68,30 @@ Evaluated on $N = 400$ unseen test split trajectories unrolled autonomously up t
 
 | Horizon $h$ | Step Time | SPWM Mean $\pm$ Std (rad) | SPWM Median [Q25, Q75] | ANN-Rate Mean $\pm$ Std (rad) | ANN-Rate Median [Q25, Q75] | Diff (rad) | Heft Fraction |
 | :---: | :---: | :---: | :---: | :---: | :---: | :---: | :---: |
-| **$h=1$** | 0.05 s | `0.7981 ± 0.0301` | `0.7975 [0.7792, 0.8173]` | `0.0901 ± 0.0293` | `0.0868 [0.0706, 0.1067]` | `+0.7081` | `0.0%` |
-| **$h=2$** | 0.10 s | `0.5274 ± 0.0251` | `0.5274 [0.5123, 0.5454]` | `0.1379 ± 0.0258` | `0.1351 [0.1202, 0.1531]` | `+0.3895` | `0.0%` |
-| **$h=5$** | 0.25 s | `0.1988 ± 0.0144` | `0.1991 [0.1899, 0.2086]` | `0.1826 ± 0.0201` | `0.1798 [0.1678, 0.1962]` | `+0.0163` | `0.0%` |
-| **$h=10$** | 0.50 s | `0.1475 ± 0.1780` | `0.0733 [0.0589, 0.1146]` | `0.3459 ± 0.1350` | `0.2876 [0.2604, 0.3732]` | `-0.1985` | `0.0%` |
-| **$h=15$** | 0.75 s | `0.3234 ± 0.2557` | `0.1881 [0.1503, 0.3977]` | `0.4373 ± 0.1949` | `0.3515 [0.2926, 0.5374]` | `-0.1139` | `11.0%` |
-| **$h=20$** | 1.00 s | `0.2091 ± 0.0817` | `0.2008 [0.1528, 0.2404]` | `0.3034 ± 0.0825` | `0.2815 [0.2463, 0.3417]` | `-0.0943` | `22.0%` |
-| **$h=25$** | 1.25 s | `0.2174 ± 0.0849` | `0.2230 [0.1646, 0.2645]` | `0.2168 ± 0.0591` | `0.2058 [0.1772, 0.2435]` | `+0.0006` | `21.8%` |
-| **$h=30$** | 1.50 s | `0.2222 ± 0.1072` | `0.2125 [0.1465, 0.2730]` | `0.2239 ± 0.0717` | `0.2208 [0.1744, 0.2679]` | `-0.0018` | `22.2%` |
-| **$h=40$** | 2.00 s | `0.2181 ± 0.1102` | `0.2141 [0.1386, 0.2769]` | `0.1882 ± 0.0855` | `0.1756 [0.1269, 0.2373]` | `+0.0300` | `22.2%` |
-| **$h=50$** | 2.50 s | `0.2146 ± 0.1240` | `0.1939 [0.1237, 0.2662]` | `0.2007 ± 0.0886` | `0.1820 [0.1451, 0.2418]` | `+0.0139` | `22.2%` |
-| **$h=60$** | 3.00 s | `0.2566 ± 0.1543` | `0.2328 [0.1329, 0.3397]` | `0.2551 ± 0.1373` | `0.2280 [0.1511, 0.3412]` | `+0.0015` | `11.2%` |
-| **$h=70$** | 3.50 s | `0.3230 ± 0.1688` | `0.3152 [0.1983, 0.4290]` | `0.3935 ± 0.1736` | `0.3447 [0.2569, 0.5165]` | `-0.0705` | `0.0%` |
-| **$h=80$** | 4.00 s | `0.4377 ± 0.1492` | `0.4472 [0.3268, 0.5208]` | `0.4863 ± 0.1489` | `0.4690 [0.3653, 0.5904]` | `-0.0487` | `0.0%` |
-| **$h=90$** | 4.50 s | `0.2918 ± 0.1191` | `0.2473 [0.2016, 0.3690]` | `0.3178 ± 0.1594` | `0.2726 [0.2021, 0.3966]` | `-0.0260` | `0.0%` |
-| **$h=100$** | 5.00 s | `0.2585 ± 0.1138` | `0.2467 [0.1650, 0.3422]` | `0.2635 ± 0.1382` | `0.2355 [0.1508, 0.3645]` | `-0.0050` | `0.0%` |
-| **Overall Mean** | $0.05-5.0\,\text{s}$ | **`0.2737`** | — | **`0.2909`** | — | `-0.0173` | — |
+| **$h=1$** | 0.05 s | `0.0687 ± 0.0100` | `0.0675 [0.0616, 0.0748]` | `0.0901 ± 0.0293` | `0.0868 [0.0706, 0.1067]` | `-0.0214` | `0.0%` |
+| **$h=2$** | 0.10 s | `0.0948 ± 0.0105` | `0.0944 [0.0872, 0.1015]` | `0.1379 ± 0.0258` | `0.1351 [0.1202, 0.1531]` | `-0.0431` | `0.0%` |
+| **$h=5$** | 0.25 s | `0.1065 ± 0.0125` | `0.1061 [0.0970, 0.1139]` | `0.1822 ± 0.0198` | `0.1798 [0.1676, 0.1953]` | `-0.0757` | `4.2%` |
+| **$h=10$** | 0.50 s | `0.1512 ± 0.1623` | `0.0690 [0.0508, 0.1852]` | `0.3339 ± 0.1085` | `0.2876 [0.2604, 0.3732]` | `-0.1827` | `15.2%` |
+| **$h=15$** | 0.75 s | `0.3363 ± 0.2425` | `0.2246 [0.1360, 0.5469]` | `0.4326 ± 0.1837` | `0.3515 [0.2926, 0.5513]` | `-0.0964` | `26.2%` |
+| **$h=20$** | 1.00 s | `0.2730 ± 0.0613` | `0.2649 [0.2271, 0.3092]` | `0.3435 ± 0.1205` | `0.2987 [0.2504, 0.4440]` | `-0.0705` | `31.0%` |
+| **$h=25$** | 1.25 s | `0.2182 ± 0.0879` | `0.2103 [0.1587, 0.2666]` | `0.2515 ± 0.0942` | `0.2292 [0.1828, 0.3088]` | `-0.0334` | `31.2%` |
+| **$h=30$** | 1.50 s | `0.2029 ± 0.1170` | `0.1668 [0.1211, 0.2494]` | `0.2327 ± 0.0823` | `0.2184 [0.1777, 0.2669]` | `-0.0298` | `31.2%` |
+| **$h=40$** | 2.00 s | `0.2077 ± 0.1170` | `0.1755 [0.1149, 0.2908]` | `0.1685 ± 0.0717` | `0.1608 [0.1224, 0.1991]` | `+0.0393` | `31.2%` |
+| **$h=50$** | 2.50 s | `0.1757 ± 0.1112` | `0.1452 [0.1051, 0.2019]` | `0.1766 ± 0.0818` | `0.1662 [0.1214, 0.2158]` | `-0.0009` | `27.0%` |
+| **$h=60$** | 3.00 s | `0.2532 ± 0.1554` | `0.2166 [0.1281, 0.3359]` | `0.2430 ± 0.1221` | `0.2200 [0.1518, 0.3067]` | `+0.0102` | `4.5%` |
+| **$h=70$** | 3.50 s | `0.2626 ± 0.1399` | `0.2355 [0.1642, 0.3160]` | `0.3726 ± 0.1627` | `0.3347 [0.2629, 0.4424]` | `-0.1100` | `0.0%` |
+| **$h=80$** | 4.00 s | `0.2566 ± 0.1047` | `0.2453 [0.1833, 0.3112]` | `0.4853 ± 0.1306` | `0.4773 [0.3919, 0.5832]` | `-0.2287` | `0.0%` |
+| **$h=90$** | 4.50 s | `0.2561 ± 0.1092` | `0.2420 [0.1796, 0.3162]` | `0.3633 ± 0.2121` | `0.2888 [0.2069, 0.4604]` | `-0.1072` | `0.0%` |
+| **$h=100$** | 5.00 s | `0.2249 ± 0.1102` | `0.1997 [0.1382, 0.2849]` | `0.2221 ± 0.1145` | `0.1928 [0.1422, 0.2810]` | `+0.0028` | `0.0%` |
+| **Overall Mean** | $0.05-5.0\,\text{s}$ | **`0.2260`** | — | **`0.2893`** | — | `-0.0633` | — |
 
 ### 1.3 Latent Phase-Space Trajectory Coordinates
 
 | Subspace / Step | SPWM $\|\mathbf{q}\|_2$ | SPWM $\|\mathbf{p}\|_2$ | ANN $\|\mathbf{q}\|_2$ | ANN $\|\mathbf{p}\|_2$ | Topology Behavior |
 | :--- | :---: | :---: | :---: | :---: | :--- |
-| **Step $t=0$ (Start)** | `0.0332` | `6.7491` | `0.0387` | `6.7197` | Initial manifold anchor |
-| **Step $t=50$ (Mid)** | `0.0516` | `8.1006` | `0.1423` | `5.3582` | Active manipulation transport |
-| **Step $t=100$ (Terminal)** | `0.0842` | `7.2766` | `0.0122` | `5.5633` | Long-horizon attractor stasis |
+| **Step $t=0$ (Start)** | `0.0461` | `6.8786` | `0.0387` | `6.7197` | Initial manifold anchor |
+| **Step $t=50$ (Mid)** | `0.1669` | `7.4314` | `0.1423` | `5.3582` | Active manipulation transport |
+| **Step $t=100$ (Terminal)** | `0.1756` | `7.0780` | `0.0122` | `5.5633` | Long-horizon attractor stasis |
 
 ## 2. Figure 2: End-to-End SPWM Architecture & Tensor Dimensionality
 
@@ -139,22 +139,22 @@ Figure 3 (`figures/fig3_telemetry.pdf`) aligns 4 tiers across $t \in [0, 100]$ (
 
 - **Light Payload Trajectory**: ID 0, Mass = **`2.044 kg`**  
 - **Heavy Payload Trajectory**: ID 489, Mass = **`4.070 kg`**  
-- **Contact Shock Frame**: $t = 54$ ($2.70\,\text{s}$)  
-- **Sensory Heft Lift Window**: $t \in [54, 64]$ ($2.70\,\text{s} - 3.20\,\text{s}$)  
-- **Autonomous Transport Phase**: $t \ge 64$ ($3.20\,\text{s} - 5.00\,\text{s}$)  
+- **Contact Shock Frame**: $t = 47$ ($2.70\,\text{s}$)  
+- **Sensory Heft Lift Window**: $t \in [47, 61]$ ($2.70\,\text{s} - 3.20\,\text{s}$)  
+- **Autonomous Transport Phase**: $t \ge 61$ ($3.20\,\text{s} - 5.00\,\text{s}$)  
 
 | Time $t$ | Sec | Light $y_{{\text{{EE}}}}$ (m) | Heavy $y_{{\text{{EE}}}}$ (m) | Handover $w_t$ | Light $\|\mathbf{{p}}\|_2$ | Heavy $\|\mathbf{{p}}\|_2$ | Gap $\Delta \|\mathbf{{p}}\|_2$ | Firing Rate |
 | :---: | :---: | :---: | :---: | :---: | :---: | :---: | :---: | :---: |
 | **0** | 0.00 s | `1.1556` | `1.1556` | `0.000` | `7.5457` | `7.5457` | **`+0.0000`** | `0.0%` |
 | **20** | 1.00 s | `1.1309` | `1.1429` | `0.000` | `7.5931` | `7.5876` | **`-0.0055`** | `18.8%` |
 | **40** | 2.00 s | `1.0448` | `1.1800` | `0.000` | `7.6634` | `7.6961` | **`+0.0327`** | `12.9%` |
-| **50** | 2.50 s | `1.0185` | `1.2160` | `0.000` | `7.6868` | `7.7655` | **`+0.0787`** | `14.5%` |
-| **53** | 2.65 s | `1.0134` | `1.2161` | `0.000` | `7.7129` | `7.7601` | **`+0.0472`** | `14.8%` |
-| **54** *(Impact)* | 2.70 s | `1.0123` | `1.2161` | `0.100` | `7.7213` | `7.7771` | **`+0.0559`** | `18.8%` |
-| **56** | 2.80 s | `1.0109` | `1.2161` | `0.300` | `7.7198` | `7.7733` | **`+0.0536`** | `17.6%` |
+| **50** | 2.50 s | `1.0185` | `1.2160` | `0.400` | `7.6868` | `7.7655` | **`+0.0787`** | `14.5%` |
+| **53** | 2.65 s | `1.0134` | `1.2161` | `0.400` | `7.7129` | `7.7601` | **`+0.0472`** | `14.8%` |
+| **54** *(Impact)* | 2.70 s | `1.0123` | `1.2161` | `0.400` | `7.7213` | `7.7771` | **`+0.0559`** | `18.8%` |
+| **56** | 2.80 s | `1.0109` | `1.2161` | `0.400` | `7.7198` | `7.7733` | **`+0.0536`** | `17.6%` |
 | **58** *(Peak Heft)* | 2.90 s | `1.0105` | `1.2160` | `0.400` | `7.7328` | `7.7630` | **`+0.0302`** | `9.4%` |
-| **62** | 3.10 s | `1.0082` | `1.2150` | `0.400` | `7.7370` | `7.7922` | **`+0.0553`** | `20.3%` |
-| **64** | 3.20 s | `1.0051` | `1.2165` | `0.200` | `7.7322` | `7.7862` | **`+0.0540`** | `14.5%` |
+| **62** | 3.10 s | `1.0082` | `1.2150` | `0.000` | `7.7370` | `7.7922` | **`+0.0553`** | `20.3%` |
+| **64** | 3.20 s | `1.0051` | `1.2165` | `0.000` | `7.7322` | `7.7862` | **`+0.0540`** | `14.5%` |
 | **65** *(Transport)* | 3.25 s | `1.0087` | `1.2229` | `0.000` | `7.7145` | `7.7749` | **`+0.0604`** | `14.8%` |
 | **75** | 3.75 s | `1.0791` | `1.3148` | `0.000` | `7.7534` | `7.7727` | **`+0.0193`** | `12.9%` |
 | **85** | 4.25 s | `1.0932` | `1.2385` | `0.000` | `7.7084` | `7.7031` | **`-0.0052`** | `12.5%` |
@@ -167,9 +167,9 @@ Figure 3 (`figures/fig3_telemetry.pdf`) aligns 4 tiers across $t \in [0, 100]$ (
 | **Full 256-unit Population Firing Rate** | **`15.41%`** | `39.4 / 256` | $10.0 - 15.0\%$ | **Optimal Sparsity** |
 | **Fast Reactive Pool (Units 0..127, $\tau \approx 0.47\,\text{s}$)** | `20.51%` | `26.2 / 128` | $12.0 - 18.0\%$ | Active |
 | **Slow Context Pool (Units 128..255, $\tau \approx 3.28\,\text{s}$)** | `10.30%` | `13.2 / 128` | $8.0 - 14.0\%$ | Deep Context |
-| **Pre-Contact Firing Rate ($t < 54$)** | `16.24%` | `41.6 / 256` | Baseline | Nominal |
-| **Impact Shock Frame ($t = 54$)** | **`18.75%`** | `48.0 / 256` | $< 25.0\%$ (No Explosion) | **Stable (No Explosion)** |
-| **Autonomous Transport Firing Rate ($t \ge 64$)** | `14.28%` | `36.6 / 256` | Sustained Sparsity | **Sustained Sparsity** |
+| **Pre-Contact Firing Rate ($t < 47$)** | `16.39%` | `42.0 / 256` | Baseline | Nominal |
+| **Impact Shock Frame ($t = 47$)** | **`20.31%`** | `52.0 / 256` | $< 25.0\%$ (No Explosion) | **Stable (No Explosion)** |
+| **Autonomous Transport Firing Rate ($t \ge 61$)** | `14.33%` | `36.7 / 256` | Sustained Sparsity | **Sustained Sparsity** |
 
 ### 3.3 Internalized Momentum Bifurcation by Payload Mass
 
@@ -209,9 +209,9 @@ Figure 4 (`figures/fig4_stability.pdf`) provides:
 | Evaluated Target | 3D Cartesian Position $(x, y, z)$ (m) | Cartesian Error to Ground Truth | Qualitative Drift Outcome |
 | :--- | :---: | :---: | :--- |
 | **Ground-Truth Tip** | `(-0.1387, 1.1383, 0.4991)` | `0.00 cm` (Reference) | True physical end-effector pose |
-| **SPWM-v0.7.3 (Ours)** | `(-0.1100, 1.0983, 0.5559)` | **`7.52 cm`** | **Strictly bounded inside grasp bounding box** |
-| **ANN-Rate (Continuous)** | `(-0.2199, 1.1289, 0.4849)` | **`8.29 cm`** | Compounding velocity drift causes grasp miss |
-| **SPWM Precision Advantage** | — | **`0.78 cm` closer** | **`9.4%` reduction in Cartesian drift** |
+| **SPWM-v0.7.3 (Ours)** | `(-0.1369, 1.1743, 0.5284)` | **`4.65 cm`** | **Strictly bounded inside grasp bounding box** |
+| **ANN-Rate (Continuous)** | `(-0.2015, 1.0680, 0.4516)` | **`10.55 cm`** | Compounding velocity drift causes grasp miss |
+| **SPWM Precision Advantage** | — | **`5.90 cm` closer** | **`55.9%` reduction in Cartesian drift** |
 
 ## 5. Figure 5: Hardware Efficiency & Physical Domain Boundaries
 
@@ -258,10 +258,10 @@ Every random initialization was passed through the identical two-phase training 
 ### 6.2 Downstream Latent MPPI Closed-Loop Benchmark
 
 - **Evaluated Episodes**: `50` unseen test episodes  
-- **Overall Grasp Success Rate**: **`80.0%`** (40 / 50 episodes)  
-- **Minimum Placement Accuracy**: **`2.17 ± 1.80 cm`**  
-- **Final Mean Terminal Error**: `6.72 cm`  
-- **MPPI Inference Latency**: **`38.9 ms / step`** (Real-time 25 Hz budget compliant)  
+- **Overall Grasp Success Rate**: **`66.0%`** (40 / 50 episodes)  
+- **Minimum Placement Accuracy**: **`1.99 ± 1.33 cm`**  
+- **Final Mean Terminal Error**: `5.77 cm`  
+- **MPPI Inference Latency**: **`38.2 ms / step`** (Real-time 25 Hz budget compliant)  
 
 ### 6.3 Phasic Active Perception Sensory Injection Ablation
 

@@ -40,7 +40,7 @@ def _compute_default_phase_schedule(
     length: int,
     rng: Optional[np.random.Generator] = None,
     pre_contact_sensory_steps: int = 7,
-    post_contact_sensory_steps: int = 3,
+    post_contact_sensory_steps: int = 7,
     pre_contact_steps: Optional[int] = None,
     post_contact_steps: Optional[int] = None,
 ) -> Tuple[int, int, int, np.ndarray]:
@@ -250,7 +250,8 @@ def simulate_articulated_trajectory(
             dlift = 30.0 * (tau ** 2) * ((1.0 - tau) ** 2) / max(float(dt) * span, 1e-3)
             q_des = q_grasp + (q_heft_peak - q_grasp) * lift_progress
             dq_des = (q_heft_peak - q_grasp) * dlift
-            gain_boost = 1.2
+            # Passive physical resistance during active perception heft: zero artificial gain boost
+            gain_boost = 1.0
             eff_inertia = unloaded_inertia + payload_inertia
             eff_gravity = gravity_scale * (1.0 + 0.42 * payload_mass)
         else:
@@ -443,7 +444,7 @@ def parse_unity_trajectory_file(
             phase_flags = np.array(doc["phase_flags"], dtype=np.int64)
         else:
             pre_s = pre_contact_sensory_steps if pre_contact_sensory_steps is not None else 7
-            post_s = post_contact_sensory_steps if post_contact_sensory_steps is not None else 3
+            post_s = post_contact_sensory_steps if post_contact_sensory_steps is not None else 7
             phase_flags = _compute_default_phase_schedule(
                 len(steps),
                 pre_contact_sensory_steps=pre_s,
@@ -452,7 +453,7 @@ def parse_unity_trajectory_file(
 
         if pre_contact_sensory_steps is not None or post_contact_sensory_steps is not None:
             pre_s = pre_contact_sensory_steps if pre_contact_sensory_steps is not None else 7
-            post_s = post_contact_sensory_steps if post_contact_sensory_steps is not None else 3
+            post_s = post_contact_sensory_steps if post_contact_sensory_steps is not None else 7
             expected_p1_len = pre_s + post_s
             p1_indices = np.where(phase_flags == 1)[0]
             if len(p1_indices) > 0 and len(p1_indices) != expected_p1_len:
@@ -542,7 +543,7 @@ class EventWorldDataset(Dataset):
         cache_data: bool = True,
         strict_dataset: bool = True,
         pre_contact_sensory_steps: int = 7,
-        post_contact_sensory_steps: int = 3,
+        post_contact_sensory_steps: int = 7,
     ) -> None:
         super().__init__()
         self.trajectory_indices = list(trajectory_indices)
@@ -657,6 +658,7 @@ class EventWorldDataset(Dataset):
             "flat_kinematics": flat_kin,             # [T, 2 * joint_count]
             "phase_flags": phase_flags_tensor,       # [T] int64 in {0, 1, 2}
             "trajectory_id": traj_id,
+            "payload_mass": float(traj.payload_mass),
         }
 
     def __len__(self) -> int:
@@ -711,9 +713,14 @@ def create_dataloaders(
     num_workers: int = 0,
     cache_data: bool = True,
     strict_dataset: bool = True,
+    weighted_sampling: bool = False,
+    heavy_weight: float = 2.5,
+    mid_weight: float = 2.5,
+    joint_heavy_mid_weight: float = 5.0,
 ) -> Dict[str, DataLoader]:
     """
     Creates train, val, test, and extrapolation DataLoaders with strict trajectory-level partitioning.
+    Optionally applies weighted oversampling on the training split to expose M_1 to heavy payloads and mid-plane reach trajectories.
     """
     splits = partition_trajectories(total_trajectories, train_split, val_split)
     train_ids = list(range(splits["train"][0], splits["train"][1]))
@@ -778,8 +785,46 @@ def create_dataloaders(
         strict_dataset=strict_dataset,
     )
 
+    train_sampler = None
+    train_shuffle = True
+    if weighted_sampling:
+        from torch.utils.data import WeightedRandomSampler
+        from spwm.models.kinematics import DifferentiableForwardKinematics
+        fk = DifferentiableForwardKinematics()
+        weights: List[float] = []
+        for i in range(len(train_ds)):
+            item = train_ds[i]
+            mass = float(item["payload_mass"]) if "payload_mass" in item else 1.5
+            flags = item["phase_flags"]
+            p1 = (flags == 1).nonzero()
+            t_c = int(p1[0].item()) if len(p1) > 0 else min(50, len(flags) - 1)
+            q_contact = item["joint_positions"][t_c : t_c + 1]
+            pos_3d = fk(q_contact)[0]
+            target_y = float(pos_3d[1].item())
+            is_heavy = (mass >= 3.40)
+            is_mid = (1.08 <= target_y < 1.18)
+            if is_heavy and is_mid:
+                w = joint_heavy_mid_weight
+            elif is_heavy:
+                w = heavy_weight
+            elif is_mid:
+                w = mid_weight
+            else:
+                w = 1.0
+            weights.append(w)
+        sampler_weights = torch.as_tensor(weights, dtype=torch.double)
+        train_sampler = WeightedRandomSampler(sampler_weights, num_samples=len(train_ds), replacement=True)
+        train_shuffle = False
+
     return {
-        "train": DataLoader(train_ds, batch_size=batch_size, shuffle=True, collate_fn=collate_event_batches, num_workers=num_workers),
+        "train": DataLoader(
+            train_ds,
+            batch_size=batch_size,
+            shuffle=train_shuffle,
+            sampler=train_sampler,
+            collate_fn=collate_event_batches,
+            num_workers=num_workers,
+        ),
         "val": DataLoader(val_ds, batch_size=batch_size, shuffle=False, collate_fn=collate_event_batches, num_workers=num_workers),
         "test": DataLoader(test_ds, batch_size=batch_size, shuffle=False, collate_fn=collate_event_batches, num_workers=num_workers),
         "extrapolation": DataLoader(extrap_ds, batch_size=batch_size, shuffle=False, collate_fn=collate_event_batches, num_workers=num_workers),

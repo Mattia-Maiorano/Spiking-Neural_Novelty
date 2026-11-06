@@ -77,6 +77,18 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--phase-horizon", type=int, default=None, help="Predictor unroll horizon during training")
     parser.add_argument("--temporal-burn-in", type=int, default=None, help="Override temporal burn-in steps for recurrent warm-up")
     parser.add_argument("--total-trajectories", type=int, default=None, help="Override total trajectories in dataset")
+    parser.add_argument(
+        "--weighted-sampling",
+        action="store_true",
+        default=False,
+        help="Enable weighted oversampling for heavy payloads and mid-plane trajectories",
+    )
+    parser.add_argument(
+        "--from-scratch",
+        action="store_true",
+        default=False,
+        help="Start training from scratch, ignoring existing checkpoint.pt in output directory",
+    )
     return parser.parse_args()
 
 
@@ -260,6 +272,8 @@ def main() -> None:
         overrides["temporal_burn_in"] = args.temporal_burn_in
     if args.total_trajectories is not None:
         overrides["total_trajectories"] = args.total_trajectories
+    if args.weighted_sampling:
+        overrides["weighted_sampling"] = True
 
     if overrides:
         cfg = cfg.with_overrides(**overrides)
@@ -299,6 +313,7 @@ def main() -> None:
         cache_data=cfg.data.cache_data,
         dataset_dir=cfg.data.dataset_dir,
         strict_dataset=cfg.data.strict_dataset,
+        weighted_sampling=cfg.data.weighted_sampling,
     )
 
     model = SPWM.from_config(cfg).to(device)
@@ -317,9 +332,11 @@ def main() -> None:
     )
 
     resume_ckpt = save_dir / "checkpoint.pt"
-    if resume_ckpt.is_file():
+    if not args.from_scratch and resume_ckpt.is_file():
         engine.load_checkpoint(resume_ckpt)
         chronicle.log_info(f"Resumed from checkpoint: {resume_ckpt} at epoch {engine.start_epoch}")
+    elif args.from_scratch:
+        chronicle.log_info("Starting fresh training run from scratch (ignoring existing checkpoint.pt).")
 
     history = engine.fit()
     cfg.save(save_dir / "config.yaml")

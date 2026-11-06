@@ -27,7 +27,8 @@ data:
   cache_data: true
   strict_dataset: true
   pre_contact_sensory_steps: 7
-  post_contact_sensory_steps: 3
+  post_contact_sensory_steps: 7
+  weighted_sampling: true
 model:
   type: spwm
   num_keypoints: 16

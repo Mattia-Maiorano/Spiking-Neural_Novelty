@@ -14,7 +14,7 @@ Optimizes motor action sequences u_{t:t+H}^* without external physics simulation
 from __future__ import annotations
 from dataclasses import dataclass
 import time
-from typing import Optional, Tuple
+from typing import Optional, Sequence, Tuple, Union
 import torch
 import torch.nn as nn
 
@@ -71,8 +71,8 @@ class LatentMPPIController:
         action_dim: int = J,
         action_min: float = -1.0,
         action_max: float = 1.0,
-        noise_sigma: float = 0.28,
-        temperature: float = 0.10,
+        noise_sigma: Union[float, Sequence[float], torch.Tensor] = 0.28,
+        temperature: float = 0.15,
         num_iterations: int = 3,
         w_pos: float = 1.0,
         w_vel: float = 0.1,
@@ -96,7 +96,6 @@ class LatentMPPIController:
         self.action_dim = action_dim
         self.action_min = float(action_min)
         self.action_max = float(action_max)
-        self.noise_sigma = float(noise_sigma)
         self.temperature = float(temperature)
         self.num_iterations = num_iterations
 
@@ -107,6 +106,28 @@ class LatentMPPIController:
 
         dev = device if device is not None else next(predictor.parameters()).device
         self.device = dev
+
+        # Covariance Sigma: boost variance on Shoulder_Lift (idx 1) and Elbow_Flex (idx 2)
+        if isinstance(noise_sigma, torch.Tensor):
+            if noise_sigma.numel() == 1:
+                sigmas = torch.full((action_dim,), float(noise_sigma.item()), device=dev, dtype=torch.float32)
+            else:
+                sigmas = noise_sigma.to(device=dev, dtype=torch.float32).flatten()
+        elif isinstance(noise_sigma, (list, tuple)):
+            sigmas = torch.tensor(noise_sigma, device=dev, dtype=torch.float32)
+        else:
+            base_s = float(noise_sigma)
+            sigmas = torch.full((action_dim,), base_s, device=dev, dtype=torch.float32)
+            if action_dim >= 3:
+                # Anisotropic covariance boost: Shoulder_Lift (idx 1) +60%, Elbow_Flex (idx 2) +45%
+                sigmas[1] = base_s * 1.60
+                sigmas[2] = base_s * 1.45
+
+        if sigmas.shape[0] != action_dim:
+            raise ValueError(f"noise_sigma shape {tuple(sigmas.shape)} does not match action_dim {action_dim}")
+
+        self.noise_sigma = float(sigmas.mean().item())
+        self.sigma_tensor = sigmas
         self.nominal_actions = torch.zeros(self.horizon, self.action_dim, device=self.device)
         self.prev_action = torch.zeros(self.action_dim, device=self.device)
 
@@ -174,8 +195,8 @@ class LatentMPPIController:
         candidate_w = torch.zeros(K, device=self.device)
 
         for _ in range(self.num_iterations):
-            # 1. Sample action perturbations: [K, H, D_u]
-            noise = torch.randn(K, H, D_u, device=self.device) * self.noise_sigma
+            # 1. Sample action perturbations: [K, H, D_u] from anisotropic exploration covariance Sigma
+            noise = torch.randn(K, H, D_u, device=self.device) * self.sigma_tensor.view(1, 1, D_u)
             # Preserve current nominal sequence as candidate 0
             noise[0] = 0.0
 

@@ -53,7 +53,7 @@ class M1PhaseStrategy(PhaseStrategy):
             z_star, _ = self.model.forward_representation(events[:, : t_start + 1 + horizon], actions=actions[:, : t_start + 1 + horizon])
             z_target = z_star.detach()
 
-        curr_z, dyn_state, z_prefix = ground_initial_state(self.model, events, t_start)
+        curr_z, dyn_state, z_prefix = ground_initial_state(self.model, events, t_start, actions=actions)
         roll_res = rollout_latent(
             model=self.model, z_init=curr_z, horizon=horizon,
             actions=actions[:, t_start : t_start + horizon],
@@ -67,17 +67,21 @@ class M1PhaseStrategy(PhaseStrategy):
 
         q_dim = self.model.q_dim
         step_weights = torch.ones_like(m1_traj[..., :1])
+        vel_step_weights = torch.ones_like(m1_traj[..., :1])
         flags_rollout = flags[:, t_start + 1 : t_start + 1 + horizon]
         for b in range(B):
             heft_idx = (flags_rollout[b] == 1).nonzero(as_tuple=False)
             if len(heft_idx) > 0:
                 h0 = int(heft_idx[0, 0].item())
-                step_weights[b, max(0, h0 - 5) : min(horizon, h0 + 10)] = 2.0
+                h_end = int(heft_idx[-1, 0].item()) if len(heft_idx) > 1 else h0
+                step_weights[b, max(0, h0 - 5) : min(horizon, h_end + 10)] = 2.0
+                # Passive inertial resistance weighting: emphasize velocity deceleration during and post contact
+                vel_step_weights[b, max(0, h0) : min(horizon, h_end + 12)] = 3.0
 
         pos_diff_sq = (m1_traj[..., :q_dim] - target_latents[..., :q_dim]) ** 2
         vel_diff_sq = (m1_traj[..., q_dim:] - target_latents[..., q_dim:]) ** 2
         loss_pos = (step_weights * pos_diff_sq).mean()
-        loss_vel = (step_weights * vel_diff_sq).mean()
+        loss_vel = (vel_step_weights * vel_diff_sq).mean()
         loss_m1 = float(self.cfg.loss.lambda_position) * loss_pos + float(self.cfg.loss.lambda_velocity) * loss_vel
         total_loss = float(self.cfg.loss.lambda_latent) * loss_m1
 

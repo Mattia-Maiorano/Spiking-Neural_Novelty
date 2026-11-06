@@ -492,6 +492,7 @@ class GhostVisualizerExporter:
         unity_project_dir: Union[str, Path] = DEFAULT_UNITY_PROJECT_DIR,
         filename: str = DEFAULT_GHOST_FILENAME,
         model_version: str = "spwm",
+        model_version_b: Optional[str] = None,
         dt: float = 0.05,
         horizon: int = 100,
         joint_names: Optional[Sequence[str]] = None,
@@ -507,6 +508,7 @@ class GhostVisualizerExporter:
         self.unity_project_dir = Path(unity_project_dir)
         self.filename = filename
         self.model_version = model_version
+        self.model_version_b = model_version_b
         self.dt = float(dt)
         self.horizon = int(horizon)
         self.joint_names = list(joint_names) if joint_names is not None else None
@@ -526,10 +528,17 @@ class GhostVisualizerExporter:
         sample_index: int = 0,
         extra_metadata: Optional[Dict[str, Any]] = None,
         with_active_perception: bool = True,
+        evaluator_b: Optional[RolloutEvaluator] = None,
     ) -> GhostTrajectory:
         """Run the benchmark rollout on `batch` and build the ghost payload for one sample."""
         traj = self.evaluator.rollout_trajectory(batch, horizon=self.horizon, with_active_perception=with_active_perception)
+
+        traj_b = None
+        if evaluator_b is not None:
+            traj_b = evaluator_b.rollout_trajectory(batch, horizon=self.horizon, with_active_perception=with_active_perception)
+
         b = traj.target_kinematics.shape[0]
+
         if not 0 <= sample_index < b:
             raise IndexError(f"sample_index {sample_index} out of range for batch of size {b}")
         if traj.horizon < self.horizon:
@@ -556,7 +565,7 @@ class GhostVisualizerExporter:
                 meta["grasp_lock_frame_index"] = contact_idx
                 sensory_rel_idx = min(contact_idx + self.post_contact_sensory_steps, int(heft_indices[-1]))
                 meta["sensory_release_frame_index"] = sensory_rel_idx
-        return self.from_trajectory_rollout(traj, sample_index=sample_index, extra_metadata=meta)
+        return self.from_trajectory_rollout(traj, sample_index=sample_index, extra_metadata=meta, traj_b=traj_b)
 
     def capture(
         self,
@@ -564,11 +573,12 @@ class GhostVisualizerExporter:
         batch_index: int = 0,
         sample_index: int = 0,
         with_active_perception: bool = True,
+        evaluator_b: Optional[RolloutEvaluator] = None,
     ) -> GhostTrajectory:
         """Select batch `batch_index` from `data_loader` and capture sample `sample_index`."""
         for i, batch in enumerate(data_loader):
             if i == batch_index:
-                return self.capture_batch(batch, sample_index, extra_metadata={"batch_index": batch_index}, with_active_perception=with_active_perception)
+                return self.capture_batch(batch, sample_index, extra_metadata={"batch_index": batch_index}, with_active_perception=with_active_perception, evaluator_b=evaluator_b)
         raise IndexError(f"batch_index {batch_index} exceeds data loader length")
 
     def from_trajectory_rollout(
@@ -576,6 +586,7 @@ class GhostVisualizerExporter:
         traj: TrajectoryRollout,
         sample_index: int = 0,
         extra_metadata: Optional[Dict[str, Any]] = None,
+        traj_b: Optional[TrajectoryRollout] = None,
     ) -> GhostTrajectory:
         """Pure serialization of a `TrajectoryRollout` (no model execution)."""
         j = traj.joint_count
@@ -584,13 +595,25 @@ class GhostVisualizerExporter:
         true = traj.target_kinematics[sample_index, :h].detach().float().cpu().numpy()
         pred_z = traj.rollout.trajectory[sample_index, :h].detach().float().cpu().numpy()
         true_z = traj.target_latents[sample_index, :h].detach().float().cpu().numpy()
+        pred_b_q = None
+        pred_b_p = None
+        pred_b_z = None
+        if traj_b is not None:
+            pred_b_z = traj_b.rollout.trajectory[sample_index, :h].detach().float().cpu().numpy()
+            pred_b = traj_b.rollout.decoded_kinematics[sample_index, :h].detach().float().cpu().numpy()
+            pred_b_q = pred_b[:, :j]
+            pred_b_p = pred_b[:, j : 2 * j]
+
         return self.from_arrays(
             predicted_q=pred[:, :j],
             ground_truth_q=true[:, :j],
             predicted_p=pred[:, j : 2 * j],
             ground_truth_p=true[:, j : 2 * j],
+            predicted_b_q=pred_b_q,
+            predicted_b_p=pred_b_p,
             predicted_z=pred_z,
             ground_truth_z=true_z,
+            predicted_b_z=pred_b_z,
             extra_metadata={"t_start": int(traj.t_start), "sample_index": int(sample_index), **(extra_metadata or {})},
         )
 
@@ -602,6 +625,9 @@ class GhostVisualizerExporter:
         ground_truth_p: Optional[np.ndarray] = None,
         predicted_z: Optional[np.ndarray] = None,
         ground_truth_z: Optional[np.ndarray] = None,
+        predicted_b_q: Optional[np.ndarray] = None,
+        predicted_b_p: Optional[np.ndarray] = None,
+        predicted_b_z: Optional[np.ndarray] = None,
         extra_metadata: Optional[Dict[str, Any]] = None,
     ) -> GhostTrajectory:
         """Build the payload from raw [H, J] arrays. Metrics follow `spwm.training.metrics` (per-step L2)."""
@@ -623,6 +649,13 @@ class GhostVisualizerExporter:
             lat_err = np.linalg.norm(z_hat - z_star, axis=-1)       # [H] L2 norm
         else:
             lat_err = np.zeros(h, dtype=np.float64)
+        pos_err_b = vel_err_b = lat_err_b = None
+        if predicted_b_q is not None:
+            pos_err_b = np.linalg.norm(np.asarray(predicted_b_q, dtype=np.float64) - q_star, axis=-1)
+            if has_p and predicted_b_p is not None:
+                vel_err_b = np.linalg.norm(np.asarray(predicted_b_p, dtype=np.float64) - p_star, axis=-1)
+            if has_z and predicted_b_z is not None:
+                lat_err_b = np.linalg.norm(np.asarray(predicted_b_z, dtype=np.float64) - z_star, axis=-1)
         pos_ref = pos_err[0] if pos_err[0] > 1e-8 else 1.0
         vel_ref = vel_err[0] if vel_err[0] > 1e-8 else 1.0
         pos_rel = pos_err / pos_ref
@@ -631,7 +664,7 @@ class GhostVisualizerExporter:
         nd = self.precision
         frames: List[Dict[str, Any]] = []
         for t in range(h):
-            frames.append({
+            frame: Dict[str, Any] = {
                 "t": t + 1,
                 "time_s": _finite((t + 1) * self.dt, nd),
                 "ground_truth_q": _vec(q_star[t], nd),
@@ -645,7 +678,18 @@ class GhostVisualizerExporter:
                     "velocity_relative_degradation": _finite(vel_rel[t], nd),
                     "position_relative_degradation": _finite(pos_rel[t], nd),
                 },
-            })
+            }
+            if pos_err_b is not None:
+                frame["instantaneous_metrics"]["position_abs_error_b"] = _finite(pos_err_b[t], nd)
+                if vel_err_b is not None:
+                    frame["instantaneous_metrics"]["velocity_abs_error_b"] = _finite(vel_err_b[t], nd)
+                if lat_err_b is not None:
+                    frame["instantaneous_metrics"]["latent_error_b"] = _finite(lat_err_b[t], nd)
+            if predicted_b_q is not None:
+                frame["predicted_b_q"] = _vec(predicted_b_q[t], nd)
+            if predicted_b_p is not None:
+                frame["predicted_b_p"] = _vec(predicted_b_p[t], nd)
+            frames.append(frame)
 
         names = self.joint_names if self.joint_names and len(self.joint_names) == j else [f"joint_{i}" for i in range(j)]
         metadata: Dict[str, Any] = {
@@ -676,6 +720,11 @@ class GhostVisualizerExporter:
                 "final_position_relative_degradation": _finite(pos_rel[-1], nd),
             },
         }
+        if predicted_b_q is not None:
+            if self.model_version_b is None:
+                raise ValueError("Dual-model export requires model_version_b so the HUD labels the correct model.")
+            metadata["has_dual_models"] = True
+            metadata["model_version_b"] = self.model_version_b
         metadata.update(extra_metadata or {})
         return GhostTrajectory(metadata=metadata, frames=frames)
 

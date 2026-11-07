@@ -641,5 +641,13 @@
   3. Noise Curriculum Scheduling: Built `compute_mppi_noise_alpha` in `spwm/training/noise.py` scheduling noise intensity $\alpha$. Actions are unperturbed ($\alpha = 0.0$) during warmup (`mppi_noise_warmup_epochs = 10`) to learn base attractor dynamics, then linearly ramp to target intensity (`mppi_noise_target_alpha = 1.0`) over `mppi_noise_ramp_epochs = 20`. Tier 1 validation evaluates pure unperturbed demonstrations.
   4. Contract & CLI Integration: Added `ema_decay`, `mppi_noise_warmup_epochs`, `mppi_noise_ramp_epochs`, and `mppi_noise_target_alpha` to `TrainingConfig` and `experiments/train.py`, defaulting `tier2_candidate_selection = "ema"`.
   5. Test Verification: Updated `tests/test_two_tiered_validation.py` verifying EMA candidate evaluation and AR(1) noise curriculum.
-- **new results (if any)**: All 122 pytest unit tests pass cleanly; AST anti-fallback scan verifies 0 violations across `spwm/`. Refactoring and test verification complete; training execution launched.
-- **verdict on change made**: Preserved.
+- **new results (if any)**:
+  - Phase 1 Training converged with Tier 2 early stopping at epoch 60 (best model checkpoint saved at epoch 30 with MPPI structural score: **23.04471**). Checkpoint saved to `results/spwm_v0_8_0_train_m1/model.pt`.
+  - Tier 2 closed-loop structural score progression under EMA ($\tau = 0.99$): Epoch 10: 117.466 $\rightarrow$ Epoch 20: 37.916 ($-67.7\%$) $\rightarrow$ Epoch 30: **23.045** ($-39.2\%$, **[BEST]**, mean error: 2.90 cm, rot error: 0.0807, final velocity: 1.367 rad/s) $\rightarrow$ Epoch 40: 169.902 $\rightarrow$ Epoch 50: 36.671 $\rightarrow$ Epoch 60: 118.288.
+  - Multi-Horizon Autonomous Rollout Test Evaluation (`model.pt`):
+    - $H=1$ Position Error: **0.04087 rad** (down from old baseline 0.06859 rad, **$40.4\%$ error reduction**); $H=1$ Position MSE: **0.00031** (down from old baseline 0.00080, **$61.2\%$ MSE reduction**).
+    - $H=5$ Position Error: **0.07556 rad**; $H=10$: 0.10659 rad; $H=25$: 0.26627 rad; $H=50$: 0.41898 rad; $H=100$: 0.45668 rad.
+    - $H=1$ Velocity Error: 0.04727 rad/s; $H=1$ Velocity MSE: 0.00039.
+    - Autonomous Rollout MAE: 0.22749; Dynamic Score: 1.29069; Drift Ratio: 6.52x.
+  - All 122 pytest unit tests pass cleanly; AST anti-fallback scan verifies 0 violations across `spwm/`.
+- **verdict on change made**: Preserved (retrained MPPI-aware neural weights saved to `results/spwm_v0_8_0_train_m1/model.pt`).

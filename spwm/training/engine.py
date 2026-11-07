@@ -34,7 +34,7 @@ from spwm.contracts.config import (
     ProjectConfig,
     TrainingConfig,
 )
-from spwm.contracts.protocols import PhaseStrategy
+from spwm.contracts.protocols import PhaseStrategy, Tier2EvaluatorProtocol
 from spwm.training.losses import SPWMLoss
 from spwm.training.phases import PredictorPhaseHandler
 
@@ -151,7 +151,12 @@ def enforce_phase_prerequisites(
                 loaded["representation"] = rep_path
                 chronicle.log_success(f"Strictly loaded representation model.pt: {rep_path}")
             except FileNotFoundError as err:
-                chronicle.log_info(f"Phase prerequisite notice for {mode}: {err}")
+                raise FileNotFoundError(
+                    f"Phase 1 ('train_m1') strictly requires a pre-trained representation checkpoint. "
+                    f"No checkpoint found for project '{cfg.project.name}' at results_root='{results_root}'. "
+                    f"Pass --representation-checkpoint <path> (e.g. results/spwm_v0_7_3_train_representation/model.pt) "
+                    f"or run Phase 0 first."
+                ) from err
 
     return loaded
 
@@ -174,12 +179,18 @@ class BaseTrainer:
         history: Optional[List[Dict[str, float]]] = None,
         auto_enforce_checkpoints: bool = False,
         results_root: Union[str, Path] = "results",
+        tier2_evaluator: Optional[Tier2EvaluatorProtocol] = None,
     ) -> None:
         self.model = model
         self.cfg = cfg
         self.train_loader = train_loader
         self.val_loader = val_loader
         self.results_root = Path(results_root)
+        self.tier2_evaluator = tier2_evaluator
+        self.tier2_frequency = cfg.training.tier2_frequency
+        self.tier2_candidate_selection = cfg.training.tier2_candidate_selection
+        self.tier2_patience = cfg.training.tier2_patience
+        self.tier2_min_delta = cfg.training.tier2_min_delta
 
         if device is None:
             if torch.cuda.is_available():
@@ -257,30 +268,100 @@ class BaseTrainer:
         end_epoch = self.start_epoch + total_epochs - 1
         max_no_improve = patience if patience is not None else self.cfg.training.early_stopping_patience
 
+        # For Tier 2, early stopping is governed strictly by consecutive Tier 2 checks
+        if self.tier2_evaluator is not None:
+            if patience is not None:
+                tier2_patience_limit = max(1, patience // self.tier2_frequency) if patience >= self.tier2_frequency else max(1, patience)
+            else:
+                tier2_patience_limit = self.tier2_patience
+        else:
+            tier2_patience_limit = max_no_improve
+
         chronicle.log_application_title(
             f"Starting Training: {self.cfg.project.name} [{self.mode.upper()}]"
         )
         chronicle.log_detail("Device", str(self.device))
-        chronicle.log_detail("Epochs", f"{self.start_epoch} -> {end_epoch} (Patience: {max_no_improve})")
+        if self.tier2_evaluator is not None:
+            chronicle.log_detail(
+                "Epochs",
+                f"{self.start_epoch} -> {end_epoch} (Tier 2 Patience: {tier2_patience_limit} checks / "
+                f"{tier2_patience_limit * self.tier2_frequency} epochs, min_delta={self.tier2_min_delta})",
+            )
+            chronicle.log_detail("Tier 2 Frequency", f"Every {self.tier2_frequency} epochs")
+            chronicle.log_detail("Candidate Selection", self.tier2_candidate_selection)
+        else:
+            chronicle.log_detail("Epochs", f"{self.start_epoch} -> {end_epoch} (Patience: {max_no_improve} epochs)")
         chronicle.log_detail("Save Directory", str(self.save_dir))
 
         epochs_without_improvement = 0
+        tier2_checks_without_improvement = 0
+        best_block_tier1_loss = float("inf")
+        best_block_epoch: Optional[int] = None
+        best_block_state: Optional[Dict[str, torch.Tensor]] = None
         start_time = time.time()
         try:
             for epoch in range(self.start_epoch, end_epoch + 1):
                 t_ep_start = time.time()
                 train_metrics = self.train_epoch(epoch)
                 val_metrics = self.evaluate(self.val_loader)
+                tier1_loss = self.handler.get_selection_score(val_metrics)
 
-                score = self.handler.get_selection_score(val_metrics)
-                is_best = score < self.best_score
-                if is_best:
-                    self.best_score = score
-                    self.best_epoch = epoch
-                    epochs_without_improvement = 0
-                    self.save_checkpoint(epoch, is_best=True)
+                # Track best Tier 1 validation candidate within the current block of epochs
+                if tier1_loss < best_block_tier1_loss:
+                    best_block_tier1_loss = tier1_loss
+                    best_block_epoch = epoch
+                    best_block_state = {k: v.cpu().clone() for k, v in self.model.state_dict().items()}
+
+                is_tier2_epoch = (self.tier2_evaluator is not None) and (epoch % self.tier2_frequency == 0)
+                if self.tier2_evaluator is not None:
+                    if is_tier2_epoch:
+                        use_best_in_block = (self.tier2_candidate_selection == "best_in_block") and (best_block_state is not None)
+                        candidate_epoch = best_block_epoch if use_best_in_block and best_block_epoch is not None else epoch
+
+                        current_epoch_state = None
+                        if use_best_in_block and best_block_state is not None:
+                            current_epoch_state = {k: v.cpu().clone() for k, v in self.model.state_dict().items()}
+                            self.model.load_state_dict(best_block_state, strict=True)
+                            chronicle.log_info(
+                                f"Tier 2 Evaluating best Tier 1 validation candidate of current block "
+                                f"(Epoch {candidate_epoch}, Tier 1 val_loss={best_block_tier1_loss:.5f})."
+                            )
+
+                        tier2_metrics = self.tier2_evaluator(self.model, candidate_epoch)
+                        val_metrics.update(tier2_metrics)
+                        score = tier2_metrics["mppi_score"]
+                        is_best = score < (self.best_score - self.tier2_min_delta)
+                        if is_best:
+                            self.best_score = score
+                            self.best_epoch = candidate_epoch
+                            epochs_without_improvement = 0
+                            tier2_checks_without_improvement = 0
+                            self.save_checkpoint(candidate_epoch, is_best=True)
+                        else:
+                            tier2_checks_without_improvement += 1
+                            epochs_without_improvement += self.tier2_frequency
+
+                        # Restore current training weights so optimization continues forward
+                        if current_epoch_state is not None:
+                            self.model.load_state_dict(current_epoch_state, strict=True)
+
+                        # Reset block tracking for the next block
+                        best_block_tier1_loss = float("inf")
+                        best_block_epoch = None
+                        best_block_state = None
+                    else:
+                        score = tier1_loss
+                        is_best = False
                 else:
-                    epochs_without_improvement += 1
+                    score = tier1_loss
+                    is_best = score < self.best_score
+                    if is_best:
+                        self.best_score = score
+                        self.best_epoch = epoch
+                        epochs_without_improvement = 0
+                        self.save_checkpoint(epoch, is_best=True)
+                    else:
+                        epochs_without_improvement += 1
 
                 ep_duration = time.time() - t_ep_start
                 total_elapsed = time.time() - start_time
@@ -293,6 +374,7 @@ class BaseTrainer:
                     "score": score,
                     "is_best": is_best,
                     "epochs_without_improvement": epochs_without_improvement,
+                    "tier2_checks_without_improvement": tier2_checks_without_improvement if self.tier2_evaluator is not None else epochs_without_improvement,
                     "duration": ep_duration,
                 }
                 self.history.append(log_entry)
@@ -311,12 +393,22 @@ class BaseTrainer:
                         best_score=self.best_score,
                     )
 
-                if epochs_without_improvement >= max_no_improve:
-                    chronicle.log_info(
-                        f"Early stopping triggered in [{self.mode.upper()}] after {epochs_without_improvement} "
-                        f"epochs without validation improvement (Best: {self.best_score:.5f} @ Epoch {self.best_epoch})."
-                    )
-                    break
+                # Early stopping evaluation: strictly driven by the active validation tier
+                if self.tier2_evaluator is not None:
+                    if is_tier2_epoch and tier2_checks_without_improvement >= tier2_patience_limit:
+                        chronicle.log_info(
+                            f"Early stopping triggered in [{self.mode.upper()}] after "
+                            f"{tier2_checks_without_improvement} consecutive Tier 2 evaluations ({epochs_without_improvement} epochs) "
+                            f"without MPPI structural improvement (Best Score: {self.best_score:.5f} @ Epoch {self.best_epoch})."
+                        )
+                        break
+                else:
+                    if epochs_without_improvement >= max_no_improve:
+                        chronicle.log_info(
+                            f"Early stopping triggered in [{self.mode.upper()}] after {epochs_without_improvement} "
+                            f"epochs without validation improvement (Best: {self.best_score:.5f} @ Epoch {self.best_epoch})."
+                        )
+                        break
         except KeyboardInterrupt:
             chronicle.log_warning("[INTERRUPT] Training interrupted manually.")
 
@@ -437,6 +529,7 @@ class Trainer(BaseTrainer):
         early_stopping_patience: int = 20,
         auto_enforce_checkpoints: bool = False,
         results_root: Union[str, Path] = "results",
+        tier2_evaluator: Optional[Tier2EvaluatorProtocol] = None,
         **kwargs: Any,
     ) -> None:
         if cfg is None:
@@ -499,6 +592,7 @@ class Trainer(BaseTrainer):
             history=history,
             auto_enforce_checkpoints=auto_enforce_checkpoints,
             results_root=results_root,
+            tier2_evaluator=tier2_evaluator,
         )
 
         if optimizer_state is not None:

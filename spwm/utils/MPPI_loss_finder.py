@@ -1,9 +1,9 @@
 """
-Structural MPPI Loss Optimization (SPWM-v0.7.3).
+Neural MPPI Loss Optimization (SPWM-v0.7.3).
 
-Elevates optimization from scalar weight tuning to structural function shaping.
-Dynamically alters cost exponents, norm types, and distance-gated thresholds
-to discover the optimal mathematical form of the MPPI cost function.
+Abandons algebraic cost functions. Uses CMA-ES to evolve a Micro-MLP that maps
+raw physical state features (position error, orientation error, velocity, jerk)
+directly to a scalar trajectory cost.
 """
 
 from __future__ import annotations
@@ -15,7 +15,9 @@ from typing import Any, List, Optional
 
 import numpy as np
 import optuna
+from optuna.samplers import CmaEsSampler
 import torch
+import torch.nn.functional as F
 
 from spwm.contracts.config import ExperimentConfig
 from spwm.data.datasets import create_dataloaders
@@ -26,33 +28,26 @@ from spwm.models.world_model import SPWM
 from spwm.utils.reproducibility import set_seed
 
 
-class MorphableMPPIController(LatentMPPIController):
+class NeuralCostMPPIController(LatentMPPIController):
     """
-    Subclasses LatentMPPIController to intercept and dynamically shape the cost functions.
-    Exposes algebraic parameters (exponents, norms, thresholds) to external optimization.
+    Abandons algebraic cost equations for an evolved Micro-MLP.
+    Maps physical state features directly to trajectory cost.
     """
-    def __init__(
-        self,
-        *args,
-        pos_gamma: float = 1.0,
-        pos_norm_p: int = 2,
-        vel_engagement_radius: float = 0.15,
-        vel_gamma: float = 1.0,
-        act_gamma: float = 2.0,
-        **kwargs
-    ):
+    def __init__(self, *args, neural_weights: List[float], **kwargs):
         super().__init__(*args, **kwargs)
-        self.pos_gamma = pos_gamma
-        self.pos_norm_p = pos_norm_p
-        self.vel_engagement_radius = vel_engagement_radius
-        self.vel_gamma = vel_gamma
-        self.act_gamma = act_gamma
+        
+        # Reconstruct the Micro-MLP from the flat list of Optuna parameters
+        # Architecture: 4 Inputs -> 6 Hidden (ELU) -> 1 Output (Softplus)
+        # Total Parameters: (4 * 6) + 6 bias + (6 * 1) + 1 bias = 37 parameters
+        tensor_weights = torch.tensor(neural_weights, device=self.device, dtype=torch.float32)
+        
+        self.W1 = tensor_weights[0:24].view(4, 6)
+        self.b1 = tensor_weights[24:30]
+        self.W2 = tensor_weights[30:36].view(6, 1)
+        self.b2 = tensor_weights[36:37]
 
     @torch.no_grad()
     def plan_step(self, z_grounded: torch.Tensor, target_pos: torch.Tensor, prev_action: Optional[torch.Tensor] = None, target_rot: Optional[torch.Tensor] = None) -> MPPIPlanResult:
-        # ---------------------------------------------------------
-        # Pre-amble and Mental Simulation (Identical to base class)
-        # ---------------------------------------------------------
         start_time = time.perf_counter()
         z_init = z_grounded[0] if z_grounded.dim() == 2 else z_grounded
         
@@ -64,21 +59,16 @@ class MorphableMPPIController(LatentMPPIController):
         else:
             target_pos_3d = target_pos[0] if target_pos.dim() == 2 else target_pos
             target_coords = target_pos_3d.to(device=self.device, dtype=torch.float32)
-
+        
         u_prev = prev_action.to(self.device) if prev_action is not None else self.prev_action
         K, H, D_u = self.num_samples, self.horizon, self.action_dim
-        beta = self.noise_beta
-        decay = math.sqrt(max(0.0, 1.0 - beta ** 2))
+        beta, decay = self.noise_beta, math.sqrt(max(0.0, 1.0 - self.noise_beta ** 2))
 
         curr_nominal = self.nominal_actions.clone()
+        gen = self.generator
         
-        best_z_traj = torch.zeros(H, self.predictor.latent_dim, device=self.device)
-        best_ee_traj = torch.zeros(H, 3, device=self.device)
-        candidate_ee = torch.zeros(K, H, 3, device=self.device)
-        candidate_w = torch.zeros(K, device=self.device)
-
         for _ in range(self.num_iterations):
-            eta = torch.randn(K, H, D_u, device=self.device) * self.sigma_tensor.view(1, 1, D_u)
+            eta = torch.randn(K, H, D_u, generator=gen, device=self.device) * self.sigma_tensor.view(1, 1, D_u)
             noise = torch.zeros(K, H, D_u, device=self.device)
             curr_eps = eta[:, 0]
             noise[:, 0] = curr_eps
@@ -87,9 +77,9 @@ class MorphableMPPIController(LatentMPPIController):
                 noise[:, tau] = curr_eps
             noise[0] = 0.0
 
-            candidates = curr_nominal.unsqueeze(0) + noise
-            candidates = torch.clamp(candidates, self.action_min, self.action_max)
+            candidates = torch.clamp(curr_nominal.unsqueeze(0) + noise, self.action_min, self.action_max)
 
+            # Mental unroll
             z_batch = z_init.unsqueeze(0).repeat(K, 1)
             z_traj_list = []
             curr_z = z_batch
@@ -112,66 +102,55 @@ class MorphableMPPIController(LatentMPPIController):
                 R_ee = None
 
             # ---------------------------------------------------------
-            # SHAPED COST EVALUATION BLOCK (Overrides Section 5)
+            # NEURAL COST FUNCTION BLOCK
             # ---------------------------------------------------------
-            term_slice = slice(-self.terminal_steps, None)
+            # Feature 1: Position Error [K, H]
             delta_pos = ee_pos - target_coords.view(1, 1, 3)
+            pos_err = torch.norm(delta_pos, p=2, dim=-1)
             
-            # A. Structurally Shaped Position Cost[span_1](start_span)[span_1](end_span)
-            # Optuna controls if this is L1 (Manhattan) or L2 (Euclidean), and applies the gamma shape.
-            axis_weights = torch.tensor([1.0, 2.5, 1.0], device=self.device)
-            raw_pos_err = torch.norm(delta_pos * axis_weights.view(1, 1, 3), p=self.pos_norm_p, dim=-1)
-            pos_err_weighted = raw_pos_err ** self.pos_gamma 
-            
-            running_pos_cost = self.w_pos * pos_err_weighted.sum(dim=-1)
-            terminal_pos_cost = self.w_term_pos * pos_err_weighted[:, term_slice].mean(dim=-1)
-
-            # B. SE(3) Orientation Cost (unchanged structural mapping)
+            # Feature 2: Orientation Error [K, H]
             if target_orientation is not None and R_ee is not None:
                 t_fwd = target_orientation[:, 2].view(1, 1, 3)
                 t_up = target_orientation[:, 1].view(1, 1, 3)
-                ee_fwd = R_ee[..., :, 2]
-                ee_up = R_ee[..., :, 1]
-                rot_err_step = (1.0 - torch.sum(ee_fwd * t_fwd, dim=-1)) + (1.0 - torch.sum(ee_up * t_up, dim=-1))
-                running_rot_cost = self.w_rot * rot_err_step.sum(dim=-1)
-                terminal_rot_cost = self.w_term_rot * rot_err_step[:, term_slice].mean(dim=-1)
+                rot_err = (1.0 - torch.sum(R_ee[..., :, 2] * t_fwd, dim=-1)) + (1.0 - torch.sum(R_ee[..., :, 1] * t_up, dim=-1))
             else:
-                running_rot_cost = torch.zeros(K, device=self.device)
-                terminal_rot_cost = torch.zeros(K, device=self.device)
-
-            # C. Structurally Shaped Velocity Penalty[span_2](start_span)[span_2](end_span)
-            vel_norm = torch.norm(p_hat, p=2, dim=-1)
-            true_dist = torch.norm(delta_pos, p=2, dim=-1)
+                rot_err = torch.zeros(K, H, device=self.device)
             
-            # Optuna dictates when friction turns on, and how sharply it engages (linear vs steep curve)
-            dist_scaling = torch.clamp(true_dist / self.vel_engagement_radius, min=0.0, max=1.0)
-            engagement_curve = (1.0 - dist_scaling) ** self.vel_gamma
-            vel_cost = self.w_vel * torch.sum(vel_norm * engagement_curve, dim=-1)
-
-            # D. Structurally Shaped Action Smoothness[span_3](start_span)[span_3](end_span)
+            # Feature 3: Velocity Magnitude [K, H]
+            vel = torch.norm(p_hat, p=2, dim=-1)
+            
+            # Feature 4: Action Smoothness / Jerk [K, H]
             delta_u_0 = candidates[:, 0] - u_prev.unsqueeze(0)
             delta_u_rest = candidates[:, 1:] - candidates[:, :-1]
             delta_u = torch.cat([delta_u_0.unsqueeze(1), delta_u_rest], dim=1)
-            
-            # Optuna determines if jerk is penalized quadratically (smooth) or linearly (sparse changes)
-            delta_u_norm = torch.norm(delta_u, p=2, dim=-1)
-            act_cost = self.w_act * torch.sum(delta_u_norm ** self.act_gamma, dim=-1)
+            act_err = torch.norm(delta_u, p=2, dim=-1)
 
-            # E. MPPI Control Penalty[span_4](start_span)[span_4](end_span)
+            # Stack features: Shape [K, H, 4]
+            features = torch.stack([pos_err, rot_err, vel, act_err], dim=-1)
+            
+            # Forward pass through Micro-MLP
+            # Use ELU for smooth gradients, Softplus at output to ensure strictly positive costs
+            hidden = F.elu(torch.matmul(features, self.W1) + self.b1)  # [K, H, 6]
+            step_costs = F.softplus(torch.matmul(hidden, self.W2) + self.b2).squeeze(-1) # [K, H]
+            
+            # Sum trajectory costs (running cost + heavy terminal weight via slicing)
+            term_slice = slice(-self.terminal_steps, None)
+            total_costs = step_costs.sum(dim=-1) + (step_costs[:, term_slice].mean(dim=-1) * 5.0)
+
+            # MPPI Control Penalty (Information-theoretic bound)
             variance = self.sigma_tensor ** 2
             control_penalty = self.temperature * torch.sum(
                 (curr_nominal.unsqueeze(0) * noise) / variance.view(1, 1, D_u), dim=(1, 2)
             )
+            total_costs += control_penalty
 
-            total_costs = running_pos_cost + terminal_pos_cost + running_rot_cost + terminal_rot_cost + vel_cost + act_cost + control_penalty
-
+            # Update loop
             min_idx = torch.argmin(total_costs)
             beta_weight = total_costs[min_idx]
             weights = torch.exp(-(total_costs - beta_weight) / self.temperature)
             norm_weights = weights / (torch.sum(weights) + 1e-10)
 
-            new_nominal = torch.sum(norm_weights.view(K, 1, 1) * candidates, dim=0)
-            curr_nominal = (1.0 - 0.75) * curr_nominal + 0.75 * new_nominal
+            curr_nominal = (1.0 - 0.75) * curr_nominal + 0.75 * torch.sum(norm_weights.view(K, 1, 1) * candidates, dim=0)
             curr_nominal = torch.clamp(curr_nominal, self.action_min, self.action_max)
 
         action_to_execute = curr_nominal[0].clone()
@@ -197,7 +176,7 @@ def compute_rot_error(fk: DifferentiableForwardKinematics, q: torch.Tensor, targ
     return float((1.0 - torch.sum(R_ee[:, 2] * target_rot[:, 2], dim=-1) + 1.0 - torch.sum(R_ee[:, 1] * target_rot[:, 1], dim=-1)).item())
 
 
-def evaluate_mppi_config(model: SPWM, controller: MorphableMPPIController, fk: DifferentiableForwardKinematics, batch: dict, device: torch.device) -> float:
+def evaluate_mppi_config(model: SPWM, controller: NeuralCostMPPIController, fk: DifferentiableForwardKinematics, batch: dict, device: torch.device) -> float:
     events = batch["events"].to(device)
     q_gt = batch["joint_positions"][0].to(device)
     phase_flags = batch["phase_flags"][0].to(device)
@@ -211,8 +190,10 @@ def evaluate_mppi_config(model: SPWM, controller: MorphableMPPIController, fk: D
     target_pose_mat = fk.forward_homogeneous(q_gt[t_c : t_c + 1])[0].detach()
     target_pos_t = target_pose_mat[:3, 3]
 
+    traj_id = int(batch["trajectory_ids"][0].item()) if "trajectory_ids" in batch else 0
+
     z_start, dyn_state, _ = ground_initial_state(model, events, t_start=max(5, t_c - 20), actions=actions)
-    controller.reset(initial_action_bias=model.physical_decoder(z_start)[0, :6] / 3.14)
+    controller.reset(initial_action_bias=model.physical_decoder(z_start)[0, :6] / 3.14, seed=42000 + traj_id)
     prev_u = controller.prev_action.clone()
 
     step_errors: List[float] = []
@@ -247,27 +228,18 @@ def evaluate_mppi_config(model: SPWM, controller: MorphableMPPIController, fk: D
 
 
 def objective(trial: optuna.Trial, model: SPWM, fk: DifferentiableForwardKinematics, val_loader: Any, device: torch.device) -> float:
-    # 1. Morphological Structure Parameters
-    pos_gamma = trial.suggest_float("pos_gamma", 0.5, 3.0)          # <1.0 = robust to outliers, >1.0 = steep wall
-    pos_norm_p = trial.suggest_categorical("pos_norm_p", [1, 2])    # L1 vs L2 geometry
-    vel_radius = trial.suggest_float("vel_radius", 0.05, 0.35)      # Engagement radius (m)
-    vel_gamma = trial.suggest_float("vel_gamma", 0.5, 4.0)          # Friction engagement curve
-    act_gamma = trial.suggest_float("act_gamma", 1.0, 3.0)          # Action delta penalty shape
-    
-    # 2. Base Weights & Noise
-    w_act = trial.suggest_float("w_act", 1e-4, 5e-2, log=True)
-    w_vel = trial.suggest_float("w_vel", 1e-3, 1.0, log=True)
-    w_rot = trial.suggest_float("w_rot", 0.1, 3.0)
-    w_term_pos = trial.suggest_float("w_term_pos", 1.0, 15.0)
+    # 1. MPPI Hyperparameters
     temperature = trial.suggest_float("temperature", 0.01, 1.0, log=True)
     noise_beta = trial.suggest_float("noise_beta", 0.2, 0.9)
-    
-    # 3. Anisotropic Noise Configuration
     sigma_base = trial.suggest_float("sigma_base", 0.1, 0.4)
     sigma_shoulder = trial.suggest_float("sigma_shoulder", 0.2, 0.8)
     sigma_elbow = trial.suggest_float("sigma_elbow", 0.2, 0.6)
 
-    controller = MorphableMPPIController(
+    # 2. Evolve the 37 Neural Weights for the Cost Function
+    # CMA-ES will handle these correlations beautifully
+    neural_weights = [trial.suggest_float(f"nw_{i}", -2.0, 2.0) for i in range(37)]
+
+    controller = NeuralCostMPPIController(
         predictor=model.m1,
         physical_decoder=model.physical_decoder,
         forward_kinematics=fk,
@@ -277,17 +249,7 @@ def objective(trial: optuna.Trial, model: SPWM, fk: DifferentiableForwardKinemat
         noise_sigma=[sigma_base, sigma_shoulder, sigma_elbow, sigma_base, sigma_base, sigma_base],
         noise_beta=noise_beta,
         temperature=temperature,
-        w_pos=1.0,
-        w_rot=w_rot,
-        w_vel=w_vel,
-        w_act=w_act,
-        w_term_pos=w_term_pos,
-        w_term_rot=w_rot * 4.0,
-        pos_gamma=pos_gamma,
-        pos_norm_p=pos_norm_p,
-        vel_engagement_radius=vel_radius,
-        vel_gamma=vel_gamma,
-        act_gamma=act_gamma,
+        neural_weights=neural_weights,
         device=device,
     )
 
@@ -311,7 +273,7 @@ def main() -> None:
     args = parser.parse_args()
 
     device = torch.device("mps" if torch.backends.mps.is_available() else "cuda" if torch.cuda.is_available() else "cpu")
-    print(f"Deploying structural optimization on {device}...")
+    print(f"Deploying neural cost optimization on {device}...")
     
     cfg = ExperimentConfig.load(args.config)
     set_seed(cfg.project.seed)
@@ -327,7 +289,7 @@ def main() -> None:
         sequence_length=cfg.data.sequence_length, batch_size=1, dataset_dir=cfg.data.dataset_dir, cache_data=False
     )
 
-    study = optuna.create_study(direction="minimize", study_name="mppi_structural_optimization")
+    study = optuna.create_study(direction="minimize", study_name="mppi_neural_optimization", sampler=CmaEsSampler())
     study.optimize(lambda trial: objective(trial, model, fk, loaders["val"], device), n_trials=args.n_trials)
 
     print("\nOptimization Finished.")

@@ -2,13 +2,16 @@ from __future__ import annotations
 from dataclasses import dataclass
 import math
 import time
-from typing import Optional, Sequence, Tuple, Union
+from typing import Any, Dict, List, Mapping, Optional, Sequence, Tuple, Union
+import numpy as np
 import torch
 import torch.nn as nn
 
+from spwm.contracts.protocols import Tier2EvaluatorProtocol
 from spwm.contracts.tensors import J, assert_tensor_contract
 from spwm.models.kinematics import DifferentiableForwardKinematics
 from spwm.models.predictors import LatentPredictor, PhysicalDecoder
+from spwm.models.rollout import ground_initial_state, step_grounded
 
 
 @dataclass(frozen=True)
@@ -63,6 +66,7 @@ class LatentMPPIController:
         terminal_steps: int = 4,
         w_altitude: float = 2.0,
         device: Optional[torch.device] = None,
+        seed: Optional[int] = None,
     ) -> None:
         if num_samples <= 0:
             raise ValueError(f"num_samples must be > 0, got {num_samples}")
@@ -132,9 +136,20 @@ class LatentMPPIController:
         self.sigma_tensor = sigmas
         self.nominal_actions = torch.zeros(self.horizon, self.action_dim, device=self.device)
         self.prev_action = torch.zeros(self.action_dim, device=self.device)
+        self.generator: Optional[torch.Generator] = None
+        if seed is not None:
+            self.set_seed(seed)
 
-    def reset(self, initial_action_bias: Optional[torch.Tensor] = None) -> None:
-        """Resets nominal action sequence and previous action buffer."""
+    def set_seed(self, seed: int) -> None:
+        """Sets a deterministic RNG seed for MPPI noise generation (Zero-Stochasticity Guarantee)."""
+        if self.generator is None:
+            self.generator = torch.Generator(device=self.device)
+        self.generator.manual_seed(seed)
+
+    def reset(self, initial_action_bias: Optional[torch.Tensor] = None, seed: Optional[int] = None) -> None:
+        """Resets nominal action sequence and previous action buffer, optionally re-seeding RNG."""
+        if seed is not None:
+            self.set_seed(seed)
         if initial_action_bias is not None:
             if initial_action_bias.shape != (self.action_dim,):
                 raise ValueError(
@@ -153,6 +168,7 @@ class LatentMPPIController:
         target_pos: torch.Tensor,
         prev_action: Optional[torch.Tensor] = None,
         target_rot: Optional[torch.Tensor] = None,
+        generator: Optional[torch.Generator] = None,
     ) -> MPPIPlanResult:
         """
         Executes MPPI optimization at control step t starting from grounded latent state z_t.
@@ -210,10 +226,11 @@ class LatentMPPIController:
         best_ee_traj = torch.zeros(H, 3, device=self.device)
         candidate_ee = torch.zeros(K, H, 3, device=self.device)
         candidate_w = torch.zeros(K, device=self.device)
+        gen = generator if generator is not None else self.generator
 
         for _ in range(self.num_iterations):
             # 1. Sample temporally correlated action perturbations: AR(1) process
-            eta = torch.randn(K, H, D_u, device=self.device) * self.sigma_tensor.view(1, 1, D_u)
+            eta = torch.randn(K, H, D_u, generator=gen, device=self.device) * self.sigma_tensor.view(1, 1, D_u)
             noise = torch.zeros(K, H, D_u, device=self.device)
             curr_eps = eta[:, 0]
             noise[:, 0] = curr_eps
@@ -358,7 +375,304 @@ class LatentMPPIController:
         )
 
 
+def compute_rot_error(
+    fk: DifferentiableForwardKinematics,
+    q: torch.Tensor,
+    target_pose_mat: torch.Tensor,
+) -> float:
+    """Computes SE(3) rotation error matching the MPPI cost function formulation."""
+    t_input = q.unsqueeze(0) if q.dim() == 1 else q
+    T_ee = fk.forward_homogeneous(t_input)[0]
+    R_ee = T_ee[:3, :3]
+    target_rot = target_pose_mat[:3, :3]
+    ee_fwd = R_ee[:, 2]
+    ee_up = R_ee[:, 1]
+    t_fwd = target_rot[:, 2]
+    t_up = target_rot[:, 1]
+    fwd_err = 1.0 - torch.sum(ee_fwd * t_fwd, dim=-1)
+    up_err = 1.0 - torch.sum(ee_up * t_up, dim=-1)
+    return float((fwd_err + up_err).item())
+
+
+def classify_elevation(y: float) -> str:
+    """Classifies vertical Cartesian elevation into Low, Mid, or High plane."""
+    if y < 1.08:
+        return "Low"
+    elif y < 1.18:
+        return "Mid"
+    else:
+        return "High"
+
+
+def compute_structural_score(
+    step_errors: Sequence[float],
+    final_vel: float,
+    final_rot: float,
+    settling_window: int = 3,
+    pos_threshold_cm: float = 3.0,
+    vel_threshold: float = 1.5,
+    rot_threshold: float = 0.05,
+    success_bonus: float = 2.0,
+) -> Tuple[float, bool]:
+    """Computes continuous structural shaping score for closed-loop MPPI reaching.
+
+    Penalizes steady-state position error, terminal joint velocity, and terminal rotation error.
+    Grants a discrete success bonus when all spatial, velocity, and orientation criteria are met.
+    """
+    window_errors = step_errors[-settling_window:] if len(step_errors) >= settling_window else step_errors
+    steady_state_error = float(np.mean(window_errors))
+
+    pos_penalty = (steady_state_error / pos_threshold_cm) ** 2
+    vel_penalty = (final_vel / vel_threshold) ** 2
+    rot_penalty = (final_rot / rot_threshold) ** 2
+
+    raw_score = pos_penalty + vel_penalty + rot_penalty
+    is_success = bool(
+        all(err < pos_threshold_cm for err in window_errors)
+        and (final_vel < vel_threshold)
+        and (final_rot < rot_threshold)
+    )
+    score = raw_score - (success_bonus if is_success else 0.0)
+    return float(score), is_success
+
+
+class MPPIStructuralScorer:
+    """
+    Tier 2 Closed-Loop MPPI Structural Validation Scorer.
+
+    Evaluates downstream closed-loop MPPI control on a tiny, fixed validation subset
+    (covering Low, Mid, and High vertical elevations) at fixed epoch intervals (e.g. every 10 epochs).
+
+    Zero-Stochasticity Guarantee:
+    Explicitly re-seeds the MPPI noise generator per trajectory (`base_seed + traj_id`)
+    so the exact same perturbation sequence is evaluated across epochs, preventing
+    random noise variance from corrupting the validation signal.
+    """
+
+    def __init__(
+        self,
+        fixed_batches: List[Dict[str, Any]],
+        device: torch.device,
+        frequency: int = 10,
+        base_seed: int = 42000,
+        num_samples: int = 256,
+        horizon: int = 30,
+        num_iterations: int = 3,
+        fk: Optional[DifferentiableForwardKinematics] = None,
+        approach_window: int = 20,
+    ) -> None:
+        if not fixed_batches:
+            raise ValueError("fixed_batches cannot be empty for MPPIStructuralScorer.")
+        if frequency <= 0:
+            raise ValueError(f"frequency must be > 0, got {frequency}")
+
+        self.fixed_batches = fixed_batches
+        self.device = device
+        self.frequency = int(frequency)
+        self.base_seed = int(base_seed)
+        self.num_samples = int(num_samples)
+        self.horizon = int(horizon)
+        self.num_iterations = int(num_iterations)
+        self.fk = fk if fk is not None else DifferentiableForwardKinematics().to(device)
+        self.approach_window = int(approach_window)
+
+    @classmethod
+    def from_dataset(
+        cls,
+        val_dataset: Any,
+        device: torch.device,
+        frequency: int = 10,
+        num_trajectories: int = 6,
+        base_seed: int = 42000,
+        num_samples: int = 256,
+        horizon: int = 30,
+        num_iterations: int = 3,
+        fk: Optional[DifferentiableForwardKinematics] = None,
+        approach_window: int = 20,
+    ) -> "MPPIStructuralScorer":
+        """Builds an MPPIStructuralScorer by extracting a balanced, fixed subset of trajectories covering Low, Mid, and High elevations."""
+        target_planes = ("Low", "Mid", "High")
+        target_per_plane = max(1, num_trajectories // len(target_planes))
+        by_plane: Dict[str, List[Dict[str, Any]]] = {p: [] for p in target_planes}
+        other_items: List[Dict[str, Any]] = []
+
+        forward_kin = fk if fk is not None else DifferentiableForwardKinematics().to(device)
+
+        for idx in range(len(val_dataset)):
+            item = val_dataset[idx]
+            q = item["joint_positions"]
+            pf = item["phase_flags"]
+            p1 = (pf == 1).nonzero()
+            tc = int(p1[0].item()) if len(p1) > 0 else 50
+
+            with torch.no_grad():
+                q_tc = q[tc : tc + 1].to(device)
+                t_mat = forward_kin.forward_homogeneous(q_tc)[0]
+                y_val = float(t_mat[1, 3].item())
+            plane = classify_elevation(y_val)
+
+            batch_dict = {
+                "events": item["events"].unsqueeze(0).to(device),
+                "joint_positions": item["joint_positions"].unsqueeze(0).to(device),
+                "phase_flags": item["phase_flags"].unsqueeze(0).to(device),
+                "actions": item["actions"].unsqueeze(0).to(device),
+                "trajectory_id": int(item["trajectory_id"]),
+                "elevation_plane": plane,
+            }
+
+            if plane in by_plane and len(by_plane[plane]) < target_per_plane:
+                by_plane[plane].append(batch_dict)
+            else:
+                other_items.append(batch_dict)
+
+            if all(len(by_plane[p]) >= target_per_plane for p in target_planes):
+                break
+
+        selected: List[Dict[str, Any]] = []
+        for p in target_planes:
+            selected.extend(by_plane[p])
+
+        if len(selected) < num_trajectories:
+            for item in other_items:
+                if len(selected) >= num_trajectories:
+                    break
+                selected.append(item)
+
+        return cls(
+            fixed_batches=selected,
+            device=device,
+            frequency=frequency,
+            base_seed=base_seed,
+            num_samples=num_samples,
+            horizon=horizon,
+            num_iterations=num_iterations,
+            fk=forward_kin,
+            approach_window=approach_window,
+        )
+
+    def evaluate_trajectory(
+        self,
+        model: nn.Module,
+        controller: LatentMPPIController,
+        batch: Dict[str, Any],
+        seed: int,
+    ) -> Dict[str, float]:
+        """Evaluates MPPI closed-loop control on a single trajectory with strictly seeded noise generation."""
+        events = batch["events"]
+        q_gt = batch["joint_positions"][0]
+        phase_flags = batch["phase_flags"][0]
+        actions = batch["actions"]
+
+        p1_indices = (phase_flags == 1).nonzero()
+        t_c = int(p1_indices[0].item()) if len(p1_indices) > 0 else 50
+        t_grasp = min(t_c + 7, q_gt.shape[0] - 1)
+        t_start = max(5, t_c - self.approach_window)
+
+        target_pose_mat = self.fk.forward_homogeneous(q_gt[t_c : t_c + 1])[0].detach()
+        target_pos_t = target_pose_mat[:3, 3]
+
+        z_start, dyn_state, _ = ground_initial_state(model, events, t_start=t_start, actions=actions)
+        dec_start = model.physical_decoder(z_start)
+        initial_bias = dec_start[0, :6] / 3.14
+
+        # Zero-Stochasticity Guarantee: seed controller explicitly before trajectory unrolling
+        controller.reset(initial_action_bias=initial_bias, seed=seed)
+        prev_u = initial_bias.clone()
+
+        step_errors: List[float] = []
+        final_vel = 0.0
+        final_rot = 0.0
+
+        for t in range(t_start, t_grasp + 1):
+            z_t, dyn_state = step_grounded(
+                model,
+                events[:, t],
+                dyn_state,
+                in_sensory_phase=True,
+                unconstrained=True,
+                action=prev_u.unsqueeze(0),
+            )
+            res = controller.plan_step(z_t, target_pose_mat, prev_action=prev_u)
+            prev_u = res.action
+
+            dec_t = model.physical_decoder(z_t)
+            ee_t = self.fk(dec_t[:, :6])[0].detach()
+            err_cm = float((torch.norm(ee_t - target_pos_t) * 100.0).item())
+            step_errors.append(err_cm)
+
+            if t == t_grasp:
+                final_vel = float(torch.norm(dec_t[0, 6:12]).item())
+                final_rot = compute_rot_error(self.fk, dec_t[0, :6], target_pose_mat)
+
+        score, is_success = compute_structural_score(step_errors, final_vel, final_rot)
+        window_errors = step_errors[-3:] if len(step_errors) >= 3 else step_errors
+        steady_state_error = float(np.mean(window_errors))
+
+        return {
+            "score": score,
+            "success": 1.0 if is_success else 0.0,
+            "min_error_cm": min(step_errors),
+            "terminal_error_cm": step_errors[-1],
+            "steady_state_error_cm": steady_state_error,
+            "final_vel": final_vel,
+            "final_rot": final_rot,
+            "pos_penalty": (steady_state_error / 3.0) ** 2,
+            "vel_penalty": (final_vel / 1.5) ** 2,
+            "rot_penalty": (final_rot / 0.05) ** 2,
+        }
+
+    @torch.no_grad()
+    def __call__(self, model: nn.Module, epoch: int) -> Dict[str, float]:
+        """Executes Tier 2 closed-loop MPPI scoring on the fixed validation subset."""
+        model.eval()
+
+        controller = LatentMPPIController(
+            predictor=model.m1,
+            physical_decoder=model.physical_decoder,
+            forward_kinematics=self.fk,
+            num_samples=self.num_samples,
+            horizon=self.horizon,
+            num_iterations=self.num_iterations,
+            device=self.device,
+        )
+
+        all_results: List[Dict[str, float]] = []
+        for batch in self.fixed_batches:
+            traj_id = int(batch["trajectory_id"])
+            traj_seed = self.base_seed + traj_id
+            res = self.evaluate_trajectory(model, controller, batch, seed=traj_seed)
+            all_results.append(res)
+
+        n = len(all_results)
+        mean_score = float(np.mean([r["score"] for r in all_results]))
+        success_rate = float(np.mean([r["success"] for r in all_results]))
+        mean_min_err = float(np.mean([r["min_error_cm"] for r in all_results]))
+        mean_term_err = float(np.mean([r["terminal_error_cm"] for r in all_results]))
+        mean_vel = float(np.mean([r["final_vel"] for r in all_results]))
+        mean_rot = float(np.mean([r["final_rot"] for r in all_results]))
+        mean_pos_pen = float(np.mean([r["pos_penalty"] for r in all_results]))
+        mean_vel_pen = float(np.mean([r["vel_penalty"] for r in all_results]))
+        mean_rot_pen = float(np.mean([r["rot_penalty"] for r in all_results]))
+
+        return {
+            "mppi_score": mean_score,
+            "mppi_success_rate": success_rate,
+            "mppi_mean_error_cm": mean_min_err,
+            "mppi_terminal_error_cm": mean_term_err,
+            "mppi_final_vel": mean_vel,
+            "mppi_final_rot": mean_rot,
+            "mppi_pos_penalty": mean_pos_pen,
+            "mppi_vel_penalty": mean_vel_pen,
+            "mppi_rot_penalty": mean_rot_pen,
+            "mppi_evaluated_trajectories": float(n),
+        }
+
+
 __all__ = [
     "LatentMPPIController",
     "MPPIPlanResult",
+    "MPPIStructuralScorer",
+    "classify_elevation",
+    "compute_rot_error",
+    "compute_structural_score",
 ]

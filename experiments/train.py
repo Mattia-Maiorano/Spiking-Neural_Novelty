@@ -89,6 +89,49 @@ def parse_args() -> argparse.Namespace:
         default=False,
         help="Start training from scratch, ignoring existing checkpoint.pt in output directory",
     )
+    parser.add_argument(
+        "--tier2-frequency",
+        type=int,
+        default=None,
+        help="Override Tier 2 closed-loop MPPI evaluation frequency in epochs (default: 10)",
+    )
+    parser.add_argument(
+        "--tier2-trajectories",
+        type=int,
+        default=None,
+        help="Override number of fixed validation trajectories evaluated in Tier 2 (default: 6)",
+    )
+    parser.add_argument(
+        "--tier2-seed",
+        type=int,
+        default=None,
+        help="Override base RNG seed for Tier 2 Zero-Stochasticity MPPI evaluation (default: 42000)",
+    )
+    parser.add_argument(
+        "--tier2-candidate-selection",
+        type=str,
+        default=None,
+        choices=["best_in_block", "latest", "last"],
+        help="Which model candidate to evaluate in Tier 2: best_in_block (default) or latest",
+    )
+    parser.add_argument(
+        "--tier2-patience",
+        type=int,
+        default=None,
+        help="Override Tier 2 early stopping patience in consecutive Tier 2 checks (default: 3 checks)",
+    )
+    parser.add_argument(
+        "--tier2-min-delta",
+        type=float,
+        default=None,
+        help="Override Tier 2 minimum score delta to count as validation improvement (default: 0.001)",
+    )
+    parser.add_argument(
+        "--no-tier2",
+        action="store_true",
+        default=False,
+        help="Disable Tier 2 closed-loop MPPI validation and rely strictly on Tier 1 open-loop MSE",
+    )
     return parser.parse_args()
 
 
@@ -274,6 +317,18 @@ def main() -> None:
         overrides["total_trajectories"] = args.total_trajectories
     if args.weighted_sampling:
         overrides["weighted_sampling"] = True
+    if args.tier2_frequency is not None:
+        overrides["tier2_frequency"] = args.tier2_frequency
+    if args.tier2_trajectories is not None:
+        overrides["tier2_trajectories"] = args.tier2_trajectories
+    if args.tier2_seed is not None:
+        overrides["tier2_seed"] = args.tier2_seed
+    if args.tier2_candidate_selection is not None:
+        overrides["tier2_candidate_selection"] = args.tier2_candidate_selection
+    if args.tier2_patience is not None:
+        overrides["tier2_patience"] = args.tier2_patience
+    if args.tier2_min_delta is not None:
+        overrides["tier2_min_delta"] = args.tier2_min_delta
 
     if overrides:
         cfg = cfg.with_overrides(**overrides)
@@ -321,6 +376,25 @@ def main() -> None:
     # Auto-enforced strict loading of best validation `model.pt` from matching version
     enforce_phase_prerequisites(model, cfg, device=device, results_root=results_root)
 
+    tier2_evaluator = None
+    if not args.no_tier2 and mode == "train_m1":
+        from spwm.evaluation.mppi import MPPIStructuralScorer
+
+        tier2_evaluator = MPPIStructuralScorer.from_dataset(
+            val_dataset=dataloaders["val"].dataset,
+            device=device,
+            frequency=cfg.training.tier2_frequency,
+            num_trajectories=cfg.training.tier2_trajectories,
+            base_seed=cfg.training.tier2_seed,
+            num_samples=cfg.training.tier2_num_samples,
+            horizon=cfg.training.tier2_horizon,
+            num_iterations=cfg.training.tier2_iterations,
+        )
+        chronicle.log_info(
+            f"Tier 2 Closed-Loop MPPI Scorer configured on {len(tier2_evaluator.fixed_batches)} fixed validation trajectories "
+            f"(Evaluates every {tier2_evaluator.frequency} epochs; Zero-Stochasticity seed={cfg.training.tier2_seed})."
+        )
+
     engine = BaseTrainer(
         model=model,
         cfg=cfg,
@@ -329,6 +403,7 @@ def main() -> None:
         device=device,
         save_dir=save_dir,
         results_root=results_root,
+        tier2_evaluator=tier2_evaluator,
     )
 
     resume_ckpt = save_dir / "checkpoint.pt"

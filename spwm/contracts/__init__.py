@@ -43,6 +43,7 @@ from spwm.contracts.protocols import (
     WorldModelProtocol,
     PhaseStrategy,
     PhaseHandler,
+    Tier2EvaluatorProtocol,
 )
 
 __all__ = [
@@ -79,4 +80,5 @@ __all__ = [
     "WorldModelProtocol",
     "PhaseStrategy",
     "PhaseHandler",
+    "Tier2EvaluatorProtocol",
 ]

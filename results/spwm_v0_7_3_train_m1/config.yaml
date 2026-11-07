@@ -66,7 +66,7 @@ memory:
   - 0.985
 training:
   mode: train_m1
-  epochs: 200
+  epochs: 100
   early_stopping_patience: 10
   batch_size: 32
   weight_decay: 0.0005
@@ -77,6 +77,15 @@ training:
   temporal_burn_in: 15
   representation_checkpoint: null
   phase_horizon: 50
+  tier2_frequency: 10
+  tier2_trajectories: 6
+  tier2_seed: 42000
+  tier2_num_samples: 256
+  tier2_horizon: 30
+  tier2_iterations: 3
+  tier2_candidate_selection: best_in_block
+  tier2_patience: 3
+  tier2_min_delta: 0.001
 loss:
   lambda_encoder: 1.0
   lambda_decoder: 1.0

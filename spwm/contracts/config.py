@@ -60,7 +60,7 @@ def _strict_dict_to_dataclass(cls: Type[T], data: Dict[str, Any], context: str =
 @dataclass(frozen=True)
 class ProjectConfig:
     """Project-level identity, tracking tags, and pseudo-random reproducibility configuration."""
-    name: str = "spwm_v0_7_3"  #: Unique identifier/tag for the project and run artifacts.
+    name: str = "spwm_v0_8_0"  #: Unique identifier/tag for the project and run artifacts.
     seed: int = 42             #: Global pseudo-random seed for PyTorch, NumPy, and trajectory generation.
 
 
@@ -223,6 +223,15 @@ class TrainingConfig:
     temporal_burn_in: int = 15                       #: Initial latent steps for recurrent dynamics warm-up before launching evaluation rollouts.
     representation_checkpoint: Optional[str] = None  #: Optional path to pre-trained representation checkpoint .pt.
     phase_horizon: int = 50                          #: Duration H of predictor unrolling during training.
+    tier2_frequency: int = 10                         #: Frequency (in epochs) to evaluate Tier 2 closed-loop MPPI scoring.
+    tier2_trajectories: int = 6                       #: Number of fixed validation trajectories for Tier 2 evaluation (covering Low, Mid, High).
+    tier2_seed: int = 42000                           #: Deterministic base RNG seed for MPPI noise generation in Tier 2 validation.
+    tier2_num_samples: int = 256                      #: Number of candidate trajectory samples K in MPPI planning during Tier 2 validation.
+    tier2_horizon: int = 30                           #: Planning horizon H in MPPI planning during Tier 2 validation.
+    tier2_iterations: int = 3                         #: Number of MPPI optimization iterations per control step during Tier 2 validation.
+    tier2_candidate_selection: str = "best_in_block"  #: Candidate model to evaluate in Tier 2: "best_in_block" (best Tier 1 val loss in window) or "latest".
+    tier2_patience: int = 3                           #: Consecutive Tier 2 evaluation checks without MPPI score improvement before early stopping.
+    tier2_min_delta: float = 0.001                    #: Minimum improvement threshold on MPPI structural score to reset early stopping patience.
 
     def __post_init__(self) -> None:
         valid_modes = ("train_representation", "train_m1")
@@ -232,6 +241,19 @@ class TrainingConfig:
             raise ValueError(f"phase_horizon must be > 0, got {self.phase_horizon}")
         if self.early_stopping_patience <= 0:
             raise ValueError(f"early_stopping_patience must be > 0, got {self.early_stopping_patience}")
+        if self.tier2_frequency <= 0:
+            raise ValueError(f"tier2_frequency must be > 0, got {self.tier2_frequency}")
+        if self.tier2_trajectories <= 0:
+            raise ValueError(f"tier2_trajectories must be > 0, got {self.tier2_trajectories}")
+        if self.tier2_patience <= 0:
+            raise ValueError(f"tier2_patience must be > 0, got {self.tier2_patience}")
+        if self.tier2_min_delta < 0.0:
+            raise ValueError(f"tier2_min_delta must be non-negative, got {self.tier2_min_delta}")
+        valid_selections = ("best_in_block", "latest", "last")
+        if self.tier2_candidate_selection not in valid_selections:
+            raise ValueError(
+                f"Invalid tier2_candidate_selection '{self.tier2_candidate_selection}'. Allowed: {valid_selections}"
+            )
 
 
 @dataclass(frozen=True)
@@ -323,6 +345,12 @@ class ExperimentConfig:
         sequence_length: Optional[int] = None,
         total_trajectories: Optional[int] = None,
         weighted_sampling: Optional[bool] = None,
+        tier2_frequency: Optional[int] = None,
+        tier2_trajectories: Optional[int] = None,
+        tier2_seed: Optional[int] = None,
+        tier2_candidate_selection: Optional[str] = None,
+        tier2_patience: Optional[int] = None,
+        tier2_min_delta: Optional[float] = None,
     ) -> "ExperimentConfig":
         """
         Creates a new validated, frozen ExperimentConfig with explicit overrides.
@@ -357,6 +385,18 @@ class ExperimentConfig:
             train_updates["phase_horizon"] = phase_horizon
         if temporal_burn_in is not None:
             train_updates["temporal_burn_in"] = temporal_burn_in
+        if tier2_frequency is not None:
+            train_updates["tier2_frequency"] = tier2_frequency
+        if tier2_trajectories is not None:
+            train_updates["tier2_trajectories"] = tier2_trajectories
+        if tier2_seed is not None:
+            train_updates["tier2_seed"] = tier2_seed
+        if tier2_candidate_selection is not None:
+            train_updates["tier2_candidate_selection"] = tier2_candidate_selection
+        if tier2_patience is not None:
+            train_updates["tier2_patience"] = tier2_patience
+        if tier2_min_delta is not None:
+            train_updates["tier2_min_delta"] = tier2_min_delta
 
         training = dataclasses.replace(self.training, **train_updates) if train_updates else self.training
         return dataclasses.replace(self, project=proj, data=data, training=training)

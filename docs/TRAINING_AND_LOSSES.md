@@ -144,12 +144,12 @@ In downstream stochastic sampling controllers, pseudo-random exploration jitter 
 2. For each trajectory in the fixed validation subset, [`LatentMPPIController.reset`](file:///Users/Mattia/Desktop/Studies/Temp/spwm/evaluation/mppi.py#L146-L160) explicitly re-seeds the generator to `tier2_seed + trajectory_id` prior to unrolling.
 3. Every step $t \in [t_{\text{start}}, t_{\text{grasp}}]$ evaluates the **exact identical sequence of action perturbations** across validation epochs, ensuring that any metric change reflects true neural weight improvement rather than stochastic sampling variance.
 
-### 5.4 Candidate Model Selection (Best-in-Block Default)
-Rather than blindly testing whichever weights happen to land at the 10th epoch (which may suffer from a single noisy batch or transient gradient overshoot), [`BaseTrainer`](file:///Users/Mattia/Desktop/Studies/Temp/spwm/training/engine.py#L270-L330) defaults to `tier2_candidate_selection = "best_in_block"`:
-1. **Intra-Block Tracking**: Across epochs $(k-1)\cdot 10 + 1 \dots k\cdot 10$, the trainer tracks the minimum Tier 1 open-loop validation loss and keeps a snapshot of the corresponding model weights.
-2. **Targeted Closed-Loop Evaluation**: At the Tier 2 evaluation epoch ($k\cdot 10$), the trainer temporarily loads this best-in-block candidate and evaluates closed-loop MPPI control against the fixed validation subset.
-3. **Decoupled Model Checkpointing**: If the candidate improves the global MPPI structural score, it is saved to `model.pt` tagged with its true originating epoch.
-4. **Seamless Resume**: Current training weights are restored immediately after Tier 2 evaluation, preserving continuous gradient momentum and Adam optimizer statistics.
+### 5.4 Candidate Model Selection (Exponential Moving Average Default)
+To resolve pathological divergence and high-frequency parameter oscillations between open-loop validation and downstream closed-loop control, [`BaseTrainer`](file:///Users/Mattia/Desktop/Studies/Temp/spwm/training/engine.py#L270-L330) tracks weights using an Exponential Moving Average ([`EMATracker`](file:///Users/Mattia/Desktop/Studies/Temp/spwm/training/engine.py#L164-L225)) with `tier2_candidate_selection = "ema"`:
+1. **Continuous Weight Smoothing**: On each training step, shadow weights are updated via $\theta_{\text{EMA}} \leftarrow \tau \theta_{\text{EMA}} + (1 - \tau) \theta$ (default decay $\tau = 0.99$), filtering high-frequency gradient noise.
+2. **Targeted Closed-Loop Evaluation**: At each Tier 2 evaluation epoch ($k\cdot 10$), the trainer temporarily loads the smoothed EMA weights into the model and evaluates closed-loop MPPI control against the fixed validation subset.
+3. **Decoupled Model Checkpointing**: If the EMA candidate improves the global MPPI structural score, it is saved to `model.pt`.
+4. **Seamless Resume**: Current active training weights are restored immediately after Tier 2 evaluation, preserving gradient momentum and Adam optimizer statistics.
 
 ### 5.5 Tier 2 Early Stopping Criteria & Check Cadence
 Early stopping under Two-Tiered Validation is matched strictly to the closed-loop MPPI structural score rather than noisy open-loop MSE:
@@ -157,3 +157,9 @@ Early stopping under Two-Tiered Validation is matched strictly to the closed-loo
 2. **Consecutive Tier 2 Evaluation Checks**: Early stopping is evaluated strictly at the end of each Tier 2 epoch against `tier2_patience` (default: 3 checks, spanning 30 epochs under the default 10-epoch frequency).
 3. **Improvement Delta Guard (`tier2_min_delta`)**: A candidate's `mppi_score` must strictly improve over `best_score` by more than `tier2_min_delta` (default: 0.001) to reset the patience counter (`tier2_checks_without_improvement = 0`). Minor variations below this threshold are rejected as stagnation.
 4. **Graceful Fallback for Single-Tier Mode**: When running Phase 0 representation learning or when `--no-tier2` is specified, `BaseTrainer` falls back cleanly to epoch-by-epoch early stopping governed by `early_stopping_patience`.
+
+### 5.6 MPPI-Aware Training: Action AR(1) Perturbation with Curriculum Scheduling
+To prevent off-distribution covariate shift during closed-loop MPPI unrolls, Phase 1 (`train_m1`) injects temporally correlated AR(1) Gaussian noise into demonstration actions during autoregressive predictor unrolls:
+1. **AR(1) Process Matching MPPI**: Action perturbations follow an identical stationary Gauss-Markov process matching [`LatentMPPIController`](file:///Users/Mattia/Desktop/Studies/Temp/spwm/evaluation/mppi.py#L210-L245) ($\beta = 0.75$, anisotropic $\boldsymbol{\Sigma}$, clamped to $[-1, 1]$).
+2. **Linear Curriculum Scheduling**: Noise intensity $\alpha \in [0.0, 1.0]$ is scheduled via [`compute_mppi_noise_alpha`](file:///Users/Mattia/Desktop/Studies/Temp/spwm/training/noise.py#L38-L50). Training starts at $\alpha = 0$ during initial warmup epochs (`mppi_noise_warmup_epochs = 10`) to learn base dynamics, linearly ramping to target level (`mppi_noise_target_alpha = 1.0`) over `mppi_noise_ramp_epochs = 20`.
+3. **Pure Open-Loop Validation**: In Tier 1 validation (`validate_step`), noise injection is disabled ($\alpha = 0$), maintaining uncorrupted open-loop benchmark metrics.

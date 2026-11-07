@@ -161,6 +161,68 @@ def enforce_phase_prerequisites(
     return loaded
 
 
+class EMATracker:
+    """
+    Exponential Moving Average (EMA) tracker for model weights.
+
+    Maintains shadow weights tracking an exponential moving average:
+        theta_ema <- tau * theta_ema + (1 - tau) * theta
+    Provides strict loading of EMA weights into the model for Tier 2 closed-loop MPPI evaluation.
+    """
+
+    def __init__(
+        self,
+        model: nn.Module,
+        decay: float = 0.99,
+        device: Optional[Union[str, torch.device]] = None,
+    ) -> None:
+        if not (0.0 <= decay <= 1.0):
+            raise ValueError(f"EMA decay must be in [0.0, 1.0], got {decay}")
+        self.decay = float(decay)
+        self.device = torch.device(device) if device is not None else None
+        self.shadow: Dict[str, torch.Tensor] = {}
+        for k, v in model.state_dict().items():
+            t = v.clone().detach()
+            if self.device is not None:
+                t = t.to(self.device)
+            self.shadow[k] = t
+
+    @torch.no_grad()
+    def update(self, model: nn.Module) -> None:
+        """Update EMA shadow parameters with current model parameters."""
+        for k, v in model.state_dict().items():
+            if k not in self.shadow:
+                t = v.clone().detach()
+                if self.device is not None:
+                    t = t.to(self.device)
+                self.shadow[k] = t
+                continue
+            if torch.is_floating_point(v):
+                target_v = v.detach()
+                if self.device is not None and target_v.device != self.shadow[k].device:
+                    target_v = target_v.to(self.shadow[k].device)
+                self.shadow[k].mul_(self.decay).add_(target_v, alpha=1.0 - self.decay)
+            else:
+                target_v = v.detach()
+                if self.device is not None and target_v.device != self.shadow[k].device:
+                    target_v = target_v.to(self.shadow[k].device)
+                self.shadow[k].copy_(target_v)
+
+    def copy_to(self, model: nn.Module) -> None:
+        """Loads EMA weights into model with strict=True."""
+        model.load_state_dict(self.shadow, strict=True)
+
+    def state_dict(self) -> Dict[str, torch.Tensor]:
+        return {k: v.clone() for k, v in self.shadow.items()}
+
+    def load_state_dict(self, state_dict: Dict[str, torch.Tensor]) -> None:
+        for k, v in state_dict.items():
+            t = v.clone().detach()
+            if self.device is not None:
+                t = t.to(self.device)
+            self.shadow[k] = t
+
+
 class BaseTrainer:
     """Standardized, modular training engine delegating phase mechanics to `PhaseStrategy`."""
 
@@ -191,6 +253,7 @@ class BaseTrainer:
         self.tier2_candidate_selection = cfg.training.tier2_candidate_selection
         self.tier2_patience = cfg.training.tier2_patience
         self.tier2_min_delta = cfg.training.tier2_min_delta
+        self.ema_decay = cfg.training.ema_decay
 
         if device is None:
             if torch.cuda.is_available():
@@ -203,6 +266,11 @@ class BaseTrainer:
             self.device = torch.device(device)
 
         self.model.to(self.device)
+        self.ema_tracker: Optional[EMATracker] = (
+            EMATracker(model=self.model, decay=self.ema_decay, device=self.device)
+            if self.tier2_candidate_selection == "ema"
+            else None
+        )
         self.save_dir = Path(save_dir)
         self.save_dir.mkdir(parents=True, exist_ok=True)
 
@@ -257,6 +325,8 @@ class BaseTrainer:
             for k, v in step_metrics.items():
                 train_accum[k] = train_accum.get(k, 0.0) + v
             batch_count += 1
+            if self.ema_tracker is not None:
+                self.ema_tracker.update(self.model)
         return {k: v / max(1, batch_count) for k, v in train_accum.items()}
 
     def _fit_single_phase(
@@ -288,16 +358,13 @@ class BaseTrainer:
                 f"{tier2_patience_limit * self.tier2_frequency} epochs, min_delta={self.tier2_min_delta})",
             )
             chronicle.log_detail("Tier 2 Frequency", f"Every {self.tier2_frequency} epochs")
-            chronicle.log_detail("Candidate Selection", self.tier2_candidate_selection)
+            chronicle.log_detail("Candidate Selection", f"{self.tier2_candidate_selection} (EMA decay: {self.ema_decay})")
         else:
             chronicle.log_detail("Epochs", f"{self.start_epoch} -> {end_epoch} (Patience: {max_no_improve} epochs)")
         chronicle.log_detail("Save Directory", str(self.save_dir))
 
         epochs_without_improvement = 0
         tier2_checks_without_improvement = 0
-        best_block_tier1_loss = float("inf")
-        best_block_epoch: Optional[int] = None
-        best_block_state: Optional[Dict[str, torch.Tensor]] = None
         start_time = time.time()
         try:
             for epoch in range(self.start_epoch, end_epoch + 1):
@@ -306,37 +373,31 @@ class BaseTrainer:
                 val_metrics = self.evaluate(self.val_loader)
                 tier1_loss = self.handler.get_selection_score(val_metrics)
 
-                # Track best Tier 1 validation candidate within the current block of epochs
-                if tier1_loss < best_block_tier1_loss:
-                    best_block_tier1_loss = tier1_loss
-                    best_block_epoch = epoch
-                    best_block_state = {k: v.cpu().clone() for k, v in self.model.state_dict().items()}
-
                 is_tier2_epoch = (self.tier2_evaluator is not None) and (epoch % self.tier2_frequency == 0)
                 if self.tier2_evaluator is not None:
                     if is_tier2_epoch:
-                        use_best_in_block = (self.tier2_candidate_selection == "best_in_block") and (best_block_state is not None)
-                        candidate_epoch = best_block_epoch if use_best_in_block and best_block_epoch is not None else epoch
-
                         current_epoch_state = None
-                        if use_best_in_block and best_block_state is not None:
+                        if self.tier2_candidate_selection == "ema" and self.ema_tracker is not None:
                             current_epoch_state = {k: v.cpu().clone() for k, v in self.model.state_dict().items()}
-                            self.model.load_state_dict(best_block_state, strict=True)
+                            self.ema_tracker.copy_to(self.model)
                             chronicle.log_info(
-                                f"Tier 2 Evaluating best Tier 1 validation candidate of current block "
-                                f"(Epoch {candidate_epoch}, Tier 1 val_loss={best_block_tier1_loss:.5f})."
+                                f"Tier 2 Evaluating EMA model weights (Epoch {epoch}, decay={self.ema_decay:.3f})."
+                            )
+                        elif self.tier2_candidate_selection == "latest":
+                            chronicle.log_info(
+                                f"Tier 2 Evaluating latest model weights (Epoch {epoch})."
                             )
 
-                        tier2_metrics = self.tier2_evaluator(self.model, candidate_epoch)
+                        tier2_metrics = self.tier2_evaluator(self.model, epoch)
                         val_metrics.update(tier2_metrics)
                         score = tier2_metrics["mppi_score"]
                         is_best = score < (self.best_score - self.tier2_min_delta)
                         if is_best:
                             self.best_score = score
-                            self.best_epoch = candidate_epoch
+                            self.best_epoch = epoch
                             epochs_without_improvement = 0
                             tier2_checks_without_improvement = 0
-                            self.save_checkpoint(candidate_epoch, is_best=True)
+                            self.save_checkpoint(epoch, is_best=True)
                         else:
                             tier2_checks_without_improvement += 1
                             epochs_without_improvement += self.tier2_frequency
@@ -344,11 +405,6 @@ class BaseTrainer:
                         # Restore current training weights so optimization continues forward
                         if current_epoch_state is not None:
                             self.model.load_state_dict(current_epoch_state, strict=True)
-
-                        # Reset block tracking for the next block
-                        best_block_tier1_loss = float("inf")
-                        best_block_epoch = None
-                        best_block_state = None
                     else:
                         score = tier1_loss
                         is_best = False
@@ -453,6 +509,8 @@ class BaseTrainer:
             "config": self.cfg.to_dict(),
             "history": self.history,
         }
+        if self.ema_tracker is not None:
+            ckpt["ema_state"] = self.ema_tracker.state_dict()
         if path is not None:
             torch.save(ckpt, Path(path))
             return
@@ -475,6 +533,8 @@ class BaseTrainer:
             self.history = ckpt.get("history", []) or []
             if "optimizers_state" in ckpt:
                 self.handler.load_optimizers_state(ckpt["optimizers_state"])
+            if self.ema_tracker is not None and "ema_state" in ckpt:
+                self.ema_tracker.load_state_dict(ckpt["ema_state"])
         else:
             self.model.load_state_dict(ckpt, strict=True)
 

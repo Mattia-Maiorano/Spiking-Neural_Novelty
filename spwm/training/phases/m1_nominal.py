@@ -9,6 +9,7 @@ from spwm.contracts.states import DynamicsState
 from spwm.contracts.tensors import assert_phase_space_contract, assert_tensor_contract
 from spwm.models.rollout import compute_rollout_schedule, ground_initial_state, rollout_latent, step_grounded
 from spwm.training.metrics import position_error, velocity_error
+from spwm.training.noise import compute_mppi_noise_alpha, sample_ar1_noise
 
 
 class M1PhaseStrategy(PhaseStrategy):
@@ -39,6 +40,8 @@ class M1PhaseStrategy(PhaseStrategy):
         actions: torch.Tensor,
         flat_kin: Optional[torch.Tensor] = None,
         phase_flags: Optional[torch.Tensor] = None,
+        epoch: Optional[int] = None,
+        is_train: bool = True,
     ) -> Tuple[torch.Tensor, Dict[str, float]]:
         B, T = events.shape[0], events.shape[1]
         assert_tensor_contract(events, (B, T, self.model.in_channels, self.model.height, self.model.width), "M1.events")
@@ -54,9 +57,18 @@ class M1PhaseStrategy(PhaseStrategy):
             z_target = z_star.detach()
 
         curr_z, dyn_state, z_prefix = ground_initial_state(self.model, events, t_start, actions=actions)
+
+        # AR(1) correlated noise injection into rollout actions with curriculum scheduling
+        rollout_actions = actions[:, t_start : t_start + horizon]
+        noise_alpha = 0.0
+        if is_train and epoch is not None:
+            tc = self.cfg.training
+            noise_alpha = compute_mppi_noise_alpha(epoch, tc.mppi_noise_warmup_epochs, tc.mppi_noise_ramp_epochs, tc.mppi_noise_target_alpha)
+            if noise_alpha > 0.0:
+                rollout_actions = torch.clamp(rollout_actions + noise_alpha * sample_ar1_noise(B, horizon, self.model.action_dim, events.device), -1.0, 1.0)
+
         roll_res = rollout_latent(
-            model=self.model, z_init=curr_z, horizon=horizon,
-            actions=actions[:, t_start : t_start + horizon],
+            model=self.model, z_init=curr_z, horizon=horizon, actions=rollout_actions,
             events=events[:, t_start + 1 : t_start + 1 + horizon],
             phase_flags=flags[:, t_start + 1 : t_start + 1 + horizon],
             initial_dynamics_state=dyn_state, with_grad=True, decode_kinematics=False,
@@ -75,7 +87,6 @@ class M1PhaseStrategy(PhaseStrategy):
                 h0 = int(heft_idx[0, 0].item())
                 h_end = int(heft_idx[-1, 0].item()) if len(heft_idx) > 1 else h0
                 step_weights[b, max(0, h0 - 5) : min(horizon, h_end + 10)] = 2.0
-                # Passive inertial resistance weighting: emphasize velocity deceleration during and post contact
                 vel_step_weights[b, max(0, h0) : min(horizon, h_end + 12)] = 3.0
 
         pos_diff_sq = (m1_traj[..., :q_dim] - target_latents[..., :q_dim]) ** 2
@@ -92,13 +103,13 @@ class M1PhaseStrategy(PhaseStrategy):
                 decoded_kin = self.model.physical_decoder(m1_traj, initial_filter_state=dec_st)
                 target_kin = flat_kin[:, t_start + 1 : t_start + 1 + horizon]
                 jc = self.cfg.environment.joint_count
-                pos_err = position_error(decoded_kin, target_kin, joint_count=jc)
-                vel_err = velocity_error(decoded_kin, target_kin, joint_count=jc)
+                pos_err, vel_err = position_error(decoded_kin, target_kin, joint_count=jc), velocity_error(decoded_kin, target_kin, joint_count=jc)
 
         metrics = {
             "loss": float(total_loss.item()), "loss_m1": float(loss_m1.item()),
             "loss_latent": float(loss_m1.item()), "loss_position": float(loss_pos.item()),
             "loss_velocity": float(loss_vel.item()), "pos_err": pos_err, "vel_err": vel_err,
+            "mppi_noise_alpha": float(noise_alpha),
         }
         return total_loss, metrics
 
@@ -116,7 +127,7 @@ class M1PhaseStrategy(PhaseStrategy):
         self.model.m1.train()
         assert self.predictor_optimizer is not None
         self.predictor_optimizer.zero_grad()
-        total_loss, m = self._compute_m1_objectives(*self._extract_batch(batch))
+        total_loss, m = self._compute_m1_objectives(*self._extract_batch(batch), epoch=epoch, is_train=True)
         total_loss.backward()
         nn.utils.clip_grad_norm_([p for p in self.model.parameters() if p.requires_grad], self.cfg.training.grad_clip_norm)
         self.predictor_optimizer.step()
@@ -125,5 +136,5 @@ class M1PhaseStrategy(PhaseStrategy):
     @torch.no_grad()
     def validate_step(self, batch: Dict[str, torch.Tensor]) -> Dict[str, float]:
         self.model.eval()
-        _, m = self._compute_m1_objectives(*self._extract_batch(batch))
+        _, m = self._compute_m1_objectives(*self._extract_batch(batch), epoch=None, is_train=False)
         return {f"val_{k}": v for k, v in m.items()}

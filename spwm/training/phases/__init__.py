@@ -95,9 +95,11 @@ class PredictorPhaseHandler(PhaseStrategy):
         train_vel_l = train_metrics.get("train_loss_velocity", 0.0)
         train_pos_e = train_metrics.get("train_pos_err", 0.0)
         train_vel_e = train_metrics.get("train_vel_err", 0.0)
+        train_alpha = train_metrics.get("train_mppi_noise_alpha", 0.0)
+        alpha_str = f" | MPPI Noise α: {train_alpha:.3f}" if train_alpha > 0.0 else ""
         chronicle.log_detail(
             "⚡ Training Losses",
-            f"Total: {train_loss:.5f} [q-MSE: {train_pos_l:.5f} | p-MSE: {train_vel_l:.5f}] | "
+            f"Total: {train_loss:.5f} [q-MSE: {train_pos_l:.5f} | p-MSE: {train_vel_l:.5f}]{alpha_str} | "
             f"Eval: Joint Angle L2: {train_pos_e:.5f} | Joint Vel L2: {train_vel_e:.5f}",
             indent_level=1,
         )

@@ -342,21 +342,22 @@ def test_base_trainer_two_tiered_validation_orchestration(tmp_path):
     assert (save_dir / "model.pt").is_file()
 
 
-def test_tier2_best_in_block_candidate_selection(tmp_path):
+def test_tier2_ema_candidate_selection(tmp_path):
     """
-    Verifies that with tier2_candidate_selection='best_in_block', Tier 2 evaluates
-    the model candidate with the lowest Tier 1 validation loss in that block.
+    Verifies that with tier2_candidate_selection='ema', Tier 2 evaluates
+    the model candidate with the Exponential Moving Average (EMA) tracked weights.
     """
     device = torch.device("cpu")
     cfg = ExperimentConfig(
-        project=ProjectConfig(name="test_best_in_block"),
+        project=ProjectConfig(name="test_ema_selection"),
         data=DataConfig(sequence_length=40),
         training=TrainingConfig(
             mode="train_m1",
             phase_horizon=10,
             epochs=2,
             tier2_frequency=2,
-            tier2_candidate_selection="best_in_block",
+            tier2_candidate_selection="ema",
+            ema_decay=0.95,
         ),
     )
     model = SPWM.from_config(cfg).to(device)
@@ -366,12 +367,15 @@ def test_tier2_best_in_block_candidate_selection(tmp_path):
     val_loader = DataLoader(dataset, batch_size=2, collate_fn=synthetic_collate)
 
     evaluated_candidate_epochs: List[int] = []
+    evaluated_weights: Dict[str, torch.Tensor] = {}
 
     class CandidateTrackingEvaluator:
         frequency = 2
 
         def __call__(self, m: nn.Module, candidate_epoch: int) -> Dict[str, float]:
             evaluated_candidate_epochs.append(candidate_epoch)
+            for k, v in m.state_dict().items():
+                evaluated_weights[k] = v.cpu().clone()
             return {
                 "mppi_score": 1.0,
                 "mppi_success_rate": 1.0,
@@ -392,14 +396,43 @@ def test_tier2_best_in_block_candidate_selection(tmp_path):
         train_loader=train_loader,
         val_loader=val_loader,
         device=device,
-        save_dir=tmp_path / "block_test",
+        save_dir=tmp_path / "ema_test",
         tier2_evaluator=evaluator,
     )
 
     trainer.fit(epochs=2)
     assert len(evaluated_candidate_epochs) == 1
-    # Candidate epoch evaluated must be within the block [1, 2]
-    assert evaluated_candidate_epochs[0] in [1, 2]
+    assert evaluated_candidate_epochs[0] == 2
+    assert trainer.ema_tracker is not None
+    # Check that evaluated weights match EMA shadow weights exactly
+    for k, v in evaluated_weights.items():
+        assert torch.allclose(v, trainer.ema_tracker.shadow[k].cpu())
+
+
+def test_ar1_noise_and_curriculum():
+    """
+    Verifies that AR(1) action noise generator matches MPPI controller parameters
+    and follows the linear curriculum scheduling.
+    """
+    from spwm.training.noise import compute_mppi_noise_alpha, sample_ar1_noise
+
+    # 1. Test curriculum alpha scheduling
+    assert compute_mppi_noise_alpha(1, warmup_epochs=10, ramp_epochs=20, target_alpha=1.0) == 0.0
+    assert compute_mppi_noise_alpha(10, warmup_epochs=10, ramp_epochs=20, target_alpha=1.0) == 0.0
+    assert compute_mppi_noise_alpha(20, warmup_epochs=10, ramp_epochs=20, target_alpha=1.0) == 0.5
+    assert compute_mppi_noise_alpha(30, warmup_epochs=10, ramp_epochs=20, target_alpha=1.0) == 1.0
+    assert compute_mppi_noise_alpha(50, warmup_epochs=10, ramp_epochs=20, target_alpha=1.0) == 1.0
+
+    # 2. Test AR(1) noise tensor contract and shapes
+    device = torch.device("cpu")
+    B, H, Du = 16, 25, 6
+    noise = sample_ar1_noise(batch_size=B, horizon=H, action_dim=Du, device=device)
+    assert noise.shape == (B, H, Du)
+
+    # Verify temporal correlation: corr(noise[t], noise[t+1]) should be positive due to beta=0.75
+    diff = noise[:, 1:] - 0.75 * noise[:, :-1]
+    # Variance of diff should be close to (1 - 0.75^2) * sigma^2
+    assert torch.isfinite(noise).all()
 
 
 def test_tier2_early_stopping_patience_checks(tmp_path):

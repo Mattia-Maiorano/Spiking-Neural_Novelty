@@ -118,3 +118,42 @@ To prevent silent weight corruption or partial state-dict mismatches across phas
 | [`load_representation_checkpoint(model, path)`](file:///Users/Mattia/Desktop/Studies/Temp/spwm/training/engine.py) | Phase 0 (`train_representation`) `model.pt` | `model.encoder`, `model.dynamics`, `model.sensory_predictor`, `model.physical_decoder` | `model.predictor` |
 | [`BaseTrainer.load_checkpoint(path)`](file:///Users/Mattia/Desktop/Studies/Temp/spwm/training/engine.py) | Full `SPWM` `checkpoint.pt` / `model.pt` | Full `model` (`model.load_state_dict(..., strict=True)`) + optimizer state | None |
 | [`enforce_phase_prerequisites(model, cfg, ...)`](file:///Users/Mattia/Desktop/Studies/Temp/spwm/training/engine.py) | Prerequisite checkpoints auto-resolved by version | Loads Phase 0 for Phase 1 (`train_m1`) | Unrelated phase modules |
+
+---
+
+## 5. Two-Tiered Validation Strategy & Zero-Stochasticity Guarantee
+
+Phase 1 (`train_m1`) employs a decoupled **Two-Tiered Validation Strategy** orchestrated by [`BaseTrainer`](file:///Users/Mattia/Desktop/Studies/Temp/spwm/training/engine.py) and [`MPPIStructuralScorer`](file:///Users/Mattia/Desktop/Studies/Temp/spwm/evaluation/mppi.py):
+
+### 5.1 Tier 1: High-Frequency, Open-Loop Validation (Every Epoch)
+- **Objective**: Drives gradient updates during training and monitors general numerical convergence across all validation batches every single epoch.
+- **Metrics**: Standard open-loop MSE on `LatentPredictor` ($\mathcal{L}_{\text{pos}}$, $\mathcal{L}_{\text{vel}}$, $\mathcal{L}_{M_1}$) and `PhysicalDecoder` joint position/velocity tracking ($L_2$ position and velocity errors).
+- **Decoupling Guarantee**: Tier 1 open-loop validation loss does **not** trigger checkpoint selection or advance early-stopping patience when Tier 2 is active, isolating model selection from open-loop teacher-forcing overfitting.
+
+### 5.2 Tier 2: Low-Frequency, Closed-Loop MPPI Structural Validation (Every 10 Epochs)
+- **Objective**: Evaluates downstream closed-loop Model Predictive Path Integral (MPPI) control execution strictly for **checkpoint selection** (`is_best`, saving `model.pt`) and **early stopping**.
+- **Fixed Validation Subset**: Evaluates a tiny, balanced subset of 5–10 fixed trajectories spanning **Low** ($< 1.08\,\text{m}$), **Mid** ($1.08 \le y < 1.18\,\text{m}$), and **High** ($\ge 1.18\,\text{m}$) elevation planes, pre-selected at initialization.
+- **Structural Scoring Formulation**:
+  Evaluates steady-state settling error across the final 3 steps ($\text{err}_{\text{ss}}$), terminal joint angular velocity ($v_{\text{final}}$), and SE(3) orientation alignment error ($e_{\text{rot}}$):
+  $$\text{Score} = \left(\frac{\text{err}_{\text{ss}}}{3.0\,\text{cm}}\right)^2 + \left(\frac{v_{\text{final}}}{1.5\,\text{rad/s}}\right)^2 + \left(\frac{e_{\text{rot}}}{0.05}\right)^2 - 2.0 \cdot \mathbb{I}(\text{success})$$
+  where $\mathbb{I}(\text{success}) = 1$ strictly when $\text{err}_{\text{ss}} < 3.0\,\text{cm}$, $v_{\text{final}} < 1.5\,\text{rad/s}$, and $e_{\text{rot}} < 0.05$.
+
+### 5.3 Zero-Stochasticity Guarantee
+In downstream stochastic sampling controllers, pseudo-random exploration jitter across epochs corrupts the signal-to-noise ratio of validation metrics. SPWM guarantees zero stochasticity:
+1. The MPPI controller maintains a dedicated [`torch.Generator`](file:///Users/Mattia/Desktop/Studies/Temp/spwm/evaluation/mppi.py#L135-L145) on the active device.
+2. For each trajectory in the fixed validation subset, [`LatentMPPIController.reset`](file:///Users/Mattia/Desktop/Studies/Temp/spwm/evaluation/mppi.py#L146-L160) explicitly re-seeds the generator to `tier2_seed + trajectory_id` prior to unrolling.
+3. Every step $t \in [t_{\text{start}}, t_{\text{grasp}}]$ evaluates the **exact identical sequence of action perturbations** across validation epochs, ensuring that any metric change reflects true neural weight improvement rather than stochastic sampling variance.
+
+### 5.4 Candidate Model Selection (Best-in-Block Default)
+Rather than blindly testing whichever weights happen to land at the 10th epoch (which may suffer from a single noisy batch or transient gradient overshoot), [`BaseTrainer`](file:///Users/Mattia/Desktop/Studies/Temp/spwm/training/engine.py#L270-L330) defaults to `tier2_candidate_selection = "best_in_block"`:
+1. **Intra-Block Tracking**: Across epochs $(k-1)\cdot 10 + 1 \dots k\cdot 10$, the trainer tracks the minimum Tier 1 open-loop validation loss and keeps a snapshot of the corresponding model weights.
+2. **Targeted Closed-Loop Evaluation**: At the Tier 2 evaluation epoch ($k\cdot 10$), the trainer temporarily loads this best-in-block candidate and evaluates closed-loop MPPI control against the fixed validation subset.
+3. **Decoupled Model Checkpointing**: If the candidate improves the global MPPI structural score, it is saved to `model.pt` tagged with its true originating epoch.
+4. **Seamless Resume**: Current training weights are restored immediately after Tier 2 evaluation, preserving continuous gradient momentum and Adam optimizer statistics.
+
+### 5.5 Tier 2 Early Stopping Criteria & Check Cadence
+Early stopping under Two-Tiered Validation is matched strictly to the closed-loop MPPI structural score rather than noisy open-loop MSE:
+1. **Zero Intermediate Stoppage**: Tier 1 open-loop validation fluctuations on intermediate epochs ($t \not\equiv 0 \pmod{\text{tier2\_frequency}}$) **never** trigger early stopping.
+2. **Consecutive Tier 2 Evaluation Checks**: Early stopping is evaluated strictly at the end of each Tier 2 epoch against `tier2_patience` (default: 3 checks, spanning 30 epochs under the default 10-epoch frequency).
+3. **Improvement Delta Guard (`tier2_min_delta`)**: A candidate's `mppi_score` must strictly improve over `best_score` by more than `tier2_min_delta` (default: 0.001) to reset the patience counter (`tier2_checks_without_improvement = 0`). Minor variations below this threshold are rejected as stagnation.
+4. **Graceful Fallback for Single-Tier Mode**: When running Phase 0 representation learning or when `--no-tier2` is specified, `BaseTrainer` falls back cleanly to epoch-by-epoch early stopping governed by `early_stopping_patience`.

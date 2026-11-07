@@ -218,6 +218,8 @@ class PhaseStrategy(ABC):
 
     def get_selection_score(self, val_metrics: Dict[str, float]) -> float:
         """Computes model selection score for checkpointing (lower is better)."""
+        if "mppi_score" in val_metrics:
+            return val_metrics["mppi_score"]
         return val_metrics["val_loss"]
 
     def get_optimizers_state(self) -> Dict[str, Any]:
@@ -230,6 +232,17 @@ class PhaseStrategy(ABC):
         """Restores optimizer states from checkpoint."""
         if "predictor" in state and self.predictor_optimizer is not None:
             self.predictor_optimizer.load_state_dict(state["predictor"])
+
+
+@runtime_checkable
+class Tier2EvaluatorProtocol(Protocol):
+    """Contract for Tier 2 closed-loop validation evaluators (e.g. MPPI structural scoring)."""
+
+    frequency: int
+
+    def __call__(self, model: nn.Module, epoch: int) -> Dict[str, float]:
+        """Runs closed-loop evaluation on a fixed validation subset and returns metrics."""
+        ...
 
 
 # Alias for backward compatibility

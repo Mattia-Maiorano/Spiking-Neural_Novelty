@@ -6,6 +6,10 @@ from spwm.evaluation.evaluator import (
 from spwm.evaluation.mppi import (
     LatentMPPIController,
     MPPIPlanResult,
+    MPPIStructuralScorer,
+    classify_elevation,
+    compute_rot_error,
+    compute_structural_score,
 )
 from spwm.evaluation.robustness import (
     MPPIPerturbationResult,
@@ -43,6 +47,10 @@ __all__ = [
     "TrajectoryRollout",
     "LatentMPPIController",
     "MPPIPlanResult",
+    "MPPIStructuralScorer",
+    "classify_elevation",
+    "compute_rot_error",
+    "compute_structural_score",
     "SensorPerturbationResult",
     "MPPIPerturbationResult",
     "PerturbedEventDataset",

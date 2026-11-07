@@ -604,3 +604,30 @@
   3. Added directional altitude heuristic ($w_{\text{altitude}}=2.0$): when the target elevation $y_{\text{target}} > y_{\text{ee}}(0)$, penalizes/subtracts cost for each positive vertical displacement ($\Delta y > 0$) along the rollout.
 - **new results (if any)**: No runs made - code refactoring / configuration only.
 - **verdict on change made**: Preserved.
+
+
+## SPWM-v0.7.3 — Iteration (Two-Tiered Validation Strategy & Zero-Stochasticity MPPI Scoring)
+- **version afflicted**: `SPWM-v0.7.3`
+- **iteration on version**: Two-Tiered Validation Strategy & Zero-Stochasticity MPPI Scoring
+- **changes made**: Implemented a decoupled Two-Tiered Validation Strategy with a Zero-Stochasticity Guarantee:
+  1. Tier 1 (High-Frequency, Open-Loop): Computes standard MSE on `LatentPredictor` ($\mathcal{L}_{\text{pos}}$, $\mathcal{L}_{\text{vel}}$, $\mathcal{L}_{M_1}$) and `PhysicalDecoder` ($L_2$ joint position and velocity errors) every epoch to drive gradient updates and monitor convergence without triggering checkpoint selection.
+  2. Tier 2 (Low-Frequency, Closed-Loop): Built `MPPIStructuralScorer` in `spwm/evaluation/mppi.py` evaluating continuous structural shaping scores ($\text{Score} = (\text{err}_{\text{ss}}/3.0\,\text{cm})^2 + (v_{\text{final}}/1.5\,\text{rad/s})^2 + (e_{\text{rot}}/0.05)^2 - 2.0 \cdot \mathbb{I}(\text{success})$) over a tiny fixed validation subset (5–10 trajectories covering Low, Mid, and High elevation planes) every 10 epochs. In `BaseTrainer`, this metric is used strictly for checkpoint selection (`model.pt`) and early stopping.
+  3. Zero-Stochasticity Guarantee: Added dedicated `torch.Generator` and explicit per-trajectory seeding (`base_seed + trajectory_id`) in `LatentMPPIController` (`plan_step`, `reset`, `set_seed`) and `spwm/utils/MPPI_loss_finder.py` so MPPI noise tensors remain 100% bitwise identical across validation epochs, eliminating random noise variance from validation loss.
+  4. Candidate Model Selection (Best-in-Block Default): Configured `tier2_candidate_selection = "best_in_block"` by default; within each 10-epoch block, BaseTrainer tracks the model candidate with the lowest Tier 1 validation loss, loads and evaluates closed-loop MPPI control on that candidate at epoch 10, saves it to `model.pt` if it improves the global score, and restores current weights for continuous training.
+  5. Layer 0 & Architecture Compliance: Added `Tier2EvaluatorProtocol` in `spwm/contracts/protocols.py`, `tier2_*` options in `TrainingConfig` (`spwm/contracts/config.py`), CLI flags in `experiments/train.py`, and `train-m1` direct command in `scripts/run_pipeline.sh`.
+  6. Created test suite `tests/test_two_tiered_validation.py` (6 tests verifying zero stochasticity, elevation plane coverage, structural scoring, `BaseTrainer` orchestration, and `best_in_block` candidate selection).
+- **new results (if any)**: All 119 unit tests passed (including 6 new two-tiered validation tests); AST anti-fallback scan verifies clean code with 0 violations across `spwm/`. No runs made - architectural refactoring and validation strategy implementation only.
+- **verdict on change made**: Preserved.
+
+## SPWM-v0.7.3 — Iteration (Two-Tiered Early Stopping Harmonization & Check Cadence)
+- **version afflicted**: `SPWM-v0.7.3`
+- **iteration on version**: Two-Tiered Early Stopping Harmonization & Check Cadence
+- **changes made**: Harmonized early stopping mechanics with the Two-Tiered Validation Strategy:
+  1. Decoupled Early Stopping Cadence: Resolved the premature termination defect where epoch-based patience (`early_stopping_patience = 10`) caused training to abort after only a single Tier 2 check. Early stopping under Two-Tiered Validation is now measured strictly in consecutive Tier 2 evaluation checks via `tier2_patience` (default: 3 checks, spanning 30 epochs under the 10-epoch frequency).
+  2. Intermediate Epoch Immunity: Guaranteed that Tier 1 open-loop validation MSE fluctuations on intermediate epochs ($t \not\equiv 0 \pmod{\text{tier2\_frequency}}$) never trigger early stopping or increment patience failure counters.
+  3. Improvement Delta Guard: Introduced `tier2_min_delta` (default: 0.001) in `TrainingConfig` and `BaseTrainer`; candidates must improve the global MPPI structural score by at least this delta to reset the patience counter (`tier2_checks_without_improvement = 0`), preventing stagnation on numerical jitter.
+  4. Contract & CLI Integration: Added `tier2_patience` and `tier2_min_delta` parameters to `TrainingConfig` (`spwm/contracts/config.py`) with strict validation, added `--tier2-patience` and `--tier2-min-delta` CLI flags to `experiments/train.py`, and preserved legacy epoch-based early stopping when Tier 2 is inactive (Phase 0 / `--no-tier2`).
+  5. Strict Representation Checkpoint Enforcement: Eliminated silent exception swallowing in `enforce_phase_prerequisites` where a missing Phase 0 checkpoint was logged instead of raising `FileNotFoundError`. Phase 1 (`train_m1`) now strictly raises if the pre-trained representation checkpoint is missing, preventing runs with random uninitialized representation weights.
+  6. Expanded Unit Tests: Added `test_tier2_early_stopping_patience_checks` and `test_tier2_early_stopping_min_delta` to `tests/test_two_tiered_validation.py`.
+- **new results (if any)**: All 121 unit tests passed across the repository (8/8 in `tests/test_two_tiered_validation.py`); AST anti-fallback scanner verifies 0 violations across `spwm/`. No runs made - code refactoring and early stopping harmonization only.
+- **verdict on change made**: Preserved.

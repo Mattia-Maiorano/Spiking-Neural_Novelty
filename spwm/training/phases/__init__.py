@@ -108,15 +108,33 @@ class PredictorPhaseHandler(PhaseStrategy):
         val_pos_e = val_metrics.get("val_pos_err", 0.0)
         val_vel_e = val_metrics.get("val_vel_err", 0.0)
         chronicle.log_detail(
-            "📊 Validation Losses",
+            "📊 Validation Losses (Tier 1 Open-Loop)",
             f"Total: {val_loss:.5f} [q-MSE: {val_pos_l:.5f} | p-MSE: {val_vel_l:.5f}] | "
             f"Eval: Joint Angle L2: {val_pos_e:.5f} | Joint Vel L2: {val_vel_e:.5f}",
             indent_level=1,
         )
-        curr_score = self.get_selection_score(val_metrics)
+
+        if "mppi_score" in val_metrics:
+            mppi_s = val_metrics["mppi_score"]
+            mppi_succ = val_metrics.get("mppi_success_rate", 0.0) * 100.0
+            mppi_err = val_metrics.get("mppi_mean_error_cm", 0.0)
+            mppi_vel = val_metrics.get("mppi_final_vel", 0.0)
+            mppi_rot = val_metrics.get("mppi_final_rot", 0.0)
+            chronicle.log_detail(
+                "🎯 Tier 2 (Closed-Loop MPPI)",
+                f"Score: {mppi_s:.5f} | Grasp Success: {mppi_succ:.1f}% | "
+                f"Mean Err: {mppi_err:.2f}cm | Final Vel: {mppi_vel:.3f} | Rot Err: {mppi_rot:.4f}",
+                indent_level=1,
+            )
+            curr_score = mppi_s
+            sel_desc = f"Tier 2 Structural Score: {curr_score:.5f}"
+        else:
+            curr_score = self.get_selection_score(val_metrics)
+            sel_desc = f"Tier 1 Open-Loop MSE: {curr_score:.5f}"
+
         chronicle.log_detail(
             "🎯 Model Selection",
-            f"Current: {curr_score:.5f} | Best: {best_score:.5f} @ Ep {best_epoch}",
+            f"Current: {sel_desc} | Best Checkpoint: {best_score:.5f} @ Ep {best_epoch}",
             indent_level=1,
         )
         chronicle.log_newline()

@@ -219,6 +219,7 @@ Usage: $(basename "$0") <command> [options]
 Commands:
   sim-data           Run Unity headless to generate dataset trajectories (batchmode, no -nographics).
   train              Train representation (Phase 0) followed by M1 (Phase 1).
+  train-m1           Train M1 (Phase 1) with Two-Tiered Validation using frozen Phase 0 representation.
   export-unity       Export ghost trajectory JSON for Unity demo playback.
   video              Export (per model, from real test episodes matching each case) and render 4
                      labeled videos <model>_<low|mid|high>_<light|normal|heavy>.mp4:
@@ -315,6 +316,35 @@ run_train() {
     "${m1_cmd[@]}"
 
     echo ">>> Training phases completed successfully."
+}
+
+# ------------------------------------------------------------------------------
+# Action 2b: Training M1 Only (Phase 1 with Two-Tiered Validation)
+# ------------------------------------------------------------------------------
+run_train_m1() {
+    local epochs="${EPOCHS:-100}"
+    local cfg="${CONFIG_PATH:-}"
+    local from_scratch="${FROM_SCRATCH:-1}"
+    local weighted_sampling="${WEIGHTED_SAMPLING:-1}"
+
+    echo "======================================================================"
+    echo " Training M1 Latent Predictor Phase (Phase 1)..."
+    echo " Two-Tiered Validation: Tier 1 (Open-Loop MSE) + Tier 2 (Closed-Loop MPPI)"
+    echo " Prerequisite: Strictly loading Phase 0 representation checkpoint"
+    echo "======================================================================"
+    local m1_cmd=("${PYTHON_BIN}" "experiments/train.py" "--mode" "train_m1" "--epochs" "${epochs}")
+    if [[ -n "${cfg}" ]]; then
+        m1_cmd+=("--config" "${cfg}")
+    fi
+    if [[ "${from_scratch}" -eq 1 ]]; then
+        m1_cmd+=("--from-scratch")
+    fi
+    if [[ "${weighted_sampling}" -eq 1 ]]; then
+        m1_cmd+=("--weighted-sampling")
+    fi
+    "${m1_cmd[@]}"
+
+    echo ">>> M1 training completed successfully."
 }
 
 # ------------------------------------------------------------------------------
@@ -754,6 +784,9 @@ case "${COMMAND}" in
         ;;
     1|train)
         run_train
+        ;;
+    train-m1|train_m1|m1)
+        run_train_m1
         ;;
     2|video)
         run_video

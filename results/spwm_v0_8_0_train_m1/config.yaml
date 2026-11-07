@@ -83,9 +83,13 @@ training:
   tier2_num_samples: 256
   tier2_horizon: 30
   tier2_iterations: 3
-  tier2_candidate_selection: best_in_block
+  tier2_candidate_selection: ema
   tier2_patience: 3
   tier2_min_delta: 0.001
+  ema_decay: 0.99
+  mppi_noise_warmup_epochs: 10
+  mppi_noise_ramp_epochs: 20
+  mppi_noise_target_alpha: 1.0
 loss:
   lambda_encoder: 1.0
   lambda_decoder: 1.0

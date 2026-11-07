@@ -3,7 +3,7 @@
   "version": "spwm_v0_8_0",
   "mode": "train_m1",
   "spike_statistics": {
-    "mean_spike_rate": 0.14632394909858704,
+    "mean_spike_rate": 0.1463216245174408,
     "median_spike_rate": 0.11636904627084732,
     "min_spike_rate": 0.0,
     "max_spike_rate": 0.5583333373069763,
@@ -36,9 +36,9 @@
     ]
   },
   "gradient_diagnostics": {
-    "total_norm": 0.0,
+    "total_norm": 0.7640724616867527,
     "has_nan": false,
     "has_inf": false,
-    "zero_gradient_ratio": 1.0
+    "zero_gradient_ratio": 0.0
   }
 }

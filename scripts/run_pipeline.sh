@@ -605,7 +605,7 @@ run_video_mppi() {
     local horizon="${HORIZON:-$DEFAULT_HORIZON}"
     local traj_id="${TRAJECTORY_ID:-3622}"
     local out_dir="${OUTPUT_DIR:-$DEFAULT_OUTPUT_DIR}"
-    local output_video="${OUTPUT_VIDEO:-${out_dir}/${MODEL_VERSION:-$DEFAULT_MODEL_VERSION}_mppi_control.mp4}"
+    local output_video="${OUTPUT_VIDEO:-${out_dir}/mppi_control.mp4}"
     local json_file="${JSON_FILE:-sim/Assets/StreamingAssets/trajectory_ghost_mppi.json}"
 
     local ckpt="${CHECKPOINT_PATH:-}"

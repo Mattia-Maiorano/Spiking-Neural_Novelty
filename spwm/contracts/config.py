@@ -229,9 +229,13 @@ class TrainingConfig:
     tier2_num_samples: int = 256                      #: Number of candidate trajectory samples K in MPPI planning during Tier 2 validation.
     tier2_horizon: int = 30                           #: Planning horizon H in MPPI planning during Tier 2 validation.
     tier2_iterations: int = 3                         #: Number of MPPI optimization iterations per control step during Tier 2 validation.
-    tier2_candidate_selection: str = "best_in_block"  #: Candidate model to evaluate in Tier 2: "best_in_block" (best Tier 1 val loss in window) or "latest".
+    tier2_candidate_selection: str = "ema"            #: Candidate model to evaluate in Tier 2: "ema" (default: evaluate exponential moving average weights) or "latest".
     tier2_patience: int = 3                           #: Consecutive Tier 2 evaluation checks without MPPI score improvement before early stopping.
     tier2_min_delta: float = 0.001                    #: Minimum improvement threshold on MPPI structural score to reset early stopping patience.
+    ema_decay: float = 0.99                           #: Decay factor tau for Exponential Moving Average (EMA) of model weights.
+    mppi_noise_warmup_epochs: int = 10                #: Initial training epochs with zero AR(1) action noise before curriculum ramp.
+    mppi_noise_ramp_epochs: int = 20                  #: Number of epochs over which AR(1) action noise linearly ramps to target alpha.
+    mppi_noise_target_alpha: float = 1.0              #: Maximum target intensity alpha for AR(1) action noise injection.
 
     def __post_init__(self) -> None:
         valid_modes = ("train_representation", "train_m1")
@@ -249,11 +253,19 @@ class TrainingConfig:
             raise ValueError(f"tier2_patience must be > 0, got {self.tier2_patience}")
         if self.tier2_min_delta < 0.0:
             raise ValueError(f"tier2_min_delta must be non-negative, got {self.tier2_min_delta}")
-        valid_selections = ("best_in_block", "latest", "last")
+        valid_selections = ("ema", "latest")
         if self.tier2_candidate_selection not in valid_selections:
             raise ValueError(
                 f"Invalid tier2_candidate_selection '{self.tier2_candidate_selection}'. Allowed: {valid_selections}"
             )
+        if not (0.0 <= self.ema_decay <= 1.0):
+            raise ValueError(f"ema_decay must be in [0.0, 1.0], got {self.ema_decay}")
+        if self.mppi_noise_warmup_epochs < 0:
+            raise ValueError(f"mppi_noise_warmup_epochs must be >= 0, got {self.mppi_noise_warmup_epochs}")
+        if self.mppi_noise_ramp_epochs < 0:
+            raise ValueError(f"mppi_noise_ramp_epochs must be >= 0, got {self.mppi_noise_ramp_epochs}")
+        if self.mppi_noise_target_alpha < 0.0:
+            raise ValueError(f"mppi_noise_target_alpha must be non-negative, got {self.mppi_noise_target_alpha}")
 
 
 @dataclass(frozen=True)
@@ -351,6 +363,10 @@ class ExperimentConfig:
         tier2_candidate_selection: Optional[str] = None,
         tier2_patience: Optional[int] = None,
         tier2_min_delta: Optional[float] = None,
+        ema_decay: Optional[float] = None,
+        mppi_noise_warmup_epochs: Optional[int] = None,
+        mppi_noise_ramp_epochs: Optional[int] = None,
+        mppi_noise_target_alpha: Optional[float] = None,
     ) -> "ExperimentConfig":
         """
         Creates a new validated, frozen ExperimentConfig with explicit overrides.
@@ -397,6 +413,14 @@ class ExperimentConfig:
             train_updates["tier2_patience"] = tier2_patience
         if tier2_min_delta is not None:
             train_updates["tier2_min_delta"] = tier2_min_delta
+        if ema_decay is not None:
+            train_updates["ema_decay"] = ema_decay
+        if mppi_noise_warmup_epochs is not None:
+            train_updates["mppi_noise_warmup_epochs"] = mppi_noise_warmup_epochs
+        if mppi_noise_ramp_epochs is not None:
+            train_updates["mppi_noise_ramp_epochs"] = mppi_noise_ramp_epochs
+        if mppi_noise_target_alpha is not None:
+            train_updates["mppi_noise_target_alpha"] = mppi_noise_target_alpha
 
         training = dataclasses.replace(self.training, **train_updates) if train_updates else self.training
         return dataclasses.replace(self, project=proj, data=data, training=training)

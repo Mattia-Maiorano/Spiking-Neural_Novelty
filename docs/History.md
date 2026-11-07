@@ -631,3 +631,15 @@
   6. Expanded Unit Tests: Added `test_tier2_early_stopping_patience_checks` and `test_tier2_early_stopping_min_delta` to `tests/test_two_tiered_validation.py`.
 - **new results (if any)**: All 121 unit tests passed across the repository (8/8 in `tests/test_two_tiered_validation.py`); AST anti-fallback scanner verifies 0 violations across `spwm/`. No runs made - code refactoring and early stopping harmonization only.
 - **verdict on change made**: Preserved.
+
+## SPWM-v0.7.3 — Iteration (MPPI-Aware Training: Weight EMA & AR(1) Noise Curriculum)
+- **version afflicted**: `SPWM-v0.7.3`
+- **iteration on version**: MPPI-Aware Training: Weight EMA & AR(1) Noise Curriculum
+- **changes made**: Resolved pathological divergence and covariate shift between Tier 1 open-loop validation and Tier 2 closed-loop MPPI validation:
+  1. Exponential Moving Average (EMA) Tracker: Replaced volatile `best_in_block` candidate selection in `BaseTrainer` with `EMATracker` (`spwm/training/engine.py`) continuously tracking smoothed shadow weights ($\tau = 0.99$). Tier 2 closed-loop MPPI validation directly loads and evaluates the EMA weights. Best checkpoint (`model.pt`) strictly saves the EMA weights that achieved the optimal MPPI structural score.
+  2. Action AR(1) Noise Injection: Built `sample_ar1_noise` in `spwm/training/noise.py` sampling stationary Gauss-Markov perturbations ($\beta = 0.75$, anisotropic $\boldsymbol{\Sigma}$) matching `LatentMPPIController`.
+  3. Noise Curriculum Scheduling: Built `compute_mppi_noise_alpha` in `spwm/training/noise.py` scheduling noise intensity $\alpha$. Actions are unperturbed ($\alpha = 0.0$) during warmup (`mppi_noise_warmup_epochs = 10`) to learn base attractor dynamics, then linearly ramp to target intensity (`mppi_noise_target_alpha = 1.0`) over `mppi_noise_ramp_epochs = 20`. Tier 1 validation evaluates pure unperturbed demonstrations.
+  4. Contract & CLI Integration: Added `ema_decay`, `mppi_noise_warmup_epochs`, `mppi_noise_ramp_epochs`, and `mppi_noise_target_alpha` to `TrainingConfig` and `experiments/train.py`, defaulting `tier2_candidate_selection = "ema"`.
+  5. Test Verification: Updated `tests/test_two_tiered_validation.py` verifying EMA candidate evaluation and AR(1) noise curriculum.
+- **new results (if any)**: All 122 pytest unit tests pass cleanly; AST anti-fallback scan verifies 0 violations across `spwm/`. Refactoring and test verification complete; training execution launched.
+- **verdict on change made**: Preserved.

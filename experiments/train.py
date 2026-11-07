@@ -111,8 +111,32 @@ def parse_args() -> argparse.Namespace:
         "--tier2-candidate-selection",
         type=str,
         default=None,
-        choices=["best_in_block", "latest", "last"],
-        help="Which model candidate to evaluate in Tier 2: best_in_block (default) or latest",
+        choices=["ema", "latest"],
+        help="Which model candidate to evaluate in Tier 2: ema (default) or latest",
+    )
+    parser.add_argument(
+        "--ema-decay",
+        type=float,
+        default=None,
+        help="Decay factor tau for Exponential Moving Average (EMA) of model weights (default: 0.99)",
+    )
+    parser.add_argument(
+        "--mppi-noise-warmup-epochs",
+        type=int,
+        default=None,
+        help="Initial training epochs with zero AR(1) action noise before curriculum ramp (default: 10)",
+    )
+    parser.add_argument(
+        "--mppi-noise-ramp-epochs",
+        type=int,
+        default=None,
+        help="Number of epochs over which AR(1) action noise linearly ramps to target alpha (default: 20)",
+    )
+    parser.add_argument(
+        "--mppi-noise-target-alpha",
+        type=float,
+        default=None,
+        help="Maximum target intensity alpha for AR(1) action noise injection (default: 1.0)",
     )
     parser.add_argument(
         "--tier2-patience",
@@ -329,6 +353,14 @@ def main() -> None:
         overrides["tier2_patience"] = args.tier2_patience
     if args.tier2_min_delta is not None:
         overrides["tier2_min_delta"] = args.tier2_min_delta
+    if args.ema_decay is not None:
+        overrides["ema_decay"] = args.ema_decay
+    if args.mppi_noise_warmup_epochs is not None:
+        overrides["mppi_noise_warmup_epochs"] = args.mppi_noise_warmup_epochs
+    if args.mppi_noise_ramp_epochs is not None:
+        overrides["mppi_noise_ramp_epochs"] = args.mppi_noise_ramp_epochs
+    if args.mppi_noise_target_alpha is not None:
+        overrides["mppi_noise_target_alpha"] = args.mppi_noise_target_alpha
 
     if overrides:
         cfg = cfg.with_overrides(**overrides)

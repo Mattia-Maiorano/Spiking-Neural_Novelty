@@ -15,6 +15,7 @@ import chronicle
 import torch
 
 from spwm.contracts.config import ExperimentConfig
+from spwm.contracts.version import GLOBAL_VERSION
 from spwm.data.datasets import create_dataloaders
 from spwm.evaluation.evaluator import (
     RolloutEvaluationResult,
@@ -232,7 +233,7 @@ def process_folder(
         except Exception as e:
             chronicle.log_warning(f"Could not run/load evaluation for {folder.name}: {e}")
 
-    version_tag = cfg.project.name if cfg is not None else "v0_4_0"
+    version_tag = cfg.project.name if cfg is not None else GLOBAL_VERSION.snake_case
     model_name = folder.name
     pos_span = 2.0 if cfg is not None else None
     vel_span = float(cfg.data.standard_velocity_range[1] - cfg.data.standard_velocity_range[0]) if cfg is not None else None
@@ -299,7 +300,7 @@ def generate_combined_cascade_report(
 def main() -> None:
     parser = argparse.ArgumentParser(description="Generate metrics_v*.json resume tables for experiment folders.")
     parser.add_argument("--results-dir", type=str, default="results", help="Directory containing experiment results")
-    parser.add_argument("--pattern", type=str, default="spwm_v0_4_0*", help="Glob pattern for folder names")
+    parser.add_argument("--pattern", type=str, default=f"{GLOBAL_VERSION.snake_case}*", help="Glob pattern for folder names")
     parser.add_argument("--device", type=str, default=None, help="Device to use for evaluation (mps, cuda, cpu)")
     parser.add_argument("--segments", type=int, default=10, help="Number of segments to split epochs into")
     parser.add_argument("--force-eval", action="store_true", help="Force re-evaluation of model on test dataset")
@@ -322,7 +323,7 @@ def main() -> None:
 
     chronicle.log_info(f"Found {len(matched_folders)} folder(s) matching '{args.pattern}' on device {device}")
     phase_resumes: Dict[str, Dict[str, Any]] = {}
-    version_tag = "spwm_v0_4_0"
+    version_tag = GLOBAL_VERSION.snake_case
     for folder in matched_folders:
         res = process_folder(
             folder=folder,

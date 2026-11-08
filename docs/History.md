@@ -651,3 +651,17 @@
     - Autonomous Rollout MAE: 0.22749; Dynamic Score: 1.29069; Drift Ratio: 6.52x.
   - All 122 pytest unit tests pass cleanly; AST anti-fallback scan verifies 0 violations across `spwm/`.
 - **verdict on change made**: Preserved (retrained MPPI-aware neural weights saved to `results/spwm_v0_8_0_train_m1/model.pt`).
+
+## SPWM-v0.7.3 — Iteration (Global Version Solver & Pipeline Harmonization)
+- **version afflicted**: `SPWM-v0.7.3`
+- **iteration on version**: Global Version Solver & Pipeline Harmonization
+- **changes made**: Designed and implemented an immutable Global Version Solver in Layer 0 (`spwm/contracts/version.py`) and facade (`spwm/version.py`) resolving semantic versions from `(version, minor, patch)` components, and harmonized all codebase scripts:
+  1. Layer 0 Version Contracts: Implemented frozen dataclass `VersionSolver` strictly validating non-negative integers for `version` (major), `minor`, and `patch`, exposing properties `.version`, `.major`, `.minor`, `.patch`, `.semver`, `.short_tag`, `.tag` / `.formatted`, `.snake_case`, and `.tuple`.
+  2. Canonical Path Resolution: Added strictly typed resolvers `.m1_dir()`, `.m1_checkpoint()`, `.m1_config()`, `.m1_metrics()`, `.representation_dir()`, `.representation_checkpoint()`, and `.representation_config()`.
+  3. String & Tuple Parsers: Added `VersionSolver.from_string(...)` and `VersionSolver.from_tuple(...)` strictly rejecting malformed formats without silent fallbacks.
+  4. Global SSOT & Re-exports: Configured singleton `GLOBAL_VERSION = VersionSolver(version=0, minor=7, patch=3)` re-exported across `spwm.contracts`, `spwm.version`, and `spwm.__version__`.
+  5. Shell Pipeline Integration: Built CLI entrypoint `python -m spwm.version --format <fmt>` and replaced hardcoded version in `scripts/run_pipeline.sh` (`DEFAULT_MODEL_VERSION="$("${PYTHON_BIN}" -m spwm.version --format snake)"`).
+  6. Script Harmonization: Replaced hardcoded `SPWM-v0.7.3` and `spwm_v0_7_3` paths across `experiments/train_baselines.py`, `experiments/profile_energy_sops.py`, `experiments/export_mppi_trajectory.py`, `experiments/benchmark_robustness_stress_test.py`, `experiments/export_ghost_trajectory.py`, `experiments/train_ann_ablation.py`, `experiments/train_multiseed.py`, `experiments/benchmark_mppi_control.py`, `scripts/visualize_fig4_stability.py`, `scripts/visualize_fig3_telemetry.py`, `scripts/visualize_fig5_hardware_domain.py`, `scripts/generate_all_figures.py`, `scripts/visualize_fig1_teaser.py`, `scripts/export_figure_metrics.py`, `spwm/training/engine.py`, and `spwm/utils/MPPI_loss_finder.py`.
+  7. Test Verification: Created `tests/test_version_solver.py` with 23 unit tests verifying defaults, properties, path resolvers, parsers, immutability, invalid parameter rejections, and CLI execution.
+- **new results (if any)**: All 145 unit tests passed across the repository (23/23 in `tests/test_version_solver.py`); AST anti-fallback scan verifies clean code with 0 violations across `spwm/`. No runs made - code refactoring and version contract implementation only.
+- **verdict on change made**: Preserved.

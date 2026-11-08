@@ -31,12 +31,13 @@ from visualize_fig2_architecture import render_figure_2
 from visualize_fig3_telemetry import render_figure_3
 from visualize_fig4_stability import render_figure_4
 from visualize_fig5_hardware_domain import render_figure_5
+from spwm.contracts.version import GLOBAL_VERSION
 
 
 def generate_all_figures(
     output_dir: Path = Path("figures"),
-    config_path: Path = Path("results/spwm_v0_7_3_train_m1/config.yaml"),
-    spwm_ckpt: Path = Path("results/spwm_v0_7_3_train_m1/model.pt"),
+    config_path: Path = GLOBAL_VERSION.m1_config(),
+    spwm_ckpt: Path = GLOBAL_VERSION.m1_checkpoint(),
     ann_ckpt: Path = Path("results/ann_ablation/ann_rate_m1/model.pt"),
     data_dir: Path = Path("sim/ExportedTrajectories"),
     baselines_json: Path = Path("results/baselines/comparative_metrics.json"),
@@ -116,8 +117,8 @@ def generate_all_figures(
 def main() -> None:
     parser = argparse.ArgumentParser(description="Master Scientific Visualization Pipeline for CoRL Paper.")
     parser.add_argument("--output-dir", type=Path, default=Path("figures"), help="Directory for exported figures")
-    parser.add_argument("--config", type=Path, default=Path("results/spwm_v0_7_3_train_m1/config.yaml"))
-    parser.add_argument("--spwm-ckpt", type=Path, default=Path("results/spwm_v0_7_3_train_m1/model.pt"))
+    parser.add_argument("--config", type=Path, default=GLOBAL_VERSION.m1_config())
+    parser.add_argument("--spwm-ckpt", type=Path, default=GLOBAL_VERSION.m1_checkpoint())
     parser.add_argument("--ann-ckpt", type=Path, default=Path("results/ann_ablation/ann_rate_m1/model.pt"))
     parser.add_argument("--data-dir", type=Path, default=Path("sim/ExportedTrajectories"))
     parser.add_argument("--baselines-json", type=Path, default=Path("results/baselines/comparative_metrics.json"))

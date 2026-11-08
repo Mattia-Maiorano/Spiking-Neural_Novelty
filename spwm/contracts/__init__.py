@@ -15,6 +15,12 @@ from spwm.contracts.config import (
     EvaluationConfig,
     ExperimentConfig,
 )
+from spwm.contracts.version import (
+    VersionSolver,
+    GLOBAL_VERSION,
+    VERSION_SOLVER,
+    GLOBAL_VERSION_SOLVER,
+)
 from spwm.contracts.tensors import (
     C_EVENT,
     J,
@@ -81,4 +87,8 @@ __all__ = [
     "PhaseStrategy",
     "PhaseHandler",
     "Tier2EvaluatorProtocol",
+    "VersionSolver",
+    "GLOBAL_VERSION",
+    "VERSION_SOLVER",
+    "GLOBAL_VERSION_SOLVER",
 ]

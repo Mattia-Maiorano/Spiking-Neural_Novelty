@@ -27,6 +27,7 @@ import torch.nn as nn
 from torch.utils.data import DataLoader
 
 from spwm.contracts.config import ExperimentConfig
+from spwm.contracts.version import GLOBAL_VERSION
 from spwm.data.datasets import create_dataloaders
 from spwm.models.ann_ablation import ANNWorldModel
 from spwm.models.rollout import compute_rollout_schedule
@@ -228,7 +229,7 @@ def plot_ablation_convergence(
     if snn_history:
         snn_ep = [r["epoch"] for r in snn_history]
         snn_tl = [r.get("train_loss_m1", r.get("train_loss", 0.0)) for r in snn_history]
-        ax_train.plot(snn_ep, snn_tl, color="#10B981", label="SPWM-v0.7.3 (ALIF)", linewidth=2.2)
+        ax_train.plot(snn_ep, snn_tl, color="#10B981", label=f"{GLOBAL_VERSION.formatted} (ALIF)", linewidth=2.2)
 
     ann_ep = [r["epoch"] for r in ann_history]
     ann_tl = [r.get("train_loss_m1", r.get("train_loss", 0.0)) for r in ann_history]
@@ -246,7 +247,7 @@ def plot_ablation_convergence(
     if snn_history:
         snn_ep = [r["epoch"] for r in snn_history]
         snn_vl = [r.get("val_loss_m1", r.get("val_loss", 0.0)) for r in snn_history]
-        ax_val.plot(snn_ep, snn_vl, color="#10B981", label="SPWM-v0.7.3 (ALIF)", linewidth=2.2)
+        ax_val.plot(snn_ep, snn_vl, color="#10B981", label=f"{GLOBAL_VERSION.formatted} (ALIF)", linewidth=2.2)
 
     ann_ep = [r["epoch"] for r in ann_history]
     ann_vl = [r.get("val_loss_m1", r.get("val_loss", 0.0)) for r in ann_history]
@@ -273,11 +274,11 @@ def plot_ablation_degradation(
     fig, axes = plt.subplots(1, 2, figsize=(14, 5))
 
     colors = {
-        "SPWM-v0.7.3 (SNN-ALIF)": "#10B981",   # Green
+        f"{GLOBAL_VERSION.formatted} (SNN-ALIF)": "#10B981",   # Green
         "ANN-Rate (Continuous Leaky)": "#EF4444", # Red
     }
     markers = {
-        "SPWM-v0.7.3 (SNN-ALIF)": "o",
+        f"{GLOBAL_VERSION.formatted} (SNN-ALIF)": "o",
         "ANN-Rate (Continuous Leaky)": "s",
     }
 
@@ -371,8 +372,8 @@ def main() -> None:
     chronicle.log_info(f"Target execution device: {device}")
 
     # Load canonical production config
-    prod_m1_dir = Path("results/spwm_v0_7_3_train_m1")
-    prod_rep_dir = Path("results/spwm_v0_7_3_train_representation")
+    prod_m1_dir = GLOBAL_VERSION.m1_dir()
+    prod_rep_dir = GLOBAL_VERSION.representation_dir()
     if not (prod_m1_dir / "model.pt").exists():
         raise FileNotFoundError(f"Production M1 model not found at: {prod_m1_dir / 'model.pt'}")
     if not (prod_rep_dir / "model.pt").exists():
@@ -537,8 +538,8 @@ def main() -> None:
         joint_count=6,
     )
 
-    # 5. Load SPWM-v0.7.3 Production Model Reference
-    chronicle.log_info("=== [Loading SPWM-v0.7.3 Production Model Reference] ===")
+    # 5. Load Production Model Reference
+    chronicle.log_info(f"=== [Loading {GLOBAL_VERSION.formatted} Production Model Reference] ===")
     spwm_model = SPWM.from_config(cfg).to(device)
     spwm_ckpt = torch.load(prod_m1_dir / "model.pt", map_location=device, weights_only=False)
     spwm_state = spwm_ckpt["model_state"] if "model_state" in spwm_ckpt else spwm_ckpt
@@ -547,7 +548,7 @@ def main() -> None:
 
     spwm_params = get_parameter_count(spwm_model)
     spwm_latency = measure_inference_latency_ms(spwm_model, device)
-    chronicle.log_info(f"[SPWM-v0.7.3] Parameters: {spwm_params:,} | Latency: {spwm_latency:.2f} ms")
+    chronicle.log_info(f"[{GLOBAL_VERSION.formatted}] Parameters: {spwm_params:,} | Latency: {spwm_latency:.2f} ms")
 
     spwm_eval_res = evaluate_rollout(
         model=spwm_model,
@@ -579,7 +580,7 @@ def main() -> None:
 
     # Compile benchmark results
     final_benchmarks = {
-        "SPWM-v0.7.3 (SNN-ALIF)": {
+        f"{GLOBAL_VERSION.formatted} (SNN-ALIF)": {
             "memory_type": "ALIF (Spiking, 14.6% rate)",
             "parameter_count": spwm_params,
             "inference_latency_ms": spwm_latency,

@@ -26,6 +26,7 @@ import torch
 import torch.nn as nn
 from torch.utils.data import DataLoader
 
+from spwm.contracts.version import GLOBAL_VERSION
 from spwm.data.datasets import create_dataloaders
 from spwm.models.baselines import (
     ContinuousConvLSTM,
@@ -298,13 +299,13 @@ def plot_comparative_degradation(
     fig, axes = plt.subplots(1, 2, figsize=(14, 5))
 
     colors = {
-        "SPWM-v0.7.3": "#10B981",       # Green
+        GLOBAL_VERSION.formatted: "#10B981",       # Green
         "Continuous RSSM": "#3B82F6",   # Blue
         "Deep GRU": "#F59E0B",          # Orange
         "Continuous ConvLSTM": "#8B5CF6",# Purple
     }
     markers = {
-        "SPWM-v0.7.3": "o",
+        GLOBAL_VERSION.formatted: "o",
         "Continuous RSSM": "s",
         "Deep GRU": "^",
         "Continuous ConvLSTM": "d",
@@ -496,8 +497,8 @@ def main() -> None:
             f"Vel MSE (H=100): {eval_res['velocity_mse_per_horizon'][100]:.5f}"
         )
 
-    # 2. Incorporate SPWM-v0.7.3 production baseline metrics
-    spwm_metrics_file = Path("results/spwm_v0_7_3_train_m1/metrics_spwm_v0_7_3.json")
+    # 2. Incorporate SPWM production baseline metrics
+    spwm_metrics_file = GLOBAL_VERSION.m1_metrics()
     if spwm_metrics_file.exists():
         with open(spwm_metrics_file, "r", encoding="utf-8") as f:
             spwm_data = json.load(f)
@@ -505,9 +506,9 @@ def main() -> None:
         # Profile SPWM latency on current device
         from spwm.contracts.config import ExperimentConfig
         from spwm.models.world_model import SPWM
-        spwm_cfg = ExperimentConfig.load("results/spwm_v0_7_3_train_m1/config.yaml")
+        spwm_cfg = ExperimentConfig.load(GLOBAL_VERSION.m1_config())
         spwm_model = SPWM.from_config(spwm_cfg).to(device)
-        spwm_ckpt = torch.load("results/spwm_v0_7_3_train_m1/model.pt", map_location=device, weights_only=False)
+        spwm_ckpt = torch.load(GLOBAL_VERSION.m1_checkpoint(), map_location=device, weights_only=False)
         spwm_state = spwm_ckpt["model_state"] if "model_state" in spwm_ckpt else spwm_ckpt
         spwm_model.load_state_dict(spwm_state, strict=True)
         spwm_latency = measure_inference_latency_ms(spwm_model, device)
@@ -520,7 +521,7 @@ def main() -> None:
 
         # Insert SPWM as first entry
         final_benchmarks = {
-            "SPWM-v0.7.3": {
+            GLOBAL_VERSION.formatted: {
                 "parameter_count": spwm_data["parameters"],
                 "inference_latency_ms": spwm_latency,
                 "position_mse_per_horizon": pos_mses,

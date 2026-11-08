@@ -45,6 +45,7 @@ from torch.utils.data import DataLoader
 
 from figure_style import PALETTE, save_publication_figure, set_paper_style
 from spwm.contracts.config import ExperimentConfig
+from spwm.contracts.version import GLOBAL_VERSION
 from spwm.data.datasets import EventWorldDataset, collate_event_batches, partition_trajectories
 from spwm.data.event_camera import EventCameraSimulator
 from spwm.evaluation.mppi import LatentMPPIController
@@ -523,8 +524,8 @@ def draw_phase_space_3d(ax: plt.Axes, q_sp: np.ndarray, p_sp: np.ndarray, q_an: 
 # ==============================================================================
 def render_figure_1(
     output_dir: Path,
-    config_path: Path = Path("results/spwm_v0_7_3_train_m1/config.yaml"),
-    spwm_ckpt: Path = Path("results/spwm_v0_7_3_train_m1/model.pt"),
+    config_path: Path = GLOBAL_VERSION.m1_config(),
+    spwm_ckpt: Path = GLOBAL_VERSION.m1_checkpoint(),
     ann_ckpt: Path = Path("results/ann_ablation/ann_rate_m1/model.pt"),
     trajectories_dir: Path = Path("sim/ExportedTrajectories"),
     scene_trajectory_id: int = 0,
@@ -611,8 +612,8 @@ def render_figure_1(
 def main() -> None:
     parser = argparse.ArgumentParser(description="Generate CoRL Figure 1: System Teaser.")
     parser.add_argument("--output-dir", type=Path, default=Path("figures"), help="Directory for exported figures")
-    parser.add_argument("--config", type=Path, default=Path("results/spwm_v0_7_3_train_m1/config.yaml"))
-    parser.add_argument("--spwm-ckpt", type=Path, default=Path("results/spwm_v0_7_3_train_m1/model.pt"))
+    parser.add_argument("--config", type=Path, default=GLOBAL_VERSION.m1_config())
+    parser.add_argument("--spwm-ckpt", type=Path, default=GLOBAL_VERSION.m1_checkpoint())
     parser.add_argument("--ann-ckpt", type=Path, default=Path("results/ann_ablation/ann_rate_m1/model.pt"))
     parser.add_argument("--data-dir", type=Path, default=Path("sim/ExportedTrajectories"))
     parser.add_argument("--scene-trajectory", type=int, default=0, help="Trajectory id used for panel (a) and phase-space views")

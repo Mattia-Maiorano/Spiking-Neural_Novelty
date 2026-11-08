@@ -39,6 +39,7 @@ from torch.utils.data import DataLoader
 
 from figure_style import PALETTE
 from spwm.contracts.config import ExperimentConfig
+from spwm.contracts.version import GLOBAL_VERSION
 from spwm.data.datasets import EventWorldDataset
 from spwm.models.ann_ablation import ANNWorldModel
 from spwm.models.kinematics import DifferentiableForwardKinematics
@@ -88,7 +89,7 @@ def build_markdown_report(
     lines.append("")
     lines.append(f"**Publication Title**: Resolving Velocity Drift in 3D Manipulation: Phase-Space Spiking World Models with Active Perception and Latent MPC  ")
     lines.append(f"**Target Venue**: 10th Conference on Robot Learning (CoRL 2026)  ")
-    lines.append(f"**Production Baseline**: `SPWM-v0.7.3`  ")
+    lines.append(f"**Production Baseline**: `{GLOBAL_VERSION.formatted}`  ")
     lines.append(f"**Generated**: {now_iso}  ")
     lines.append(f"**Pipeline Extraction Time**: {execution_time_sec:.2f} seconds  ")
     lines.append(f"**AST Anti-Fallback Status**: STRICT COMPLIANCE (0 violations)  ")
@@ -266,7 +267,7 @@ def build_markdown_report(
     for mod_name, p_count in fig2_params.items():
         pct = (p_count / float(total_p)) * 100.0
         lines.append(f"| **`{mod_name}`** | Conv2D / ALIF / MLP Heads | `{p_count:,}` | `{pct:.2f}%` |")
-    lines.append(f"| **Total Architecture** | Complete SPWM-v0.7.3 Pipeline | **`{total_p:,}`** | **`100.00%`** |")
+    lines.append(f"| **Total Architecture** | Complete {GLOBAL_VERSION.formatted} Pipeline | **`{total_p:,}`** | **`100.00%`** |")
     lines.append("")
 
     # --------------------------------------------------------------------------
@@ -377,29 +378,30 @@ def build_markdown_report(
     lines.append("| Model Architecture | Memory Paradigm | Params | Vel MSE (H=1) | Vel MSE (H=10) | Vel MSE (H=50) | Vel MSE (H=100) | Pos MSE (H=100) |")
     lines.append("| :--- | :--- | :---: | :---: | :---: | :---: | :---: | :---: |")
 
+    spwm_label = f"{GLOBAL_VERSION.formatted} (Ours)"
     models_order = [
-        "SPWM-v0.7.3 (Ours)",
+        spwm_label,
         "Continuous RSSM",
         "Deep GRU",
         "Continuous ConvLSTM",
         "ANN-Rate (Continuous Leaky)",
     ]
     paradigms = {
-        "SPWM-v0.7.3 (Ours)": "ALIF Spiking (Symplectic)",
+        spwm_label: "ALIF Spiking (Symplectic)",
         "Continuous RSSM": "Continuous GRU + Gaussian",
         "Deep GRU": "2-Layer Continuous GRU",
         "Continuous ConvLSTM": "Spatial-Temporal ConvLSTM",
         "ANN-Rate (Continuous Leaky)": "Leaky Rate Units (Symplectic)",
     }
     params_count = {
-        "SPWM-v0.7.3 (Ours)": "328.7k",
+        spwm_label: "328.7k",
         "Continuous RSSM": "380.5k",
         "Deep GRU": "338.9k",
         "Continuous ConvLSTM": "296.9k",
         "ANN-Rate (Continuous Leaky)": "328.7k",
     }
     pos_mse_h100 = {
-        "SPWM-v0.7.3 (Ours)": "0.01728",
+        spwm_label: "0.01728",
         "Continuous RSSM": "0.01305",
         "Deep GRU": "0.77883",
         "Continuous ConvLSTM": "0.30935",
@@ -422,7 +424,7 @@ def build_markdown_report(
 
     lines.append("### 4.2 Relative Velocity Error Reduction Ratios")
     lines.append("")
-    sp_v100 = fig4_metrics["SPWM-v0.7.3 (Ours)"]["100"]
+    sp_v100 = fig4_metrics[spwm_label]["100"]
     rssm_v100 = fig4_metrics["Continuous RSSM"]["100"]
     gru_v100 = fig4_metrics["Deep GRU"]["100"]
     lstm_v100 = fig4_metrics["Continuous ConvLSTM"]["100"]
@@ -444,7 +446,7 @@ def build_markdown_report(
     lines.append("| Evaluated Target | 3D Cartesian Position $(x, y, z)$ (m) | Cartesian Error to Ground Truth | Qualitative Drift Outcome |")
     lines.append("| :--- | :---: | :---: | :--- |")
     lines.append(f"| **Ground-Truth Tip** | `({gt_pos[0]:.4f}, {gt_pos[1]:.4f}, {gt_pos[2]:.4f})` | `0.00 cm` (Reference) | True physical end-effector pose |")
-    lines.append(f"| **SPWM-v0.7.3 (Ours)** | `({spwm_pos[0]:.4f}, {spwm_pos[1]:.4f}, {spwm_pos[2]:.4f})` | **`{spwm_err_cm:.2f} cm`** | **Strictly bounded inside grasp bounding box** |")
+    lines.append(f"| **{GLOBAL_VERSION.formatted} (Ours)** | `({spwm_pos[0]:.4f}, {spwm_pos[1]:.4f}, {spwm_pos[2]:.4f})` | **`{spwm_err_cm:.2f} cm`** | **Strictly bounded inside grasp bounding box** |")
     lines.append(f"| **ANN-Rate (Continuous)** | `({ann_pos[0]:.4f}, {ann_pos[1]:.4f}, {ann_pos[2]:.4f})` | **`{ann_err_cm:.2f} cm`** | Compounding velocity drift causes grasp miss |")
     lines.append(f"| **SPWM Precision Advantage** | — | **`{ann_err_cm - spwm_err_cm:.2f} cm` closer** | **`{cartesian_drift_reduction:.1f}%` reduction in Cartesian drift** |")
     lines.append("")
@@ -581,8 +583,8 @@ def build_markdown_report(
 def export_metrics(
     output_md: Path = Path("docs/FIGURE_METRICS.md"),
     copy_to_figures: bool = True,
-    config_path: Path = Path("results/spwm_v0_7_3_train_m1/config.yaml"),
-    spwm_ckpt: Path = Path("results/spwm_v0_7_3_train_m1/model.pt"),
+    config_path: Path = GLOBAL_VERSION.m1_config(),
+    spwm_ckpt: Path = GLOBAL_VERSION.m1_checkpoint(),
     ann_ckpt: Path = Path("results/ann_ablation/ann_rate_m1/model.pt"),
     data_dir: Path = Path("sim/ExportedTrajectories"),
     baselines_json: Path = Path("results/baselines/comparative_metrics.json"),
@@ -591,7 +593,7 @@ def export_metrics(
     robustness_json: Path = Path("results/robustness_benchmark/robustness_metrics.json"),
     multiseed_json: Path = Path("results/multiseed/multiseed_metrics.json"),
     mppi_benchmark_json: Path = Path("results/mppi_benchmark/mppi_benchmark_metrics.json"),
-    m1_metrics_json: Path = Path("results/spwm_v0_7_3_train_m1/metrics_spwm_v0_7_3.json"),
+    m1_metrics_json: Path = GLOBAL_VERSION.m1_metrics(),
 ) -> None:
     """Executes full metric extraction and exports to Markdown."""
     start_time = time.perf_counter()
@@ -709,8 +711,8 @@ def export_metrics(
 def main() -> None:
     parser = argparse.ArgumentParser(description="Export all metrics computed for publication figures into Markdown.")
     parser.add_argument("--output-md", type=Path, default=Path("docs/FIGURE_METRICS.md"), help="Target markdown file path")
-    parser.add_argument("--config", type=Path, default=Path("results/spwm_v0_7_3_train_m1/config.yaml"))
-    parser.add_argument("--spwm-ckpt", type=Path, default=Path("results/spwm_v0_7_3_train_m1/model.pt"))
+    parser.add_argument("--config", type=Path, default=GLOBAL_VERSION.m1_config())
+    parser.add_argument("--spwm-ckpt", type=Path, default=GLOBAL_VERSION.m1_checkpoint())
     parser.add_argument("--ann-ckpt", type=Path, default=Path("results/ann_ablation/ann_rate_m1/model.pt"))
     parser.add_argument("--data-dir", type=Path, default=Path("sim/ExportedTrajectories"))
     parser.add_argument("--baselines-json", type=Path, default=Path("results/baselines/comparative_metrics.json"))
@@ -719,7 +721,7 @@ def main() -> None:
     parser.add_argument("--robustness-json", type=Path, default=Path("results/robustness_benchmark/robustness_metrics.json"))
     parser.add_argument("--multiseed-json", type=Path, default=Path("results/multiseed/multiseed_metrics.json"))
     parser.add_argument("--mppi-json", type=Path, default=Path("results/mppi_benchmark/mppi_benchmark_metrics.json"))
-    parser.add_argument("--m1-metrics", type=Path, default=Path("results/spwm_v0_7_3_train_m1/metrics_spwm_v0_7_3.json"))
+    parser.add_argument("--m1-metrics", type=Path, default=GLOBAL_VERSION.m1_metrics())
     args = parser.parse_args()
 
     export_metrics(

@@ -1,5 +1,5 @@
 """
-PyTorch Dataset and DataLoader pipelines for SPWM-v0.5.0 (6-DOF Active Perception Grasping).
+PyTorch Dataset and DataLoader pipelines for SPWM (6-DOF Active Perception Grasping).
 Parses exported Unity robotic trajectories (joint positions q* in R^6, joint velocities p* in R^6,
 motor actions u_t in R^6, phase flags in {0, 1, 2}, and neuromorphic event streams) while enforcing
 strict trajectory-level partitioning to prevent temporal leakage.
@@ -458,7 +458,7 @@ def parse_unity_trajectory_file(
             p1_indices = np.where(phase_flags == 1)[0]
             if len(p1_indices) > 0 and len(p1_indices) != expected_p1_len:
                 t_old_start = int(p1_indices[0])
-                # In legacy v0.7.0 exports, t_old_start was t_contact - 5 (duration was 17)
+                # In legacy exports, t_old_start was t_contact - 5 (duration was 17)
                 t_contact = t_old_start + 5 if len(p1_indices) == 17 else int(p1_indices[0])
                 t_inj_start = max(1, t_contact - pre_s)
                 t_inj_end = min(len(steps) - 1, t_contact + post_s)

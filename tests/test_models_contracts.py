@@ -259,7 +259,7 @@ def test_anti_evanescence_gate_suppression_and_ramp():
 
 def test_reverted_momentum_preserves_membrane_continuity():
     """
-    Verifies Option 1 Reversion (SPWM-v0.7.2):
+    Verifies Option 1 Reversion:
     Clean continuous momentum is maintained: p_{t+1} = LayerNorm(fuse_spikes + fuse_mems).
     No raw finite-difference shocks bypass LayerNorm, ensuring max(|p|) <= 3.5.
     """

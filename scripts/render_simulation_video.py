@@ -1,5 +1,5 @@
 """
-Render Robotic Arm Simulation Video CLI (SPWM-v0.5.0)
+Render Robotic Arm Simulation Video CLI
 
 Enforces rendering directly from the Unity simulation output, capturing
 100% fidelity realization of what Unity shows (kinematics, materials,

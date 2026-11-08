@@ -1,5 +1,5 @@
 """
-Latent MPPI Trajectory Exporter for Unity Simulation Video (SPWM-v0.7.3).
+Latent MPPI Trajectory Exporter for Unity Simulation Video.
 
 Executes closed-loop Latent MPPI control on a specified test trajectory and exports
 the resulting joint angles, velocities, and instantaneous reaching metrics into

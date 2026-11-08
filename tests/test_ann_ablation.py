@@ -16,7 +16,7 @@ from spwm.models.world_model import SPWM
 
 
 def test_ann_world_model_parameter_parity():
-    """ANNWorldModel must have 100% parameter count parity with SPWM-v0.7.3."""
+    """ANNWorldModel must have 100% parameter count parity with SPWM."""
     spwm = SPWM()
     ann = ANNWorldModel()
 

@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-Prunes stale Phase 1 (Sensory Heft) flags across exported Unity trajectories (SPWM-v0.7.2).
+Prunes stale Phase 1 (Sensory Heft) flags across exported Unity trajectories.
 
 Sanitizes all trajectory_*.json.gz files on disk:
   1. Identifies the original contact step: t_contact = t_old_start + 5

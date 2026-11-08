@@ -13,6 +13,7 @@ from typing import Any, Dict, Optional, Tuple, Type, TypeVar, Union, get_origin,
 import yaml
 
 from spwm.contracts.tensors import C_EVENT, J, assert_phase_space_contract
+from spwm.contracts.version import GLOBAL_VERSION
 
 T = TypeVar("T")
 
@@ -60,8 +61,8 @@ def _strict_dict_to_dataclass(cls: Type[T], data: Dict[str, Any], context: str =
 @dataclass(frozen=True)
 class ProjectConfig:
     """Project-level identity, tracking tags, and pseudo-random reproducibility configuration."""
-    name: str = "spwm_v0_8_0"  #: Unique identifier/tag for the project and run artifacts.
-    seed: int = 42             #: Global pseudo-random seed for PyTorch, NumPy, and trajectory generation.
+    name: str = GLOBAL_VERSION.snake_case  #: Unique identifier/tag for the project and run artifacts.
+    seed: int = 42                         #: Global pseudo-random seed for PyTorch, NumPy, and trajectory generation.
 
 
 @dataclass(frozen=True)

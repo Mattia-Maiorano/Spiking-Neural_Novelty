@@ -31,7 +31,7 @@ def test_tiny_overfit_and_gradient_flow():
     )
     dataloader = DataLoader(dataset, batch_size=8, shuffle=False, collate_fn=collate_event_batches)
 
-    # 2. SPWM-v0.6.0 ALIF model with dual-camera visual fusion (4 channels)
+    # 2. SPWM ALIF model with dual-camera visual fusion (4 channels)
     model = SPWM(
         in_channels=4,
         height=32,

@@ -8,10 +8,10 @@ from __future__ import annotations
 from typing import Optional, Tuple
 import torch
 
-# Master 6-DOF Manipulator Joint & Action Dimensionality (SPWM-v0.5.0)
+# Master 6-DOF Manipulator Joint & Action Dimensionality
 J: int = 6
 
-# Dual-Camera Neuromorphic Event Stream Channels (SPWM-v0.6.0):
+# Dual-Camera Neuromorphic Event Stream Channels:
 # [pos_global, neg_global, pos_wrist, neg_wrist]
 C_EVENT: int = 4
 

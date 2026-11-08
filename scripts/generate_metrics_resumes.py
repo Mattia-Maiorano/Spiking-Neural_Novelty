@@ -2,7 +2,7 @@
 Generator script for metrics_v*.json resume files across experiment results directories.
 
 Usage:
-    python scripts/generate_metrics_resumes.py [--pattern "spwm_v0_2_0*"] [--results-dir results]
+    python scripts/generate_metrics_resumes.py [--pattern "spwm_v*"] [--results-dir results]
 """
 
 from __future__ import annotations

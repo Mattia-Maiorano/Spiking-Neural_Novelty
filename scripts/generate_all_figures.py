@@ -1,5 +1,5 @@
 """
-Master Scientific Visualization Pipeline for CoRL Paper (SPWM-v0.7.3).
+Master Scientific Visualization Pipeline for CoRL Paper.
 
 Executes all 5 publication figure generation scripts:
   - Figure 1: System Teaser & Phase-Space Concept (`visualize_fig1_teaser.py`)

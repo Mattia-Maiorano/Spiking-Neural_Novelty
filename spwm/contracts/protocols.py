@@ -240,7 +240,7 @@ class Tier2EvaluatorProtocol(Protocol):
 
     frequency: int
 
-    def __call__(self, model: nn.Module, epoch: int) -> Dict[str, float]:
+    def __call__(self, model: nn.Module, epoch: int) -> Dict[str, Any]:
         """Runs closed-loop evaluation on a fixed validation subset and returns metrics."""
         ...
 

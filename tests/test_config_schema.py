@@ -9,32 +9,12 @@ from spwm.config.schema import (
     ModelConfig,
     TrainingConfig,
 )
+from spwm.contracts.version import GLOBAL_VERSION
 
 
 def test_experiment_config_instantiates_cleanly():
     cfg = ExperimentConfig()
-    assert cfg.project.name in (
-        "spwm_v0_2_0",
-        "spwm_v0_2_1",
-        "spwm_v0_2_2",
-        "spwm_v0_3_0",
-        "spwm_v0_3_1",
-        "spwm_v0_4_0",
-        "spwm_v0_5_0",
-        "spwm_v0_5_1",
-        "spwm_v0_5_2",
-        "spwm_v0_5_3",
-        "spwm_v0_5_4",
-        "spwm_v0_6_0",
-        "spwm_v0_6_1",
-        "spwm_v0_6_2",
-        "spwm_v0_6_3",
-        "spwm_v0_7_0",
-        "spwm_v0_7_1",
-        "spwm_v0_7_2",
-        "spwm_v0_7_3",
-        "spwm_v0_8_0",
-    )
+    assert cfg.project.name == GLOBAL_VERSION.snake_case
     assert cfg.environment.joint_count == 6
     assert cfg.environment.action_dim == 6
     assert cfg.data.joint_count == 6

@@ -1,10 +1,10 @@
 """
-Main Training Entrypoint for SPWM (v0.4.0).
+Main Training Entrypoint for SPWM.
 Streamlined, config-first Single Source of Truth with immutable ExperimentConfig
 and scoped strict checkpoint loading (`model.pt`) across Representation -> M1 phases.
 
 Usage:
-    python experiments/train.py --config configs/experiments/spwm_v0_4_0.yaml
+    python experiments/train.py --config <path_to_config.yaml>
 """
 
 from __future__ import annotations

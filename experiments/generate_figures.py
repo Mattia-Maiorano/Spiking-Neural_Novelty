@@ -1,5 +1,5 @@
 """
-Consolidated Scientific Figure Generator for SPWM (v0.2.0).
+Consolidated Scientific Figure Generator for SPWM.
 Generates Figures 1 through 7 for SPWM paper and research report,
 combining Phase 1 (M1: 0-10), Phase 2 (M2: 0-20), and Phase 3 (M3: 0-100) runs.
 """
@@ -11,6 +11,7 @@ import json
 from pathlib import Path
 from typing import Any, Dict, List
 import chronicle
+from spwm.contracts.version import GLOBAL_VERSION
 from spwm.evaluation.visualizer import (
     plot_ablation_comparison,
     plot_architecture_diagram,
@@ -24,7 +25,7 @@ def main() -> None:
     parser = argparse.ArgumentParser(description="Generate all scientific figures.")
     parser.add_argument("--results-dir", type=str, default="results", help="Directory containing experiment results")
     parser.add_argument("--output-dir", type=str, default="results/figures", help="Target directory for figures")
-    parser.add_argument("--version", type=str, default="spwm_v0_3_1", help="Target model version prefix")
+    parser.add_argument("--version", type=str, default=GLOBAL_VERSION.snake_case, help="Target model version prefix")
     args = parser.parse_args()
 
     results_dir = Path(args.results_dir)

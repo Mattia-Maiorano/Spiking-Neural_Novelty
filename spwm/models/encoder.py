@@ -1,5 +1,5 @@
 """
-Layer 1 Dual-Camera Visual Fusion Convolutional Event Encoder with Spatial Softmax (SPWM-v0.6.0).
+Layer 1 Dual-Camera Visual Fusion Convolutional Event Encoder with Spatial Softmax.
 Ingests combined static global and egocentric wrist-mounted neuromorphic event streams
 ([B, 4, H, W] or [B, T, 4, H, W]), fuses their spatial feature representations across sensor streams,
 and extracts a unified set of analytical 2D centers of mass (keypoints) in [-1, 1]^2.
@@ -60,7 +60,7 @@ class SpatialSoftmax(nn.Module):
 
 class EventEncoder(nn.Module):
     """
-    Dual-Camera Visual Fusion Event Encoder with Spatial Softmax Keypoint Bottleneck (SPWM-v0.6.0).
+    Dual-Camera Visual Fusion Event Encoder with Spatial Softmax Keypoint Bottleneck.
     Processes [B, C, H, W] or [B, T, C, H, W] differential polarity frames (default C=4:
     2 static global ON/OFF channels + 2 egocentric wrist ON/OFF channels) through dedicated
     global and egocentric convolutional stems, fuses the multi-view spatial feature maps,
@@ -107,7 +107,7 @@ class EventEncoder(nn.Module):
             nn.Conv2d(c2, num_keypoints, kernel_size=1),
         )
 
-        # Dedicated egocentric wrist-stream branch & residual cross-stream fusion (SPWM-v0.6.0)
+        # Dedicated egocentric wrist-stream branch & residual cross-stream fusion
         if self.dual_stream:
             self.wrist_stem = nn.Sequential(
                 nn.Conv2d(2, c1, kernel_size=3, stride=2, padding=1),

@@ -1,5 +1,5 @@
 """
-Dual-Camera Event Simulator & Neuromorphic Vision Bridge for 3D Articulated Robotics (SPWM-v0.6.0).
+Dual-Camera Event Simulator & Neuromorphic Vision Bridge for 3D Articulated Robotics.
 Transforms exported Unity grayscale image sequences or 3D articulated robotic joint trajectories
 into unified, multi-channel spatio-temporal neuromorphic event streams ([B, T, 4, H, W]):
   - Channels 0..1: Static Global Event Camera (ON/OFF polarities)
@@ -66,7 +66,7 @@ class EventBatch:
 
 class EventCameraSimulator:
     """
-    Simulates a dual-sensor differential neuromorphic event camera architecture (SPWM-v0.6.0)
+    Simulates a dual-sensor differential neuromorphic event camera architecture
     bridging Unity 3D robotics to SNNs:
       1. Static Global Camera: observes overall workspace and macro arm motion.
       2. Egocentric Wrist-Mounted Camera: attached directly to the end-effector, observing

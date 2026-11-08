@@ -220,6 +220,7 @@ Commands:
   sim-data           Run Unity headless to generate dataset trajectories (batchmode, no -nographics).
   train              Train representation (Phase 0) followed by M1 (Phase 1).
   train-m1           Train M1 (Phase 1) with Two-Tiered Validation using frozen Phase 0 representation.
+  baselines          Train and benchmark non-spiking comparative baselines against SPWM.
   export-unity       Export ghost trajectory JSON for Unity demo playback.
   video              Export (per model, from real test episodes matching each case) and render 4
                      labeled videos <model>_<low|mid|high>_<light|normal|heavy>.mp4:
@@ -345,6 +346,13 @@ run_train_m1() {
     "${m1_cmd[@]}"
 
     echo ">>> M1 training completed successfully."
+}
+
+# ------------------------------------------------------------------------------
+# Action: Comparative Baselines Benchmark
+# ------------------------------------------------------------------------------
+run_baselines() {
+    exec "${SCRIPT_DIR}/run_baselines.sh" "$@"
 }
 
 # ------------------------------------------------------------------------------
@@ -664,6 +672,11 @@ fi
 COMMAND="$1"
 shift
 
+if [[ "${COMMAND}" == "baselines" || "${COMMAND}" == "baseline" || "${COMMAND}" == "run-baselines" || "${COMMAND}" == "run_baselines" || "${COMMAND}" == "run-baseline" || "${COMMAND}" == "run_baseline" ]]; then
+    run_baselines "$@"
+    exit 0
+fi
+
 TOTAL_TRAJECTORIES=""
 EXPORT_DIR=""
 LOGFILE=""
@@ -787,6 +800,9 @@ case "${COMMAND}" in
         ;;
     train-m1|train_m1|m1)
         run_train_m1
+        ;;
+    baselines|baseline|run-baselines|run_baselines|run-baseline|run_baseline)
+        run_baselines "$@"
         ;;
     2|video)
         run_video

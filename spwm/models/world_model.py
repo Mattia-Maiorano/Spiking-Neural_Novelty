@@ -273,6 +273,8 @@ class SPWM(nn.Module):
         event_sequence: torch.Tensor,
         initial_state: Optional[SPWMState] = None,
         actions: Optional[torch.Tensor] = None,
+        *args: Any,
+        **kwargs: Any,
     ) -> Tuple[torch.Tensor, torch.Tensor]:
         """
         Sensory-driven state estimation without predictor rollouts (Phase 0).

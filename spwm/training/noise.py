@@ -42,8 +42,8 @@ def sample_ar1_noise(
 def compute_mppi_noise_alpha(
     epoch: int,
     warmup_epochs: int = 10,
-    ramp_epochs: int = 20,
-    target_alpha: float = 1.0,
+    ramp_epochs: int = 40,
+    target_alpha: float = 0.5,
 ) -> float:
     """Computes curriculum-scheduled noise intensity alpha for MPPI-aware training."""
     if epoch <= warmup_epochs:
@@ -52,3 +52,29 @@ def compute_mppi_noise_alpha(
         return float(target_alpha)
     progress = min(1.0, (epoch - warmup_epochs) / float(ramp_epochs))
     return float(progress * target_alpha)
+
+
+def compute_dagger_ratio(
+    epoch: int,
+    warmup_epochs: int = 10,
+    ramp_end_epoch: int = 40,
+    min_ratio: float = 0.15,
+    max_ratio: float = 0.60,
+) -> float:
+    """Computes dynamic epoch-based DAgger batch ratio for closed-loop training.
+
+    Rule:
+      - Epochs 0..warmup_epochs (e.g. 0-10): strictly 0% closed-loop data (warmup).
+      - From warmup_epochs + 1 (e.g. 11) onward: linearly scale from min_ratio (15%)
+        up to hard cap max_ratio (60%) at ramp_end_epoch (40).
+    """
+    if epoch <= warmup_epochs:
+        return 0.0
+    if epoch >= ramp_end_epoch:
+        return float(max_ratio)
+    span = ramp_end_epoch - (warmup_epochs + 1)
+    if span <= 0:
+        return float(max_ratio)
+    fraction = (epoch - (warmup_epochs + 1)) / float(span)
+    ratio = min_ratio + fraction * (max_ratio - min_ratio)
+    return float(min(max(ratio, min_ratio), max_ratio))

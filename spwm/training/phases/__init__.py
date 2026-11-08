@@ -104,6 +104,30 @@ class PredictorPhaseHandler(PhaseStrategy):
             indent_level=1,
         )
 
+        cl_trajs = int(train_metrics.get("closed_loop_trajs_epoch", 0))
+        cl_trans = int(train_metrics.get("closed_loop_trans_epoch", 0))
+        buf_trajs = int(train_metrics.get("closed_loop_buffer_trajs", 0))
+        buf_total = int(train_metrics.get("closed_loop_buffer_total", 0))
+        traj_desc = f"{buf_trajs} trajs" if buf_trajs > 0 else (f"{max(1, buf_total // 100)} trajs" if buf_total > 0 else "0 trajs")
+        if cl_trajs > 0:
+            chronicle.log_detail(
+                "🔄 Closed-Loop MPPI BPTT",
+                f"Trained in Epoch: {cl_trajs} trajectory rollouts ({cl_trans} transitions) with BPTT | Replay Buffer: {traj_desc} ({buf_total} transitions)",
+                indent_level=1,
+            )
+        elif buf_total > 0:
+            chronicle.log_detail(
+                "🔄 Closed-Loop MPPI BPTT",
+                f"Replay Buffer: {traj_desc} ({buf_total} transitions, threshold >= 64)",
+                indent_level=1,
+            )
+        elif mode in ("TRAIN_M1", "M1"):
+            chronicle.log_detail(
+                "🔄 Closed-Loop MPPI BPTT",
+                "Replay Buffer: 0 trajs (0 transitions, waiting for Tier 2 evaluation)",
+                indent_level=1,
+            )
+
         val_loss = val_metrics.get("val_loss", 0.0)
         val_pos_l = val_metrics.get("val_loss_position", 0.0)
         val_vel_l = val_metrics.get("val_loss_velocity", 0.0)
@@ -122,8 +146,10 @@ class PredictorPhaseHandler(PhaseStrategy):
             mppi_err = val_metrics.get("mppi_mean_error_cm", 0.0)
             mppi_vel = val_metrics.get("mppi_final_vel", 0.0)
             mppi_rot = val_metrics.get("mppi_final_rot", 0.0)
+            mppi_trajs = int(val_metrics.get("mppi_evaluated_trajectories", 0))
+            traj_info = f" ({mppi_trajs} Eval Trajectories)" if mppi_trajs > 0 else ""
             chronicle.log_detail(
-                "🎯 Tier 2 (Closed-Loop MPPI)",
+                f"🎯 Tier 2 (Closed-Loop MPPI){traj_info}",
                 f"Score: {mppi_s:.5f} | Grasp Success: {mppi_succ:.1f}% | "
                 f"Mean Err: {mppi_err:.2f}cm | Final Vel: {mppi_vel:.3f} | Rot Err: {mppi_rot:.4f}",
                 indent_level=1,

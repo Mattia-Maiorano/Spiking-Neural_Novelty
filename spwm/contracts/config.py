@@ -224,7 +224,7 @@ class TrainingConfig:
     temporal_burn_in: int = 15                       #: Initial latent steps for recurrent dynamics warm-up before launching evaluation rollouts.
     representation_checkpoint: Optional[str] = None  #: Optional path to pre-trained representation checkpoint .pt.
     phase_horizon: int = 50                          #: Duration H of predictor unrolling during training.
-    tier2_frequency: int = 10                         #: Frequency (in epochs) to evaluate Tier 2 closed-loop MPPI scoring.
+    tier2_frequency: int = 3                         #: Frequency (in epochs) to evaluate Tier 2 closed-loop MPPI scoring.
     tier2_trajectories: int = 6                       #: Number of fixed validation trajectories for Tier 2 evaluation (covering Low, Mid, High).
     tier2_seed: int = 42000                           #: Deterministic base RNG seed for MPPI noise generation in Tier 2 validation.
     tier2_num_samples: int = 256                      #: Number of candidate trajectory samples K in MPPI planning during Tier 2 validation.
@@ -235,8 +235,9 @@ class TrainingConfig:
     tier2_min_delta: float = 0.001                    #: Minimum improvement threshold on MPPI structural score to reset early stopping patience.
     ema_decay: float = 0.99                           #: Decay factor tau for Exponential Moving Average (EMA) of model weights.
     mppi_noise_warmup_epochs: int = 10                #: Initial training epochs with zero AR(1) action noise before curriculum ramp.
-    mppi_noise_ramp_epochs: int = 20                  #: Number of epochs over which AR(1) action noise linearly ramps to target alpha.
-    mppi_noise_target_alpha: float = 1.0              #: Maximum target intensity alpha for AR(1) action noise injection.
+    mppi_noise_ramp_epochs: int = 40                  #: Number of epochs over which AR(1) action noise linearly ramps to target alpha.
+    mppi_noise_target_alpha: float = 0.5              #: Maximum target intensity alpha for AR(1) action noise injection.
+    max_eval_generations: int = 2                     #: Rolling window of Tier 2 evaluation generations to preserve in ClosedLoopBuffer.
 
     def __post_init__(self) -> None:
         valid_modes = ("train_representation", "train_m1")
@@ -267,6 +268,8 @@ class TrainingConfig:
             raise ValueError(f"mppi_noise_ramp_epochs must be >= 0, got {self.mppi_noise_ramp_epochs}")
         if self.mppi_noise_target_alpha < 0.0:
             raise ValueError(f"mppi_noise_target_alpha must be non-negative, got {self.mppi_noise_target_alpha}")
+        if self.max_eval_generations <= 0:
+            raise ValueError(f"max_eval_generations must be > 0, got {self.max_eval_generations}")
 
 
 @dataclass(frozen=True)
@@ -368,6 +371,7 @@ class ExperimentConfig:
         mppi_noise_warmup_epochs: Optional[int] = None,
         mppi_noise_ramp_epochs: Optional[int] = None,
         mppi_noise_target_alpha: Optional[float] = None,
+        max_eval_generations: Optional[int] = None,
     ) -> "ExperimentConfig":
         """
         Creates a new validated, frozen ExperimentConfig with explicit overrides.
@@ -422,6 +426,8 @@ class ExperimentConfig:
             train_updates["mppi_noise_ramp_epochs"] = mppi_noise_ramp_epochs
         if mppi_noise_target_alpha is not None:
             train_updates["mppi_noise_target_alpha"] = mppi_noise_target_alpha
+        if max_eval_generations is not None:
+            train_updates["max_eval_generations"] = max_eval_generations
 
         training = dataclasses.replace(self.training, **train_updates) if train_updates else self.training
         return dataclasses.replace(self, project=proj, data=data, training=training)

@@ -681,7 +681,47 @@
 ## SPWM-v0.8.3 — Iteration 1 (Two-Tier Validation Logging & Closed-Loop Trajectory Diagnostics)
 - **version afflicted**: `SPWM-v0.8.3`
 - **iteration on version**: Iteration 1 (Two-Tier Validation Logging & Closed-Loop Trajectory Diagnostics)
-- **changes made**: Clarified training telemetry logging distinction between Tier 1 open-loop validation and Tier 2 closed-loop MPPI evaluation in `spwm/training/phases/__init__.py`. Verified and audited closed-loop MPPI trajectory replay storage (`ClosedLoopBuffer`) across `spwm/training/engine.py` and `spwm/training/phases/m1_nominal.py`. Verified that evaluated MPPI closed-loop trajectories ($K=256$ candidates over $H=30$, with $N=6$ fixed validation demonstrations) generate step transitions $(z_t, u_t, z_{t+1})$ stored in `closed_loop_buffer.pt` (435 transitions recorded), which are actively injected as a 20% DAgger batch during Phase 1 (`train_m1`) training steps once the buffer threshold ($\ge 64$ samples) is reached.
-- **new results (if any)**: All 20 targeted contract, anti-fallback, and replay buffer unit tests passed in 1.98s; AST anti-fallback scanner verifies 0 violations across `spwm/`. No runs made - diagnostic verification and log clarification only.
+- **changes made**: Clarified training telemetry logging distinction between Tier 1 open-loop validation and Tier 2 closed-loop MPPI evaluation in `spwm/training/phases/__init__.py` and `spwm/training/engine.py`. Enhanced telemetry logs to explicitly state the exact number of evaluated closed-loop MPPI trajectories ingested into `ClosedLoopBuffer` (`[DAgger Buffer] Ingested X transitions from N evaluated closed-loop MPPI trajectories`) and displayed in the Tier 2 header. Verified that MPPI transitions were previously sampled into 20% DAgger batches during Phase 1 (`train_m1`) forward steps for 1-step latent attractor loss without multi-step BPTT unrolling or ground-truth comparison.
+- **new results (if any)**: All 22 targeted contract, anti-fallback, and replay buffer unit tests passed in 8.81s; AST anti-fallback scanner verifies 0 violations across `spwm/`. No runs made - diagnostic logging update and contract verification only.
 - **verdict on change made**: Preserved.
+
+## SPWM-v0.8.3 — Iteration 2 (Closed-Loop MPPI Multi-Step Trajectory BPTT & Informative Telemetry)
+- **version afflicted**: `SPWM-v0.8.3`
+- **iteration on version**: Iteration 2 (Closed-Loop MPPI Multi-Step Trajectory BPTT & Informative Telemetry)
+- **changes made**: Enabled full multi-step Backpropagation Through Time (BPTT) for closed-loop MPPI trajectories alongside open-loop training in Phase 1 (`train_m1`):
+  1. `MPPIStructuralScorer` (`spwm/evaluation/mppi.py`): Captured continuous trajectory sequences (`z_init`, `actions`, `targets`) alongside step transitions, returning `trajectories` containing ground-truth latent targets $z^*_{1:L}$ from sensory dynamics.
+  2. `ClosedLoopBuffer` (`spwm/training/engine.py`): Implemented `push_trajectories(...)` and `sample_trajectories(batch_size, horizon)` extracting windowed action-latent sequences $[K, H, D]$ for multi-step unrolling, with complete state serialization. Re-exported `ClosedLoopBuffer` in `spwm/training/__init__.py`.
+  3. Multi-Step BPTT in `M1PhaseStrategy` (`spwm/training/phases/m1_nominal.py`): Replaced isolated 1-step predictions with recurrent unrolling $\hat{z}_{t+1} = M_1(\hat{z}_t, u_t)$ across horizon $H$, computing joint attractor loss against ground-truth targets $z^*_{1:H}$ and backpropagating gradients through time into $M_1$ parameters while preserving $< 150$ lines constraint (147 lines).
+  4. Epoch Telemetry Logging (`spwm/training/phases/__init__.py` & `spwm/training/engine.py`): Added per-epoch tracking and logging of exact closed-loop MPPI trajectory rollouts and transitions trained with BPTT alongside open-loop batches (`🔄 Closed-Loop MPPI BPTT: Trained in Epoch: K trajectory rollouts (N transitions) with BPTT | Replay Buffer: ...`).
+  5. Test Verification: Added `test_closed_loop_buffer_trajectories_bptt` in `tests/test_closed_loop_buffer.py` verifying multi-step trajectory sampling, recurrent unrolling, and non-zero gradient accumulation.
+- **new results (if any)**: All 28 unit tests passed across `test_two_tiered_validation.py`, `test_closed_loop_buffer.py`, `test_training_phases.py`, and `test_anti_fallback.py`; AST anti-fallback scanner verifies 0 violations across `spwm/`. No training runs made - BPTT architectural integration, unit testing, and telemetry logging update only.
+- **verdict on change made**: Preserved.
+
+## SPWM-v0.8.3 — Iteration 3 (Replay Buffer Cross-Directory Resolution & Telemetry Persistence)
+- **version afflicted**: `SPWM-v0.8.3`
+- **iteration on version**: Iteration 3 (Replay Buffer Cross-Directory Resolution & Telemetry Persistence)
+- **changes made**: Resolved replay buffer path resolution and telemetry logging visibility:
+  1. `resolve_closed_loop_buffer` (`spwm/training/engine.py`): Implemented strict buffer resolver checking explicit path, target `save_dir`, and candidate matching runs in `results_root` (e.g. `*_BEFOREBPTT` or previous phase runs) with payload size verification to prevent empty checkpoint buffers from shadowing populated archives.
+  2. Buffer Ingestion & Checkpoint Protection (`spwm/training/engine.py`): Integrated `resolve_closed_loop_buffer` into `BaseTrainer.__init__` and `load_checkpoint`. Protected `save_checkpoint` from overwriting valid on-disk replay buffers with empty buffers when in-memory buffer has 0 transitions.
+  3. Continuous Telemetry Visibility (`spwm/training/phases/__init__.py`): Ensured `🔄 Closed-Loop MPPI BPTT` telemetry block is always displayed in `train_m1` epoch logs, informing users when the buffer is empty awaiting Tier 2 evaluation, and formatting legacy transition counts cleanly.
+  4. CLI & Package Exports (`experiments/train.py`, `spwm/training/__init__.py`): Added `--closed-loop-buffer` flag for explicit buffer path injection and exported `resolve_closed_loop_buffer`.
+  5. Tensor Shape Normalization in BPTT Sampling (`spwm/training/engine.py`): Canonicalized un-squeezed trajectory action/target shapes `[L, 1, D]` and flattened sub-window initial states `z_i.view(-1)` to eliminate rank mismatch during `torch.stack`.
+  6. Test Verification: Added `test_resolve_closed_loop_buffer` and 3D tensor trajectory sampling tests in `tests/test_closed_loop_buffer.py`.
+- **new results (if any)**: All 33 unit tests passed across `test_closed_loop_buffer.py` (4/4), `test_anti_fallback.py` (11/11), `test_architecture_contracts.py` (7/7), `test_training_phases.py` (5/5), and `test_two_tiered_validation.py` (9/9). AST anti-fallback scan verifies clean code with 0 violations across `spwm/`. No runs made - replay buffer resolution, telemetry persistence, and test verification only.
+- **verdict on change made**: Preserved.
+
+## SPWM-v0.8.3 — Iteration 4 (DAgger Dynamic Scheduling, AR(1) Noise Recalibration & Generational Buffer Isolation)
+- **version afflicted**: `SPWM-v0.8.3`
+- **iteration on version**: Iteration 4 (DAgger Dynamic Scheduling, AR(1) Noise Recalibration & Generational Buffer Isolation)
+- **changes made**: Implemented comprehensive architectural mitigations for covariate shift and catastrophic forgetting in Phase 1 (`train_m1`):
+  1. Buffer Anti-Contamination (`spwm/training/engine.py`): Modified `resolve_closed_loop_buffer` to enforce completely fresh buffer initialization on all new runs (`is_resuming=False`), completely eliminating cross-run globbing from `results_root`. Only explicit paths or interrupted checkpoint directories (`is_resuming=True`) load existing buffers.
+  2. Generational FIFO Rolling Window (`ClosedLoopBuffer` in `spwm/training/engine.py`): Implemented strict FIFO rolling window across Tier 2 evaluation generations (`max_eval_generations=2`). Ingesting a new evaluation generation cleanly evicts older generations and synchronizes transition storage.
+  3. Dynamic DAgger Batch Ratio Scheduler (`spwm/training/noise.py` & `spwm/training/engine.py`): Implemented `compute_dagger_ratio(epoch)` scheduling 0% closed-loop data during warmup (Epochs 0–10), linearly ramping from 15% at Epoch 11 to a hard cap of 60% at Epoch 40, dynamically sizing batches via $B_{\text{dagger}} = \max(1, \lfloor B_{\text{open}} \cdot r(e) \rceil)$ in `BaseTrainer.train_epoch`.
+  4. AR(1) Action Noise Recalibration (`spwm/contracts/config.py`, `spwm/training/noise.py`, `experiments/train.py`): Reduced `mppi_noise_target_alpha` default from 1.0 to 0.5, and extended `mppi_noise_ramp_epochs` from 20 to 40 epochs to preserve demonstration signal and give dynamic DAgger time to compensate for drift.
+  5. Tensor Sizing & Line Isolation (`spwm/training/phases/m1_nominal.py`): Sized mixed objective weight masks directly to flattened closed-loop dimension $N_{\text{cl}}$ via `torch.ones(n_cl, 1, ...)` preventing concatenation shape mismatches while maintaining the `< 150` lines constraint (147 lines).
+  6. Unit Testing: Added tests for generation rolling window, dynamic DAgger ratio scheduling, and noise curriculum recalibration in `tests/test_closed_loop_buffer.py`.
+- **new results (if any)**: All 152 repository unit tests passed in 19.52s (including 7/7 in `test_closed_loop_buffer.py` and 5/5 in `test_training_phases.py`). AST anti-fallback scan verifies clean code with 0 violations across `spwm/`. No runs made - training dynamics refactoring, scheduler implementation, and test verification only.
+- **verdict on change made**: Preserved.
+
+
 

@@ -7,8 +7,15 @@ and the BaseTrainer / Trainer orchestration engine.
 
 from spwm.training.engine import (
     BaseTrainer,
+    ClosedLoopBuffer,
     Trainer,
+    compute_dagger_ratio,
     load_representation_checkpoint,
+    resolve_closed_loop_buffer,
+)
+from spwm.training.noise import (
+    compute_mppi_noise_alpha,
+    sample_ar1_noise,
 )
 from spwm.training.losses import (
     PredictorLoss,
@@ -37,8 +44,13 @@ from spwm.training.rollout import RolloutResult, TelemetryContainer, rollout_lat
 
 __all__ = [
     "BaseTrainer",
+    "ClosedLoopBuffer",
     "Trainer",
+    "compute_dagger_ratio",
+    "compute_mppi_noise_alpha",
+    "sample_ar1_noise",
     "load_representation_checkpoint",
+    "resolve_closed_loop_buffer",
     "_frozen",
     "PredictorLoss",
     "SPWMLoss",

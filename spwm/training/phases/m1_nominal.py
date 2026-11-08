@@ -20,14 +20,11 @@ class M1PhaseStrategy(PhaseStrategy):
             p.requires_grad = False
         for p in self.model.predictor.parameters():
             p.requires_grad = True
-        self.predictor_optimizer = torch.optim.Adam(
-            self.model.predictor.parameters(), lr=self.cfg.training.learning_rate, weight_decay=self.cfg.training.weight_decay
-        )
+        self.predictor_optimizer = torch.optim.Adam(self.model.predictor.parameters(), lr=self.cfg.training.learning_rate, weight_decay=self.cfg.training.weight_decay)
 
     def verify_gradient_isolation(self) -> None:
-        authorized = ("predictor", "m1")
         for name, p in self.model.named_parameters():
-            if not any(k in name for k in authorized) and p.requires_grad:
+            if not any(k in name for k in ("predictor", "m1")) and p.requires_grad:
                 raise AssertionError(f"Gradient leak! Parameter '{name}' has requires_grad=True in train_m1 mode.")
 
     @torch.no_grad()
@@ -76,18 +73,31 @@ class M1PhaseStrategy(PhaseStrategy):
                 step_weights[b, max(0, h0 - 5) : min(horizon, h_end + 10)] = 2.0
                 vel_step_weights[b, max(0, h0) : min(horizon, h_end + 12)] = 3.0
 
+        pos_diff_sq, vel_diff_sq = (m1_traj[..., :q_dim] - target_latents[..., :q_dim]) ** 2, (m1_traj[..., q_dim:] - target_latents[..., q_dim:]) ** 2
+        loss_pos, loss_vel = (step_weights * pos_diff_sq).mean(), (vel_step_weights * vel_diff_sq).mean()
+        cl_size = 0.0
         if closed_loop_batch is not None:
-            cl_pred = self.model.m1(closed_loop_batch["z"].to(events.device), closed_loop_batch["u"].to(events.device)).predicted_latent
-            z_dim, n_open = self.model.latent_dim, m1_traj.numel() // self.model.latent_dim
-            mixed_pred = torch.cat([m1_traj.reshape(-1, z_dim), cl_pred.reshape(-1, z_dim)], dim=0)
-            mixed_target = torch.cat([target_latents.reshape(-1, z_dim), closed_loop_batch["z_next"].to(events.device).reshape(-1, z_dim)], dim=0)
-            mixed_pos_w = torch.cat([step_weights.reshape(-1, 1), torch.ones_like(mixed_target[n_open:, :1])], dim=0)
-            mixed_vel_w = torch.cat([vel_step_weights.reshape(-1, 1), torch.ones_like(mixed_target[n_open:, :1])], dim=0)
-            pos_diff_sq, vel_diff_sq = (mixed_pred[..., :q_dim] - mixed_target[..., :q_dim]) ** 2, (mixed_pred[..., q_dim:] - mixed_target[..., q_dim:]) ** 2
-            loss_pos, loss_vel = (mixed_pos_w * pos_diff_sq).mean(), (mixed_vel_w * vel_diff_sq).mean()
-        else:
-            pos_diff_sq, vel_diff_sq = (m1_traj[..., :q_dim] - target_latents[..., :q_dim]) ** 2, (m1_traj[..., q_dim:] - target_latents[..., q_dim:]) ** 2
-            loss_pos, loss_vel = (step_weights * pos_diff_sq).mean(), (vel_step_weights * vel_diff_sq).mean()
+            if "actions" in closed_loop_batch and closed_loop_batch["actions"].numel() > 0:
+                curr_z = (closed_loop_batch["z_init"] if "z_init" in closed_loop_batch else closed_loop_batch["z"]).to(events.device)
+                cl_acts = closed_loop_batch["actions"].to(events.device)
+                preds = [(curr_z := self.model.m1(curr_z, cl_acts[:, h]).predicted_latent) for h in range(cl_acts.shape[1])]
+                cl_pred, cl_target = torch.stack(preds, dim=1), closed_loop_batch["targets"].to(events.device)
+            elif "u" in closed_loop_batch and closed_loop_batch["u"].numel() > 0:
+                cl_pred = self.model.m1(closed_loop_batch["z"].to(events.device), closed_loop_batch["u"].to(events.device)).predicted_latent.unsqueeze(1)
+                cl_target = closed_loop_batch["z_next"].to(events.device).unsqueeze(1)
+            else:
+                cl_pred, cl_target = None, None
+
+            if cl_pred is not None and cl_pred.numel() > 0:
+                cl_size, z_dim = float(cl_pred.shape[0]), self.model.latent_dim
+                cl_flat_pred, cl_flat_target = cl_pred.reshape(-1, z_dim), cl_target.reshape(-1, z_dim)
+                n_cl = cl_flat_pred.shape[0]
+                mixed_pred = torch.cat([m1_traj.reshape(-1, z_dim), cl_flat_pred], dim=0)
+                mixed_target = torch.cat([target_latents.reshape(-1, z_dim), cl_flat_target], dim=0)
+                mixed_pos_w = torch.cat([step_weights.reshape(-1, 1), torch.ones(n_cl, 1, device=events.device, dtype=step_weights.dtype)], dim=0)
+                mixed_vel_w = torch.cat([vel_step_weights.reshape(-1, 1), torch.ones(n_cl, 1, device=events.device, dtype=vel_step_weights.dtype)], dim=0)
+                p_diff, v_diff = (mixed_pred[..., :q_dim] - mixed_target[..., :q_dim]) ** 2, (mixed_pred[..., q_dim:] - mixed_target[..., q_dim:]) ** 2
+                loss_pos, loss_vel = (mixed_pos_w * p_diff).mean(), (mixed_vel_w * v_diff).mean()
 
         loss_m1 = float(self.cfg.loss.lambda_position) * loss_pos + float(self.cfg.loss.lambda_velocity) * loss_vel
         total_loss = float(self.cfg.loss.lambda_latent) * loss_m1
@@ -105,12 +115,10 @@ class M1PhaseStrategy(PhaseStrategy):
             "pos_err": pos_err, "vel_err": vel_err, "mppi_noise_alpha": float(noise_alpha),
         }
         if closed_loop_batch is not None:
-            metrics["dagger_batch_size"] = float(closed_loop_batch["z"].shape[0])
+            metrics["dagger_batch_size"] = cl_size
         return total_loss, metrics
 
-    def _extract_batch(
-        self, batch: Dict[str, torch.Tensor]
-    ) -> Tuple[torch.Tensor, torch.Tensor, Optional[torch.Tensor], Optional[torch.Tensor]]:
+    def _extract_batch(self, batch: Dict[str, torch.Tensor]) -> Tuple[torch.Tensor, torch.Tensor, Optional[torch.Tensor], Optional[torch.Tensor]]:
         events = batch["events"].to(self.device)
         actions = batch["actions"].to(self.device) if batch.get("actions") is not None else torch.zeros(events.shape[0], events.shape[1], self.model.action_dim, device=self.device, dtype=events.dtype)
         flat_kin = batch["flat_kinematics"].to(self.device) if batch.get("flat_kinematics") is not None else None

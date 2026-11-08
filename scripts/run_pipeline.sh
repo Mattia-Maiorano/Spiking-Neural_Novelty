@@ -250,6 +250,7 @@ Basic Options:
   --output-video <path>  Render ONE video to this path instead of the 4 default labeled variants.
   --output-dir <path>    Output directory for videos (default: ${DEFAULT_OUTPUT_DIR}).
   --logfile <path>       Log file for Unity headless batch export (default: export_sim.log).
+  --from-scratch         Force training from scratch instead of resuming (default: disabled).
   -h, --help             Show this help message.
 
 Quick Start Examples:
@@ -325,7 +326,7 @@ run_train() {
 run_train_m1() {
     local epochs="${EPOCHS:-100}"
     local cfg="${CONFIG_PATH:-}"
-    local from_scratch="${FROM_SCRATCH:-1}"
+    local from_scratch="${FROM_SCRATCH:-0}"
     local weighted_sampling="${WEIGHTED_SAMPLING:-1}"
 
     echo "======================================================================"
@@ -695,6 +696,7 @@ EPISODES=""
 COMPARE_INJECTION=""
 OUTPUT_DIR=""
 TRAJECTORY_ID=""
+FROM_SCRATCH=""
 
 while [[ $# -gt 0 ]]; do
     case "$1" in
@@ -757,6 +759,10 @@ while [[ $# -gt 0 ]]; do
             ;;
         --compare-injection)
             COMPARE_INJECTION=1
+            shift 1
+            ;;
+        --from-scratch)
+            FROM_SCRATCH=1
             shift 1
             ;;
         --source)

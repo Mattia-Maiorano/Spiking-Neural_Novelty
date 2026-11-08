@@ -61,10 +61,6 @@ HEAD_CAMERA_LOOK_AT: Tuple[float, float, float] = (-0.12, 1.06, 0.44)
 # Closed-loop latent MPPI benchmark hyper-parameters (experiments/benchmark_mppi_control.py).
 MPPI_NOISE_SIGMA: float = 0.20
 MPPI_TEMPERATURE: float = 0.03
-MPPI_W_POS: float = 1.0
-MPPI_W_TERM_POS: float = 5.0
-MPPI_W_VEL: float = 0.08
-MPPI_W_ACT: float = 0.02
 MPPI_APPROACH_WINDOW: int = 20
 MPPI_ACTION_BIAS_SCALE: float = 3.14  # initial_bias = q_hat(z_start) / 3.14, as in the benchmark
 
@@ -272,10 +268,6 @@ def compute_mppi_scene(
         num_iterations=num_iterations,
         noise_sigma=MPPI_NOISE_SIGMA,
         temperature=MPPI_TEMPERATURE,
-        w_pos=MPPI_W_POS,
-        w_term_pos=MPPI_W_TERM_POS,
-        w_vel=MPPI_W_VEL,
-        w_act=MPPI_W_ACT,
         device=torch.device("cpu"),
     )
 

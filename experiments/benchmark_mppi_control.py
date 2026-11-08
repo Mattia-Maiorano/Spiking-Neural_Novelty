@@ -375,12 +375,6 @@ def main() -> None:
         noise_sigma=anisotropic_sigmas,
         noise_beta=0.3778,
         temperature=0.0410,
-        w_pos=1.0,
-        w_rot=2.4498,
-        w_term_pos=5.7514,
-        w_term_rot=2.4498 * 4.0,  # 9.799
-        w_vel=0.00231,
-        w_act=0.00224,
         device=device,
     )
 

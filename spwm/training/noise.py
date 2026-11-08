@@ -1,15 +1,116 @@
 """
-MPPI Action Noise Injection & Curriculum Utilities (Layer 2 — Training).
+MPPI Action Noise Injection & 4-Phase Latch Curriculum Utilities (Layer 2 — Training).
 
-Provides AR(1) Gaussian action noise sampling matching LatentMPPIController
-and linear warmup curriculum scheduling for MPPI-aware training.
+Provides AR(1) Gaussian action noise sampling matching LatentMPPIController,
+irreversible 4-Phase Latch Curriculum state machine, and DAgger scheduling.
 """
 
 from __future__ import annotations
 
+from dataclasses import dataclass
 import math
-from typing import Optional
+from typing import Any, Dict, Optional, Tuple
 import torch
+
+
+@dataclass
+class LatchCurriculumState:
+    """State-machine-based 4-Phase Curriculum with irreversible threshold latches.
+
+    Phases:
+      1. Warmup Nominal: 100% Open-Loop, alpha = 0.0, w_t = 0.60.
+         Trigger -> Phase 2: train_loss < 0.01.
+      2. Sensory Fade-Out: 100% Open-Loop, alpha = 0.0, linearly decay w_t from 0.60 to 0.0 over 7 epochs.
+         Trigger -> Phase 3: w_t == 0.0 and train_loss < 0.008.
+      3. Noise Ramp-Up: 100% Open-Loop, w_t = 0.0, linearly ramp alpha from 0.0 to 0.4 over 10 epochs.
+         Trigger -> Phase 4: alpha == 0.4.
+      4. Fast DAgger Integration: Mixed batch scaling DAgger ratio from 10% to 50% over 2 * tier2_frequency epochs.
+         alpha fixed at 0.4, w_t fixed at 0.0. Open-loop portion still receives alpha = 0.4 noise injection.
+         Runs indefinitely until Tier 2 Early Stopping halts training.
+    """
+
+    current_curriculum_phase: int = 1
+    phase_epochs: int = 0
+    w_t: float = 0.60
+    alpha: float = 0.0
+    dagger_ratio: float = 0.0
+    tier2_frequency: int = 5
+    sensory_fade_epochs: int = 7
+    noise_ramp_epochs: int = 10
+    target_alpha: float = 0.4
+    phase1_loss_threshold: float = 0.01
+    phase2_loss_threshold: float = 0.008
+    min_dagger_ratio: float = 0.10
+    max_dagger_ratio: float = 0.50
+
+    def begin_epoch(self) -> Tuple[int, float, float, float]:
+        """Advance epoch counter within active phase and return (phase, w_t, alpha, dagger_ratio)."""
+        if self.current_curriculum_phase == 1:
+            self.phase_epochs += 1
+            self.w_t = 0.60
+            self.alpha = 0.0
+            self.dagger_ratio = 0.0
+        elif self.current_curriculum_phase == 2:
+            self.phase_epochs += 1
+            progress = min(1.0, self.phase_epochs / float(max(1, self.sensory_fade_epochs)))
+            self.w_t = round(max(0.0, 0.60 * (1.0 - progress)), 6)
+            self.alpha = 0.0
+            self.dagger_ratio = 0.0
+        elif self.current_curriculum_phase == 3:
+            self.phase_epochs += 1
+            self.w_t = 0.0
+            progress = min(1.0, self.phase_epochs / float(max(1, self.noise_ramp_epochs)))
+            self.alpha = round(min(self.target_alpha, self.target_alpha * progress), 6)
+            self.dagger_ratio = 0.0
+        else:
+            self.current_curriculum_phase = 4
+            self.w_t = 0.0
+            self.alpha = float(self.target_alpha)
+            span = max(1, 2 * self.tier2_frequency)
+            progress = min(1.0, self.phase_epochs / float(span))
+            self.dagger_ratio = round(
+                self.min_dagger_ratio + progress * (self.max_dagger_ratio - self.min_dagger_ratio), 6
+            )
+            self.phase_epochs += 1
+
+        return self.current_curriculum_phase, self.w_t, self.alpha, self.dagger_ratio
+
+    def end_epoch(self, train_loss: float) -> int:
+        """Evaluate irreversible latch transitions at the conclusion of a training epoch."""
+        if self.current_curriculum_phase == 1:
+            if train_loss < self.phase1_loss_threshold:
+                self.current_curriculum_phase = 2
+                self.phase_epochs = 0
+        elif self.current_curriculum_phase == 2:
+            if self.w_t == 0.0 and train_loss < self.phase2_loss_threshold:
+                self.current_curriculum_phase = 3
+                self.phase_epochs = 0
+        elif self.current_curriculum_phase == 3:
+            if abs(self.alpha - self.target_alpha) < 1e-6 or self.alpha >= self.target_alpha:
+                self.current_curriculum_phase = 4
+                self.phase_epochs = 0
+        return self.current_curriculum_phase
+
+    def state_dict(self) -> Dict[str, Any]:
+        return {
+            "current_curriculum_phase": self.current_curriculum_phase,
+            "phase_epochs": self.phase_epochs,
+            "w_t": self.w_t,
+            "alpha": self.alpha,
+            "dagger_ratio": self.dagger_ratio,
+        }
+
+    def load_state_dict(self, state: Dict[str, Any]) -> None:
+        if "current_curriculum_phase" in state:
+            self.current_curriculum_phase = max(self.current_curriculum_phase, int(state["current_curriculum_phase"]))
+        if "phase_epochs" in state:
+            self.phase_epochs = int(state["phase_epochs"])
+        if "w_t" in state:
+            self.w_t = float(state["w_t"])
+        if "alpha" in state:
+            self.alpha = float(state["alpha"])
+        if "dagger_ratio" in state:
+            self.dagger_ratio = float(state["dagger_ratio"])
 
 
 def sample_ar1_noise(

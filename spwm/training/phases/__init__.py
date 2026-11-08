@@ -96,10 +96,17 @@ class PredictorPhaseHandler(PhaseStrategy):
         train_pos_e = train_metrics.get("train_pos_err", 0.0)
         train_vel_e = train_metrics.get("train_vel_err", 0.0)
         train_alpha = train_metrics.get("train_mppi_noise_alpha", 0.0)
-        alpha_str = f" | MPPI Noise α: {train_alpha:.3f}" if train_alpha > 0.0 else ""
+        curr_phase = int(train_metrics.get("curriculum_phase", 1))
+        w_t = train_metrics.get("active_perception_w_t", 0.60)
+        dagger_ratio = train_metrics.get("dagger_ratio", 0.0)
+        curric_str = (
+            f" | Curriculum Phase {curr_phase}/4 (w_t: {w_t:.2f}, Noise α: {train_alpha:.2f}, DAgger: {dagger_ratio * 100:.0f}%)"
+            if mode in ("TRAIN_M1", "M1")
+            else ""
+        )
         chronicle.log_detail(
             "⚡ Training Losses",
-            f"Total: {train_loss:.5f} [q-MSE: {train_pos_l:.5f} | p-MSE: {train_vel_l:.5f}]{alpha_str} | "
+            f"Total: {train_loss:.5f} [q-MSE: {train_pos_l:.5f} | p-MSE: {train_vel_l:.5f}]{curric_str} | "
             f"Eval: Joint Angle L2: {train_pos_e:.5f} | Joint Vel L2: {train_vel_e:.5f}",
             indent_level=1,
         )
@@ -144,21 +151,20 @@ class PredictorPhaseHandler(PhaseStrategy):
             mppi_s = val_metrics["mppi_score"]
             mppi_succ = val_metrics.get("mppi_success_rate", 0.0) * 100.0
             mppi_err = val_metrics.get("mppi_mean_error_cm", 0.0)
-            mppi_vel = val_metrics.get("mppi_final_vel", 0.0)
-            mppi_rot = val_metrics.get("mppi_final_rot", 0.0)
+            mppi_rot = val_metrics.get("mppi_rot_err_rad", val_metrics.get("mppi_final_rot", 0.0))
             mppi_trajs = int(val_metrics.get("mppi_evaluated_trajectories", 0))
             traj_info = f" ({mppi_trajs} Eval Trajectories)" if mppi_trajs > 0 else ""
             chronicle.log_detail(
                 f"🎯 Tier 2 (Closed-Loop MPPI){traj_info}",
-                f"Score: {mppi_s:.5f} | Grasp Success: {mppi_succ:.1f}% | "
-                f"Mean Err: {mppi_err:.2f}cm | Final Vel: {mppi_vel:.3f} | Rot Err: {mppi_rot:.4f}",
+                f"MPPI Cost: {mppi_s:.5f} | Mean Cartesian Err (cm): {mppi_err:.2f}cm | "
+                f"Rotational Err (rad): {mppi_rot:.4f} rad | Success Rate: {mppi_succ:.1f}%",
                 indent_level=1,
             )
             curr_score = mppi_s
-            sel_desc = f"Tier 2 Structural Score: {curr_score:.5f}"
+            sel_desc = f"Tier 2 MPPI Cost: {curr_score:.5f}"
         else:
             curr_score = self.get_selection_score(val_metrics)
-            sel_desc = f"Tier 1 Open-Loop MSE: {curr_score:.5f}"
+            sel_desc = f"Tier 1 Open-Loop MSE: {curr_score:.5f} (Ignored for Best Model Selection)" if mode in ("TRAIN_M1", "M1") else f"Tier 1 Open-Loop MSE: {curr_score:.5f}"
 
         chronicle.log_detail(
             "🎯 Model Selection",

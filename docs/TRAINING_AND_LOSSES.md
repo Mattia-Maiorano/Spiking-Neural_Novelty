@@ -90,14 +90,13 @@ classDiagram
   Pure teacher-forced training on open-loop demonstration trajectories suffers from compounding autoregressive drift ("exposure bias") during downstream closed-loop MPPI control. To counteract this, [`BaseTrainer`](file:///Users/Mattia/Desktop/Studies/Temp/spwm/training/engine.py) seamlessly integrates an on-policy / off-policy closed-loop buffer:
   1. **Trajectory Collection at Tier 2 Validation**: Every `tier2_frequency` epochs (e.g., every 10 epochs), [`LatentMPPIController`](file:///Users/Mattia/Desktop/Studies/Temp/spwm/evaluation/mppi.py) evaluates candidate models in closed loop. Full executed closed-loop trajectory sequences (initial state $\mathbf{z}_{\text{init}}$, executed actions $\mathbf{u}_{0:H-1}$, and resulting ground-truth latent targets $\mathbf{z}^*_{1:H}$) are captured and ingested into [`ClosedLoopBuffer`](file:///Users/Mattia/Desktop/Studies/Temp/spwm/training/engine.py#L270-L450).
   2. **Fresh Initialization & Anti-Contamination**: New training runs initialize completely fresh buffers; cross-run buffer globbing from older directories is strictly prohibited. Only explicit path inputs or resuming an interrupted checkpoint (`is_resuming=True`) within `save_dir` loads existing buffers via [`resolve_closed_loop_buffer`](file:///Users/Mattia/Desktop/Studies/Temp/spwm/training/engine.py#L120-L160).
-  3. **Strict Generational FIFO Rolling Window**: To prevent distributional drift from obsolete early policies, [`ClosedLoopBuffer`](file:///Users/Mattia/Desktop/Studies/Temp/spwm/training/engine.py#L270-L450) enforces a rolling window of Tier 2 evaluation generations (`max_eval_generations=2`). Ingesting a new generation cleanly evicts the oldest generation and its associated transitions.
-  4. **Dynamic Epoch-Based DAgger Batch Ratio**:
-     - Controlled by [`compute_dagger_ratio`](file:///Users/Mattia/Desktop/Studies/Temp/spwm/training/noise.py#L55-L75).
-     - Epochs 0–10: strictly 0% closed-loop data (warmup).
-     - Epoch 11 onward: linearly scales from 15% up to a hard cap of 60% by Epoch 40.
-     - Batch sizing: $B_{\text{dagger}} = \max(1, \lfloor B_{\text{open}} \cdot r(e) \rceil)$ when $r(e) > 0$.
-     - Samples sub-windows of length $H = \text{phase\_horizon}$ from stored trajectories via `replay_buffer.sample_trajectories(B_dagger, horizon=H)`.
-     - Injects `batch["closed_loop"]` into `M1PhaseStrategy.train_step`.
+  3. **Strict Generational FIFO Rolling Window**: To prevent distributional drift from obsolete early policies, [`ClosedLoopBuffer`](file:///Users/Mattia/Desktop/Studies/Temp/spwm/training/engine.py#L260-L460) enforces a rolling window of Tier 2 evaluation generations (`max_eval_generations=3`). When a new Tier 2 evaluation occurs, trajectories from generation `N-3` are cleanly discarded before ingesting the new ones.
+  4. **State-Machine 4-Phase Curriculum via Irreversible Latch (`LatchCurriculumState`)**:
+     - Controlled by [`LatchCurriculumState`](file:///Users/Mattia/Desktop/Studies/Temp/spwm/training/noise.py#L16-L105) in [`BaseTrainer.train_epoch`](file:///Users/Mattia/Desktop/Studies/Temp/spwm/training/engine.py#L645-L725). Transitions are strictly irreversible (latch):
+       1. **Phase 1 (Warmup Nominal)**: 100% Open-Loop (`dagger_ratio = 0.0`), MPPI Noise `alpha = 0.0`, Active Perception `w_t = 0.60`. Transitions to Phase 2 when `train_loss < 0.01`.
+       2. **Phase 2 (Sensory Fade-Out)**: 100% Open-Loop, `alpha = 0.0`, linearly decays `w_t` from `0.60` down to `0.0` over 7 epochs. Transitions to Phase 3 when `w_t == 0.0` and `train_loss < 0.008`.
+       3. **Phase 3 (Noise Ramp-Up)**: 100% Open-Loop, `w_t = 0.0`, linearly ramps MPPI Noise `alpha` from `0.0` to `0.4` over 10 epochs. Transitions to Phase 4 when `alpha == 0.4`.
+       4. **Phase 4 (Fast DAgger Integration)**: Mixed batch scaling `dagger_ratio` from `10%` (`0.10`) to `50%` (`0.50`) over `2 * tier2_frequency` epochs while keeping `w_t = 0.0` and `alpha = 0.4` (injected into the open-loop portion of the batch). Runs indefinitely until Tier 2 Early Stopping halts training.
   5. **Multi-Step Closed-Loop BPTT**: In `_compute_m1_objectives`, the closed-loop batch is unrolled autoregressively via $M_1$:
      $$\hat{\mathbf{z}}_{b, h+1} = M_1(\hat{\mathbf{z}}_{b, h}, \mathbf{u}_{b, h}), \quad \hat{\mathbf{z}}_{b, 0} = \mathbf{z}_{\text{init}, b}$$
      The resulting predictions $\hat{\mathbf{z}}_{b, 1:H}$ and real targets $\mathbf{z}^*_{b, 1:H}$ are concatenated directly with the flattened open-loop trajectory predictions and targets. Dynamically sized batch dimensions are handled cleanly without shape mismatches.
@@ -151,13 +150,13 @@ Phase 1 (`train_m1`) employs a decoupled **Two-Tiered Validation Strategy** orch
 - **Metrics**: Standard open-loop MSE on `LatentPredictor` ($\mathcal{L}_{\text{pos}}$, $\mathcal{L}_{\text{vel}}$, $\mathcal{L}_{M_1}$) and `PhysicalDecoder` joint position/velocity tracking ($L_2$ position and velocity errors).
 - **Decoupling Guarantee**: Tier 1 open-loop validation loss does **not** trigger checkpoint selection or advance early-stopping patience when Tier 2 is active, isolating model selection from open-loop teacher-forcing overfitting.
 
-### 5.2 Tier 2: Low-Frequency, Closed-Loop MPPI Structural Validation (Every 10 Epochs)
-- **Objective**: Evaluates downstream closed-loop Model Predictive Path Integral (MPPI) control execution strictly for **checkpoint selection** (`is_best`, saving `model.pt`) and **early stopping**.
-- **Fixed Validation Subset**: Evaluates a tiny, balanced subset of 5–10 fixed trajectories spanning **Low** ($< 1.08\,\text{m}$), **Mid** ($1.08 \le y < 1.18\,\text{m}$), and **High** ($\ge 1.18\,\text{m}$) elevation planes, pre-selected at initialization.
-- **Structural Scoring Formulation**:
-  Evaluates steady-state settling error across the final 3 steps ($\text{err}_{\text{ss}}$), terminal joint angular velocity ($v_{\text{final}}$), and SE(3) orientation alignment error ($e_{\text{rot}}$):
-  $$\text{Score} = \left(\frac{\text{err}_{\text{ss}}}{3.0\,\text{cm}}\right)^2 + \left(\frac{v_{\text{final}}}{1.5\,\text{rad/s}}\right)^2 + \left(\frac{e_{\text{rot}}}{0.05}\right)^2 - 2.0 \cdot \mathbb{I}(\text{success})$$
-  where $\mathbb{I}(\text{success}) = 1$ strictly when $\text{err}_{\text{ss}} < 3.0\,\text{cm}$, $v_{\text{final}} < 1.5\,\text{rad/s}$, and $e_{\text{rot}} < 0.05$.
+### 5.2 Tier 2: Low-Frequency, Closed-Loop MPPI Validation (Every 5 to 10 Epochs)
+- **Objective**: Evaluates downstream closed-loop Model Predictive Path Integral (MPPI) control execution strictly for **checkpoint selection** (`is_best`, saving `best_model.pt` and `model.pt`) and **early stopping**, completely ignoring Tier 1 open-loop MSE.
+- **Fixed Validation Subset**: Evaluates a balanced subset of 6 fixed trajectories spanning **Low** ($< 1.08\,\text{m}$), **Mid** ($1.08 \le y < 1.18\,\text{m}$), and **High** ($\ge 1.18\,\text{m}$) elevation planes, pre-selected at initialization.
+- **Lifting-Aware Physics-Grounded MPPI Cost Formulation**:
+  Evaluates candidate and closed-loop trajectories by passing $M_1$'s latent predictions through `PhysicalDecoder` and `DifferentiableForwardKinematics`:
+  $$\mathcal{C} = \sum_{t=1}^H \left[ W_{\text{pos}} \|\mathbf{x}_t - \mathbf{x}_{\text{target}}\|_2 + W_{\text{rot}} (1 - \cos(\theta_{\text{error}, t})) + W_{\text{jerk}} \|\mathbf{u}_t - \mathbf{u}_{t-1}\|_2^2 - W_{\text{success}} \mathbb{I}(z_t > z_{\text{table}}) \right]$$
+  while explicitly tracking raw physical metrics: `Mean Cartesian Err (cm)`, `Rotational Err (rad)`, and `Success Rate`.
 
 ### 5.3 Zero-Stochasticity Guarantee
 In downstream stochastic sampling controllers, pseudo-random exploration jitter across epochs corrupts the signal-to-noise ratio of validation metrics. SPWM guarantees zero stochasticity:

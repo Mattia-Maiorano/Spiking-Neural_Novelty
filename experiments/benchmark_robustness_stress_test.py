@@ -631,10 +631,6 @@ def main() -> None:
         num_iterations=3,
         noise_sigma=0.20,
         temperature=0.03,
-        w_pos=1.0,
-        w_term_pos=5.0,
-        w_vel=0.08,
-        w_act=0.02,
         device=device,
     )
 

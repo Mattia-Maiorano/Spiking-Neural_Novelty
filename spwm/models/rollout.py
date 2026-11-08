@@ -124,6 +124,7 @@ def rollout_latent(
     events: Optional[torch.Tensor] = None,
     phase_flags: Optional[torch.Tensor] = None,
     initial_dynamics_state: Optional[DynamicsState] = None,
+    active_perception_w_max: float = 0.60,
 ) -> RolloutResult:
     """Execute an action-conditioned multi-step rollout in latent space starting from z_init.
 
@@ -201,7 +202,7 @@ def rollout_latent(
 
         prev_flag = torch.zeros(B, dtype=torch.long, device=z_init.device)
         fade_counter = torch.zeros(B, dtype=torch.long, device=z_init.device)
-        w_max = 0.60
+        w_max = float(active_perception_w_max)
         ramp_steps = model.dynamics.gate_ramp_steps
 
         for step in range(horizon):

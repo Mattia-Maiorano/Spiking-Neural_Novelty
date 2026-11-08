@@ -74,6 +74,12 @@ def parse_args() -> argparse.Namespace:
         default=None,
         help="Representation checkpoint (model.pt) for Phase 1 (train_m1) training",
     )
+    parser.add_argument(
+        "--checkpoint",
+        type=str,
+        default=None,
+        help="Explicit checkpoint to resume training from (e.g. checkpoint_phase_1.pt)",
+    )
     parser.add_argument("--phase-horizon", type=int, default=None, help="Predictor unroll horizon during training")
     parser.add_argument("--temporal-burn-in", type=int, default=None, help="Override temporal burn-in steps for recurrent warm-up")
     parser.add_argument("--total-trajectories", type=int, default=None, help="Override total trajectories in dataset")
@@ -453,7 +459,7 @@ def main() -> None:
         closed_loop_buffer=args.closed_loop_buffer,
     )
 
-    resume_ckpt = save_dir / "checkpoint.pt"
+    resume_ckpt = Path(args.checkpoint) if args.checkpoint is not None else (save_dir / "checkpoint.pt")
     if not args.from_scratch and resume_ckpt.is_file():
         engine.load_checkpoint(resume_ckpt)
         chronicle.log_info(f"Resumed from checkpoint: {resume_ckpt} at epoch {engine.start_epoch}")

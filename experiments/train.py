@@ -130,13 +130,19 @@ def parse_args() -> argparse.Namespace:
         "--mppi-noise-ramp-epochs",
         type=int,
         default=None,
-        help="Number of epochs over which AR(1) action noise linearly ramps to target alpha (default: 20)",
+        help="Number of epochs over which AR(1) action noise linearly ramps to target alpha (default: 40)",
     )
     parser.add_argument(
         "--mppi-noise-target-alpha",
         type=float,
         default=None,
-        help="Maximum target intensity alpha for AR(1) action noise injection (default: 1.0)",
+        help="Maximum target intensity alpha for AR(1) action noise injection (default: 0.5)",
+    )
+    parser.add_argument(
+        "--max-eval-generations",
+        type=int,
+        default=None,
+        help="Maximum number of Tier 2 evaluation generations to preserve in ClosedLoopBuffer (default: 2)",
     )
     parser.add_argument(
         "--tier2-patience",
@@ -155,6 +161,12 @@ def parse_args() -> argparse.Namespace:
         action="store_true",
         default=False,
         help="Disable Tier 2 closed-loop MPPI validation and rely strictly on Tier 1 open-loop MSE",
+    )
+    parser.add_argument(
+        "--closed-loop-buffer",
+        type=str,
+        default=None,
+        help="Optional path to existing closed_loop_buffer.pt to initialize replay buffer",
     )
     return parser.parse_args()
 
@@ -361,6 +373,8 @@ def main() -> None:
         overrides["mppi_noise_ramp_epochs"] = args.mppi_noise_ramp_epochs
     if args.mppi_noise_target_alpha is not None:
         overrides["mppi_noise_target_alpha"] = args.mppi_noise_target_alpha
+    if args.max_eval_generations is not None:
+        overrides["max_eval_generations"] = args.max_eval_generations
 
     if overrides:
         cfg = cfg.with_overrides(**overrides)
@@ -436,6 +450,7 @@ def main() -> None:
         save_dir=save_dir,
         results_root=results_root,
         tier2_evaluator=tier2_evaluator,
+        closed_loop_buffer=args.closed_loop_buffer,
     )
 
     resume_ckpt = save_dir / "checkpoint.pt"

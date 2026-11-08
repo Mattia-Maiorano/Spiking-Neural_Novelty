@@ -626,6 +626,13 @@ class MPPIStructuralScorer:
             }
             for z, u, zn in zip(traj_z, traj_u, traj_z_next)
         ]
+        packed_trajectory = {
+            "z_init": traj_z[0].squeeze(0).detach().cpu(),
+            "actions": torch.stack(traj_u).detach().cpu(),
+            "targets": torch.stack(traj_z_next).detach().cpu(),
+            "length": len(traj_u),
+            "trajectory_id": int(batch["trajectory_id"]),
+        }
 
         score, is_success = compute_structural_score(step_errors, final_vel, final_rot)
         window_errors = step_errors[-3:] if len(step_errors) >= 3 else step_errors
@@ -643,6 +650,7 @@ class MPPIStructuralScorer:
             "vel_penalty": (final_vel / 1.5) ** 2,
             "rot_penalty": (final_rot / 0.05) ** 2,
             "transitions": packed_transitions,
+            "trajectory": packed_trajectory,
         }
 
     @torch.no_grad()
@@ -662,12 +670,15 @@ class MPPIStructuralScorer:
 
         all_results: List[Dict[str, Any]] = []
         all_transitions: List[Dict[str, torch.Tensor]] = []
+        all_trajectories: List[Dict[str, Any]] = []
         for batch in self.fixed_batches:
             traj_id = int(batch["trajectory_id"])
             traj_seed = self.base_seed + traj_id
             res = self.evaluate_trajectory(model, controller, batch, seed=traj_seed)
             if "transitions" in res:
                 all_transitions.extend(res["transitions"])
+            if "trajectory" in res:
+                all_trajectories.append(res["trajectory"])
             all_results.append(res)
 
         n = len(all_results)
@@ -693,6 +704,7 @@ class MPPIStructuralScorer:
             "mppi_rot_penalty": mean_rot_pen,
             "mppi_evaluated_trajectories": float(n),
             "transitions": all_transitions,
+            "trajectories": all_trajectories,
         }
 
 

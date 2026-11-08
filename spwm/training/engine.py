@@ -37,6 +37,7 @@ from spwm.contracts.config import (
 from spwm.contracts.protocols import PhaseStrategy, Tier2EvaluatorProtocol
 from spwm.contracts.version import GLOBAL_VERSION
 from spwm.training.losses import SPWMLoss
+from spwm.training.noise import compute_dagger_ratio
 from spwm.training.phases import PredictorPhaseHandler
 
 
@@ -115,6 +116,38 @@ def resolve_version_checkpoint(
         f"Auto-enforced prerequisite checkpoint 'model.pt' for phase '{phase_mode}' and version '{version_name}' "
         f"not found in '{root}'. Ensure '{phase_mode}' has been trained first (expected: {exact_cand})."
     )
+
+
+def resolve_closed_loop_buffer(
+    version_name: str,
+    phase_mode: str = "train_m1",
+    explicit_path: Optional[Union[str, Path]] = None,
+    save_dir: Optional[Union[str, Path]] = None,
+    results_root: Union[str, Path] = "results",
+    is_resuming: bool = False,
+) -> Optional[Path]:
+    """Resolve existing closed_loop_buffer.pt from explicit path or save_dir when resuming.
+
+    Buffers must be initialized completely fresh for every new training run to eliminate
+    cross-run contamination. A buffer is loaded if and only if:
+      1. An explicit path is provided via explicit_path (e.g. CLI --closed-loop-buffer), OR
+      2. The run is explicitly resuming an interrupted checkpoint (is_resuming=True)
+         and closed_loop_buffer.pt exists in save_dir.
+    """
+    if explicit_path is not None:
+        cand = Path(explicit_path)
+        if cand.is_dir():
+            cand = cand / "closed_loop_buffer.pt"
+        if not cand.is_file():
+            raise FileNotFoundError(f"Explicit closed_loop_buffer.pt not found at: {cand}")
+        return cand
+
+    if is_resuming and save_dir is not None:
+        save_path = Path(save_dir) / "closed_loop_buffer.pt"
+        if save_path.is_file() and save_path.stat().st_size > 2500:
+            return save_path
+
+    return None
 
 
 def enforce_phase_prerequisites(
@@ -227,18 +260,37 @@ class EMATracker:
 class ClosedLoopBuffer:
     """DAgger-style replay buffer for closed-loop MPPI trajectories (Layer 2 — Training).
 
-    Stores closed-loop transition tuples (z_t, u_t, z_{t+1}) collected during Tier 2
-    validation to mitigate exposure bias during Phase 1 (train_m1) training.
+    Stores closed-loop trajectories and transition tuples collected during Tier 2
+    validation to mitigate exposure bias during Phase 1 (train_m1) training via BPTT.
+    Enforces a strict FIFO rolling window across evaluation generations to eliminate
+    distributional drift and cross-run contamination.
     """
 
-    def __init__(self, capacity: int = 50_000) -> None:
+    def __init__(self, capacity: int = 50_000, max_eval_generations: int = 2) -> None:
         if capacity <= 0:
             raise ValueError(f"Capacity must be positive, got {capacity}")
+        if max_eval_generations <= 0:
+            raise ValueError(f"max_eval_generations must be positive, got {max_eval_generations}")
         self.capacity = int(capacity)
+        self.max_eval_generations = int(max_eval_generations)
+        self.trajectory_capacity = max(100, int(capacity // 50))
         self.z: List[torch.Tensor] = []
         self.u: List[torch.Tensor] = []
         self.z_next: List[torch.Tensor] = []
+        self.trajectories: List[Dict[str, Any]] = []
+        self.eval_generations: List[List[Dict[str, Any]]] = []
         self._ptr = 0
+        self._traj_ptr = 0
+
+    def clear(self) -> None:
+        """Clear all stored transitions, trajectories, and evaluation generations."""
+        self.z.clear()
+        self.u.clear()
+        self.z_next.clear()
+        self.trajectories.clear()
+        self.eval_generations.clear()
+        self._ptr = 0
+        self._traj_ptr = 0
 
     def push(
         self,
@@ -283,6 +335,65 @@ class ClosedLoopBuffer:
                 self.z_next[self._ptr] = zn_t
                 self._ptr = (self._ptr + 1) % self.capacity
 
+    def push_trajectories(self, trajectories: Sequence[Dict[str, Any]]) -> None:
+        """Push a generation of closed-loop MPPI trajectories into buffer.
+
+        Maintains a strict FIFO rolling window across Tier 2 evaluation generations.
+        When new trajectories are ingested, any generation older than
+        max_eval_generations is cleanly evicted to eliminate obsolete on-policy errors.
+        """
+        if not trajectories:
+            return
+
+        clean_gen: List[Dict[str, Any]] = []
+        for traj in trajectories:
+            actions_t = traj["actions"].detach().cpu()
+            targets_t = traj["targets"].detach().cpu()
+            if actions_t.ndim == 3 and actions_t.shape[1] == 1:
+                actions_t = actions_t.squeeze(1)
+            if targets_t.ndim == 3 and targets_t.shape[1] == 1:
+                targets_t = targets_t.squeeze(1)
+            clean_traj = {
+                "z_init": traj["z_init"].detach().cpu().view(-1),
+                "actions": actions_t,
+                "targets": targets_t,
+                "length": int(traj["length"]),
+                "trajectory_id": int(traj["trajectory_id"]),
+            }
+            clean_gen.append(clean_traj)
+
+        self.eval_generations.append(clean_gen)
+        while len(self.eval_generations) > self.max_eval_generations:
+            self.eval_generations.pop(0)
+
+        # Flatten active generations into active trajectories
+        self.trajectories = [t for gen in self.eval_generations for t in gen]
+        if len(self.trajectories) > self.trajectory_capacity:
+            self.trajectories = self.trajectories[-self.trajectory_capacity:]
+
+        # Synchronize transition-level storage with the active generations
+        self.z = []
+        self.u = []
+        self.z_next = []
+        for clean_traj in self.trajectories:
+            curr = clean_traj["z_init"]
+            actions = clean_traj["actions"]
+            targets = clean_traj["targets"]
+            for step_idx in range(clean_traj["length"]):
+                u_s = actions[step_idx].detach().cpu().view(-1)
+                z_next_s = targets[step_idx].detach().cpu().view(-1)
+                self.z.append(curr.detach().cpu().view(-1))
+                self.u.append(u_s)
+                self.z_next.append(z_next_s)
+                curr = z_next_s
+
+        if len(self.z) > self.capacity:
+            self.z = self.z[-self.capacity:]
+            self.u = self.u[-self.capacity:]
+            self.z_next = self.z_next[-self.capacity:]
+        self._ptr = 0
+        self._traj_ptr = 0
+
     def sample(
         self,
         batch_size: int,
@@ -294,19 +405,62 @@ class ClosedLoopBuffer:
             raise ValueError("Cannot sample from an empty ClosedLoopBuffer.")
         k = min(batch_size, cur_len)
         indices = torch.randint(0, cur_len, (k,))
-        sampled_z = torch.stack([self.z[i] for i in indices])
-        sampled_u = torch.stack([self.u[i] for i in indices])
-        sampled_zn = torch.stack([self.z_next[i] for i in indices])
-        if device is not None:
-            dev = torch.device(device)
-            sampled_z = sampled_z.to(dev)
-            sampled_u = sampled_u.to(dev)
-            sampled_zn = sampled_zn.to(dev)
+        dev = torch.device(device) if device is not None else None
+        sampled_z = torch.stack([self.z[i].to(dev) for i in indices]) if dev is not None else torch.stack([self.z[i] for i in indices])
+        sampled_u = torch.stack([self.u[i].to(dev) for i in indices]) if dev is not None else torch.stack([self.u[i] for i in indices])
+        sampled_zn = torch.stack([self.z_next[i].to(dev) for i in indices]) if dev is not None else torch.stack([self.z_next[i] for i in indices])
         return {
             "z": sampled_z,
             "u": sampled_u,
             "z_next": sampled_zn,
         }
+
+    def sample_trajectories(
+        self,
+        batch_size: int,
+        horizon: int,
+        device: Optional[Union[str, torch.device]] = None,
+    ) -> Dict[str, torch.Tensor]:
+        """Sample trajectory sub-windows for multi-step BPTT training."""
+        dev = torch.device(device) if device is not None else None
+        if not self.trajectories:
+            if len(self.z) == 0:
+                raise ValueError("Cannot sample trajectories from an empty ClosedLoopBuffer.")
+            k = min(batch_size, len(self.z))
+            indices = torch.randint(0, len(self.z), (k,))
+            sampled_z = torch.stack([self.z[i].to(dev) for i in indices]) if dev is not None else torch.stack([self.z[i] for i in indices])
+            sampled_u = torch.stack([self.u[i].to(dev) for i in indices]).unsqueeze(1) if dev is not None else torch.stack([self.u[i] for i in indices]).unsqueeze(1)
+            sampled_zn = torch.stack([self.z_next[i].to(dev) for i in indices]).unsqueeze(1) if dev is not None else torch.stack([self.z_next[i] for i in indices]).unsqueeze(1)
+            return {"z_init": sampled_z, "actions": sampled_u, "targets": sampled_zn}
+
+        k = min(batch_size, len(self.trajectories))
+        indices = torch.randint(0, len(self.trajectories), (k,))
+        sampled_trajs = [self.trajectories[int(i.item())] for i in indices]
+        H = min(horizon, min(t["length"] for t in sampled_trajs))
+
+        z_inits: List[torch.Tensor] = []
+        acts_list: List[torch.Tensor] = []
+        targets_list: List[torch.Tensor] = []
+        for t in sampled_trajs:
+            L = t["length"]
+            max_start = max(0, L - H)
+            start_idx = int(torch.randint(0, max_start + 1, (1,)).item()) if max_start > 0 else 0
+            z_i = (t["z_init"] if start_idx == 0 else t["targets"][start_idx - 1]).view(-1)
+            u_i = t["actions"][start_idx : start_idx + H]
+            tgt_i = t["targets"][start_idx : start_idx + H]
+            if u_i.ndim == 3 and u_i.shape[1] == 1:
+                u_i = u_i.squeeze(1)
+            if tgt_i.ndim == 3 and tgt_i.shape[1] == 1:
+                tgt_i = tgt_i.squeeze(1)
+            z_inits.append(z_i)
+            acts_list.append(u_i)
+            targets_list.append(tgt_i)
+
+        dev = torch.device(device) if device is not None else None
+        b_z = torch.stack([z.to(dev) for z in z_inits]) if dev is not None else torch.stack(z_inits)
+        b_u = torch.stack([u.to(dev) for u in acts_list]) if dev is not None else torch.stack(acts_list)
+        b_tgt = torch.stack([tgt.to(dev) for tgt in targets_list]) if dev is not None else torch.stack(targets_list)
+        return {"z_init": b_z, "actions": b_u, "targets": b_tgt}
 
     def __len__(self) -> int:
         return len(self.z)
@@ -314,15 +468,26 @@ class ClosedLoopBuffer:
     def state_dict(self) -> Dict[str, Any]:
         return {
             "capacity": self.capacity,
+            "max_eval_generations": self.max_eval_generations,
+            "trajectory_capacity": self.trajectory_capacity,
             "ptr": self._ptr,
+            "traj_ptr": self._traj_ptr,
             "z": torch.stack(self.z) if self.z else torch.empty(0),
             "u": torch.stack(self.u) if self.u else torch.empty(0),
             "z_next": torch.stack(self.z_next) if self.z_next else torch.empty(0),
+            "trajectories": self.trajectories,
+            "eval_generations": self.eval_generations,
         }
 
     def load_state_dict(self, state: Dict[str, Any]) -> None:
         self.capacity = int(state["capacity"])
+        if "max_eval_generations" in state:
+            self.max_eval_generations = int(state["max_eval_generations"])
+        if "trajectory_capacity" in state:
+            self.trajectory_capacity = int(state["trajectory_capacity"])
         self._ptr = int(state["ptr"])
+        if "traj_ptr" in state:
+            self._traj_ptr = int(state["traj_ptr"])
         z_t = state["z"]
         u_t = state["u"]
         zn_t = state["z_next"]
@@ -334,6 +499,17 @@ class ClosedLoopBuffer:
             self.z = []
             self.u = []
             self.z_next = []
+        if "eval_generations" in state and state["eval_generations"]:
+            self.eval_generations = [list(gen) for gen in state["eval_generations"]]
+            while len(self.eval_generations) > self.max_eval_generations:
+                self.eval_generations.pop(0)
+            self.trajectories = [t for gen in self.eval_generations for t in gen]
+        elif "trajectories" in state and state["trajectories"]:
+            self.trajectories = list(state["trajectories"])
+            self.eval_generations = [self.trajectories]
+        else:
+            self.trajectories = []
+            self.eval_generations = []
 
     def save(self, path: Union[str, Path]) -> None:
         torch.save(self.state_dict(), Path(path))
@@ -365,6 +541,7 @@ class BaseTrainer:
         auto_enforce_checkpoints: bool = False,
         results_root: Union[str, Path] = "results",
         tier2_evaluator: Optional[Tier2EvaluatorProtocol] = None,
+        closed_loop_buffer: Optional[Union[str, Path]] = None,
     ) -> None:
         self.model = model
         self.cfg = cfg
@@ -413,14 +590,28 @@ class BaseTrainer:
         )
 
         self.replay_buffer: Optional[ClosedLoopBuffer] = (
-            ClosedLoopBuffer(capacity=50_000) if self.mode in ("train_m1", "m1") else None
-        )
-        buffer_path = self.save_dir / "closed_loop_buffer.pt"
-        if self.replay_buffer is not None and buffer_path.is_file():
-            self.replay_buffer.load(buffer_path)
-            chronicle.log_info(
-                f"Loaded existing ClosedLoopBuffer with {len(self.replay_buffer)} transitions from {buffer_path}"
+            ClosedLoopBuffer(
+                capacity=50_000,
+                max_eval_generations=self.cfg.training.max_eval_generations,
             )
+            if self.mode in ("train_m1", "m1")
+            else None
+        )
+        if self.replay_buffer is not None and closed_loop_buffer is not None:
+            resolved_buffer = resolve_closed_loop_buffer(
+                version_name=self.cfg.project.name,
+                phase_mode=self.mode,
+                explicit_path=closed_loop_buffer,
+                save_dir=self.save_dir,
+                results_root=self.results_root,
+                is_resuming=False,
+            )
+            if resolved_buffer is not None:
+                self.replay_buffer.load(resolved_buffer)
+                chronicle.log_info(
+                    f"Loaded explicit ClosedLoopBuffer with {len(self.replay_buffer)} transitions "
+                    f"({len(self.replay_buffer.trajectories)} trajectories) from {resolved_buffer}"
+                )
 
         self.start_epoch = start_epoch
         self.best_score = best_score
@@ -453,16 +644,29 @@ class BaseTrainer:
             raise RuntimeError("Cannot call train_epoch when train_loader is None.")
         train_accum: Dict[str, float] = {}
         batch_count = 0
-        min_buffer_samples = 64
+        min_buffer_samples = 16
+        cl_trajs_epoch = 0
+        cl_trans_epoch = 0
+        dagger_ratio = compute_dagger_ratio(epoch)
         for batch in self.train_loader:
             if (
-                self.replay_buffer is not None
+                dagger_ratio > 0.0
+                and self.replay_buffer is not None
                 and len(self.replay_buffer) >= min_buffer_samples
                 and self.mode in ("train_m1", "m1")
             ):
                 b_size = batch["events"].shape[0] if "events" in batch else 16
-                dagger_size = max(1, int(b_size * 0.2))
-                batch["closed_loop"] = self.replay_buffer.sample(dagger_size, device=self.device)
+                dagger_size = max(1, int(round(b_size * dagger_ratio)))
+                cl_batch = self.replay_buffer.sample_trajectories(
+                    dagger_size, horizon=self.cfg.training.phase_horizon, device=self.device
+                )
+                batch["closed_loop"] = cl_batch
+                n_t = cl_batch["actions"].shape[0]
+                h_t = cl_batch["actions"].shape[1]
+                cl_trajs_epoch += n_t
+                cl_trans_epoch += (n_t * h_t)
+            else:
+                batch.pop("closed_loop", None)
 
             step_metrics = self.handler.train_step(batch, epoch=epoch)
             for k, v in step_metrics.items():
@@ -470,7 +674,14 @@ class BaseTrainer:
             batch_count += 1
             if self.ema_tracker is not None:
                 self.ema_tracker.update(self.model)
-        return {k: v / max(1, batch_count) for k, v in train_accum.items()}
+
+        epoch_metrics = {k: v / max(1, batch_count) for k, v in train_accum.items()}
+        epoch_metrics["closed_loop_trajs_epoch"] = float(cl_trajs_epoch)
+        epoch_metrics["closed_loop_trans_epoch"] = float(cl_trans_epoch)
+        epoch_metrics["closed_loop_buffer_trajs"] = float(len(self.replay_buffer.trajectories)) if self.replay_buffer is not None else 0.0
+        epoch_metrics["closed_loop_buffer_total"] = float(len(self.replay_buffer)) if self.replay_buffer is not None else 0.0
+        epoch_metrics["dagger_ratio"] = float(dagger_ratio)
+        return epoch_metrics
 
     def _fit_single_phase(
         self,
@@ -532,13 +743,18 @@ class BaseTrainer:
                             )
 
                         tier2_metrics = self.tier2_evaluator(self.model, epoch)
+                        cl_trajectories = tier2_metrics.pop("trajectories", None)
                         cl_transitions = tier2_metrics.pop("transitions", None)
-                        if cl_transitions is not None and self.replay_buffer is not None:
-                            self.replay_buffer.push(cl_transitions)
+                        if self.replay_buffer is not None:
+                            if cl_trajectories is not None:
+                                self.replay_buffer.push_trajectories(cl_trajectories)
+                            elif cl_transitions is not None:
+                                self.replay_buffer.push(cl_transitions)
                             self.replay_buffer.save(self.save_dir / "closed_loop_buffer.pt")
+                            num_mppi_eval = int(tier2_metrics["mppi_evaluated_trajectories"])
                             chronicle.log_info(
-                                f"[DAgger Buffer] Ingested {len(cl_transitions)} transitions. "
-                                f"Total buffer size: {len(self.replay_buffer)}/{self.replay_buffer.capacity}."
+                                f"[DAgger Buffer] Ingested {len(self.replay_buffer.trajectories)} trajectories "
+                                f"({len(self.replay_buffer)} total transitions) from {num_mppi_eval} evaluated closed-loop MPPI episodes."
                             )
                         val_metrics.update(tier2_metrics)
                         score = tier2_metrics["mppi_score"]
@@ -664,7 +880,9 @@ class BaseTrainer:
             ckpt["ema_state"] = self.ema_tracker.state_dict()
         if self.replay_buffer is not None:
             ckpt["replay_buffer"] = self.replay_buffer.state_dict()
-            self.replay_buffer.save(self.save_dir / "closed_loop_buffer.pt")
+            buffer_dest = self.save_dir / "closed_loop_buffer.pt"
+            if len(self.replay_buffer) > 0 or not buffer_dest.is_file() or buffer_dest.stat().st_size <= 2500:
+                self.replay_buffer.save(buffer_dest)
         if path is not None:
             torch.save(ckpt, Path(path))
             return
@@ -692,8 +910,17 @@ class BaseTrainer:
             if self.replay_buffer is not None:
                 if "replay_buffer" in ckpt:
                     self.replay_buffer.load_state_dict(ckpt["replay_buffer"])
-                elif (self.save_dir / "closed_loop_buffer.pt").is_file():
-                    self.replay_buffer.load(self.save_dir / "closed_loop_buffer.pt")
+                else:
+                    ckpt_dir = Path(path).parent
+                    resolved_buf = resolve_closed_loop_buffer(
+                        version_name=self.cfg.project.name,
+                        phase_mode=self.mode,
+                        save_dir=ckpt_dir,
+                        results_root=self.results_root,
+                        is_resuming=True,
+                    )
+                    if resolved_buf is not None:
+                        self.replay_buffer.load(resolved_buf)
         else:
             self.model.load_state_dict(ckpt, strict=True)
 
@@ -824,5 +1051,7 @@ __all__ = [
     "Trainer",
     "load_representation_checkpoint",
     "resolve_version_checkpoint",
+    "resolve_closed_loop_buffer",
     "enforce_phase_prerequisites",
+    "compute_dagger_ratio",
 ]

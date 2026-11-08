@@ -1,12 +1,12 @@
-[2026-11-07T22:34:45.611Z][INFO] Command-line: /Applications/Unity/Hub/Editor/6000.5.7f1/Unity.app/Contents/Helpers/PackageManager/Server/UnityPackageManager server -s 8092 --ipc-path /tmp/Unity-Upm-8092.sock -l 2 --log-file /Users/Mattia/Desktop/Studies/Temp/sim/Logs/upm.log
-[2026-11-07T22:34:45.614Z][INFO] Detected environment variables:
+[2026-11-08T12:00:39.284Z][INFO] Command-line: /Applications/Unity/Hub/Editor/6000.5.7f1/Unity.app/Contents/Helpers/PackageManager/Server/UnityPackageManager server -s 34683 --ipc-path /tmp/Unity-Upm-34683.sock -l 2 --log-file /Users/Mattia/Desktop/Studies/Temp/sim/Logs/upm.log
+[2026-11-08T12:00:39.289Z][INFO] Detected environment variables:
   GIT_ASKPASS=/Applications/Antigravity IDE.app/Contents/Resources/app/extensions/git/dist/askpass.sh
-[2026-11-07T22:34:45.625Z][INFO] IPC server started (IPC path=/tmp/Unity-Upm-8092.sock).
-[2026-11-07T22:34:45.625Z][INFO] Hint: To connect to this UPM instance, launch Unity with the command-line parameter -upmIpcPath Upm-8092.
-[2026-11-07T22:34:46.697Z][INFO] project:list-packages <-- Request received
+[2026-11-08T12:00:39.304Z][INFO] IPC server started (IPC path=/tmp/Unity-Upm-34683.sock).
+[2026-11-08T12:00:39.304Z][INFO] Hint: To connect to this UPM instance, launch Unity with the command-line parameter -upmIpcPath Upm-34683.
+[2026-11-08T12:00:40.265Z][INFO] project:list-packages <-- Request received
 params: {}
-[2026-11-07T22:34:46.766Z][INFO] project:list-packages --> 200 (69 ms)
-[2026-11-07T22:34:48.178Z][INFO] project:list-packages <-- Request received
+[2026-11-08T12:00:40.335Z][INFO] project:list-packages --> 200 (71 ms)
+[2026-11-08T12:00:41.758Z][INFO] project:list-packages <-- Request received
 params: {}
-[2026-11-07T22:34:48.207Z][INFO] project:list-packages --> 200 (29 ms)
-[2026-11-07T22:34:53.984Z][INFO] Received shutdown request (SIGTERM), shutting down Unity Package Manager
+[2026-11-08T12:00:41.789Z][INFO] project:list-packages --> 200 (31 ms)
+[2026-11-08T12:00:47.875Z][INFO] Received shutdown request (SIGTERM), shutting down Unity Package Manager

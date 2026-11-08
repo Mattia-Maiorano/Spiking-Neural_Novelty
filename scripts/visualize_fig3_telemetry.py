@@ -32,6 +32,7 @@ import torch
 
 from figure_style import PALETTE, save_publication_figure, set_paper_style
 from spwm.contracts.config import ExperimentConfig
+from spwm.contracts.version import GLOBAL_VERSION
 from spwm.data.datasets import EventWorldDataset
 from spwm.models.kinematics import DifferentiableForwardKinematics
 from spwm.models.world_model import SPWM
@@ -131,8 +132,8 @@ def compute_telemetry_series(
 
 def render_figure_3(
     output_dir: Path,
-    config_path: Path = Path("results/spwm_v0_7_3_train_m1/config.yaml"),
-    ckpt_path: Path = Path("results/spwm_v0_7_3_train_m1/model.pt"),
+    config_path: Path = GLOBAL_VERSION.m1_config(),
+    ckpt_path: Path = GLOBAL_VERSION.m1_checkpoint(),
     data_dir: Path = Path("sim/ExportedTrajectories"),
 ) -> None:
     """Renders Figure 3: Active Perception & Contact Impulse Telemetry."""
@@ -303,8 +304,8 @@ def render_figure_3(
 def main() -> None:
     parser = argparse.ArgumentParser(description="Generate CoRL Figure 3: Active Perception & Contact Impulse Telemetry.")
     parser.add_argument("--output-dir", type=Path, default=Path("figures"), help="Directory for exported figures")
-    parser.add_argument("--config", type=Path, default=Path("results/spwm_v0_7_3_train_m1/config.yaml"))
-    parser.add_argument("--ckpt", type=Path, default=Path("results/spwm_v0_7_3_train_m1/model.pt"))
+    parser.add_argument("--config", type=Path, default=GLOBAL_VERSION.m1_config())
+    parser.add_argument("--ckpt", type=Path, default=GLOBAL_VERSION.m1_checkpoint())
     parser.add_argument("--data-dir", type=Path, default=Path("sim/ExportedTrajectories"))
     args = parser.parse_args()
 

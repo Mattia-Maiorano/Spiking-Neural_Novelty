@@ -42,7 +42,7 @@ if [[ ! -x "${UNITY_BIN}" ]]; then
 fi
 
 # Defaults
-DEFAULT_MODEL_VERSION="spwm_v0_7_3"
+DEFAULT_MODEL_VERSION="$("${PYTHON_BIN}" -m spwm.version --format snake)"
 DEFAULT_MODEL_VERSION_B="legacy_nov03"
 DEFAULT_EPOCHS=200
 DEFAULT_HORIZON=100

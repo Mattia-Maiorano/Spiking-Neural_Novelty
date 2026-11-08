@@ -69,6 +69,14 @@ Defines `@runtime_checkable` protocols:
 - `Tier2EvaluatorProtocol`: `frequency`, `__call__(model, epoch) -> Dict[str, float]` for closed-loop validation evaluation.
 - `PhaseStrategy` abstract base class: `setup`, `verify_gradient_isolation`, `train_step`, `validate_step`, `log_epoch`, `get_selection_score`, `get_optimizers_state`, `load_optimizers_state` (`PhaseHandler` alias for backward compatibility).
 
+### 2.5 [`spwm/contracts/version.py`](file:///Users/Mattia/Desktop/Studies/Temp/spwm/contracts/version.py) — Global Version Solver
+Encapsulates version resolution based upon `(version, minor, patch)` components, serving as the single source of truth across Python modules, evaluation benchmarks, and bash pipelines:
+- [`VersionSolver`](file:///Users/Mattia/Desktop/Studies/Temp/spwm/contracts/version.py): Frozen immutable dataclass with strict non-negative integer validation. Exposes `.version`, `.major`, `.minor`, `.patch`, `.semver` (`"0.7.3"`), `.short_tag` (`"v0.7.3"`), `.tag` / `.formatted` (`"SPWM-v0.7.3"`), `.snake_case` (`"spwm_v0_7_3"`), and `.tuple` (`(0, 7, 3)`).
+- Canonical Path Resolvers: `.m1_dir()`, `.m1_checkpoint()`, `.m1_config()`, `.m1_metrics()`, `.representation_dir()`, `.representation_checkpoint()`, and `.representation_config()`.
+- Parsers: `VersionSolver.from_string(...)` supporting semver, tagged, and snake_case strings, and `VersionSolver.from_tuple(...)`.
+- CLI Interface: Callable via `python -m spwm.version --format <semver|tag|formatted|short|snake|m1-checkpoint|m1-config|m1-metrics>` for shell script consumption without string hardcoding.
+- `GLOBAL_VERSION`: Singleton instance configured as the SSOT baseline across all experiment runners and visualization scripts.
+
 ---
 
 ## 3. Small-LLM Context Boundary Rules (`< 3 Files` Rule)

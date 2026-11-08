@@ -21,6 +21,7 @@ import numpy as np
 import torch
 
 from spwm.contracts.config import ExperimentConfig
+from spwm.contracts.version import GLOBAL_VERSION
 from spwm.data.datasets import create_dataloaders
 from spwm.evaluation.mppi import LatentMPPIController
 from spwm.evaluation.visualizer import (
@@ -57,7 +58,7 @@ def export_mppi_episode(
     fk: DifferentiableForwardKinematics,
     batch: Mapping[str, Any],
     horizon: int = 100,
-    model_version: str = "spwm_v0_7_3_mppi",
+    model_version: Optional[str] = None,
     dt: float = 0.05,
     precision: int = 6,
     approach_window: int = 20,
@@ -170,9 +171,10 @@ def export_mppi_episode(
         "final_position_relative_degradation": _finite(pos_errs[-1] / (pos_errs[0] if pos_errs[0] > 1e-8 else 1.0), precision),
     }
 
+    resolved_version = model_version if model_version is not None else f"{GLOBAL_VERSION.snake_case}_mppi"
     metadata = {
         "schema": GHOST_SCHEMA_VERSION,
-        "model_version": model_version,
+        "model_version": resolved_version,
         "horizon": horizon,
         "dt": dt,
         "joint_count": 6,
@@ -196,8 +198,8 @@ def export_mppi_episode(
 
 def main() -> None:
     parser = argparse.ArgumentParser(description="Export SPWM MPPI ghost trajectory for Unity playback.")
-    parser.add_argument("--checkpoint", type=str, default="results/spwm_v0_7_3_train_m1/model.pt", help="Path to checkpoint")
-    parser.add_argument("--config", type=str, default="results/spwm_v0_7_3_train_m1/config.yaml", help="Path to config")
+    parser.add_argument("--checkpoint", type=str, default=str(GLOBAL_VERSION.m1_checkpoint()), help="Path to checkpoint")
+    parser.add_argument("--config", type=str, default=str(GLOBAL_VERSION.m1_config()), help="Path to config")
     parser.add_argument("--trajectory-id", type=int, default=3622, help="Trajectory ID to evaluate (e.g., 3622)")
     parser.add_argument("--horizon", type=int, default=100, help="Horizon steps")
     parser.add_argument("--num-samples", type=int, default=256, help="MPPI candidate rollouts K")
@@ -280,7 +282,7 @@ def main() -> None:
         fk=fk,
         batch=target_batch,
         horizon=args.horizon,
-        model_version="spwm_v0_7_3_mppi",
+        model_version=f"{GLOBAL_VERSION.snake_case}_mppi",
         dt=cfg.environment.dt,
     )
 

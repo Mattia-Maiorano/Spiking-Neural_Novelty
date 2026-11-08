@@ -33,6 +33,7 @@ import matplotlib.pyplot as plt
 import numpy as np
 
 from figure_style import PALETTE, save_publication_figure, set_paper_style
+from spwm.contracts.version import GLOBAL_VERSION
 
 
 def load_hardware_and_boundary_metrics(
@@ -47,8 +48,9 @@ def load_hardware_and_boundary_metrics(
 
     # 1. Panel A metrics: Energy per step & Power
     hw_metrics: Dict[str, Dict[str, float]] = {}
+    prod_key = f"{GLOBAL_VERSION.formatted} (Prod)"
     for name in [
-        "SPWM-v0.7.3 (Prod)",
+        prod_key if prod_key in e_data else [k for k in e_data if "SPWM" in k][0],
         "SNN-ALIF (Matched)",
         "ANN-Rate (Ablation)",
         "Continuous RSSM",
@@ -133,8 +135,10 @@ def render_figure_5(
         fontsize=9.5, pad=14, weight="bold",
     )
 
+    prod_key = f"{GLOBAL_VERSION.formatted} (Prod)"
+    prod_match_key = prod_key if prod_key in hw_metrics else [k for k in hw_metrics if "SPWM" in k][0]
     models_display = [
-        ("SPWM-v0.7.3 (Prod)", "SPWM-v0.7.3\n(Neuromorphic SNN)", True),
+        (prod_match_key, f"{GLOBAL_VERSION.formatted}\n(Neuromorphic SNN)", True),
         ("SNN-ALIF (Matched)", "SNN-ALIF\n(Matched Baseline)", True),
         ("ANN-Rate (Ablation)", "ANN-Rate\n(Continuous Leaky)", False),
         ("Continuous RSSM", "Continuous RSSM\n(Hafner et al.)", False),

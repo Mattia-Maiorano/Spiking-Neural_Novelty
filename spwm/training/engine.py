@@ -35,6 +35,7 @@ from spwm.contracts.config import (
     TrainingConfig,
 )
 from spwm.contracts.protocols import PhaseStrategy, Tier2EvaluatorProtocol
+from spwm.contracts.version import GLOBAL_VERSION
 from spwm.training.losses import SPWMLoss
 from spwm.training.phases import PredictorPhaseHandler
 
@@ -154,7 +155,7 @@ def enforce_phase_prerequisites(
                 raise FileNotFoundError(
                     f"Phase 1 ('train_m1') strictly requires a pre-trained representation checkpoint. "
                     f"No checkpoint found for project '{cfg.project.name}' at results_root='{results_root}'. "
-                    f"Pass --representation-checkpoint <path> (e.g. results/spwm_v0_7_3_train_representation/model.pt) "
+                    f"Pass --representation-checkpoint <path> (e.g. {GLOBAL_VERSION.representation_checkpoint()}) "
                     f"or run Phase 0 first."
                 ) from err
 

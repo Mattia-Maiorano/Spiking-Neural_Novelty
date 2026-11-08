@@ -36,6 +36,7 @@ import torch.nn as nn
 from torch.utils.data import DataLoader
 
 from spwm.contracts.config import ExperimentConfig
+from spwm.contracts.version import GLOBAL_VERSION
 from spwm.data.datasets import create_dataloaders
 from spwm.models.ann_ablation import ANNWorldModel
 from spwm.models.baselines import ContinuousConvLSTM, ContinuousRSSM, DeepGRUPredictor
@@ -267,11 +268,11 @@ def run_energy_profiling(
 
     profiles: Dict[str, Dict[str, Any]] = {}
 
-    # 1. SPWM-v0.7.3 Production
-    chronicle.log_info("Profiling Model 1/6: SPWM-v0.7.3 (Prod SNN-ALIF)...")
-    spwm_cfg = ExperimentConfig.load("results/spwm_v0_7_3_train_m1/config.yaml")
+    # 1. SPWM Production
+    chronicle.log_info(f"Profiling Model 1/6: {GLOBAL_VERSION.formatted} (Prod SNN-ALIF)...")
+    spwm_cfg = ExperimentConfig.load(GLOBAL_VERSION.m1_config())
     spwm_prod = SPWM.from_config(spwm_cfg).to(device)
-    prod_ckpt = torch.load("results/spwm_v0_7_3_train_m1/model.pt", map_location=device, weights_only=False)
+    prod_ckpt = torch.load(GLOBAL_VERSION.m1_checkpoint(), map_location=device, weights_only=False)
     prod_state = prod_ckpt["model_state"] if "model_state" in prod_ckpt else prod_ckpt
     spwm_prod.load_state_dict(prod_state, strict=True)
 
@@ -295,7 +296,7 @@ def run_energy_profiling(
     macs_recurrent_prod, flops_recurrent_prod = compute_spwm_recurrent_flops()
     energy_gpu_dense_prod_nj = compute_dense_energy_nj(flops=flops_recurrent_prod, energy_per_flop_pj=e_flop_pj)
 
-    profiles["SPWM-v0.7.3 (Prod)"] = {
+    profiles[f"{GLOBAL_VERSION.formatted} (Prod)"] = {
         "paradigm": "Neuromorphic SNN",
         "memory_type": "ALIF Spiking (2-tier)",
         "params": params_prod,

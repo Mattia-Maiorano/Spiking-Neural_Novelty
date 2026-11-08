@@ -20,6 +20,7 @@ import torch
 import torch.nn.functional as F
 
 from spwm.contracts.config import ExperimentConfig
+from spwm.contracts.version import GLOBAL_VERSION
 from spwm.data.datasets import create_dataloaders
 from spwm.evaluation.mppi import LatentMPPIController, MPPIPlanResult
 from spwm.models.kinematics import DifferentiableForwardKinematics
@@ -267,8 +268,8 @@ def objective(trial: optuna.Trial, model: SPWM, fk: DifferentiableForwardKinemat
 
 def main() -> None:
     parser = argparse.ArgumentParser()
-    parser.add_argument("--config", type=str, default="results/spwm_v0_7_3_train_m1/config.yaml")
-    parser.add_argument("--checkpoint", type=str, default="results/spwm_v0_7_3_train_m1/model.pt")
+    parser.add_argument("--config", type=str, default=str(GLOBAL_VERSION.m1_config()))
+    parser.add_argument("--checkpoint", type=str, default=str(GLOBAL_VERSION.m1_checkpoint()))
     parser.add_argument("--n-trials", type=int, default=75)
     args = parser.parse_args()
 

@@ -39,6 +39,7 @@ from torch.utils.data import DataLoader
 
 from spwm.contracts.config import ExperimentConfig
 from spwm.contracts.tensors import C_EVENT
+from spwm.contracts.version import GLOBAL_VERSION
 from spwm.data.datasets import (
     collate_event_batches,
     parse_unity_trajectory_file,
@@ -495,10 +496,10 @@ def generate_markdown_report(
 ) -> None:
     """Formats benchmark metrics into a publication-ready markdown dossier document."""
     lines: List[str] = [
-        "# Zero-Shot Sim-to-Real Domain Gap & Robustness Stress Test (SPWM-v0.7.3)",
+        f"# Zero-Shot Sim-to-Real Domain Gap & Robustness Stress Test ({GLOBAL_VERSION.formatted})",
         "",
         "**Mandatory Constraints:** Strictly zero retraining / zero fine-tuning (`torch.no_grad()`, `model.eval()`).",
-        "Evaluated on frozen production checkpoint: `results/spwm_v0_7_3_train_m1/model.pt`.",
+        f"Evaluated on frozen production checkpoint: `{GLOBAL_VERSION.m1_checkpoint()}`.",
         "",
         "## 1. Neuromorphic Visual Stream Perturbations (Sensor Domain Gap)",
         "",
@@ -563,8 +564,8 @@ def generate_markdown_report(
 
 def main() -> None:
     parser = argparse.ArgumentParser(description="Zero-Shot Sim-to-Real Domain Gap & Robustness Benchmark.")
-    parser.add_argument("--config", type=str, default="results/spwm_v0_7_3_train_m1/config.yaml")
-    parser.add_argument("--checkpoint", type=str, default="results/spwm_v0_7_3_train_m1/model.pt")
+    parser.add_argument("--config", type=str, default=str(GLOBAL_VERSION.m1_config()))
+    parser.add_argument("--checkpoint", type=str, default=str(GLOBAL_VERSION.m1_checkpoint()))
     parser.add_argument("--output-dir", type=str, default="results/robustness_benchmark")
     parser.add_argument("--num-sensor-trajectories", type=int, default=400)
     parser.add_argument("--num-mppi-episodes", type=int, default=50)
@@ -656,7 +657,7 @@ def main() -> None:
     # Serialize JSON summary
     summary_data = {
         "benchmark_name": "Zero-Shot Sim-to-Real Domain Gap & Robustness Stress Test",
-        "version": "SPWM-v0.7.3",
+        "version": GLOBAL_VERSION.formatted,
         "checkpoint": str(args.checkpoint),
         "total_benchmark_time_sec": float(total_time),
         "sensor_benchmark_time_sec": float(t_sensor),

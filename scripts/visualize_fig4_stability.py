@@ -35,6 +35,7 @@ import torch
 
 from figure_style import PALETTE, save_publication_figure, set_paper_style
 from spwm.contracts.config import ExperimentConfig
+from spwm.contracts.version import GLOBAL_VERSION
 from spwm.data.datasets import EventWorldDataset
 from spwm.models.ann_ablation import ANNWorldModel
 from spwm.models.kinematics import DifferentiableForwardKinematics
@@ -51,8 +52,9 @@ def load_comparative_metrics(
     with open(ablation_json, "r", encoding="utf-8") as f:
         a_data = json.load(f)
 
+    spwm_tag = GLOBAL_VERSION.formatted if GLOBAL_VERSION.formatted in b_data else [k for k in b_data.keys() if "SPWM" in k][0]
     return {
-        "SPWM-v0.7.3 (Ours)": {h: float(b_data["SPWM-v0.7.3"]["velocity_mse_per_horizon"][h]) for h in ["1", "10", "50", "100"]},
+        f"{GLOBAL_VERSION.formatted} (Ours)": {h: float(b_data[spwm_tag]["velocity_mse_per_horizon"][h]) for h in ["1", "10", "50", "100"]},
         "Continuous RSSM": {h: float(b_data["Continuous RSSM"]["velocity_mse_per_horizon"][h]) for h in ["1", "10", "50", "100"]},
         "Deep GRU": {h: float(b_data["Deep GRU"]["velocity_mse_per_horizon"][h]) for h in ["1", "10", "50", "100"]},
         "Continuous ConvLSTM": {h: float(b_data["Continuous ConvLSTM"]["velocity_mse_per_horizon"][h]) for h in ["1", "10", "50", "100"]},
@@ -150,8 +152,8 @@ def render_figure_4(
     output_dir: Path,
     baselines_json: Path = Path("results/baselines/comparative_metrics.json"),
     ablation_json: Path = Path("results/ann_ablation/ablation_metrics.json"),
-    config_path: Path = Path("results/spwm_v0_7_3_train_m1/config.yaml"),
-    spwm_ckpt: Path = Path("results/spwm_v0_7_3_train_m1/model.pt"),
+    config_path: Path = GLOBAL_VERSION.m1_config(),
+    spwm_ckpt: Path = GLOBAL_VERSION.m1_checkpoint(),
     ann_ckpt: Path = Path("results/ann_ablation/ann_rate_m1/model.pt"),
     trajectories_dir: Path = Path("sim/ExportedTrajectories"),
 ) -> None:
@@ -179,7 +181,7 @@ def render_figure_4(
     width = 0.16
 
     model_configs = [
-        ("SPWM-v0.7.3 (Ours)", PALETTE["spwm"], "-", 0),
+        (f"{GLOBAL_VERSION.formatted} (Ours)", PALETTE["spwm"], "-", 0),
         ("Continuous RSSM", PALETTE["continuous_rssm"], "--", 1),
         ("Deep GRU", PALETTE["deep_gru"], ":", 2),
         ("Continuous ConvLSTM", PALETTE["conv_lstm"], "-.", 3),
@@ -204,7 +206,7 @@ def render_figure_4(
     ax_err.grid(True, which="both", axis="y", linestyle=":", alpha=0.6)
 
     # Dynamic Callout Annotations from verified data
-    spwm_h100 = metrics["SPWM-v0.7.3 (Ours)"]["100"]
+    spwm_h100 = metrics[f"{GLOBAL_VERSION.formatted} (Ours)"]["100"]
     rssm_h100 = metrics["Continuous RSSM"]["100"]
     gru_h100 = metrics["Deep GRU"]["100"]
     ann_h100 = metrics["ANN-Rate (Continuous Leaky)"]["100"]
@@ -313,8 +315,8 @@ def main() -> None:
     parser.add_argument("--output-dir", type=Path, default=Path("figures"), help="Directory for exported figures")
     parser.add_argument("--baselines-json", type=Path, default=Path("results/baselines/comparative_metrics.json"))
     parser.add_argument("--ablation-json", type=Path, default=Path("results/ann_ablation/ablation_metrics.json"))
-    parser.add_argument("--config", type=Path, default=Path("results/spwm_v0_7_3_train_m1/config.yaml"))
-    parser.add_argument("--spwm-ckpt", type=Path, default=Path("results/spwm_v0_7_3_train_m1/model.pt"))
+    parser.add_argument("--config", type=Path, default=GLOBAL_VERSION.m1_config())
+    parser.add_argument("--spwm-ckpt", type=Path, default=GLOBAL_VERSION.m1_checkpoint())
     parser.add_argument("--ann-ckpt", type=Path, default=Path("results/ann_ablation/ann_rate_m1/model.pt"))
     parser.add_argument("--data-dir", type=Path, default=Path("sim/ExportedTrajectories"))
     args = parser.parse_args()

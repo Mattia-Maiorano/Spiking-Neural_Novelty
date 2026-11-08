@@ -35,6 +35,7 @@ import torch.nn as nn
 from torch.utils.data import DataLoader
 
 from spwm.contracts.config import ExperimentConfig
+from spwm.contracts.version import GLOBAL_VERSION
 from spwm.data.datasets import create_dataloaders
 from spwm.evaluation.evaluator import RolloutEvaluator
 from spwm.models.world_model import SPWM
@@ -133,10 +134,10 @@ def run_pipeline_for_seed(
 
     # Reuse existing production checkpoints for seed 42 if present and matching
     if seed == 42:
-        prod_rep = Path("results/spwm_v0_7_3_train_representation/model.pt")
-        prod_m1 = Path("results/spwm_v0_7_3_train_m1/model.pt")
+        prod_rep = GLOBAL_VERSION.representation_checkpoint()
+        prod_m1 = GLOBAL_VERSION.m1_checkpoint()
         if prod_rep.is_file() and prod_m1.is_file() and total_trajectories is None:
-            chronicle.log_info("Seed 42: Reusing canonical converged production checkpoints from results/spwm_v0_7_3_...")
+            chronicle.log_info(f"Seed 42: Reusing canonical converged production checkpoints from {GLOBAL_VERSION.snake_case}...")
             rep_dir.mkdir(parents=True, exist_ok=True)
             m1_dir.mkdir(parents=True, exist_ok=True)
             if not rep_model_pt.exists():
@@ -487,7 +488,7 @@ def plot_multiseed_errorbars(stats: Dict[str, Any], horizons: List[int], save_pa
 def main() -> None:
     parser = argparse.ArgumentParser(description="Multi-seed statistical significance validation (Full Two-Phase Pipeline).")
     parser.add_argument("--seeds", type=int, nargs="+", default=[42, 101, 2024], help="Random seeds to evaluate")
-    parser.add_argument("--config", type=str, default="results/spwm_v0_7_3_train_m1/config.yaml", help="Path to base config.yaml")
+    parser.add_argument("--config", type=str, default=str(GLOBAL_VERSION.m1_config()), help="Path to base config.yaml")
     parser.add_argument("--output-dir", type=str, default="results/multiseed", help="Output directory")
     parser.add_argument("--rep-epochs", type=int, default=30, help="Epochs for Phase 0 Representation")
     parser.add_argument("--rep-patience", type=int, default=8, help="Patience for Phase 0 Representation")

@@ -24,6 +24,7 @@ import numpy as np
 import torch
 
 from spwm.contracts.config import ExperimentConfig
+from spwm.contracts.version import GLOBAL_VERSION
 from spwm.data.datasets import create_dataloaders
 from spwm.evaluation.mppi import LatentMPPIController
 from spwm.models.kinematics import DifferentiableForwardKinematics
@@ -274,17 +275,17 @@ def generate_benchmark_figures(
 
 
 def main() -> None:
-    parser = argparse.ArgumentParser(description="Closed-Loop Latent MPPI Benchmark (SPWM-v0.7.3).")
+    parser = argparse.ArgumentParser(description=f"Closed-Loop Latent MPPI Benchmark ({GLOBAL_VERSION.formatted}).")
     parser.add_argument(
         "--config",
         type=str,
-        default="results/spwm_v0_7_3_train_m1/config.yaml",
+        default=str(GLOBAL_VERSION.m1_config()),
         help="Path to experiment config YAML.",
     )
     parser.add_argument(
         "--checkpoint",
         type=str,
-        default="results/spwm_v0_7_3_train_m1/model.pt",
+        default=str(GLOBAL_VERSION.m1_checkpoint()),
         help="Path to trained SPWM checkpoint.",
     )
     parser.add_argument(
@@ -490,7 +491,7 @@ def main() -> None:
             }
 
     summary = {
-        "benchmark_name": "SPWM-v0.7.3 Closed-Loop Latent MPPI Control Benchmark",
+        "benchmark_name": f"{GLOBAL_VERSION.formatted} Closed-Loop Latent MPPI Control Benchmark",
         "checkpoint": str(args.checkpoint),
         "episodes_evaluated": len(results),
         "total_benchmark_time_sec": float(elapsed_bench),
@@ -514,7 +515,7 @@ def main() -> None:
 
     # Generate Markdown Table
     md_table_path = out_dir / "mppi_benchmark_table.md"
-    md_content = f"""# SPWM-v0.7.3 Latent MPPI Downstream Control Benchmark
+    md_content = f"""# {GLOBAL_VERSION.formatted} Latent MPPI Downstream Control Benchmark
 
 **Evaluated Configuration:**
 - **Planner:** Latent MPPI Controller ($K = {args.num_samples}$, $H = {args.horizon}$, Iterations = ${args.num_iterations}$)

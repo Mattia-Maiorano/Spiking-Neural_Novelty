@@ -621,6 +621,8 @@ class ANNWorldModel(nn.Module):
         event_sequence: torch.Tensor,
         initial_state: Optional[SPWMState] = None,
         actions: Optional[torch.Tensor] = None,
+        *args: Any,
+        **kwargs: Any,
     ) -> Tuple[torch.Tensor, torch.Tensor]:
         """Sensory-driven state estimation without predictor rollouts."""
         assert_tensor_contract(
@@ -662,11 +664,13 @@ class ANNWorldModel(nn.Module):
         error_neurons = torch.stack(error_neuron_steps, dim=1)
         return latents, error_neurons
 
-    def forward(
+    def __call__(
         self,
         event_sequence: torch.Tensor,
         initial_state: Optional[SPWMState] = None,
         actions: Optional[torch.Tensor] = None,
+        *args: Any,
+        **kwargs: Any,
     ) -> Dict[str, torch.Tensor]:
         """Sequence forward pass decoding joint kinematics across all steps."""
         latents, _ = self.forward_representation(event_sequence, initial_state=initial_state, actions=actions)

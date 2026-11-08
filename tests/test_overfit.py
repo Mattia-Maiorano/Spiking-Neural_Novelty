@@ -12,7 +12,7 @@ from torch.utils.data import DataLoader
 from spwm.data.event_camera import EventCameraSimulator
 from spwm.data.datasets import EventWorldDataset, collate_event_batches
 from spwm.models.world_model import SPWM
-from spwm.learning.diagnostics import inspect_gradients
+from spwm.training.diagnostics import inspect_gradients
 
 
 def test_tiny_overfit_and_gradient_flow():

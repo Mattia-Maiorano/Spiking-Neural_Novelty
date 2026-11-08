@@ -2,7 +2,7 @@
 Neuromorphic Synaptic Operations (SOPs) vs. Dense FLOPs Energy Profiler (DOSSIER Section 6.3).
 
 Evaluates and compares the computational operations and energy consumption across:
-1. SPWM-v0.7.3 (Prod SNN-ALIF)
+1. SPWM (Prod SNN-ALIF)
 2. SNN-ALIF (Matched Ablation)
 3. ANN-Rate (Continuous Rate Ablation)
 4. Continuous RSSM (DreamerV3 style)

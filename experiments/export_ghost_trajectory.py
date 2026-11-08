@@ -1,5 +1,5 @@
 """
-Ghost Execution Exporter for Unity (SPWM-v0.7.3).
+Ghost Execution Exporter for Unity.
 
 Runs the canonical RolloutEvaluator protocol on test trajectories and serializes
 ground-truth vs. M1-predicted joint angles into `sim/Assets/StreamingAssets/trajectory_ghost.json`

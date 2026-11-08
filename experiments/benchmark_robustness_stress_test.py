@@ -1,5 +1,5 @@
 """
-Zero-Shot Sim-to-Real Domain Gap & Robustness Stress Test (SPWM-v0.7.3).
+Zero-Shot Sim-to-Real Domain Gap & Robustness Stress Test.
 
 Executes Step 6 of the publication roadmap (Zero-Shot Sim-to-Real Domain Gap Analysis):
 Quantifies model tolerance to sensory noise, hardware discrepancies, and dynamics distribution shifts

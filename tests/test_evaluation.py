@@ -270,7 +270,7 @@ def test_evaluator_active_perception_soft_fade_handover():
     model.m1.forward = counted_m1_forward  # type: ignore[method-assign]
     traj = evaluator.rollout_trajectory(batch, horizon=9)
 
-    # In continuous soft-fade handover (SPWM-v0.7.2), M1 unrolls continuously across all horizon steps (9 steps)
+    # In continuous soft-fade handover, M1 unrolls continuously across all horizon steps (9 steps)
     # without binary interruption cliff, softly blending with grounded dynamics during active perception.
     assert m1_call_count == 9
     assert traj.horizon == 9

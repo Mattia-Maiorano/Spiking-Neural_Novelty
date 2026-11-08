@@ -160,7 +160,7 @@ def test_m1_active_perception_soft_fade_handover() -> None:
 
     model.m1.forward = counted_m1_forward  # type: ignore[method-assign]
     loss, metrics = strategy._compute_m1_objectives(events, actions, flat_kin, phase_flags)
-    # In continuous soft-fade handover (SPWM-v0.7.2), M1 unrolls continuously across all 9 steps
+    # In continuous soft-fade handover, M1 unrolls continuously across all 9 steps
     # without stopping, maintaining motor inertia and continuous dynamics.
     assert m1_call_count == 9
     assert loss.requires_grad

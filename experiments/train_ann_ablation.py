@@ -1,12 +1,12 @@
 """
 Non-Spiking SNN Ablation Benchmark Runner (DOSSIER Section 6.2 — Full Production Regime).
 
-Puts ANN-Rate (Ablation) and SNN-ALIF (SPWM-v0.7.3) under the EXACT same training regime:
+Puts ANN-Rate (Ablation) and SNN-ALIF (SPWM) under the EXACT same training regime:
 1. Canonical 4,000 trajectories dataset (3,200 train, 400 val, 400 test, sequence length 105, batch size 32).
 2. Phase 0 Representation alignment: adapts ContinuousRateDynamics to continuous rate inputs sigma(m_t).
 3. Phase 1 M1 Latent Predictor Training: autoregressive unrolling over horizon H=50 with Active Perception
    sensory injection, trained for 70-80 epochs (or until validation loss reaches a real plateau with early stopping).
-4. SNN-ALIF Reference: Uses the canonical SPWM-v0.7.3 production model trained for 78 epochs to convergence (val score 0.00204).
+4. SNN-ALIF Reference: Uses the canonical SPWM production model trained for 78 epochs to convergence (val score 0.00204).
 5. Comprehensive multi-horizon evaluation on the unseen test set across H in {1, 5, 10, 25, 50, 100}.
 6. Publication-ready side-by-side performance table, degradation curves, and convergence diagnostics.
 """

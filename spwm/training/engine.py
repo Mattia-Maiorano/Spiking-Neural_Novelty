@@ -224,6 +224,128 @@ class EMATracker:
             self.shadow[k] = t
 
 
+class ClosedLoopBuffer:
+    """DAgger-style replay buffer for closed-loop MPPI trajectories (Layer 2 — Training).
+
+    Stores closed-loop transition tuples (z_t, u_t, z_{t+1}) collected during Tier 2
+    validation to mitigate exposure bias during Phase 1 (train_m1) training.
+    """
+
+    def __init__(self, capacity: int = 50_000) -> None:
+        if capacity <= 0:
+            raise ValueError(f"Capacity must be positive, got {capacity}")
+        self.capacity = int(capacity)
+        self.z: List[torch.Tensor] = []
+        self.u: List[torch.Tensor] = []
+        self.z_next: List[torch.Tensor] = []
+        self._ptr = 0
+
+    def push(
+        self,
+        transitions: Union[
+            Sequence[Dict[str, torch.Tensor]],
+            Dict[str, Sequence[torch.Tensor]],
+            Sequence[Tuple[torch.Tensor, torch.Tensor, torch.Tensor]],
+        ],
+    ) -> None:
+        """Push transitions into the replay buffer with FIFO eviction on overflow."""
+        items: List[Tuple[torch.Tensor, torch.Tensor, torch.Tensor]] = []
+        if isinstance(transitions, dict):
+            zs = transitions["z"]
+            us = transitions["u"]
+            z_nexts = transitions["z_next"]
+            n = len(zs)
+            for i in range(n):
+                items.append((zs[i], us[i], z_nexts[i]))
+        elif isinstance(transitions, (list, tuple)):
+            for item in transitions:
+                if isinstance(item, dict):
+                    items.append((item["z"], item["u"], item["z_next"]))
+                elif isinstance(item, (tuple, list)) and len(item) == 3:
+                    items.append((item[0], item[1], item[2]))
+                else:
+                    raise ValueError(f"Unsupported transition item format: {type(item)}")
+        else:
+            raise ValueError(f"Unsupported transitions container: {type(transitions)}")
+
+        for z, u, z_next in items:
+            z_t = z.detach().cpu().view(-1)
+            u_t = u.detach().cpu().view(-1)
+            zn_t = z_next.detach().cpu().view(-1)
+
+            if len(self.z) < self.capacity:
+                self.z.append(z_t)
+                self.u.append(u_t)
+                self.z_next.append(zn_t)
+            else:
+                self.z[self._ptr] = z_t
+                self.u[self._ptr] = u_t
+                self.z_next[self._ptr] = zn_t
+                self._ptr = (self._ptr + 1) % self.capacity
+
+    def sample(
+        self,
+        batch_size: int,
+        device: Optional[Union[str, torch.device]] = None,
+    ) -> Dict[str, torch.Tensor]:
+        """Sample a batch of transitions uniformly at random."""
+        cur_len = len(self.z)
+        if cur_len == 0:
+            raise ValueError("Cannot sample from an empty ClosedLoopBuffer.")
+        k = min(batch_size, cur_len)
+        indices = torch.randint(0, cur_len, (k,))
+        sampled_z = torch.stack([self.z[i] for i in indices])
+        sampled_u = torch.stack([self.u[i] for i in indices])
+        sampled_zn = torch.stack([self.z_next[i] for i in indices])
+        if device is not None:
+            dev = torch.device(device)
+            sampled_z = sampled_z.to(dev)
+            sampled_u = sampled_u.to(dev)
+            sampled_zn = sampled_zn.to(dev)
+        return {
+            "z": sampled_z,
+            "u": sampled_u,
+            "z_next": sampled_zn,
+        }
+
+    def __len__(self) -> int:
+        return len(self.z)
+
+    def state_dict(self) -> Dict[str, Any]:
+        return {
+            "capacity": self.capacity,
+            "ptr": self._ptr,
+            "z": torch.stack(self.z) if self.z else torch.empty(0),
+            "u": torch.stack(self.u) if self.u else torch.empty(0),
+            "z_next": torch.stack(self.z_next) if self.z_next else torch.empty(0),
+        }
+
+    def load_state_dict(self, state: Dict[str, Any]) -> None:
+        self.capacity = int(state["capacity"])
+        self._ptr = int(state["ptr"])
+        z_t = state["z"]
+        u_t = state["u"]
+        zn_t = state["z_next"]
+        if z_t.numel() > 0:
+            self.z = [z_t[i] for i in range(z_t.shape[0])]
+            self.u = [u_t[i] for i in range(u_t.shape[0])]
+            self.z_next = [zn_t[i] for i in range(zn_t.shape[0])]
+        else:
+            self.z = []
+            self.u = []
+            self.z_next = []
+
+    def save(self, path: Union[str, Path]) -> None:
+        torch.save(self.state_dict(), Path(path))
+
+    def load(self, path: Union[str, Path]) -> None:
+        path = Path(path)
+        if not path.is_file():
+            raise FileNotFoundError(f"Buffer checkpoint not found: {path}")
+        state = torch.load(path, map_location="cpu", weights_only=False)
+        self.load_state_dict(state)
+
+
 class BaseTrainer:
     """Standardized, modular training engine delegating phase mechanics to `PhaseStrategy`."""
 
@@ -290,6 +412,16 @@ class BaseTrainer:
             model=self.model, cfg=self.cfg, loss_fn=self.loss_fn, device=self.device
         )
 
+        self.replay_buffer: Optional[ClosedLoopBuffer] = (
+            ClosedLoopBuffer(capacity=50_000) if self.mode in ("train_m1", "m1") else None
+        )
+        buffer_path = self.save_dir / "closed_loop_buffer.pt"
+        if self.replay_buffer is not None and buffer_path.is_file():
+            self.replay_buffer.load(buffer_path)
+            chronicle.log_info(
+                f"Loaded existing ClosedLoopBuffer with {len(self.replay_buffer)} transitions from {buffer_path}"
+            )
+
         self.start_epoch = start_epoch
         self.best_score = best_score
         self.best_epoch = best_epoch
@@ -321,7 +453,17 @@ class BaseTrainer:
             raise RuntimeError("Cannot call train_epoch when train_loader is None.")
         train_accum: Dict[str, float] = {}
         batch_count = 0
+        min_buffer_samples = 64
         for batch in self.train_loader:
+            if (
+                self.replay_buffer is not None
+                and len(self.replay_buffer) >= min_buffer_samples
+                and self.mode in ("train_m1", "m1")
+            ):
+                b_size = batch["events"].shape[0] if "events" in batch else 16
+                dagger_size = max(1, int(b_size * 0.2))
+                batch["closed_loop"] = self.replay_buffer.sample(dagger_size, device=self.device)
+
             step_metrics = self.handler.train_step(batch, epoch=epoch)
             for k, v in step_metrics.items():
                 train_accum[k] = train_accum.get(k, 0.0) + v
@@ -390,6 +532,14 @@ class BaseTrainer:
                             )
 
                         tier2_metrics = self.tier2_evaluator(self.model, epoch)
+                        cl_transitions = tier2_metrics.pop("transitions", None)
+                        if cl_transitions is not None and self.replay_buffer is not None:
+                            self.replay_buffer.push(cl_transitions)
+                            self.replay_buffer.save(self.save_dir / "closed_loop_buffer.pt")
+                            chronicle.log_info(
+                                f"[DAgger Buffer] Ingested {len(cl_transitions)} transitions. "
+                                f"Total buffer size: {len(self.replay_buffer)}/{self.replay_buffer.capacity}."
+                            )
                         val_metrics.update(tier2_metrics)
                         score = tier2_metrics["mppi_score"]
                         is_best = score < (self.best_score - self.tier2_min_delta)
@@ -512,6 +662,9 @@ class BaseTrainer:
         }
         if self.ema_tracker is not None:
             ckpt["ema_state"] = self.ema_tracker.state_dict()
+        if self.replay_buffer is not None:
+            ckpt["replay_buffer"] = self.replay_buffer.state_dict()
+            self.replay_buffer.save(self.save_dir / "closed_loop_buffer.pt")
         if path is not None:
             torch.save(ckpt, Path(path))
             return
@@ -536,6 +689,11 @@ class BaseTrainer:
                 self.handler.load_optimizers_state(ckpt["optimizers_state"])
             if self.ema_tracker is not None and "ema_state" in ckpt:
                 self.ema_tracker.load_state_dict(ckpt["ema_state"])
+            if self.replay_buffer is not None:
+                if "replay_buffer" in ckpt:
+                    self.replay_buffer.load_state_dict(ckpt["replay_buffer"])
+                elif (self.save_dir / "closed_loop_buffer.pt").is_file():
+                    self.replay_buffer.load(self.save_dir / "closed_loop_buffer.pt")
         else:
             self.model.load_state_dict(ckpt, strict=True)
 
@@ -662,6 +820,7 @@ class Trainer(BaseTrainer):
 
 __all__ = [
     "BaseTrainer",
+    "ClosedLoopBuffer",
     "Trainer",
     "load_representation_checkpoint",
     "resolve_version_checkpoint",

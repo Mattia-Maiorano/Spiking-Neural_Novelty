@@ -1,5 +1,5 @@
 """
-Export Figure Metrics Pipeline for CoRL Publication Figures (SPWM-v0.7.3).
+Export Figure Metrics Pipeline for CoRL Publication Figures.
 
 Extracts and computes all numerical metrics, statistical distributions, hardware profiling,
 and trajectory data used to render:

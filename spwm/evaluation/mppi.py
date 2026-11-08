@@ -556,7 +556,7 @@ class MPPIStructuralScorer:
         controller: LatentMPPIController,
         batch: Dict[str, Any],
         seed: int,
-    ) -> Dict[str, float]:
+    ) -> Dict[str, Any]:
         """Evaluates MPPI closed-loop control on a single trajectory with strictly seeded noise generation."""
         events = batch["events"]
         q_gt = batch["joint_positions"][0]
@@ -579,6 +579,10 @@ class MPPIStructuralScorer:
         controller.reset(initial_action_bias=initial_bias, seed=seed)
         prev_u = initial_bias.clone()
 
+        traj_z: List[torch.Tensor] = []
+        traj_u: List[torch.Tensor] = []
+        traj_z_next: List[torch.Tensor] = []
+
         step_errors: List[float] = []
         final_vel = 0.0
         final_rot = 0.0
@@ -592,8 +596,14 @@ class MPPIStructuralScorer:
                 unconstrained=True,
                 action=prev_u.unsqueeze(0),
             )
+            if len(traj_z) > len(traj_z_next):
+                traj_z_next.append(z_t.detach().cpu())
+
             res = controller.plan_step(z_t, target_pose_mat, prev_action=prev_u)
             prev_u = res.action
+
+            traj_z.append(z_t.detach().cpu())
+            traj_u.append(res.action.detach().cpu())
 
             dec_t = model.physical_decoder(z_t)
             ee_t = self.fk(dec_t[:, :6])[0].detach()
@@ -603,6 +613,19 @@ class MPPIStructuralScorer:
             if t == t_grasp:
                 final_vel = float(torch.norm(dec_t[0, 6:12]).item())
                 final_rot = compute_rot_error(self.fk, dec_t[0, :6], target_pose_mat)
+
+        if len(traj_z) > len(traj_z_next):
+            traj_z.pop()
+            traj_u.pop()
+
+        packed_transitions = [
+            {
+                "z": z.squeeze(0),
+                "u": u.view(-1),
+                "z_next": zn.squeeze(0),
+            }
+            for z, u, zn in zip(traj_z, traj_u, traj_z_next)
+        ]
 
         score, is_success = compute_structural_score(step_errors, final_vel, final_rot)
         window_errors = step_errors[-3:] if len(step_errors) >= 3 else step_errors
@@ -619,10 +642,11 @@ class MPPIStructuralScorer:
             "pos_penalty": (steady_state_error / 3.0) ** 2,
             "vel_penalty": (final_vel / 1.5) ** 2,
             "rot_penalty": (final_rot / 0.05) ** 2,
+            "transitions": packed_transitions,
         }
 
     @torch.no_grad()
-    def __call__(self, model: nn.Module, epoch: int) -> Dict[str, float]:
+    def __call__(self, model: nn.Module, epoch: int) -> Dict[str, Any]:
         """Executes Tier 2 closed-loop MPPI scoring on the fixed validation subset."""
         model.eval()
 
@@ -636,11 +660,14 @@ class MPPIStructuralScorer:
             device=self.device,
         )
 
-        all_results: List[Dict[str, float]] = []
+        all_results: List[Dict[str, Any]] = []
+        all_transitions: List[Dict[str, torch.Tensor]] = []
         for batch in self.fixed_batches:
             traj_id = int(batch["trajectory_id"])
             traj_seed = self.base_seed + traj_id
             res = self.evaluate_trajectory(model, controller, batch, seed=traj_seed)
+            if "transitions" in res:
+                all_transitions.extend(res["transitions"])
             all_results.append(res)
 
         n = len(all_results)
@@ -665,6 +692,7 @@ class MPPIStructuralScorer:
             "mppi_vel_penalty": mean_vel_pen,
             "mppi_rot_penalty": mean_rot_pen,
             "mppi_evaluated_trajectories": float(n),
+            "transitions": all_transitions,
         }
 
 

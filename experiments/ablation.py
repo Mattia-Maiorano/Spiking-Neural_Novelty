@@ -1,9 +1,9 @@
 """
-Automated Ablation Study Runner for SPWM (v0.2.0).
+Automated Ablation Study Runner for SPWM.
 Executes systematic architectural and learning ablations using immutable ExperimentConfig overrides.
 
 Usage:
-    python experiments/ablation.py --base-config configs/experiments/spwm_v0_1_0.yaml --epochs 10
+    python experiments/ablation.py --base-config <path_to_config.yaml> --epochs 10
 """
 
 from __future__ import annotations

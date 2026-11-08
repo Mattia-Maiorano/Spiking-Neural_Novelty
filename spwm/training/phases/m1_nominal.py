@@ -35,19 +35,14 @@ class M1PhaseStrategy(PhaseStrategy):
         return step_grounded(self.model, event_frame, dyn_state)
 
     def _compute_m1_objectives(
-        self,
-        events: torch.Tensor,
-        actions: torch.Tensor,
-        flat_kin: Optional[torch.Tensor] = None,
-        phase_flags: Optional[torch.Tensor] = None,
-        epoch: Optional[int] = None,
-        is_train: bool = True,
+        self, events: torch.Tensor, actions: torch.Tensor, flat_kin: Optional[torch.Tensor] = None,
+        phase_flags: Optional[torch.Tensor] = None, epoch: Optional[int] = None,
+        is_train: bool = True, closed_loop_batch: Optional[Dict[str, torch.Tensor]] = None,
     ) -> Tuple[torch.Tensor, Dict[str, float]]:
         B, T = events.shape[0], events.shape[1]
         assert_tensor_contract(events, (B, T, self.model.in_channels, self.model.height, self.model.width), "M1.events")
         assert_phase_space_contract(
-            latent_dim=self.model.latent_dim, q_dim=self.model.q_dim,
-            p_dim=self.model.p_dim, action_dim=self.model.action_dim, actions=actions,
+            latent_dim=self.model.latent_dim, q_dim=self.model.q_dim, p_dim=self.model.p_dim, action_dim=self.model.action_dim, actions=actions,
         )
         flags = phase_flags.to(device=events.device, dtype=torch.long) if phase_flags is not None else torch.zeros(B, T, dtype=torch.long, device=events.device)
         t_start, horizon = compute_rollout_schedule(flags, sequence_length=T, phase_horizon=self.cfg.training.phase_horizon)
@@ -57,8 +52,6 @@ class M1PhaseStrategy(PhaseStrategy):
             z_target = z_star.detach()
 
         curr_z, dyn_state, z_prefix = ground_initial_state(self.model, events, t_start, actions=actions)
-
-        # AR(1) correlated noise injection into rollout actions with curriculum scheduling
         rollout_actions = actions[:, t_start : t_start + horizon]
         noise_alpha = 0.0
         if is_train and epoch is not None:
@@ -69,17 +62,11 @@ class M1PhaseStrategy(PhaseStrategy):
 
         roll_res = rollout_latent(
             model=self.model, z_init=curr_z, horizon=horizon, actions=rollout_actions,
-            events=events[:, t_start + 1 : t_start + 1 + horizon],
-            phase_flags=flags[:, t_start + 1 : t_start + 1 + horizon],
-            initial_dynamics_state=dyn_state, with_grad=True, decode_kinematics=False,
-            fixed_predictor=self.model.m1,
+            events=events[:, t_start + 1 : t_start + 1 + horizon], phase_flags=flags[:, t_start + 1 : t_start + 1 + horizon],
+            initial_dynamics_state=dyn_state, with_grad=True, decode_kinematics=False, fixed_predictor=self.model.m1,
         )
-        m1_traj = roll_res.trajectory
-        target_latents = z_target[:, t_start + 1 : t_start + 1 + horizon]
-
-        q_dim = self.model.q_dim
-        step_weights = torch.ones_like(m1_traj[..., :1])
-        vel_step_weights = torch.ones_like(m1_traj[..., :1])
+        m1_traj, target_latents, q_dim = roll_res.trajectory, z_target[:, t_start + 1 : t_start + 1 + horizon], self.model.q_dim
+        step_weights, vel_step_weights = torch.ones_like(m1_traj[..., :1]), torch.ones_like(m1_traj[..., :1])
         flags_rollout = flags[:, t_start + 1 : t_start + 1 + horizon]
         for b in range(B):
             heft_idx = (flags_rollout[b] == 1).nonzero(as_tuple=False)
@@ -89,28 +76,36 @@ class M1PhaseStrategy(PhaseStrategy):
                 step_weights[b, max(0, h0 - 5) : min(horizon, h_end + 10)] = 2.0
                 vel_step_weights[b, max(0, h0) : min(horizon, h_end + 12)] = 3.0
 
-        pos_diff_sq = (m1_traj[..., :q_dim] - target_latents[..., :q_dim]) ** 2
-        vel_diff_sq = (m1_traj[..., q_dim:] - target_latents[..., q_dim:]) ** 2
-        loss_pos = (step_weights * pos_diff_sq).mean()
-        loss_vel = (vel_step_weights * vel_diff_sq).mean()
+        if closed_loop_batch is not None:
+            cl_pred = self.model.m1(closed_loop_batch["z"].to(events.device), closed_loop_batch["u"].to(events.device)).predicted_latent
+            z_dim, n_open = self.model.latent_dim, m1_traj.numel() // self.model.latent_dim
+            mixed_pred = torch.cat([m1_traj.reshape(-1, z_dim), cl_pred.reshape(-1, z_dim)], dim=0)
+            mixed_target = torch.cat([target_latents.reshape(-1, z_dim), closed_loop_batch["z_next"].to(events.device).reshape(-1, z_dim)], dim=0)
+            mixed_pos_w = torch.cat([step_weights.reshape(-1, 1), torch.ones_like(mixed_target[n_open:, :1])], dim=0)
+            mixed_vel_w = torch.cat([vel_step_weights.reshape(-1, 1), torch.ones_like(mixed_target[n_open:, :1])], dim=0)
+            pos_diff_sq, vel_diff_sq = (mixed_pred[..., :q_dim] - mixed_target[..., :q_dim]) ** 2, (mixed_pred[..., q_dim:] - mixed_target[..., q_dim:]) ** 2
+            loss_pos, loss_vel = (mixed_pos_w * pos_diff_sq).mean(), (mixed_vel_w * vel_diff_sq).mean()
+        else:
+            pos_diff_sq, vel_diff_sq = (m1_traj[..., :q_dim] - target_latents[..., :q_dim]) ** 2, (m1_traj[..., q_dim:] - target_latents[..., q_dim:]) ** 2
+            loss_pos, loss_vel = (step_weights * pos_diff_sq).mean(), (vel_step_weights * vel_diff_sq).mean()
+
         loss_m1 = float(self.cfg.loss.lambda_position) * loss_pos + float(self.cfg.loss.lambda_velocity) * loss_vel
         total_loss = float(self.cfg.loss.lambda_latent) * loss_m1
-
         pos_err, vel_err = 0.0, 0.0
         if flat_kin is not None and hasattr(self.model, "physical_decoder"):
             with torch.no_grad():
                 dec_st = self.model.physical_decoder.warm_up_filter(z_prefix)
                 decoded_kin = self.model.physical_decoder(m1_traj, initial_filter_state=dec_st)
-                target_kin = flat_kin[:, t_start + 1 : t_start + 1 + horizon]
-                jc = self.cfg.environment.joint_count
+                target_kin, jc = flat_kin[:, t_start + 1 : t_start + 1 + horizon], self.cfg.environment.joint_count
                 pos_err, vel_err = position_error(decoded_kin, target_kin, joint_count=jc), velocity_error(decoded_kin, target_kin, joint_count=jc)
 
         metrics = {
-            "loss": float(total_loss.item()), "loss_m1": float(loss_m1.item()),
-            "loss_latent": float(loss_m1.item()), "loss_position": float(loss_pos.item()),
-            "loss_velocity": float(loss_vel.item()), "pos_err": pos_err, "vel_err": vel_err,
-            "mppi_noise_alpha": float(noise_alpha),
+            "loss": float(total_loss.item()), "loss_m1": float(loss_m1.item()), "loss_latent": float(loss_m1.item()),
+            "loss_position": float(loss_pos.item()), "loss_velocity": float(loss_vel.item()),
+            "pos_err": pos_err, "vel_err": vel_err, "mppi_noise_alpha": float(noise_alpha),
         }
+        if closed_loop_batch is not None:
+            metrics["dagger_batch_size"] = float(closed_loop_batch["z"].shape[0])
         return total_loss, metrics
 
     def _extract_batch(
@@ -127,7 +122,11 @@ class M1PhaseStrategy(PhaseStrategy):
         self.model.m1.train()
         assert self.predictor_optimizer is not None
         self.predictor_optimizer.zero_grad()
-        total_loss, m = self._compute_m1_objectives(*self._extract_batch(batch), epoch=epoch, is_train=True)
+        events, actions, flat_kin, phase_flags = self._extract_batch(batch)
+        cl_batch = batch["closed_loop"] if "closed_loop" in batch else None
+        total_loss, m = self._compute_m1_objectives(
+            events, actions, flat_kin, phase_flags, epoch=epoch, is_train=True, closed_loop_batch=cl_batch,
+        )
         total_loss.backward()
         nn.utils.clip_grad_norm_([p for p in self.model.parameters() if p.requires_grad], self.cfg.training.grad_clip_norm)
         self.predictor_optimizer.step()

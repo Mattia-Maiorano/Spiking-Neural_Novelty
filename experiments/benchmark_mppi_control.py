@@ -1,5 +1,5 @@
 """
-Closed-Loop Latent MPPI Downstream Control Benchmark (SPWM-v0.7.3).
+Closed-Loop Latent MPPI Downstream Control Benchmark.
 
 Executes Step 5 of the publication roadmap (Closed-Loop Downstream Control Task).
 Evaluates LatentMPPIController in SPWM's latent phase space across test partition

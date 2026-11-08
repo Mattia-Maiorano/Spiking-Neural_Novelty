@@ -1,5 +1,5 @@
 """
-Zero-Shot Sim-to-Real Domain Gap & Robustness Benchmark Suite (SPWM-v0.7.3).
+Zero-Shot Sim-to-Real Domain Gap & Robustness Benchmark Suite.
 
 Implements empirical robustness stress testing without model retraining or fine-tuning:
 1. Neuromorphic Visual Stream Perturbations (Sensor Domain Gap):

@@ -1,5 +1,5 @@
 """
-Neural MPPI Loss Optimization (SPWM-v0.7.3).
+Neural MPPI Loss Optimization.
 
 Abandons algebraic cost functions. Uses CMA-ES to evolve a Micro-MLP that maps
 raw physical state features (position error, orientation error, velocity, jerk)

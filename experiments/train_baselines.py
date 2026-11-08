@@ -1,7 +1,7 @@
 """
 Comparative Baseline Training & Multi-Horizon Evaluation Runner (DOSSIER Section 6.1).
 
-Trains and benchmarks non-spiking deep recurrent world models against SPWM-v0.7.3:
+Trains and benchmarks non-spiking deep recurrent world models against canonical SPWM:
 1. Continuous RSSM (DreamerV3 style: h_t in R^256, s_t in R^32)
 2. Deep GRU Predictor (2-layer GRU matched to ~328k parameters)
 3. Continuous ConvLSTM (Spatial-temporal recurrence on 2D convolutional feature maps)
@@ -378,6 +378,9 @@ def main() -> None:
     parser.add_argument("--device", type=str, default=None, help="Device (cpu, mps, cuda)")
     parser.add_argument("--seed", type=int, default=42, help="Random seed")
     parser.add_argument("--output-dir", type=str, default="results/baselines", help="Output directory")
+    parser.add_argument("--config", type=Path, default=GLOBAL_VERSION.m1_config(), help="Path to SPWM M1 config")
+    parser.add_argument("--checkpoint", type=Path, default=GLOBAL_VERSION.m1_checkpoint(), help="Path to SPWM M1 checkpoint")
+    parser.add_argument("--m1-metrics", type=Path, default=GLOBAL_VERSION.m1_metrics(), help="Path to SPWM M1 metrics JSON")
     args = parser.parse_args()
 
     set_seed(args.seed)
@@ -498,7 +501,7 @@ def main() -> None:
         )
 
     # 2. Incorporate SPWM production baseline metrics
-    spwm_metrics_file = GLOBAL_VERSION.m1_metrics()
+    spwm_metrics_file = args.m1_metrics
     if spwm_metrics_file.exists():
         with open(spwm_metrics_file, "r", encoding="utf-8") as f:
             spwm_data = json.load(f)
@@ -506,9 +509,9 @@ def main() -> None:
         # Profile SPWM latency on current device
         from spwm.contracts.config import ExperimentConfig
         from spwm.models.world_model import SPWM
-        spwm_cfg = ExperimentConfig.load(GLOBAL_VERSION.m1_config())
+        spwm_cfg = ExperimentConfig.load(args.config)
         spwm_model = SPWM.from_config(spwm_cfg).to(device)
-        spwm_ckpt = torch.load(GLOBAL_VERSION.m1_checkpoint(), map_location=device, weights_only=False)
+        spwm_ckpt = torch.load(args.checkpoint, map_location=device, weights_only=False)
         spwm_state = spwm_ckpt["model_state"] if "model_state" in spwm_ckpt else spwm_ckpt
         spwm_model.load_state_dict(spwm_state, strict=True)
         spwm_latency = measure_inference_latency_ms(spwm_model, device)

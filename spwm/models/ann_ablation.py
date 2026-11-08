@@ -5,7 +5,7 @@ Replaces the 256 ALIF spiking cells in `MultiTimescaleMemory` with identical con
     m_t = beta_mem * m_{t-1} + (1 - beta_mem) * I_t
     r_t = sigmoid(m_t)
 
-Preserves exact 1:1 parity with SPWM-v0.7.3:
+Preserves exact 1:1 parity with SPWM:
 - Identical parameter counts (328,652 parameters)
 - Identical projection matrices and dimensionalities
 - Identical SpatialSoftmax keypoint frontend (K=16)
@@ -401,7 +401,7 @@ class ANNWorldModel(nn.Module):
       3. Dual-timescale ContinuousRateDynamics (128,066 params)
       4. Action-Conditioned Latent Attractor Predictor M1 (65,856 params)
       5. Articulated Joint Kinematic PhysicalDecoder (14,890 params)
-    Total Trainable Parameters: 328,652 (strictly identical to SPWM-v0.7.3).
+    Total Trainable Parameters: 328,652 (strictly identical to SPWM).
     """
 
     def __init__(

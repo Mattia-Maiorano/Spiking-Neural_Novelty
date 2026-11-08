@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-Offline Dry-Run Verification Script for Smooth Ground Truth Blending (SPWM-v0.7.2).
+Offline Dry-Run Verification Script for Smooth Ground Truth Blending.
 
 Verifies:
 1. Rollout with soft-fade handover executes cleanly across the test dataset.
@@ -16,6 +16,7 @@ import torch
 import numpy as np
 
 from spwm.contracts.config import ExperimentConfig
+from spwm.contracts.version import GLOBAL_VERSION
 from spwm.data.datasets import create_dataloaders
 from spwm.evaluation.evaluator import RolloutEvaluator
 from spwm.models.world_model import SPWM
@@ -24,8 +25,8 @@ from spwm.utils.reproducibility import set_seed
 
 def main() -> int:
     parser = argparse.ArgumentParser(description="Dry-run smooth rollout verification.")
-    parser.add_argument("--checkpoint", type=str, default="results/spwm_v0_7_0_train_m1/model.pt")
-    parser.add_argument("--config", type=str, default="results/spwm_v0_7_0_train_m1/config.yaml")
+    parser.add_argument("--checkpoint", type=str, default=str(GLOBAL_VERSION.m1_checkpoint()))
+    parser.add_argument("--config", type=str, default=str(GLOBAL_VERSION.m1_config()))
     parser.add_argument("--horizon", type=int, default=100)
     args = parser.parse_args()
 

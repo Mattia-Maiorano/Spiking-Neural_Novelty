@@ -27,7 +27,7 @@ class VersionSolver:
     """
 
     version: int = 0
-    minor: int = 7
+    minor: int = 8
     patch: int = 3
     prefix: str = "SPWM"
 
@@ -191,7 +191,7 @@ class VersionSolver:
 
 
 # Global SSOT Version Instance
-GLOBAL_VERSION = VersionSolver(version=0, minor=7, patch=3, prefix="SPWM")
+GLOBAL_VERSION = VersionSolver()
 GLOBAL_VERSION_SOLVER = GLOBAL_VERSION
 VERSION_SOLVER = GLOBAL_VERSION
 

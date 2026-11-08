@@ -264,4 +264,90 @@ def test_recalibrated_mppi_noise_curriculum():
     assert abs(compute_mppi_noise_alpha(70) - 0.50) < 1e-6
 
 
+def test_four_phase_latch_curriculum():
+    """Verify the 4-Phase Curriculum state machine and irreversible threshold latch."""
+    from spwm.training.noise import LatchCurriculumState
+
+    curric = LatchCurriculumState(tier2_frequency=5)
+    assert curric.current_curriculum_phase == 1
+
+    # Phase 1: Warmup Nominal (w_t = 0.60, alpha = 0.0, dagger_ratio = 0.0)
+    phase, w_t, alpha, dagger = curric.begin_epoch()
+    assert (phase, w_t, alpha, dagger) == (1, 0.60, 0.0, 0.0)
+    assert curric.end_epoch(train_loss=0.025) == 1  # Above 0.01 -> stay in Phase 1
+
+    phase, w_t, alpha, dagger = curric.begin_epoch()
+    assert (phase, w_t, alpha, dagger) == (1, 0.60, 0.0, 0.0)
+    assert curric.end_epoch(train_loss=0.009) == 2  # < 0.01 -> latch to Phase 2!
+
+    # Phase 2: Sensory Fade-Out over 7 epochs (0.60 -> 0.0), irreversible even if loss spikes!
+    for step in range(1, 7):
+        phase, w_t, alpha, dagger = curric.begin_epoch()
+        assert phase == 2
+        assert w_t > 0.0
+        assert alpha == 0.0 and dagger == 0.0
+        # Even if loss spikes to 0.50, latch prevents going back to Phase 1
+        assert curric.end_epoch(train_loss=0.50) == 2
+
+    # 7th epoch of Phase 2 reaches w_t == 0.0
+    phase, w_t, alpha, dagger = curric.begin_epoch()
+    assert phase == 2 and w_t == 0.0 and alpha == 0.0 and dagger == 0.0
+    # If loss is still >= 0.008, stays in Phase 2 with w_t == 0.0
+    assert curric.end_epoch(train_loss=0.009) == 2
+    phase, w_t, alpha, dagger = curric.begin_epoch()
+    assert phase == 2 and w_t == 0.0
+    # Once w_t == 0.0 AND train_loss < 0.008 -> latch to Phase 3!
+    assert curric.end_epoch(train_loss=0.0075) == 3
+
+    # Phase 3: Noise Ramp-Up over 10 epochs (alpha: 0.0 -> 0.4, w_t = 0.0)
+    for step in range(1, 10):
+        phase, w_t, alpha, dagger = curric.begin_epoch()
+        assert phase == 3 and w_t == 0.0 and dagger == 0.0
+        assert abs(alpha - 0.4 * (step / 10.0)) < 1e-5
+        assert curric.end_epoch(train_loss=0.20) == 3
+
+    # 10th epoch of Phase 3 reaches alpha == 0.4 -> latch to Phase 4!
+    phase, w_t, alpha, dagger = curric.begin_epoch()
+    assert phase == 3 and w_t == 0.0 and abs(alpha - 0.4) < 1e-6 and dagger == 0.0
+    assert curric.end_epoch(train_loss=0.20) == 4
+
+    # Phase 4: Fast DAgger Integration (scales 0.10 -> 0.50 over 2 * tier2_frequency = 10 epochs)
+    phase, w_t, alpha, dagger = curric.begin_epoch()
+    assert phase == 4 and w_t == 0.0 and abs(alpha - 0.4) < 1e-6
+    assert abs(dagger - 0.10) < 1e-6
+    curric.end_epoch(train_loss=0.50)
+
+    for _ in range(9):
+        phase, w_t, alpha, dagger = curric.begin_epoch()
+        curric.end_epoch(train_loss=0.50)
+
+    # At 2 * tier2_frequency epochs into Phase 4, reaches 50/50 split (0.50) and stays at 0.50
+    phase, w_t, alpha, dagger = curric.begin_epoch()
+    assert phase == 4 and w_t == 0.0 and abs(alpha - 0.4) < 1e-6
+    assert abs(dagger - 0.50) < 1e-6
+
+
+def test_closed_loop_buffer_default_3_generations():
+    """Verify default max_eval_generations=3 and eviction of generation N-3 before ingesting N."""
+    buf = ClosedLoopBuffer(capacity=1000)
+    assert buf.max_eval_generations == 3
+
+    for gen_idx in range(1, 5):
+        gen = [
+            {
+                "z_init": torch.randn(32),
+                "actions": torch.randn(8, 6),
+                "targets": torch.randn(8, 32),
+                "length": 8,
+                "trajectory_id": gen_idx * 100 + 1,
+            }
+        ]
+        buf.push_trajectories(gen)
+
+    # After 4 generations pushed, Gen 1 (101) is discarded and only Gens 2, 3, 4 remain
+    assert len(buf.eval_generations) == 3
+    assert [t["trajectory_id"] for t in buf.trajectories] == [201, 301, 401]
+
+
+
 

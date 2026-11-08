@@ -371,16 +371,15 @@ To demonstrate downstream closed-loop control without relying on an external phy
   $$\mathbf{z}_{\tau+1} = M_1(\mathbf{z}_\tau, \mathbf{u}_\tau), \quad \hat{\mathbf{y}}_\tau = \text{PhysicalDecoder}(\mathbf{z}_\tau)$$
   where $\mathbf{z}_0$ is grounded from the latest sensory frames via active perception. Neither the visual encoder nor ALIF spiking dynamics are executed during the $K \times H$ mental simulation, enabling ultra-fast vectorization.
 
-### 8.2 Path Integral Cost Function
-The cumulative trajectory cost $\mathcal{C}_k$ for candidate $k$ eliminates intermediate position penalties and velocity damping, focusing on terminal accuracy, terminal stasis, anti-gravity altitude reward, and control smoothness:
-$$\mathcal{C}_k = \sum_{\tau=H-H_{\text{term}}+1}^H \left[ w_{\text{term\_pos}} \|\mathbf{x}_{\text{ee}}(\tau) - \mathbf{x}_{\text{goal}}\|_2 + w_{\text{term\_rot}} \mathcal{L}_{\text{rot}}(\mathbf{R}_{\text{ee}}(\tau), \mathbf{R}_{\text{goal}}) \right] + w_{\text{vel}} \|\hat{\mathbf{p}}_H\|_2 + \sum_{\tau=1}^H w_{\text{act}} \|\mathbf{u}_\tau - \mathbf{u}_{\tau-1}\|_2 - \mathcal{R}_{\text{alt}}$$
+### 8.2 Lifting-Aware Physics-Grounded Cost Function
+The cumulative trajectory cost $\mathcal{C}_k$ for candidate $k$ evaluates $M_1$'s latent rollout passed through `PhysicalDecoder` and `DifferentiableForwardKinematics` without unfairly penalizing sustained motor effort required for lifting:
+$$\mathcal{C}_k = \sum_{t=1}^H \left[ W_{\text{pos}} \|\mathbf{x}_{\text{ee}}(t) - \mathbf{x}_{\text{target}}\|_2 + W_{\text{rot}} (1 - \cos(\theta_{\text{error}}(t))) + W_{\text{jerk}} \|\mathbf{u}_t - \mathbf{u}_{t-1}\|_2^2 - W_{\text{success}} \mathbb{I}(z_{\text{ee}}(t) > z_{\text{table}}) \right]$$
 
 where:
-- **Terminal Cost Horizon**: Position and SE(3) orientation errors are evaluated exclusively over the terminal horizon window ($H_{\text{term}} = 4$, last 3–5 steps) with no running in-itinere position cost.
-- **Terminal Stasis Gate**: Joint velocity damping is zero during transit ($w_{\text{vel\_itinere}} = 0$) and applied solely at the final step $\tau = H$.
-- **Anti-Gravity Altitude Heuristic**: When the target is higher than the initial end-effector position ($y_{\text{goal}} > y_{\text{ee}}(0)$), upward altitude increments are explicitly rewarded to cancel gravity droop:
-  $$\mathcal{R}_{\text{alt}} = w_{\text{altitude}} \cdot \mathbb{I}(y_{\text{goal}} > y_{\text{ee}}(0)) \sum_{\tau=1}^{H-1} \max(0, y_{\text{ee}}(\tau+1) - y_{\text{ee}}(\tau))$$
-- $\mathcal{L}_{\text{rot}}(\mathbf{R}_{\text{ee}}, \mathbf{R}_{\text{goal}}) = (1 - \mathbf{f}_{\text{ee}}^\top \mathbf{f}_{\text{goal}}) + (1 - \mathbf{u}_{\text{ee}}^\top \mathbf{u}_{\text{goal}})$ enforces orientation alignment across end-effector forward (+Z) and up (+Y) coordinate frames.
+- **Positional Cost**: $W_{\text{pos}} \|\mathbf{x}_{\text{ee}}(t) - \mathbf{x}_{\text{target}}\|_2$ measures Euclidean distance to the target 3D coordinates.
+- **Rotational Cost**: $W_{\text{rot}} (1 - \cos(\theta_{\text{error}}(t)))$ measures geodesic $SO(3)$ orientation alignment error from $\cos(\theta_{\text{error}}) = \operatorname{clamp}((\operatorname{Tr}(\mathbf{R}_{\text{ee}}^\top \mathbf{R}_{\text{target}}) - 1)/2, -1, 1)$.
+- **Action Smoothness (Jerk Penalty)**: $W_{\text{jerk}} \|\mathbf{u}_t - \mathbf{u}_{t-1}\|_2^2$ penalizes aggressive high-frequency action oscillations while permitting sustained lifting effort.
+- **Success Bonus**: $-W_{\text{success}} \mathbb{I}(z_{\text{ee}}(t) > z_{\text{table}})$ rewards trajectories that elevate above the table surface threshold (`table_surface_threshold`).
 
 - **Controller Parameters**:
   - Class defaults in [`LatentMPPIController`](file:///Users/Mattia/Desktop/Studies/Temp/spwm/evaluation/mppi.py): $H = 30, H_{\text{term}} = 4, \beta = 0.75, w_{\text{pos}} = 0.0, w_{\text{rot}} = 0.0, w_{\text{term\_pos}} = 5.0, w_{\text{term\_rot}} = 2.0, w_{\text{vel}} = 0.08, w_{\text{act}} = 0.005, w_{\text{altitude}} = 2.0$, sampling noise $\boldsymbol{\Sigma} = [0.24, 0.44, 0.38, 0.24, 0.24, 0.24]$, temperature $\lambda = 0.15$.

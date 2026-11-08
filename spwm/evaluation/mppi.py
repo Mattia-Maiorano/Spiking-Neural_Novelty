@@ -57,14 +57,7 @@ class LatentMPPIController:
         noise_beta: float = 0.75,
         temperature: float = 0.15,
         num_iterations: int = 3,
-        w_pos: float = 1.0,
-        w_rot: float = 0.5,
-        w_vel: float = 0.08,
-        w_act: float = 0.005,
-        w_term_pos: float = 5.0,
-        w_term_rot: float = 2.0,
-        terminal_steps: int = 4,
-        w_altitude: float = 2.0,
+        terminal_steps: Optional[int] = None,
         device: Optional[torch.device] = None,
         seed: Optional[int] = None,
     ) -> None:
@@ -72,14 +65,13 @@ class LatentMPPIController:
             raise ValueError(f"num_samples must be > 0, got {num_samples}")
         if horizon <= 0:
             raise ValueError(f"horizon must be > 0, got {horizon}")
-        if terminal_steps <= 0 or terminal_steps > horizon:
-            raise ValueError(f"terminal_steps must be in 1..{horizon}, got {terminal_steps}")
+        resolved_term_steps = int(terminal_steps) if terminal_steps is not None else min(4, horizon)
+        if resolved_term_steps <= 0 or resolved_term_steps > horizon:
+            raise ValueError(f"terminal_steps must be in 1..{horizon}, got {resolved_term_steps}")
         if temperature <= 0.0:
             raise ValueError(f"temperature must be > 0.0, got {temperature}")
         if not (0.0 <= noise_beta < 1.0):
             raise ValueError(f"noise_beta must be in [0.0, 1.0), got {noise_beta}")
-
-        #HARDCODED FOR DEBUG
 
         self.predictor = predictor
         self.physical_decoder = physical_decoder
@@ -87,7 +79,7 @@ class LatentMPPIController:
 
         self.num_samples = num_samples
         self.horizon = horizon
-        self.terminal_steps = int(terminal_steps)
+        self.terminal_steps = resolved_term_steps
         self.action_dim = action_dim
         self.action_min = float(action_min)
         self.action_max = float(action_max)
@@ -95,19 +87,15 @@ class LatentMPPIController:
         self.temperature = float(temperature)
         self.num_iterations = num_iterations
 
-        self.w_pos = float(w_pos)
-        self.w_rot = float(w_rot)
-        self.w_vel = float(w_vel)
-        self.w_act = float(w_act)
-        self.w_term_pos = float(w_term_pos)
-        self.w_term_rot = float(w_term_rot)
-        self.w_altitude = float(w_altitude)
-
-        self.pos_gamma = 1.1336
-        self.pos_norm_p = 1
-        self.vel_radius = 0.2324
-        self.vel_gamma = 3.6588
-        self.act_gamma = 2.8109
+        # Autonomous weights definition
+        self.w_pos = 10.0
+        self.w_rot = 7.0
+        self.w_jerk = 0.1
+        self.w_vel = 0.0
+        self.w_act = self.w_jerk
+        self.w_term_pos = 0.0
+        self.w_term_rot = 0.0
+        self.w_altitude = 0.0
 
         dev = device if device is not None else next(predictor.parameters()).device
         self.device = dev
@@ -257,10 +245,9 @@ class LatentMPPIController:
 
             z_trajectories = torch.stack(z_traj_list, dim=1)  # [K, H, latent_dim]
 
-            # 3. Decode generalized joint positions and velocities
+            # 3. Pass M1's latent trajectory output through PhysicalDecoder
             decoded = self.physical_decoder(z_trajectories)  # [K, H, 2 * joint_count]
             q_hat = decoded[..., : self.physical_decoder.joint_count]  # [K, H, 6]
-            p_hat = decoded[..., self.physical_decoder.joint_count :]  # [K, H, 6]
 
             # 4. Compute end-effector Cartesian positions and poses via Differentiable FK
             if target_orientation is not None:
@@ -271,62 +258,14 @@ class LatentMPPIController:
                 ee_pos = self.fk(q_hat)                     # [K, H, 3]
                 R_ee = None
 
-            # 5. Evaluate Trajectory Cost
-            term_slice = slice(-self.terminal_steps, None)
-
-            # A. Anisotropic L1 Position Cost with learned gamma exponent
-            delta_pos = ee_pos - target_coords.view(1, 1, 3)
-            axis_weights = torch.tensor([1.0, 2.5, 1.0], device=self.device)
-            raw_pos_err = torch.norm(delta_pos * axis_weights.view(1, 1, 3), p=self.pos_norm_p, dim=-1)
-            pos_err_weighted = raw_pos_err ** self.pos_gamma
-            
-            running_pos_cost = self.w_pos * pos_err_weighted.sum(dim=-1)
-            terminal_pos_cost = self.w_term_pos * pos_err_weighted[:, term_slice].mean(dim=-1)
-
-            # B. SE(3) Orientation Cost (unchanged)
-            if target_orientation is not None and R_ee is not None:
-                t_fwd = target_orientation[:, 2].view(1, 1, 3)
-                t_up = target_orientation[:, 1].view(1, 1, 3)
-                ee_fwd = R_ee[..., :, 2]
-                ee_up = R_ee[..., :, 1]
-                rot_err_step = (1.0 - torch.sum(ee_fwd * t_fwd, dim=-1)) + (1.0 - torch.sum(ee_up * t_up, dim=-1))
-                
-                running_rot_cost = self.w_rot * rot_err_step.sum(dim=-1)
-                terminal_rot_cost = self.w_term_rot * rot_err_step[:, term_slice].mean(dim=-1)
-            else:
-                running_rot_cost = torch.zeros(K, device=self.device)
-                terminal_rot_cost = torch.zeros(K, device=self.device)
-
-            # C. Steep-Braking Velocity Penalty with expanded 23.2 cm radius
-            vel_norm = torch.norm(p_hat, p=2, dim=-1)
-            true_dist = torch.norm(delta_pos, p=2, dim=-1)
-            
-            dist_scaling = torch.clamp(true_dist / self.vel_radius, min=0.0, max=1.0)
-            engagement_curve = (1.0 - dist_scaling) ** self.vel_gamma
-            vel_cost = self.w_vel * torch.sum(vel_norm * engagement_curve, dim=-1)
-
-            # D. Super-Quadratic Action Smoothness Penalty (act_gamma = 2.81)
-            delta_u_0 = candidates[:, 0] - u_prev.unsqueeze(0)
-            delta_u_rest = candidates[:, 1:] - candidates[:, :-1]
-            delta_u = torch.cat([delta_u_0.unsqueeze(1), delta_u_rest], dim=1)
-            delta_u_norm = torch.norm(delta_u, p=2, dim=-1)
-            act_cost = self.w_act * torch.sum(delta_u_norm ** self.act_gamma, dim=-1)
-
-            # E. Information-Theoretic MPPI Control Penalty
-            variance = self.sigma_tensor ** 2
-            control_penalty = self.temperature * torch.sum(
-                (curr_nominal.unsqueeze(0) * noise) / variance.view(1, 1, D_u), dim=(1, 2)
-            )
-
-            # Total cost per candidate trajectory
-            total_costs = (
-                running_pos_cost + 
-                terminal_pos_cost + 
-                running_rot_cost + 
-                terminal_rot_cost + 
-                vel_cost + 
-                act_cost + 
-                control_penalty
+            # 5. Evaluate Lifting-Aware Physics-Grounded Trajectory Cost
+            total_costs = self.compute_trajectory_cost(
+                ee_pos=ee_pos,
+                target_coords=target_coords,
+                u_seq=candidates,
+                u_prev=u_prev,
+                R_ee=R_ee,
+                target_orientation=target_orientation,
             )
 
 
@@ -353,8 +292,8 @@ class LatentMPPIController:
             curr_nominal = (1.0 - gamma) * curr_nominal + gamma * new_nominal
             curr_nominal = torch.clamp(curr_nominal, self.action_min, self.action_max)
 
-        # Selected immediate action to execute
-        action_to_execute = curr_nominal[0].clone()
+        # Selected immediate action to execute, strictly clamped against EMA drift
+        action_to_execute = torch.clamp(curr_nominal[0].clone(), self.action_min, self.action_max)
 
         self.nominal_actions = curr_nominal.clone()
         self.prev_action = action_to_execute.clone()
@@ -374,24 +313,62 @@ class LatentMPPIController:
             candidate_weights=candidate_w,
         )
 
+    def compute_trajectory_cost(
+        self,
+        ee_pos: torch.Tensor,
+        target_coords: torch.Tensor,
+        u_seq: torch.Tensor,
+        u_prev: torch.Tensor,
+        R_ee: Optional[torch.Tensor] = None,
+        target_orientation: Optional[torch.Tensor] = None,
+    ) -> torch.Tensor:
+        """Evaluates the physics-grounded, lifting-aware MPPI trajectory cost over K candidates.
+
+        Formulation per step t:
+          - Positional Cost: W_pos * ||pos_current - target_pos||_2
+          - Rotational Cost: W_rot * (1 - cos(theta_error))
+          - Action Smoothness (Jerk Penalty): W_jerk * ||u_t - u_{t-1}||_2^2
+        """
+        K = ee_pos.shape[0]
+        # 1. Positional Cost: W_pos * ||pos_current - target_pos||_2
+        pos_err = torch.norm(ee_pos - target_coords.view(1, 1, 3), p=2, dim=-1)  # [K, H]
+        pos_cost = self.w_pos * pos_err.sum(dim=-1)  # [K]
+
+        # 2. Rotational Cost: W_rot * (1 - cos(theta_error))
+        if target_orientation is not None and R_ee is not None:
+            r_rel = torch.matmul(R_ee.transpose(-1, -2), target_orientation.view(1, 1, 3, 3))
+            trace_r = torch.diagonal(r_rel, dim1=-2, dim2=-1).sum(-1)  # [K, H]
+            cos_theta = torch.clamp((trace_r - 1.0) * 0.5, -1.0, 1.0)
+            rot_err_step = 1.0 - cos_theta
+            rot_cost = self.w_rot * rot_err_step.sum(dim=-1)  # [K]
+        else:
+            rot_cost = torch.zeros(K, device=ee_pos.device, dtype=ee_pos.dtype)
+
+        # 3. Action Smoothness (Jerk Penalty): W_jerk * ||u_t - u_{t-1}||_2^2
+        delta_u_0 = u_seq[:, 0] - u_prev.unsqueeze(0)
+        delta_u_rest = u_seq[:, 1:] - u_seq[:, :-1]
+        delta_u = torch.cat([delta_u_0.unsqueeze(1), delta_u_rest], dim=1)  # [K, H, D_u]
+        jerk_sq = torch.sum(delta_u ** 2, dim=-1)  # [K, H]
+        jerk_cost = self.w_jerk * jerk_sq.sum(dim=-1)  # [K]
+
+        return pos_cost + rot_cost + jerk_cost
+
 
 def compute_rot_error(
     fk: DifferentiableForwardKinematics,
     q: torch.Tensor,
     target_pose_mat: torch.Tensor,
 ) -> float:
-    """Computes SE(3) rotation error matching the MPPI cost function formulation."""
+    """Computes geodesic SO(3) rotational error theta_error in radians."""
     t_input = q.unsqueeze(0) if q.dim() == 1 else q
     T_ee = fk.forward_homogeneous(t_input)[0]
     R_ee = T_ee[:3, :3]
     target_rot = target_pose_mat[:3, :3]
-    ee_fwd = R_ee[:, 2]
-    ee_up = R_ee[:, 1]
-    t_fwd = target_rot[:, 2]
-    t_up = target_rot[:, 1]
-    fwd_err = 1.0 - torch.sum(ee_fwd * t_fwd, dim=-1)
-    up_err = 1.0 - torch.sum(ee_up * t_up, dim=-1)
-    return float((fwd_err + up_err).item())
+    r_rel = torch.matmul(R_ee.transpose(-1, -2), target_rot)
+    trace_r = torch.diagonal(r_rel, dim1=-2, dim2=-1).sum(-1)
+    cos_theta = torch.clamp((trace_r - 1.0) * 0.5, -1.0, 1.0)
+    theta_err = torch.acos(cos_theta)
+    return float(theta_err.item())
 
 
 def classify_elevation(y: float) -> str:
@@ -412,7 +389,6 @@ def compute_structural_score(
     pos_threshold_cm: float = 3.0,
     vel_threshold: float = 1.5,
     rot_threshold: float = 0.05,
-    success_bonus: float = 2.0,
 ) -> Tuple[float, bool]:
     """Computes continuous structural shaping score for closed-loop MPPI reaching.
 
@@ -432,7 +408,7 @@ def compute_structural_score(
         and (final_vel < vel_threshold)
         and (final_rot < rot_threshold)
     )
-    score = raw_score - (success_bonus if is_success else 0.0)
+    score = raw_score
     return float(score), is_success
 
 
@@ -584,6 +560,8 @@ class MPPIStructuralScorer:
         traj_z_next: List[torch.Tensor] = []
 
         step_errors: List[float] = []
+        step_rot_errors_rad: List[float] = []
+        step_mppi_costs: List[float] = []
         final_vel = 0.0
         final_rot = 0.0
 
@@ -599,6 +577,7 @@ class MPPIStructuralScorer:
             if len(traj_z) > len(traj_z_next):
                 traj_z_next.append(z_t.detach().cpu())
 
+            u_before = prev_u.clone()
             res = controller.plan_step(z_t, target_pose_mat, prev_action=prev_u)
             prev_u = res.action
 
@@ -606,13 +585,32 @@ class MPPIStructuralScorer:
             traj_u.append(res.action.detach().cpu())
 
             dec_t = model.physical_decoder(z_t)
-            ee_t = self.fk(dec_t[:, :6])[0].detach()
-            err_cm = float((torch.norm(ee_t - target_pos_t) * 100.0).item())
+            T_ee_t = self.fk.forward_homogeneous(dec_t[:, :6])[0].detach()
+            ee_t = T_ee_t[:3, 3]
+            R_ee_t = T_ee_t[:3, :3]
+            pos_err_m = float(torch.norm(ee_t - target_pos_t, p=2).item())
+            err_cm = pos_err_m * 100.0
             step_errors.append(err_cm)
+
+            rot_err_rad = compute_rot_error(self.fk, dec_t[0, :6], target_pose_mat)
+            step_rot_errors_rad.append(rot_err_rad)
+
+            # Evaluate the Lifting-Aware MPPI Cost at step t
+            step_cost = float(
+                controller.compute_trajectory_cost(
+                    ee_pos=ee_t.view(1, 1, 3),
+                    target_coords=target_pos_t,
+                    u_seq=res.action.view(1, 1, -1),
+                    u_prev=u_before,
+                    R_ee=R_ee_t.view(1, 1, 3, 3),
+                    target_orientation=target_pose_mat[:3, :3],
+                )[0].item()
+            )
+            step_mppi_costs.append(step_cost)
 
             if t == t_grasp:
                 final_vel = float(torch.norm(dec_t[0, 6:12]).item())
-                final_rot = compute_rot_error(self.fk, dec_t[0, :6], target_pose_mat)
+                final_rot = rot_err_rad
 
         if len(traj_z) > len(traj_z_next):
             traj_z.pop()
@@ -634,18 +632,24 @@ class MPPIStructuralScorer:
             "trajectory_id": int(batch["trajectory_id"]),
         }
 
-        score, is_success = compute_structural_score(step_errors, final_vel, final_rot)
+        mppi_cost_score = float(np.mean(step_mppi_costs))
+        structural_score_val, is_success = compute_structural_score(step_errors, final_vel, final_rot)
         window_errors = step_errors[-3:] if len(step_errors) >= 3 else step_errors
         steady_state_error = float(np.mean(window_errors))
+        mean_cartesian_err_cm = float(np.mean(step_errors))
+        mean_rot_err_rad = float(np.mean(step_rot_errors_rad))
 
         return {
-            "score": score,
+            "score": structural_score_val,
+            "mppi_cost": mppi_cost_score,
             "success": 1.0 if is_success else 0.0,
             "min_error_cm": min(step_errors),
+            "mean_cartesian_err_cm": mean_cartesian_err_cm,
             "terminal_error_cm": step_errors[-1],
             "steady_state_error_cm": steady_state_error,
             "final_vel": final_vel,
             "final_rot": final_rot,
+            "rot_err_rad": mean_rot_err_rad,
             "pos_penalty": (steady_state_error / 3.0) ** 2,
             "vel_penalty": (final_vel / 1.5) ** 2,
             "rot_penalty": (final_rot / 0.05) ** 2,
@@ -684,7 +688,7 @@ class MPPIStructuralScorer:
         n = len(all_results)
         mean_score = float(np.mean([r["score"] for r in all_results]))
         success_rate = float(np.mean([r["success"] for r in all_results]))
-        mean_min_err = float(np.mean([r["min_error_cm"] for r in all_results]))
+        mean_cart_err = float(np.mean([r["mean_cartesian_err_cm"] for r in all_results]))
         mean_term_err = float(np.mean([r["terminal_error_cm"] for r in all_results]))
         mean_vel = float(np.mean([r["final_vel"] for r in all_results]))
         mean_rot = float(np.mean([r["final_rot"] for r in all_results]))
@@ -694,11 +698,16 @@ class MPPIStructuralScorer:
 
         return {
             "mppi_score": mean_score,
+            "mppi_cost": mean_score,
             "mppi_success_rate": success_rate,
-            "mppi_mean_error_cm": mean_min_err,
+            "success_rate": success_rate,
+            "mppi_mean_error_cm": mean_cart_err,
+            "mean_cartesian_err_cm": mean_cart_err,
             "mppi_terminal_error_cm": mean_term_err,
             "mppi_final_vel": mean_vel,
             "mppi_final_rot": mean_rot,
+            "mppi_rot_err_rad": mean_rot,
+            "rotational_err_rad": mean_rot,
             "mppi_pos_penalty": mean_pos_pen,
             "mppi_vel_penalty": mean_vel_pen,
             "mppi_rot_penalty": mean_rot_pen,

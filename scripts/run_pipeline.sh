@@ -293,11 +293,50 @@ run_sim_data() {
 }
 
 # ------------------------------------------------------------------------------
+# Helper: Ensure Simulation Trajectories
+# ------------------------------------------------------------------------------
+ensure_simulation_trajectories() {
+    local traj_count
+    traj_count=$(find "sim/ExportedTrajectories" -maxdepth 1 -name "trajectory_*.json*" 2>/dev/null | wc -l | tr -d ' ')
+    if [[ -z "${traj_count}" || "${traj_count}" -eq 0 ]]; then
+        echo ">>> No simulation trajectories found in sim/ExportedTrajectories."
+        echo ">>> Autonomously generating required trajectories via Unity headless simulation..."
+        run_sim_data
+    else
+        echo ">>> Found ${traj_count} trajectories in sim/ExportedTrajectories."
+    fi
+}
+
+# ------------------------------------------------------------------------------
 # Action 2: Training (Representation + M1)
 # ------------------------------------------------------------------------------
 run_train() {
     local epochs="${EPOCHS:-$DEFAULT_EPOCHS}"
     local cfg="${CONFIG_PATH:-}"
+    local ckpt="${CHECKPOINT_PATH:-}"
+
+    if [[ -n "${ckpt}" ]]; then
+        local ckpt_name
+        ckpt_name="$(basename "${ckpt}")"
+        if [[ "${ckpt_name}" =~ ^checkpoint_phase_([0-9]+)(\.pt)?$ ]]; then
+            local phase_num="${BASH_REMATCH[1]}"
+            echo ">>> Detected phase checkpoint '${ckpt_name}' (Phase ${phase_num})."
+            ensure_simulation_trajectories
+            echo "======================================================================"
+            echo " Resuming training autonomously from Phase ${phase_num} checkpoint..."
+            echo "======================================================================"
+            local resume_cmd=("${PYTHON_BIN}" "experiments/train.py" "--mode" "train_m1" "--epochs" "${epochs}")
+            if [[ -n "${cfg}" ]]; then
+                resume_cmd+=("--config" "${cfg}")
+            fi
+            resume_cmd+=("--checkpoint" "${ckpt}")
+            "${resume_cmd[@]}"
+            echo ">>> Training completed successfully from checkpoint."
+            return 0
+        fi
+    fi
+
+    ensure_simulation_trajectories
 
     echo "======================================================================"
     echo " [1/2] Training Representation Phase (Phase 0)..."
@@ -328,6 +367,9 @@ run_train_m1() {
     local cfg="${CONFIG_PATH:-}"
     local from_scratch="${FROM_SCRATCH:-0}"
     local weighted_sampling="${WEIGHTED_SAMPLING:-1}"
+    local ckpt="${CHECKPOINT_PATH:-}"
+
+    ensure_simulation_trajectories
 
     echo "======================================================================"
     echo " Training M1 Latent Predictor Phase (Phase 1)..."
@@ -337,6 +379,9 @@ run_train_m1() {
     local m1_cmd=("${PYTHON_BIN}" "experiments/train.py" "--mode" "train_m1" "--epochs" "${epochs}")
     if [[ -n "${cfg}" ]]; then
         m1_cmd+=("--config" "${cfg}")
+    fi
+    if [[ -n "${ckpt}" ]]; then
+        m1_cmd+=("--checkpoint" "${ckpt}")
     fi
     if [[ "${from_scratch}" -eq 1 ]]; then
         m1_cmd+=("--from-scratch")

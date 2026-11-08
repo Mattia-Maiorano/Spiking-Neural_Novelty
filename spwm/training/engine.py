@@ -37,7 +37,7 @@ from spwm.contracts.config import (
 from spwm.contracts.protocols import PhaseStrategy, Tier2EvaluatorProtocol
 from spwm.contracts.version import GLOBAL_VERSION
 from spwm.training.losses import SPWMLoss
-from spwm.training.noise import compute_dagger_ratio
+from spwm.training.noise import LatchCurriculumState, compute_dagger_ratio
 from spwm.training.phases import PredictorPhaseHandler
 
 
@@ -207,7 +207,7 @@ class EMATracker:
     def __init__(
         self,
         model: nn.Module,
-        decay: float = 0.99,
+        decay: float = 0.990,
         device: Optional[Union[str, torch.device]] = None,
     ) -> None:
         if not (0.0 <= decay <= 1.0):
@@ -266,7 +266,7 @@ class ClosedLoopBuffer:
     distributional drift and cross-run contamination.
     """
 
-    def __init__(self, capacity: int = 50_000, max_eval_generations: int = 2) -> None:
+    def __init__(self, capacity: int = 50_000, max_eval_generations: int = 3) -> None:
         if capacity <= 0:
             raise ValueError(f"Capacity must be positive, got {capacity}")
         if max_eval_generations <= 0:
@@ -362,9 +362,10 @@ class ClosedLoopBuffer:
             }
             clean_gen.append(clean_traj)
 
-        self.eval_generations.append(clean_gen)
-        while len(self.eval_generations) > self.max_eval_generations:
+        # Cleanly discard trajectories from generation N - max_eval_generations (e.g. N-3) before ingesting new ones
+        while len(self.eval_generations) >= self.max_eval_generations:
             self.eval_generations.pop(0)
+        self.eval_generations.append(clean_gen)
 
         # Flatten active generations into active trajectories
         self.trajectories = [t for gen in self.eval_generations for t in gen]
@@ -433,7 +434,7 @@ class ClosedLoopBuffer:
             sampled_zn = torch.stack([self.z_next[i].to(dev) for i in indices]).unsqueeze(1) if dev is not None else torch.stack([self.z_next[i] for i in indices]).unsqueeze(1)
             return {"z_init": sampled_z, "actions": sampled_u, "targets": sampled_zn}
 
-        k = min(batch_size, len(self.trajectories))
+        k = int(batch_size)
         indices = torch.randint(0, len(self.trajectories), (k,))
         sampled_trajs = [self.trajectories[int(i.item())] for i in indices]
         H = min(horizon, min(t["length"] for t in sampled_trajs))
@@ -617,6 +618,12 @@ class BaseTrainer:
         self.best_score = best_score
         self.best_epoch = best_epoch
         self.history: List[Dict[str, float]] = history or []
+        self.curriculum = LatchCurriculumState(
+            tier2_frequency=self.tier2_frequency,
+            noise_ramp_epochs=self.cfg.training.mppi_noise_ramp_epochs,
+            target_alpha=self.cfg.training.mppi_noise_target_alpha,
+        )
+        self.current_curriculum_phase: int = 1
 
     @property
     def predictor_optimizer(self) -> Optional[torch.optim.Optimizer]:
@@ -639,24 +646,41 @@ class BaseTrainer:
         self.handler.verify_gradient_isolation()
 
     def train_epoch(self, epoch: int) -> Dict[str, float]:
-        """Executes a single epoch over train_loader using the active PhaseStrategy."""
+        """Executes a single epoch over train_loader using the 4-Phase Latch Curriculum and active PhaseStrategy."""
         if self.train_loader is None:
             raise RuntimeError("Cannot call train_epoch when train_loader is None.")
         train_accum: Dict[str, float] = {}
         batch_count = 0
-        min_buffer_samples = 16
+        min_buffer_samples = 1
         cl_trajs_epoch = 0
         cl_trans_epoch = 0
-        dagger_ratio = compute_dagger_ratio(epoch)
-        for batch in self.train_loader:
+
+        if self.mode in ("train_m1", "m1"):
+            active_phase, w_t, alpha, dagger_ratio = self.curriculum.begin_epoch()
+            self.current_curriculum_phase = active_phase
+        else:
+            active_phase, w_t, alpha, dagger_ratio = 1, 0.60, 0.0, 0.0
+
+        for raw_batch in self.train_loader:
+            batch = dict(raw_batch)
+            if self.mode in ("train_m1", "m1"):
+                batch["curriculum_w_t"] = w_t
+                batch["curriculum_alpha"] = alpha
+
             if (
-                dagger_ratio > 0.0
+                active_phase == 4
+                and dagger_ratio > 0.0
                 and self.replay_buffer is not None
                 and len(self.replay_buffer) >= min_buffer_samples
                 and self.mode in ("train_m1", "m1")
             ):
                 b_size = batch["events"].shape[0] if "events" in batch else 16
                 dagger_size = max(1, int(round(b_size * dagger_ratio)))
+                open_size = max(1, b_size - dagger_size)
+                for key in ("events", "actions", "flat_kinematics", "phase_flags", "joint_positions", "joint_velocities", "trajectory_ids"):
+                    if key in batch and isinstance(batch[key], torch.Tensor) and batch[key].shape[0] == b_size:
+                        batch[key] = batch[key][:open_size]
+
                 cl_batch = self.replay_buffer.sample_trajectories(
                     dagger_size, horizon=self.cfg.training.phase_horizon, device=self.device
                 )
@@ -676,6 +700,21 @@ class BaseTrainer:
                 self.ema_tracker.update(self.model)
 
         epoch_metrics = {k: v / max(1, batch_count) for k, v in train_accum.items()}
+        if self.mode in ("train_m1", "m1"):
+            prev_phase = self.current_curriculum_phase
+            next_phase = self.curriculum.end_epoch(epoch_metrics.get("train_loss", float("inf")))
+            self.current_curriculum_phase = next_phase
+            if next_phase > prev_phase:
+                chronicle.log_info(
+                    f"[Latch Curriculum] Irreversible transition triggered at Epoch {epoch}: "
+                    f"Phase {prev_phase} -> Phase {next_phase} (train_loss={epoch_metrics.get('train_loss', 0.0):.5f})."
+                )
+                self.save_checkpoint(epoch, is_best=False, phase_label=f"checkpoint_phase_{prev_phase}")
+
+        epoch_metrics["curriculum_phase"] = float(active_phase)
+        epoch_metrics["next_curriculum_phase"] = float(self.current_curriculum_phase)
+        epoch_metrics["active_perception_w_t"] = float(w_t)
+        epoch_metrics["train_mppi_noise_alpha"] = float(alpha)
         epoch_metrics["closed_loop_trajs_epoch"] = float(cl_trajs_epoch)
         epoch_metrics["closed_loop_trans_epoch"] = float(cl_trans_epoch)
         epoch_metrics["closed_loop_buffer_trajs"] = float(len(self.replay_buffer.trajectories)) if self.replay_buffer is not None else 0.0
@@ -773,7 +812,7 @@ class BaseTrainer:
                         if current_epoch_state is not None:
                             self.model.load_state_dict(current_epoch_state, strict=True)
                     else:
-                        score = tier1_loss
+                        score = self.best_score
                         is_best = False
                 else:
                     score = tier1_loss
@@ -839,6 +878,15 @@ class BaseTrainer:
         if not best_model_path.is_file() and self.history:
             self.save_checkpoint(self.history[-1]["epoch"], is_best=True)
 
+        # Save final phase checkpoint
+        if self.mode in ("train_m1", "m1"):
+            last_epoch = self.history[-1]["epoch"] if self.history else self.start_epoch
+            self.save_checkpoint(
+                last_epoch,
+                is_best=False,
+                phase_label=f"checkpoint_phase_{self.current_curriculum_phase}",
+            )
+
         self.save_training_log()
         chronicle.log_success(
             f"Session complete [{self.mode.upper()}]. Logs saved in '{self.save_dir}'. "
@@ -866,7 +914,13 @@ class BaseTrainer:
             batch_count += 1
         return {k: v / max(1, batch_count) for k, v in val_accum.items()}
 
-    def save_checkpoint(self, epoch: int, is_best: bool = False, path: Optional[Union[str, Path]] = None) -> None:
+    def save_checkpoint(
+        self,
+        epoch: int,
+        is_best: bool = False,
+        path: Optional[Union[str, Path]] = None,
+        phase_label: Optional[str] = None,
+    ) -> None:
         ckpt = {
             "epoch": epoch,
             "best_score": self.best_score,
@@ -875,6 +929,7 @@ class BaseTrainer:
             "optimizers_state": self.handler.get_optimizers_state(),
             "config": self.cfg.to_dict(),
             "history": self.history,
+            "curriculum_state": self.curriculum.state_dict(),
         }
         if self.ema_tracker is not None:
             ckpt["ema_state"] = self.ema_tracker.state_dict()
@@ -886,8 +941,13 @@ class BaseTrainer:
         if path is not None:
             torch.save(ckpt, Path(path))
             return
+        if phase_label is not None:
+            label_filename = f"{phase_label}.pt" if not phase_label.endswith(".pt") else phase_label
+            torch.save(ckpt, self.save_dir / label_filename)
+            chronicle.log_success(f"Saved phase checkpoint: {self.save_dir / label_filename}")
         if is_best:
             torch.save(ckpt, self.save_dir / "model.pt")
+            torch.save(ckpt, self.save_dir / "best_model.pt")
         torch.save(ckpt, self.save_dir / "checkpoint.pt")
 
     def load_checkpoint(self, path: Union[str, Path]) -> None:
@@ -905,6 +965,19 @@ class BaseTrainer:
             self.history = ckpt.get("history", []) or []
             if "optimizers_state" in ckpt:
                 self.handler.load_optimizers_state(ckpt["optimizers_state"])
+            if "curriculum_state" in ckpt and isinstance(ckpt["curriculum_state"], dict):
+                self.curriculum.load_state_dict(ckpt["curriculum_state"])
+                self.current_curriculum_phase = self.curriculum.current_curriculum_phase
+            else:
+                import re
+                m = re.search(r"checkpoint_phase_(\d+)", path.name)
+                if m:
+                    loaded_phase = int(m.group(1))
+                    self.curriculum.current_curriculum_phase = loaded_phase
+                    self.current_curriculum_phase = loaded_phase
+                    chronicle.log_info(
+                        f"Parsed curriculum phase {loaded_phase} from phase checkpoint filename '{path.name}'."
+                    )
             if self.ema_tracker is not None and "ema_state" in ckpt:
                 self.ema_tracker.load_state_dict(ckpt["ema_state"])
             if self.replay_buffer is not None:

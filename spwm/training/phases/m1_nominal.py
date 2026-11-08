@@ -35,12 +35,11 @@ class M1PhaseStrategy(PhaseStrategy):
         self, events: torch.Tensor, actions: torch.Tensor, flat_kin: Optional[torch.Tensor] = None,
         phase_flags: Optional[torch.Tensor] = None, epoch: Optional[int] = None,
         is_train: bool = True, closed_loop_batch: Optional[Dict[str, torch.Tensor]] = None,
+        curriculum_alpha: Optional[float] = None, curriculum_w_t: float = 0.60,
     ) -> Tuple[torch.Tensor, Dict[str, float]]:
         B, T = events.shape[0], events.shape[1]
         assert_tensor_contract(events, (B, T, self.model.in_channels, self.model.height, self.model.width), "M1.events")
-        assert_phase_space_contract(
-            latent_dim=self.model.latent_dim, q_dim=self.model.q_dim, p_dim=self.model.p_dim, action_dim=self.model.action_dim, actions=actions,
-        )
+        assert_phase_space_contract(latent_dim=self.model.latent_dim, q_dim=self.model.q_dim, p_dim=self.model.p_dim, action_dim=self.model.action_dim, actions=actions)
         flags = phase_flags.to(device=events.device, dtype=torch.long) if phase_flags is not None else torch.zeros(B, T, dtype=torch.long, device=events.device)
         t_start, horizon = compute_rollout_schedule(flags, sequence_length=T, phase_horizon=self.cfg.training.phase_horizon)
 
@@ -50,17 +49,16 @@ class M1PhaseStrategy(PhaseStrategy):
 
         curr_z, dyn_state, z_prefix = ground_initial_state(self.model, events, t_start, actions=actions)
         rollout_actions = actions[:, t_start : t_start + horizon]
-        noise_alpha = 0.0
-        if is_train and epoch is not None:
-            tc = self.cfg.training
-            noise_alpha = compute_mppi_noise_alpha(epoch, tc.mppi_noise_warmup_epochs, tc.mppi_noise_ramp_epochs, tc.mppi_noise_target_alpha)
-            if noise_alpha > 0.0:
-                rollout_actions = torch.clamp(rollout_actions + noise_alpha * sample_ar1_noise(B, horizon, self.model.action_dim, events.device), -1.0, 1.0)
+        tc = self.cfg.training
+        noise_alpha = (float(curriculum_alpha) if curriculum_alpha is not None else (compute_mppi_noise_alpha(epoch, tc.mppi_noise_warmup_epochs, tc.mppi_noise_ramp_epochs, tc.mppi_noise_target_alpha) if epoch is not None else 0.0)) if is_train else 0.0
+        if is_train and noise_alpha > 0.0:
+            rollout_actions = torch.clamp(rollout_actions + noise_alpha * sample_ar1_noise(B, horizon, self.model.action_dim, events.device), -1.0, 1.0)
 
         roll_res = rollout_latent(
             model=self.model, z_init=curr_z, horizon=horizon, actions=rollout_actions,
             events=events[:, t_start + 1 : t_start + 1 + horizon], phase_flags=flags[:, t_start + 1 : t_start + 1 + horizon],
             initial_dynamics_state=dyn_state, with_grad=True, decode_kinematics=False, fixed_predictor=self.model.m1,
+            active_perception_w_max=float(curriculum_w_t) if is_train else 0.60,
         )
         m1_traj, target_latents, q_dim = roll_res.trajectory, z_target[:, t_start + 1 : t_start + 1 + horizon], self.model.q_dim
         step_weights, vel_step_weights = torch.ones_like(m1_traj[..., :1]), torch.ones_like(m1_traj[..., :1])
@@ -112,7 +110,7 @@ class M1PhaseStrategy(PhaseStrategy):
         metrics = {
             "loss": float(total_loss.item()), "loss_m1": float(loss_m1.item()), "loss_latent": float(loss_m1.item()),
             "loss_position": float(loss_pos.item()), "loss_velocity": float(loss_vel.item()),
-            "pos_err": pos_err, "vel_err": vel_err, "mppi_noise_alpha": float(noise_alpha),
+            "pos_err": pos_err, "vel_err": vel_err, "mppi_noise_alpha": float(noise_alpha), "active_perception_w_t": float(curriculum_w_t),
         }
         if closed_loop_batch is not None:
             metrics["dagger_batch_size"] = cl_size
@@ -130,11 +128,10 @@ class M1PhaseStrategy(PhaseStrategy):
         self.model.m1.train()
         assert self.predictor_optimizer is not None
         self.predictor_optimizer.zero_grad()
-        events, actions, flat_kin, phase_flags = self._extract_batch(batch)
         cl_batch = batch["closed_loop"] if "closed_loop" in batch else None
-        total_loss, m = self._compute_m1_objectives(
-            events, actions, flat_kin, phase_flags, epoch=epoch, is_train=True, closed_loop_batch=cl_batch,
-        )
+        c_alpha = float(batch["curriculum_alpha"]) if "curriculum_alpha" in batch else None
+        c_wt = float(batch["curriculum_w_t"]) if "curriculum_w_t" in batch else 0.60
+        total_loss, m = self._compute_m1_objectives(*self._extract_batch(batch), epoch=epoch, is_train=True, closed_loop_batch=cl_batch, curriculum_alpha=c_alpha, curriculum_w_t=c_wt)
         total_loss.backward()
         nn.utils.clip_grad_norm_([p for p in self.model.parameters() if p.requires_grad], self.cfg.training.grad_clip_norm)
         self.predictor_optimizer.step()

@@ -1,6 +1,6 @@
 import torch
 import pytest
-from spwm.core.neurons import ALIFCell, ALIFState
+from spwm.models.neurons import ALIFCell, ALIFState
 
 
 def test_alif_cell_membrane_adaptation_and_reset():

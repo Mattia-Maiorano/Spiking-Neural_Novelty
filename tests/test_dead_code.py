@@ -64,6 +64,18 @@ OBSOLETE_FILE_PATHS = [
     Path("spwm/core/corrector.py"),
     Path("spwm/learning/eprop.py"),
     Path("spwm/learning/phases/corrector_phase.py"),
+    Path("spwm/core/__init__.py"),
+    Path("spwm/core/dynamics.py"),
+    Path("spwm/core/encoder.py"),
+    Path("spwm/core/memory.py"),
+    Path("spwm/core/neurons.py"),
+    Path("spwm/core/predictor.py"),
+    Path("spwm/learning/__init__.py"),
+    Path("spwm/learning/diagnostics.py"),
+    Path("spwm/learning/engine.py"),
+    Path("spwm/learning/losses.py"),
+    Path("spwm/learning/metrics.py"),
+    Path("spwm/learning/trainer.py"),
 ]
 
 

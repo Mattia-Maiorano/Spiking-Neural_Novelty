@@ -148,6 +148,7 @@ class WorldModelProtocol(Protocol):
         self,
         event_sequence: torch.Tensor,
         initial_state: Optional[SPWMState] = None,
+        actions: Optional[torch.Tensor] = None,
     ) -> Tuple[torch.Tensor, torch.Tensor]:
         ...
 

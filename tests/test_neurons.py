@@ -1,6 +1,6 @@
 import torch
 import pytest
-from spwm.core.neurons import FastSigmoidSurrogate, AtanSurrogate, SigmoidSurrogate, get_surrogate
+from spwm.models.neurons import FastSigmoidSurrogate, AtanSurrogate, SigmoidSurrogate, get_surrogate
 
 
 @pytest.mark.parametrize("surrogate_name", ["fast_sigmoid", "atan", "sigmoid"])

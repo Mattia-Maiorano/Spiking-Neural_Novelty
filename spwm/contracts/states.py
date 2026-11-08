@@ -115,7 +115,7 @@ class SPWMStepOutput:
     """Output from a single step execution in SPWM."""
     latent: torch.Tensor                        # [B, latent_dim] (z_t)
     predicted_next_latent: torch.Tensor         # [B, latent_dim] (z_hat_(t+1))
-    error_neurons: torch.Tensor                 # [B, encoder_dim] (epsilon_t = x_t - W_pred z_(t-1))
+    error_neurons: Optional[torch.Tensor]                 # [B, encoder_dim] (epsilon_t = x_t - W_pred z_(t-1))
     prediction_error: Optional[torch.Tensor]    # [B] if target latent is available
     decoded_kinematics: Optional[torch.Tensor]  # [B, 2 * joint_count] (joint angles q* and angular velocities p*)
     ema_spikes: Optional[torch.Tensor] = None   # [B, total_memory_dim]
@@ -129,7 +129,7 @@ class SPWMSequenceOutput:
     latent_states: torch.Tensor          # [B, T, latent_dim]
     predicted_latents: torch.Tensor      # [B, T, latent_dim]
     prediction_errors: torch.Tensor      # [B, T-1]
-    error_neurons: torch.Tensor          # [B, T, encoder_dim]
+    error_neurons: Optional[torch.Tensor]          # [B, T, encoder_dim]
     fast_spikes: torch.Tensor            # [B, T, dim_fast]
     slow_spikes: torch.Tensor            # [B, T, dim_slow]
     encoder_spike_rate: torch.Tensor

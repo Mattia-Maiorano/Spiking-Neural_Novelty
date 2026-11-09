@@ -48,6 +48,36 @@ def decompose_latent_loss(
     }
 
 
+def compute_critic_mc_loss(
+    critic: nn.Module,
+    physical_decoder: nn.Module,
+    fk: nn.Module,
+    pred_latents: torch.Tensor,
+    target_latents: torch.Tensor,
+    gamma: float = 0.95,
+) -> torch.Tensor:
+    """Computes Monte Carlo discounted cost-to-go MSE loss for LatentCritic.
+
+    Target value backward recursion: V_target_t = pos_err_t + gamma * V_target_{t+1},
+    where pos_err_t is the L2 Cartesian distance between decoded end-effector and target.
+    """
+    with torch.no_grad():
+        jc = physical_decoder.joint_count
+        pred_q = physical_decoder(pred_latents.detach())[..., :jc]
+        tgt_q = physical_decoder(target_latents.detach())[..., :jc]
+        pred_ee = fk(pred_q)
+        tgt_ee = fk(tgt_q)
+        pos_err = torch.norm(pred_ee - tgt_ee, p=2, dim=-1)  # [B, H]
+        v_target = torch.zeros_like(pos_err)
+        v_next = torch.zeros_like(pos_err[:, 0])
+        for t in range(pos_err.shape[1] - 1, -1, -1):
+            v_next = pos_err[:, t] + float(gamma) * v_next
+            v_target[:, t] = v_next
+
+    predicted_v = critic(pred_latents).squeeze(-1)  # [B, H]
+    return F.mse_loss(predicted_v, v_target.detach())
+
+
 @contextmanager
 def _frozen(module: nn.Module):
     """Context manager that temporarily sets requires_grad=False on all module parameters."""
@@ -211,6 +241,7 @@ class SPWMLoss(nn.Module):
 
 __all__ = [
     "_frozen",
+    "compute_critic_mc_loss",
     "decompose_latent_loss",
     "PredictorLoss",
     "SPWMLoss",

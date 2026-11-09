@@ -255,7 +255,47 @@ class PhysicalDecoder(nn.Module):
         return decoded
 
 
+class LatentCritic(nn.Module):
+    """
+    Latent Terminal Value Critic Network (TD-MPC style cost-to-go estimator).
+    Maps a latent state z_t in R^{latent_dim} to a scalar expected discounted cost-to-go V(z_t) in R^1.
+    """
+
+    def __init__(
+        self,
+        latent_dim: int = 128,
+        hidden_dim_1: int = 256,
+        hidden_dim_2: int = 128,
+    ) -> None:
+        super().__init__()
+        if latent_dim <= 0 or hidden_dim_1 <= 0 or hidden_dim_2 <= 0:
+            raise ValueError(
+                f"LatentCritic: latent_dim ({latent_dim}), hidden_dim_1 ({hidden_dim_1}), and hidden_dim_2 ({hidden_dim_2}) must be > 0"
+            )
+        self.latent_dim = latent_dim
+        self.hidden_dim_1 = hidden_dim_1
+        self.hidden_dim_2 = hidden_dim_2
+        self.net = nn.Sequential(
+            nn.Linear(latent_dim, hidden_dim_1),
+            nn.SiLU(),
+            nn.Linear(hidden_dim_1, hidden_dim_2),
+            nn.SiLU(),
+            nn.Linear(hidden_dim_2, 1),
+        )
+
+    def forward(self, z: torch.Tensor) -> torch.Tensor:
+        if z.shape[-1] != self.latent_dim:
+            raise ValueError(
+                f"LatentCritic: expected last dimension {self.latent_dim}, got {z.shape[-1]} (shape {tuple(z.shape)})"
+            )
+        out = self.net(z)
+        expected_shape = tuple(z.shape[:-1]) + (1,)
+        assert_tensor_contract(out, expected_shape, "LatentCritic.value")
+        return out
+
+
 __all__ = [
+    "LatentCritic",
     "LatentPredictor",
     "PhysicalDecoder",
     "PredictorOutput",

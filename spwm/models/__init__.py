@@ -35,6 +35,7 @@ from spwm.models.kinematics import (
 from spwm.models.memory import MultiTimescaleMemory
 from spwm.models.neurons import ALIFCell, SurrogateSpike, surrogate_spike
 from spwm.models.predictors import (
+    LatentCritic,
     LatentPredictor,
     PhysicalDecoder,
 )
@@ -58,6 +59,7 @@ __all__ = [
     "SpikingLatentDynamics",
     "DynamicsState",
     "DynamicsOutput",
+    "LatentCritic",
     "LatentPredictor",
     "PhysicalDecoder",
     "PredictorOutput",

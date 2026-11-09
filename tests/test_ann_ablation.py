@@ -23,7 +23,7 @@ def test_ann_world_model_parameter_parity():
     spwm_params = sum(p.numel() for p in spwm.parameters() if p.requires_grad)
     ann_params = sum(p.numel() for p in ann.parameters() if p.requires_grad)
 
-    assert spwm_params == 328652, f"SPWM parameter count changed unexpectedly: {spwm_params}"
+    assert spwm_params == 394701, f"SPWM parameter count changed unexpectedly: {spwm_params}"
     assert ann_params == spwm_params, f"Parameter count mismatch: SPWM={spwm_params} vs ANN={ann_params}"
 
 

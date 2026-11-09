@@ -154,12 +154,14 @@ class NeuralCostMPPIController(LatentMPPIController):
             curr_nominal = (1.0 - 0.75) * curr_nominal + 0.75 * torch.sum(norm_weights.view(K, 1, 1) * candidates, dim=0)
             curr_nominal = torch.clamp(curr_nominal, self.action_min, self.action_max)
 
-        action_to_execute = curr_nominal[0].clone()
+        action_chunk = torch.clamp(curr_nominal[: self.chunk_size].clone(), self.action_min, self.action_max)
+        action_to_execute = action_chunk[0].clone()
         self.nominal_actions = curr_nominal.clone()
         self.prev_action = action_to_execute.clone()
 
         return MPPIPlanResult(
             action=action_to_execute,
+            action_chunk=action_chunk,
             nominal_action_sequence=curr_nominal,
             predicted_latent_trajectory=z_trajectories[min_idx],
             predicted_ee_trajectory=ee_pos[min_idx],

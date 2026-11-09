@@ -734,6 +734,29 @@
 - **new results (if any)**: Training completed at Epoch 65 via Tier 2 early stopping with Best Score: $13.05992$ @ Epoch 50. Tier 2 closed-loop MPPI evaluation metrics improved significantly at Best Epoch 50: Mean Cartesian Error = $6.58\,\text{cm}$, Terminal Error = $5.21\,\text{cm}$, Rotational Error = $0.1258\,\text{rad}$, MPPI Cost = $13.05992$. Test unroll evaluation across horizons $H \in \{1, 5, 10, 25, 50, 100\}$ achieved: Rollout MAE = $0.22863$, Dynamic Rollout Score = $0.71760$, Drift Ratio = $4.31\times$, Teacher Forcing MSE = $0.00433$, Mean Spike Rate = $0.1460$.
 - **verdict on change made**: Preserved.
 
+## SPWM-v0.10.0 — Iteration 1 (Action Chunking Execution & TD-MPC Latent Critic Bootstrapping)
+- **version afflicted**: `SPWM-v0.10.0`
+- **iteration on version**: Iteration 1 (Action Chunking Execution & TD-MPC Latent Critic Bootstrapping)
+- **changes made**: Upgraded framework from `SPWM-v0.9.1` to `SPWM-v0.10.0` (`spwm/contracts/version.py`) with two major architectural features to eliminate downstream 6cm Cartesian hesitation jitter and receding-horizon compounding errors:
+  1. Action Chunking Execution (`spwm/evaluation/mppi.py`, `spwm/utils/MPPI_loss_finder.py`): Added `chunk_size: int = 4` parameter to `LatentMPPIController.__init__`, updated `plan_step` and `MPPIPlanResult` to return `action_chunk` of shape `[chunk_size, action_dim]` by slicing `curr_nominal[:self.chunk_size]`, and updated `MPPIStructuralScorer.evaluate_trajectory` to execute `chunk_size` consecutive actions before replanning while preserving full step-by-step telemetry and error tracking.
+  2. Latent Critic Network (`spwm/models/predictors.py`, `spwm/models/world_model.py`, `spwm/models/ann_ablation.py`, `spwm/contracts/protocols.py`): Implemented `LatentCritic(nn.Module)` as a 3-layer MLP (`latent_dim -> 256 -> 128 -> 1` with `SiLU` activations) estimating scalar discounted cost-to-go $V(\mathbf{z}_t)$, attached as `model.critic` on `SPWM` and `ANNWorldModel` (maintaining 1:1 parameter parity of $394,701$ parameters).
+  3. Monte Carlo Critic Training (`spwm/training/losses.py`, `spwm/training/phases/m1_nominal.py`): Added `compute_critic_mc_loss` computing backward discounted target returns $V_{\text{target}, t} = e_{\text{pos}, t} + \gamma V_{\text{target}, t+1}$ ($\gamma = 0.95$) from L2 Cartesian end-effector distance across both open-loop demonstration trajectories and `ClosedLoopBuffer` rollouts, optimizing `MSELoss(predicted_V, V_target.detach())` with weight $w_{\text{critic}} = 0.1$ while keeping `m1_nominal.py` under the $< 150$-line limit (146 lines).
+  4. MPPI Terminal Value Bootstrapping (`spwm/evaluation/mppi.py`): Updated `LatentMPPIController.compute_trajectory_cost` and `plan_step` to evaluate `critic(z_trajectories[:, -1, :]).squeeze(-1)` and add $(\gamma^H) V(\mathbf{z}_H)$ to the candidate trajectory costs.
+- **new results (if any)**: No runs made - code refactoring / architectural upgrade only. Unit tests in `test_mppi.py`, `test_training_phases.py`, `test_ann_ablation.py`, `test_dead_code.py`, and `test_anti_fallback.py` pass with 0 fallback violations.
+- **verdict on change made**: Preserved.
+
+## SPWM-v0.10.0 — Iteration 2 (Dynamic Learning Rate Curriculum Adaptation)
+- **version afflicted**: `SPWM-v0.10.0`
+- **iteration on version**: Iteration 2 (Dynamic Learning Rate Curriculum Adaptation)
+- **changes made**: Implemented dynamic learning rate scheduling in `BaseTrainer.train_epoch` (`spwm/training/engine.py`):
+  1. Base learning rate in `TrainingConfig` (`spwm/contracts/config.py`) initialized to $0.0001$.
+  2. Dynamically drops predictor optimizer learning rate from $0.0001$ to $0.00005$ across parameter groups upon entering curriculum Phase 4 (DAgger closed-loop blending).
+  3. Added unit test `test_dynamic_learning_rate_phase_4` in `tests/test_closed_loop_buffer.py` to verify dynamic lr adjustment.
+  4. Synchronized contracts and training documentation in `docs/WORKSPACE_AND_CONTRACTS.md` and `docs/TRAINING_AND_LOSSES.md`.
+- **new results (if any)**: All 33 unit tests in `test_closed_loop_buffer.py`, `test_training_phases.py`, `test_anti_fallback.py`, and `test_architecture_contracts.py` passed with 0 fallback violations. No runs made - code refactoring / configuration only.
+- **verdict on change made**: Preserved.
+
+
 
 
 

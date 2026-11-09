@@ -228,6 +228,10 @@ All tensor shapes are verified at runtime via [`assert_tensor_contract`](file://
   - **Position Filtering**: Controlled by `decoder_pos_alpha` ($\alpha_{\text{pos}} = 0.0$ default in v0.7.2 Iteration 4; can be set $> 0.0$ if discrete single-step joint jump damping is needed).
   - **Velocity Filtering**: Controlled by `decoder_ema_alpha` ($\alpha_{\text{vel}} = 0.0$ default in v0.7.2 Iteration 4; $r_t = p_t$, avoiding low-pass phase lag while preserving continuous momentum readout).
 
+#### D. Terminal Value Critic Network `LatentCritic` ([`spwm/models/predictors.py`](file:///Users/Mattia/Desktop/Studies/Temp/spwm/models/predictors.py))
+- **Architecture**: 3-layer MLP (`Linear(latent_dim, 256) -> SiLU -> Linear(256, 128) -> SiLU -> Linear(128, 1)`) attached as `model.critic` alongside `m1` and `physical_decoder` on both `SPWM` and `ANNWorldModel`.
+- **Role**: Maps latent phase-space state $\mathbf{z}_t \in \mathbb{R}^{D}$ to scalar expected discounted cost-to-go $V(\mathbf{z}_t) \in \mathbb{R}^{B \times 1}$, providing terminal value bootstrapping for finite-horizon MPPI trajectories (TD-MPC style).
+
 ---
 
 ## 3. Loss Computation, Training Flow & Strict Checkpoint Scoping
@@ -238,8 +242,8 @@ The architecture focuses on two clean, decoupled training phases:
 
 | Phase Mode | Strategy Class | Trainable Modules (`requires_grad=True`) | Frozen Modules (`requires_grad=False`) | Active Rollout Window |
 | :--- | :--- | :--- | :--- | :--- |
-| **`train_representation`** | [`RepresentationPhaseStrategy`](file:///Users/Mattia/Desktop/Studies/Temp/spwm/training/phases/representation.py) | `encoder`, `dynamics`, `sensory_predictor`, `physical_decoder` | `predictor` (`m1`) | $t \in [0, T_{\text{obs}}]$ (Pure State Estimation) |
-| **`train_m1`** | [`M1PhaseStrategy`](file:///Users/Mattia/Desktop/Studies/Temp/spwm/training/phases/m1_nominal.py) | `predictor` (`m1`) | `encoder`, `dynamics`, `sensory_predictor`, `physical_decoder` | $t \in [t_{\text{start}}, t_{\text{start}} + H]$ conditioned on $\mathbf{u}_t$ |
+| **`train_representation`** | [`RepresentationPhaseStrategy`](file:///Users/Mattia/Desktop/Studies/Temp/spwm/training/phases/representation.py) | `encoder`, `dynamics`, `sensory_predictor`, `physical_decoder` | `predictor` (`m1`), `critic` | $t \in [0, T_{\text{obs}}]$ (Pure State Estimation) |
+| **`train_m1`** | [`M1PhaseStrategy`](file:///Users/Mattia/Desktop/Studies/Temp/spwm/training/phases/m1_nominal.py) | `predictor` (`m1`), `critic` | `encoder`, `dynamics`, `sensory_predictor`, `physical_decoder` | $t \in [t_{\text{start}}, t_{\text{start}} + H]$ conditioned on $\mathbf{u}_t$ |
 
 ### 3.2 Exact Mathematical Loss Formulations
 
@@ -318,7 +322,7 @@ To rigorously isolate whether SPWM's predictive stability is driven by **spiking
   where $\mathbf{r}_t \in (0, 1)^{256}$ provides smooth rate activation analogous to the average firing rate $s_t \in [0, 1]$.
 - **Membrane Potential Analog**: $\mathbf{m}_{\text{analog}} = \tanh(\mathbf{m}_t)$ matches `torch.tanh(new_mem_state.concatenated_mems)` in `SpikingLatentDynamics`.
 - **Projection Parity**: Preserves identical projection matrices (`input_proj`: Linear(128, 256), `recurrent_proj`: Linear(96, 256, bias=False), `q_proj`: Linear(32, 256, bias=False), `action_proj`: Linear(6, 256, bias=False), `vel_proj`: Linear(96, 32, bias=False), `W_vel`: Linear(256, 32, bias=False), `fuse_spikes`: Linear(256, 96), `fuse_mems`: Linear(256, 96, bias=False), `norm`: LayerNorm(96)).
-- **Exact Parameter Budget**: Exactly **328,652 parameters** (100.0% matched to `SPWM-v0.7.3`).
+- **Exact Parameter Budget**: Exactly **394,701 parameters** (100.0% matched to `SPWM-v0.10.0` including `LatentCritic`).
 - **Contract Conformance**: Conforms strictly to Layer 0 [`WorldModelProtocol`](file:///Users/Mattia/Desktop/Studies/Temp/spwm/contracts/protocols.py).
 
 ---
@@ -371,15 +375,16 @@ To demonstrate downstream closed-loop control without relying on an external phy
   $$\mathbf{z}_{\tau+1} = M_1(\mathbf{z}_\tau, \mathbf{u}_\tau), \quad \hat{\mathbf{y}}_\tau = \text{PhysicalDecoder}(\mathbf{z}_\tau)$$
   where $\mathbf{z}_0$ is grounded from the latest sensory frames via active perception. Neither the visual encoder nor ALIF spiking dynamics are executed during the $K \times H$ mental simulation, enabling ultra-fast vectorization.
 
-### 8.2 Lifting-Aware Physics-Grounded Cost Function
-The cumulative trajectory cost $\mathcal{C}_k$ for candidate $k$ evaluates $M_1$'s latent rollout passed through `PhysicalDecoder` and `DifferentiableForwardKinematics` without unfairly penalizing sustained motor effort required for lifting:
-$$\mathcal{C}_k = \sum_{t=1}^H \left[ W_{\text{pos}} \|\mathbf{x}_{\text{ee}}(t) - \mathbf{x}_{\text{target}}\|_2 + W_{\text{rot}} (1 - \cos(\theta_{\text{error}}(t))) + W_{\text{jerk}} \|\mathbf{u}_t - \mathbf{u}_{t-1}\|_2^2 - W_{\text{success}} \mathbb{I}(z_{\text{ee}}(t) > z_{\text{table}}) \right]$$
+### 8.2 Lifting-Aware Physics-Grounded Cost Function & TD-MPC Critic Bootstrapping
+The cumulative trajectory cost $\mathcal{C}_k$ for candidate $k$ evaluates $M_1$'s latent rollout passed through `PhysicalDecoder`, `DifferentiableForwardKinematics`, and terminal `LatentCritic` ($V$):
+$$\mathcal{C}_k = \sum_{t=1}^H \left[ W_{\text{pos}} \|\mathbf{x}_{\text{ee}}(t) - \mathbf{x}_{\text{target}}\|_2 + W_{\text{rot}} (1 - \cos(\theta_{\text{error}}(t))) + W_{\text{jerk}} \|\mathbf{u}_t - \mathbf{u}_{t-1}\|_2^2 \right] + \gamma^H V(\mathbf{z}_{k, H})$$
 
 where:
 - **Positional Cost**: $W_{\text{pos}} \|\mathbf{x}_{\text{ee}}(t) - \mathbf{x}_{\text{target}}\|_2$ measures Euclidean distance to the target 3D coordinates.
 - **Rotational Cost**: $W_{\text{rot}} (1 - \cos(\theta_{\text{error}}(t)))$ measures geodesic $SO(3)$ orientation alignment error from $\cos(\theta_{\text{error}}) = \operatorname{clamp}((\operatorname{Tr}(\mathbf{R}_{\text{ee}}^\top \mathbf{R}_{\text{target}}) - 1)/2, -1, 1)$.
 - **Action Smoothness (Jerk Penalty)**: $W_{\text{jerk}} \|\mathbf{u}_t - \mathbf{u}_{t-1}\|_2^2$ penalizes aggressive high-frequency action oscillations while permitting sustained lifting effort.
-- **Success Bonus**: $-W_{\text{success}} \mathbb{I}(z_{\text{ee}}(t) > z_{\text{table}})$ rewards trajectories that elevate above the table surface threshold (`table_surface_threshold`).
+- **Terminal Value Bootstrapping**: $\gamma^H V(\mathbf{z}_{k, H})$ ($\gamma = 0.95$) estimates the discounted cost-to-go beyond the finite planning horizon $H$ using `LatentCritic`.
+- **Action Chunking Execution**: `plan_step` returns an `action_chunk` of shape `[chunk_size, action_dim]` (`chunk_size = 4` default) by slicing `curr_nominal[:self.chunk_size]`, and `MPPIStructuralScorer.evaluate_trajectory` executes the entire chunk open-loop across `chunk_size` steps before replanning, filtering out single-step hesitation jitter.
 
 - **Controller Parameters**:
   - Class defaults in [`LatentMPPIController`](file:///Users/Mattia/Desktop/Studies/Temp/spwm/evaluation/mppi.py): $H = 30, H_{\text{term}} = 4, \beta = 0.75, w_{\text{pos}} = 0.0, w_{\text{rot}} = 0.0, w_{\text{term\_pos}} = 5.0, w_{\text{term\_rot}} = 2.0, w_{\text{vel}} = 0.08, w_{\text{act}} = 0.005, w_{\text{altitude}} = 2.0$, sampling noise $\boldsymbol{\Sigma} = [0.24, 0.44, 0.38, 0.24, 0.24, 0.24]$, temperature $\lambda = 0.15$.

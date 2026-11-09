@@ -20,6 +20,7 @@ from spwm.contracts.tensors import C_EVENT, J, assert_phase_space_contract, asse
 from spwm.models.dynamics import SpikingLatentDynamics
 from spwm.models.encoder import EventEncoder
 from spwm.models.predictors import (
+    LatentCritic,
     LatentPredictor,
     PhysicalDecoder,
 )
@@ -151,6 +152,11 @@ class SPWM(nn.Module):
             joint_count=joint_count,
             alpha=decoder_ema_alpha,
             pos_alpha=decoder_pos_alpha,
+        )
+
+        # 6. Latent Terminal Value Critic Network
+        self.critic = LatentCritic(
+            latent_dim=latent_dim,
         )
 
     @property

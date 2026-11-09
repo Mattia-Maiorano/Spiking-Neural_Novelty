@@ -34,7 +34,7 @@ from spwm.contracts.states import (
 )
 from spwm.contracts.tensors import C_EVENT, J, assert_phase_space_contract, assert_tensor_contract
 from spwm.models.encoder import EventEncoder
-from spwm.models.predictors import LatentPredictor, PhysicalDecoder
+from spwm.models.predictors import LatentCritic, LatentPredictor, PhysicalDecoder
 from spwm.models.rollout import compute_rollout_schedule, ground_initial_state, rollout_latent
 
 
@@ -509,6 +509,11 @@ class ANNWorldModel(nn.Module):
             joint_count=joint_count,
             alpha=decoder_ema_alpha,
             pos_alpha=decoder_pos_alpha,
+        )
+
+        # 6. Latent Terminal Value Critic Network
+        self.critic = LatentCritic(
+            latent_dim=latent_dim,
         )
 
     @property

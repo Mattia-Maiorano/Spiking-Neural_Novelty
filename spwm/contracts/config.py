@@ -218,7 +218,7 @@ class TrainingConfig:
     batch_size: int = 32                             #: Mini-batch size per optimization step.
     weight_decay: float = 0.0005                     #: Base L2 weight decay penalty applied to Adam optimizer across active submodules.
     grad_clip_norm: float = 0.8                      #: Maximum L2 gradient norm threshold for torch.nn.utils.clip_grad_norm_.
-    learning_rate: float = 0.0002                    #: Base Adam learning rate for model weights.
+    learning_rate: float = 0.00005                   #: Base Adam learning rate for model weights.
     probe_lr: float = 0.0002                         #: Dedicated learning rate for downstream kinematic readout probes.
     probe_weight_decay: float = 0.0001               #: L2 regularization penalty applied to kinematic probes.
     temporal_burn_in: int = 15                       #: Initial latent steps for recurrent dynamics warm-up before launching evaluation rollouts.
@@ -227,7 +227,7 @@ class TrainingConfig:
     tier2_frequency: int = 5                         #: Frequency (in epochs, 5..10) to evaluate Tier 2 closed-loop MPPI scoring.
     tier2_trajectories: int = 6                       #: Number of fixed validation trajectories for Tier 2 evaluation (covering Low, Mid, High).
     tier2_seed: int = 42000                           #: Deterministic base RNG seed for MPPI noise generation in Tier 2 validation.
-    tier2_num_samples: int = 256                      #: Number of candidate trajectory samples K in MPPI planning during Tier 2 validation.
+    tier2_num_samples: int = 1024                     #: Number of candidate trajectory samples K in MPPI planning during Tier 2 validation.
     tier2_horizon: int = 30                           #: Planning horizon H in MPPI planning during Tier 2 validation.
     tier2_iterations: int = 3                         #: Number of MPPI optimization iterations per control step during Tier 2 validation.
     tier2_candidate_selection: str = "ema"            #: Candidate model to evaluate in Tier 2: "ema" (default: evaluate exponential moving average weights) or "latest".
@@ -364,6 +364,8 @@ class ExperimentConfig:
         tier2_frequency: Optional[int] = None,
         tier2_trajectories: Optional[int] = None,
         tier2_seed: Optional[int] = None,
+        tier2_num_samples: Optional[int] = None,
+        learning_rate: Optional[float] = None,
         tier2_candidate_selection: Optional[str] = None,
         tier2_patience: Optional[int] = None,
         tier2_min_delta: Optional[float] = None,
@@ -412,6 +414,10 @@ class ExperimentConfig:
             train_updates["tier2_trajectories"] = tier2_trajectories
         if tier2_seed is not None:
             train_updates["tier2_seed"] = tier2_seed
+        if tier2_num_samples is not None:
+            train_updates["tier2_num_samples"] = tier2_num_samples
+        if learning_rate is not None:
+            train_updates["learning_rate"] = learning_rate
         if tier2_candidate_selection is not None:
             train_updates["tier2_candidate_selection"] = tier2_candidate_selection
         if tier2_patience is not None:

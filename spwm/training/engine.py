@@ -965,6 +965,9 @@ class BaseTrainer:
             self.history = ckpt.get("history", []) or []
             if "optimizers_state" in ckpt:
                 self.handler.load_optimizers_state(ckpt["optimizers_state"])
+            if self.handler.predictor_optimizer is not None:
+                for pg in self.handler.predictor_optimizer.param_groups:
+                    pg["lr"] = self.cfg.training.learning_rate
             if "curriculum_state" in ckpt and isinstance(ckpt["curriculum_state"], dict):
                 self.curriculum.load_state_dict(ckpt["curriculum_state"])
                 self.current_curriculum_phase = self.curriculum.current_curriculum_phase

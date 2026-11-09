@@ -723,20 +723,17 @@
 - **new results (if any)**: All 152 repository unit tests passed in 19.52s (including 7/7 in `test_closed_loop_buffer.py` and 5/5 in `test_training_phases.py`). AST anti-fallback scan verifies clean code with 0 violations across `spwm/`. No runs made - training dynamics refactoring, scheduler implementation, and test verification only.
 - **verdict on change made**: Preserved.
 
-## SPWM-v0.9.0 — Iteration 1 (4-Phase Irreversible Latch Curriculum, Strict 3-Gen FIFO Buffer & Lifting-Aware MPPI Cost Function)
-- **version afflicted**: `SPWM-v0.9.0`
-- **iteration on version**: Iteration 1 (4-Phase Irreversible Latch Curriculum, Strict 3-Gen FIFO Buffer & Lifting-Aware MPPI Cost Function)
-- **changes made**: Refactored Phase 1 (`train_m1`) curriculum orchestration and closed-loop MPPI evaluation across `spwm/contracts/`, `spwm/models/`, `spwm/training/`, and `spwm/evaluation/`:
-  1. 4-Phase Irreversible Latch Curriculum (`LatchCurriculumState` in `spwm/training/noise.py`, `BaseTrainer.train_epoch` in `spwm/training/engine.py`, `M1PhaseStrategy` in `spwm/training/phases/m1_nominal.py`, and `rollout_latent` in `spwm/models/rollout.py`): Implemented state-machine curriculum starting at `current_curriculum_phase = 1` with irreversible threshold latches:
-     - Phase 1 (Warmup Nominal): 100% open-loop, `alpha = 0.0`, active perception `w_t = 0.60`; latches to Phase 2 when `train_loss < 0.01`.
-     - Phase 2 (Sensory Fade-Out): 100% open-loop, `alpha = 0.0`, linearly decays `w_t` from `0.60` down to `0.0` over 7 epochs; latches to Phase 3 when `w_t == 0.0` and `train_loss < 0.008`.
-     - Phase 3 (Noise Ramp-Up): 100% open-loop, `w_t = 0.0`, linearly ramps AR(1) MPPI noise `alpha` from `0.0` to `0.4` over 10 epochs; latches to Phase 4 when `alpha == 0.4`.
-     - Phase 4 (Fast DAgger Integration): Mixed open/closed-loop batch scaling `dagger_ratio` from `10%` (`0.10`) to `50%` (`0.50`) over `2 * tier2_frequency` epochs while keeping `w_t = 0.0` and injecting `alpha = 0.4` noise into the open-loop portion; runs indefinitely until Tier 2 early stopping.
-  2. Strict FIFO Closed-Loop Buffer (`ClosedLoopBuffer` in `spwm/training/engine.py` & `TrainingConfig` in `spwm/contracts/config.py`): Updated rolling window to `max_eval_generations = 3`, cleanly discarding trajectories from generation `N-3` before ingesting generation `N`, and preventing cross-run buffer loading.
-  3. Lifting-Aware Physics-Grounded MPPI Cost Function (`LatentMPPIController` & `MPPIStructuralScorer` in `spwm/evaluation/mppi.py`): Replaced velocity/effort-penalizing structural heuristic with configurable geometric cost passing M1 predictions through `PhysicalDecoder` and `DifferentiableForwardKinematics`: Positional Cost $W_{\text{pos}} \|\mathbf{x}_t - \mathbf{x}_{\text{target}}\|_2$, Rotational Cost $W_{\text{rot}} (1 - \cos(\theta_{\text{error}}))$, Action Smoothness / Jerk Penalty $W_{\text{jerk}} \|\mathbf{u}_t - \mathbf{u}_{t-1}\|_2^2$, and Success Bonus $-W_{\text{success}} \mathbb{I}(z_t > z_{\text{table}})$.
-  4. Tier 2 EMA Evaluation & Raw Physical Metric Tracking (`spwm/training/engine.py`, `spwm/training/phases/__init__.py`, `spwm/evaluation/mppi.py`): Configured Tier 2 cadence (`tier2_frequency = 5`, `ema_decay = 0.990`), tied `best_model.pt` / `model.pt` checkpointing and early stopping exclusively to the new MPPI Cost Function over the fixed 6-trajectory validation set (ignoring Tier 1 open-loop MSE), and logged raw physical metrics (`Mean Cartesian Err (cm)`, `Rotational Err (rad)`, `Success Rate`).
-- **new results (if any)**: All 77 targeted contract, anti-fallback, curriculum, buffer, and MPPI unit tests passed; AST anti-fallback scanner verifies 0 violations across `spwm/`. No runs made - code refactoring / configuration only.
+## SPWM-v0.9.1 — Iteration 1 (Phase 4 Refinement: Fine LR, Doubled Cartesian Position Penalty & Scaled MPPI Candidates)
+- **version afflicted**: `SPWM-v0.9.1`
+- **iteration on version**: Iteration 1 (Phase 4 Refinement: Fine LR, Doubled Cartesian Position Penalty & Scaled MPPI Candidates)
+- **changes made**: Resumed training from Phase 3 completion (`checkpoint_phase_3.pt` at Epoch 35) into Phase 4:
+  1. Reduced $M_1$ predictor learning rate from $2\times 10^{-4}$ to $5\times 10^{-5}$ (`0.00005`) with optimizer parameter group updates on load.
+  2. Doubled Cartesian position error penalty $w_{\text{pos}}$ from $10.0$ to $20.0$ in `LatentMPPIController` (`spwm/evaluation/mppi.py`).
+  3. Scaled Tier 2 MPPI candidate trajectory count `tier2_num_samples` from $256$ to $1024$ in `TrainingConfig` (`spwm/contracts/config.py`) and added CLI flags (`--learning-rate`, `--tier2-num-samples`) in `experiments/train.py`.
+  4. Executed Phase 4 DAgger integration with 50% closed-loop replay buffer batches.
+- **new results (if any)**: Training completed at Epoch 65 via Tier 2 early stopping with Best Score: $13.05992$ @ Epoch 50. Tier 2 closed-loop MPPI evaluation metrics improved significantly at Best Epoch 50: Mean Cartesian Error = $6.58\,\text{cm}$, Terminal Error = $5.21\,\text{cm}$, Rotational Error = $0.1258\,\text{rad}$, MPPI Cost = $13.05992$. Test unroll evaluation across horizons $H \in \{1, 5, 10, 25, 50, 100\}$ achieved: Rollout MAE = $0.22863$, Dynamic Rollout Score = $0.71760$, Drift Ratio = $4.31\times$, Teacher Forcing MSE = $0.00433$, Mean Spike Rate = $0.1460$.
 - **verdict on change made**: Preserved.
+
 
 
 

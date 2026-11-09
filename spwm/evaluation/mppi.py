@@ -88,7 +88,7 @@ class LatentMPPIController:
         self.num_iterations = num_iterations
 
         # Autonomous weights definition
-        self.w_pos = 10.0
+        self.w_pos = 20.0
         self.w_rot = 7.0
         self.w_jerk = 0.1
         self.w_vel = 0.0

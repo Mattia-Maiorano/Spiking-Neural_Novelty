@@ -114,6 +114,18 @@ def parse_args() -> argparse.Namespace:
         help="Override base RNG seed for Tier 2 Zero-Stochasticity MPPI evaluation (default: 42000)",
     )
     parser.add_argument(
+        "--tier2-num-samples",
+        type=int,
+        default=None,
+        help="Override candidate samples K for Tier 2 MPPI evaluation (default: 1024)",
+    )
+    parser.add_argument(
+        "--learning-rate",
+        type=float,
+        default=None,
+        help="Override base Adam learning rate for model weights (e.g. 5e-5)",
+    )
+    parser.add_argument(
         "--tier2-candidate-selection",
         type=str,
         default=None,
@@ -365,6 +377,10 @@ def main() -> None:
         overrides["tier2_trajectories"] = args.tier2_trajectories
     if args.tier2_seed is not None:
         overrides["tier2_seed"] = args.tier2_seed
+    if args.tier2_num_samples is not None:
+        overrides["tier2_num_samples"] = args.tier2_num_samples
+    if args.learning_rate is not None:
+        overrides["learning_rate"] = args.learning_rate
     if args.tier2_candidate_selection is not None:
         overrides["tier2_candidate_selection"] = args.tier2_candidate_selection
     if args.tier2_patience is not None:

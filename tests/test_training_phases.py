@@ -115,20 +115,24 @@ def test_representation_and_m1_isolated_phase_strategies() -> None:
     assert any(
         p.grad is not None and p.grad.abs().sum() > 0 for p in model_rep.physical_decoder.parameters()
     ), "physical_decoder must receive non-zero gradients during train_representation!"
-    # Predictor / M1 must be frozen in Phase 0
+    # Predictor / M1 and Critic must be frozen in Phase 0
     assert all(p.grad is None for p in model_rep.predictor.parameters())
+    assert all(p.grad is None for p in model_rep.critic.parameters())
 
-    # 1. Phase 1: M1 Phase Strategy (strictly trains M1 with Active Perception Injection on phase_flags == 1)
+    # 1. Phase 1: M1 Phase Strategy (strictly trains M1 + Critic with Active Perception Injection on phase_flags == 1)
     cfg_m1 = _make_small_config("train_m1")
     model_m1 = SPWM.from_config(cfg_m1)
     m1_strategy = M1PhaseStrategy(model_m1, cfg_m1, loss_fn, device)
     assert isinstance(m1_strategy, PhaseStrategy)
     m1_strategy.verify_gradient_isolation()
     metrics_m1 = m1_strategy.train_step(batch, epoch=1)
-    assert "train_loss" in metrics_m1 and "train_loss_m1" in metrics_m1
+    assert "train_loss" in metrics_m1 and "train_loss_m1" in metrics_m1 and "train_loss_critic" in metrics_m1
     assert any(
         p.grad is not None and p.grad.abs().sum() > 0 for p in model_m1.m1.parameters()
     ), "m1 must receive non-zero gradients during train_m1!"
+    assert any(
+        p.grad is not None and p.grad.abs().sum() > 0 for p in model_m1.critic.parameters()
+    ), "critic must receive non-zero gradients during train_m1!"
     # Representation modules must be frozen in Phase 1
     assert all(p.grad is None for p in model_m1.encoder.parameters())
     assert all(p.grad is None for p in model_m1.dynamics.parameters())

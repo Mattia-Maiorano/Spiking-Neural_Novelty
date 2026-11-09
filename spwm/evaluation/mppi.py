@@ -10,7 +10,7 @@ import torch.nn as nn
 from spwm.contracts.protocols import Tier2EvaluatorProtocol
 from spwm.contracts.tensors import J, assert_tensor_contract
 from spwm.models.kinematics import DifferentiableForwardKinematics
-from spwm.models.predictors import LatentPredictor, PhysicalDecoder
+from spwm.models.predictors import LatentCritic, LatentPredictor, PhysicalDecoder
 from spwm.models.rollout import ground_initial_state, step_grounded
 
 
@@ -19,6 +19,7 @@ class MPPIPlanResult:
     """Diagnostic outputs from a single MPPI planning step."""
 
     action: torch.Tensor
+    action_chunk: torch.Tensor
     nominal_action_sequence: torch.Tensor
     predicted_latent_trajectory: torch.Tensor
     predicted_ee_trajectory: torch.Tensor
@@ -37,10 +38,10 @@ class LatentMPPIController:
     Optimizes motor action sequences u_{t:t+H}^* without external physics simulation:
       1. Receives grounded latent state z_t in R^128 (assimilated via active perception).
       2. Mental simulation: autoregressively unrolls isolated LatentPredictor (M1)
-         across K=256 candidate trajectories over planning horizon H=20.
       3. Decodes kinematics via PhysicalDecoder and computes end-effector 3D position
          via DifferentiableForwardKinematics.
-      4. Minimizes Cartesian goal distance, velocity damping, and action smoothness costs.
+      4. Minimizes Cartesian goal distance, velocity damping, action smoothness costs,
+         and Critic terminal cost-to-go bootstrapping.
     """
 
     def __init__(
@@ -48,8 +49,11 @@ class LatentMPPIController:
         predictor: LatentPredictor,
         physical_decoder: PhysicalDecoder,
         forward_kinematics: Optional[DifferentiableForwardKinematics] = None,
+        critic: Optional[LatentCritic] = None,
+        chunk_size: int = 4,
+        gamma_discount: float = 0.95,
         num_samples: int = 256,
-        horizon: int = 30,
+        horizon: int = 10,
         action_dim: int = J,
         action_min: float = -1.0,
         action_max: float = 1.0,
@@ -65,6 +69,8 @@ class LatentMPPIController:
             raise ValueError(f"num_samples must be > 0, got {num_samples}")
         if horizon <= 0:
             raise ValueError(f"horizon must be > 0, got {horizon}")
+        if chunk_size <= 0 or chunk_size > horizon:
+            raise ValueError(f"chunk_size must be in 1..{horizon}, got {chunk_size}")
         resolved_term_steps = int(terminal_steps) if terminal_steps is not None else min(4, horizon)
         if resolved_term_steps <= 0 or resolved_term_steps > horizon:
             raise ValueError(f"terminal_steps must be in 1..{horizon}, got {resolved_term_steps}")
@@ -76,6 +82,9 @@ class LatentMPPIController:
         self.predictor = predictor
         self.physical_decoder = physical_decoder
         self.fk = forward_kinematics if forward_kinematics is not None else DifferentiableForwardKinematics()
+        self.critic = critic
+        self.chunk_size = int(chunk_size)
+        self.gamma_discount = float(gamma_discount)
 
         self.num_samples = num_samples
         self.horizon = horizon
@@ -266,6 +275,7 @@ class LatentMPPIController:
                 u_prev=u_prev,
                 R_ee=R_ee,
                 target_orientation=target_orientation,
+                z_trajectories=z_trajectories,
             )
 
 
@@ -292,8 +302,9 @@ class LatentMPPIController:
             curr_nominal = (1.0 - gamma) * curr_nominal + gamma * new_nominal
             curr_nominal = torch.clamp(curr_nominal, self.action_min, self.action_max)
 
-        # Selected immediate action to execute, strictly clamped against EMA drift
-        action_to_execute = torch.clamp(curr_nominal[0].clone(), self.action_min, self.action_max)
+        # Selected action chunk and immediate action to execute, strictly clamped against EMA drift
+        action_chunk = torch.clamp(curr_nominal[: self.chunk_size].clone(), self.action_min, self.action_max)
+        action_to_execute = action_chunk[0].clone()
 
         self.nominal_actions = curr_nominal.clone()
         self.prev_action = action_to_execute.clone()
@@ -303,6 +314,7 @@ class LatentMPPIController:
 
         return MPPIPlanResult(
             action=action_to_execute,
+            action_chunk=action_chunk,
             nominal_action_sequence=curr_nominal,
             predicted_latent_trajectory=best_z_traj,
             predicted_ee_trajectory=best_ee_traj,
@@ -321,6 +333,7 @@ class LatentMPPIController:
         u_prev: torch.Tensor,
         R_ee: Optional[torch.Tensor] = None,
         target_orientation: Optional[torch.Tensor] = None,
+        z_trajectories: Optional[torch.Tensor] = None,
     ) -> torch.Tensor:
         """Evaluates the physics-grounded, lifting-aware MPPI trajectory cost over K candidates.
 
@@ -328,8 +341,9 @@ class LatentMPPIController:
           - Positional Cost: W_pos * ||pos_current - target_pos||_2
           - Rotational Cost: W_rot * (1 - cos(theta_error))
           - Action Smoothness (Jerk Penalty): W_jerk * ||u_t - u_{t-1}||_2^2
+          - Terminal Critic Bootstrapping: (gamma ** H) * V(z_H)
         """
-        K = ee_pos.shape[0]
+        K, H, _ = ee_pos.shape
         # 1. Positional Cost: W_pos * ||pos_current - target_pos||_2
         pos_err = torch.norm(ee_pos - target_coords.view(1, 1, 3), p=2, dim=-1)  # [K, H]
         pos_cost = self.w_pos * pos_err.sum(dim=-1)  # [K]
@@ -351,7 +365,16 @@ class LatentMPPIController:
         jerk_sq = torch.sum(delta_u ** 2, dim=-1)  # [K, H]
         jerk_cost = self.w_jerk * jerk_sq.sum(dim=-1)  # [K]
 
-        return pos_cost + rot_cost + jerk_cost
+        total_cost = pos_cost + rot_cost + jerk_cost
+
+        # 4. Terminal Value Bootstrapping (TD-MPC Critic)
+        if self.critic is not None and z_trajectories is not None:
+            terminal_z = z_trajectories[:, -1, :]  # [K, latent_dim]
+            raw_terminal_costs = self.critic(terminal_z).squeeze(-1)  # [K]
+            scaled_terminal_costs = self.w_pos * raw_terminal_costs
+            total_cost = total_cost + (self.gamma_discount ** H) * scaled_terminal_costs
+
+        return total_cost
 
 
 def compute_rot_error(
@@ -432,7 +455,7 @@ class MPPIStructuralScorer:
         frequency: int = 10,
         base_seed: int = 42000,
         num_samples: int = 256,
-        horizon: int = 30,
+        horizon: int = 10,
         num_iterations: int = 3,
         fk: Optional[DifferentiableForwardKinematics] = None,
         approach_window: int = 20,
@@ -461,7 +484,7 @@ class MPPIStructuralScorer:
         num_trajectories: int = 6,
         base_seed: int = 42000,
         num_samples: int = 256,
-        horizon: int = 30,
+        horizon: int = 10,
         num_iterations: int = 3,
         fk: Optional[DifferentiableForwardKinematics] = None,
         approach_window: int = 20,
@@ -565,6 +588,9 @@ class MPPIStructuralScorer:
         final_vel = 0.0
         final_rot = 0.0
 
+        current_chunk: Optional[torch.Tensor] = None
+        chunk_idx = 0
+
         for t in range(t_start, t_grasp + 1):
             z_t, dyn_state = step_grounded(
                 model,
@@ -578,11 +604,18 @@ class MPPIStructuralScorer:
                 traj_z_next.append(z_t.detach().cpu())
 
             u_before = prev_u.clone()
-            res = controller.plan_step(z_t, target_pose_mat, prev_action=prev_u)
-            prev_u = res.action
+            if current_chunk is None or chunk_idx >= controller.chunk_size:
+                res = controller.plan_step(z_t, target_pose_mat, prev_action=prev_u)
+                current_chunk = res.action_chunk
+                chunk_idx = 0
+
+            u_exec = current_chunk[chunk_idx]
+            chunk_idx += 1
+            prev_u = u_exec
+            controller.prev_action = u_exec.clone()
 
             traj_z.append(z_t.detach().cpu())
-            traj_u.append(res.action.detach().cpu())
+            traj_u.append(u_exec.detach().cpu())
 
             dec_t = model.physical_decoder(z_t)
             T_ee_t = self.fk.forward_homogeneous(dec_t[:, :6])[0].detach()
@@ -600,7 +633,7 @@ class MPPIStructuralScorer:
                 controller.compute_trajectory_cost(
                     ee_pos=ee_t.view(1, 1, 3),
                     target_coords=target_pos_t,
-                    u_seq=res.action.view(1, 1, -1),
+                    u_seq=u_exec.view(1, 1, -1),
                     u_prev=u_before,
                     R_ee=R_ee_t.view(1, 1, 3, 3),
                     target_orientation=target_pose_mat[:3, :3],
@@ -666,6 +699,7 @@ class MPPIStructuralScorer:
             predictor=model.m1,
             physical_decoder=model.physical_decoder,
             forward_kinematics=self.fk,
+            critic=model.critic,
             num_samples=self.num_samples,
             horizon=self.horizon,
             num_iterations=self.num_iterations,

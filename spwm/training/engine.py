@@ -658,6 +658,10 @@ class BaseTrainer:
         if self.mode in ("train_m1", "m1"):
             active_phase, w_t, alpha, dagger_ratio = self.curriculum.begin_epoch()
             self.current_curriculum_phase = active_phase
+            target_lr = 0.00005 if active_phase == 4 else self.cfg.training.learning_rate
+            if self.handler.predictor_optimizer is not None:
+                for pg in self.handler.predictor_optimizer.param_groups:
+                    pg["lr"] = target_lr
         else:
             active_phase, w_t, alpha, dagger_ratio = 1, 0.60, 0.0, 0.0
 
@@ -702,7 +706,10 @@ class BaseTrainer:
         epoch_metrics = {k: v / max(1, batch_count) for k, v in train_accum.items()}
         if self.mode in ("train_m1", "m1"):
             prev_phase = self.current_curriculum_phase
-            next_phase = self.curriculum.end_epoch(epoch_metrics.get("train_loss", float("inf")))
+
+            kinematic_loss = epoch_metrics.get("train_loss_position", float("inf")) + epoch_metrics.get("train_loss_velocity", float("inf"))
+            next_phase = self.curriculum.end_epoch(kinematic_loss)
+
             self.current_curriculum_phase = next_phase
             if next_phase > prev_phase:
                 chronicle.log_info(

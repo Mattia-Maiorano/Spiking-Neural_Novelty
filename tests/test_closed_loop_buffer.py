@@ -327,6 +327,35 @@ def test_four_phase_latch_curriculum():
     assert abs(dagger - 0.50) < 1e-6
 
 
+def test_dynamic_learning_rate_phase_4():
+    """Verify that learning rate dynamically drops from 0.0001 to 0.00005 upon entering phase 4."""
+    from spwm.contracts.config import ExperimentConfig, TrainingConfig
+    from spwm.models.world_model import SPWM
+    from spwm.training.engine import BaseTrainer
+
+    cfg = ExperimentConfig(
+        training=TrainingConfig(mode="train_m1", learning_rate=0.0001, phase_horizon=4)
+    )
+    model = SPWM(latent_dim=32, in_channels=2, height=128, width=128, action_dim=6)
+    trainer = BaseTrainer(model=model, cfg=cfg, train_loader=[], val_loader=[], save_dir="/tmp/dummy")
+
+    assert trainer.handler.predictor_optimizer is not None
+    for pg in trainer.handler.predictor_optimizer.param_groups:
+        assert pg["lr"] == 0.0001
+
+    # Simulate Phase 1
+    trainer.curriculum.current_curriculum_phase = 1
+    trainer.train_epoch(epoch=1)
+    for pg in trainer.handler.predictor_optimizer.param_groups:
+        assert pg["lr"] == 0.0001
+
+    # Simulate Phase 4 entry
+    trainer.curriculum.current_curriculum_phase = 4
+    trainer.train_epoch(epoch=2)
+    for pg in trainer.handler.predictor_optimizer.param_groups:
+        assert pg["lr"] == 0.00005
+
+
 def test_closed_loop_buffer_default_3_generations():
     """Verify default max_eval_generations=3 and eviction of generation N-3 before ingesting N."""
     buf = ClosedLoopBuffer(capacity=1000)

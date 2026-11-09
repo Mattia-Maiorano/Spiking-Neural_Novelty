@@ -139,6 +139,7 @@ class WorldModelProtocol(Protocol):
     dynamics: nn.Module
     predictor: nn.Module
     physical_decoder: PhysicalDecoderProtocol
+    critic: nn.Module
 
     @property
     def m1(self) -> nn.Module:

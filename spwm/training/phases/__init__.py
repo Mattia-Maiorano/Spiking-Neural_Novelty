@@ -93,6 +93,7 @@ class PredictorPhaseHandler(PhaseStrategy):
         train_loss = train_metrics.get("train_loss", 0.0)
         train_pos_l = train_metrics.get("train_loss_position", 0.0)
         train_vel_l = train_metrics.get("train_loss_velocity", 0.0)
+        train_critic_l = train_metrics.get("train_loss_critic", None)
         train_pos_e = train_metrics.get("train_pos_err", 0.0)
         train_vel_e = train_metrics.get("train_vel_err", 0.0)
         train_alpha = train_metrics.get("train_mppi_noise_alpha", 0.0)
@@ -110,6 +111,12 @@ class PredictorPhaseHandler(PhaseStrategy):
             f"Eval: Joint Angle L2: {train_pos_e:.5f} | Joint Vel L2: {train_vel_e:.5f}",
             indent_level=1,
         )
+        if train_critic_l is not None:
+            chronicle.log_detail(
+                "⚡ Critic Loss",
+                f"Critic-MSE: {train_critic_l:.5f}",
+                indent_level=1,
+            )
 
         cl_trajs = int(train_metrics.get("closed_loop_trajs_epoch", 0))
         cl_trans = int(train_metrics.get("closed_loop_trans_epoch", 0))
@@ -138,6 +145,7 @@ class PredictorPhaseHandler(PhaseStrategy):
         val_loss = val_metrics.get("val_loss", 0.0)
         val_pos_l = val_metrics.get("val_loss_position", 0.0)
         val_vel_l = val_metrics.get("val_loss_velocity", 0.0)
+        val_critic_l = val_metrics.get("val_loss_critic", None)
         val_pos_e = val_metrics.get("val_pos_err", 0.0)
         val_vel_e = val_metrics.get("val_vel_err", 0.0)
         chronicle.log_detail(
@@ -146,6 +154,12 @@ class PredictorPhaseHandler(PhaseStrategy):
             f"Eval: Joint Angle L2: {val_pos_e:.5f} | Joint Vel L2: {val_vel_e:.5f}",
             indent_level=1,
         )
+        if val_critic_l is not None:
+            chronicle.log_detail(
+                "📊 Critic Validation (Tier 1)",
+                f"Critic-MSE: {val_critic_l:.5f}",
+                indent_level=1,
+            )
 
         if "mppi_score" in val_metrics:
             mppi_s = val_metrics["mppi_score"]

@@ -299,14 +299,14 @@ def test_four_phase_latch_curriculum():
     # Once w_t == 0.0 AND train_loss < 0.008 -> latch to Phase 3!
     assert curric.end_epoch(train_loss=0.0075) == 3
 
-    # Phase 3: Noise Ramp-Up over 10 epochs (alpha: 0.0 -> 0.4, w_t = 0.0)
-    for step in range(1, 10):
+    # Phase 3: Noise Ramp-Up over 20 epochs (alpha: 0.0 -> 0.4, w_t = 0.0)
+    for step in range(1, 20):
         phase, w_t, alpha, dagger = curric.begin_epoch()
         assert phase == 3 and w_t == 0.0 and dagger == 0.0
-        assert abs(alpha - 0.4 * (step / 10.0)) < 1e-5
+        assert abs(alpha - 0.4 * (step / 20.0)) < 1e-5
         assert curric.end_epoch(train_loss=0.20) == 3
 
-    # 10th epoch of Phase 3 reaches alpha == 0.4 -> latch to Phase 4!
+    # 20th epoch of Phase 3 reaches alpha == 0.4 -> latch to Phase 4!
     phase, w_t, alpha, dagger = curric.begin_epoch()
     assert phase == 3 and w_t == 0.0 and abs(alpha - 0.4) < 1e-6 and dagger == 0.0
     assert curric.end_epoch(train_loss=0.20) == 4

@@ -474,6 +474,8 @@ class MPPIStructuralScorer:
         self.num_iterations = int(num_iterations)
         self.fk = fk if fk is not None else DifferentiableForwardKinematics().to(device)
         self.approach_window = int(approach_window)
+        self.eval_count: int = 0
+        self.phase4_eval_count: int = 0
 
     @classmethod
     def from_dataset(
@@ -555,8 +557,9 @@ class MPPIStructuralScorer:
         controller: LatentMPPIController,
         batch: Dict[str, Any],
         seed: int,
+        use_expert_actions: bool = False,
     ) -> Dict[str, Any]:
-        """Evaluates MPPI closed-loop control on a single trajectory with strictly seeded noise generation."""
+        """Evaluates MPPI closed-loop control (or teacher-forced expert actions) on a single trajectory."""
         events = batch["events"]
         q_gt = batch["joint_positions"][0]
         phase_flags = batch["phase_flags"][0]
@@ -576,7 +579,7 @@ class MPPIStructuralScorer:
 
         # Zero-Stochasticity Guarantee: seed controller explicitly before trajectory unrolling
         controller.reset(initial_action_bias=initial_bias, seed=seed)
-        prev_u = initial_bias.clone()
+        prev_u = actions[0, t_start - 1].clone() if use_expert_actions else initial_bias.clone()
 
         traj_z: List[torch.Tensor] = []
         traj_u: List[torch.Tensor] = []
@@ -604,13 +607,17 @@ class MPPIStructuralScorer:
                 traj_z_next.append(z_t.detach().cpu())
 
             u_before = prev_u.clone()
-            if current_chunk is None or chunk_idx >= controller.chunk_size:
-                res = controller.plan_step(z_t, target_pose_mat, prev_action=prev_u)
-                current_chunk = res.action_chunk
-                chunk_idx = 0
+            if use_expert_actions:
+                u_exec = actions[0, t].clone()
+            else:
+                if current_chunk is None or chunk_idx >= controller.chunk_size:
+                    res = controller.plan_step(z_t, target_pose_mat, prev_action=prev_u)
+                    current_chunk = res.action_chunk
+                    chunk_idx = 0
 
-            u_exec = current_chunk[chunk_idx]
-            chunk_idx += 1
+                u_exec = current_chunk[chunk_idx]
+                chunk_idx += 1
+
             prev_u = u_exec
             controller.prev_action = u_exec.clone()
 
@@ -686,13 +693,19 @@ class MPPIStructuralScorer:
             "pos_penalty": (steady_state_error / 3.0) ** 2,
             "vel_penalty": (final_vel / 1.5) ** 2,
             "rot_penalty": (final_rot / 0.05) ** 2,
+            "is_expert": bool(use_expert_actions),
             "transitions": packed_transitions,
             "trajectory": packed_trajectory,
         }
 
     @torch.no_grad()
-    def __call__(self, model: nn.Module, epoch: int) -> Dict[str, Any]:
-        """Executes Tier 2 closed-loop MPPI scoring on the fixed validation subset."""
+    def __call__(
+        self,
+        model: nn.Module,
+        epoch: int,
+        curriculum_phase: Optional[int] = None,
+    ) -> Dict[str, Any]:
+        """Executes Tier 2 closed-loop MPPI scoring with Teacher-Forced action blending and strict metric isolation."""
         model.eval()
 
         controller = LatentMPPIController(
@@ -706,29 +719,53 @@ class MPPIStructuralScorer:
             device=self.device,
         )
 
-        all_results: List[Dict[str, Any]] = []
+        total_trajs = len(self.fixed_batches)
+        eval_idx = self.eval_count
+        self.eval_count += 1
+
+        if curriculum_phase is None:
+            num_expert = 0
+        elif curriculum_phase < 4:
+            num_expert = min(4, max(0, total_trajs - 2)) if total_trajs >= 3 else 0
+        else:
+            self.phase4_eval_count += 1
+            base_expert = min(4, max(0, total_trajs - 2)) if total_trajs >= 3 else 0
+            num_expert = max(0, base_expert - self.phase4_eval_count)
+
+        num_natural = max(1, total_trajs - num_expert)
+        natural_indices = {(eval_idx + i) % total_trajs for i in range(num_natural)}
+
+        natural_results: List[Dict[str, Any]] = []
         all_transitions: List[Dict[str, torch.Tensor]] = []
         all_trajectories: List[Dict[str, Any]] = []
-        for batch in self.fixed_batches:
+        for idx, batch in enumerate(self.fixed_batches):
+            use_expert = idx not in natural_indices
             traj_id = int(batch["trajectory_id"])
             traj_seed = self.base_seed + traj_id
-            res = self.evaluate_trajectory(model, controller, batch, seed=traj_seed)
+            res = self.evaluate_trajectory(
+                model,
+                controller,
+                batch,
+                seed=traj_seed,
+                use_expert_actions=use_expert,
+            )
             if "transitions" in res:
                 all_transitions.extend(res["transitions"])
             if "trajectory" in res:
                 all_trajectories.append(res["trajectory"])
-            all_results.append(res)
+            if not use_expert:
+                natural_results.append(res)
 
-        n = len(all_results)
-        mean_score = float(np.mean([r["score"] for r in all_results]))
-        success_rate = float(np.mean([r["success"] for r in all_results]))
-        mean_cart_err = float(np.mean([r["mean_cartesian_err_cm"] for r in all_results]))
-        mean_term_err = float(np.mean([r["terminal_error_cm"] for r in all_results]))
-        mean_vel = float(np.mean([r["final_vel"] for r in all_results]))
-        mean_rot = float(np.mean([r["final_rot"] for r in all_results]))
-        mean_pos_pen = float(np.mean([r["pos_penalty"] for r in all_results]))
-        mean_vel_pen = float(np.mean([r["vel_penalty"] for r in all_results]))
-        mean_rot_pen = float(np.mean([r["rot_penalty"] for r in all_results]))
+        n = len(natural_results)
+        mean_score = float(np.mean([r["score"] for r in natural_results]))
+        success_rate = float(np.mean([r["success"] for r in natural_results]))
+        mean_cart_err = float(np.mean([r["mean_cartesian_err_cm"] for r in natural_results]))
+        mean_term_err = float(np.mean([r["terminal_error_cm"] for r in natural_results]))
+        mean_vel = float(np.mean([r["final_vel"] for r in natural_results]))
+        mean_rot = float(np.mean([r["final_rot"] for r in natural_results]))
+        mean_pos_pen = float(np.mean([r["pos_penalty"] for r in natural_results]))
+        mean_vel_pen = float(np.mean([r["vel_penalty"] for r in natural_results]))
+        mean_rot_pen = float(np.mean([r["rot_penalty"] for r in natural_results]))
 
         return {
             "mppi_score": mean_score,
@@ -746,6 +783,7 @@ class MPPIStructuralScorer:
             "mppi_vel_penalty": mean_vel_pen,
             "mppi_rot_penalty": mean_rot_pen,
             "mppi_evaluated_trajectories": float(n),
+            "mppi_expert_trajectories": float(total_trajs - n),
             "transitions": all_transitions,
             "trajectories": all_trajectories,
         }

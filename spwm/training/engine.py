@@ -13,6 +13,8 @@ Zero upward imports into `spwm.evaluation` and zero silent `getattr` or `strict=
 from __future__ import annotations
 
 import csv
+from dataclasses import dataclass
+import inspect
 import json
 from pathlib import Path
 import time
@@ -668,6 +670,7 @@ class BaseTrainer:
         for raw_batch in self.train_loader:
             batch = dict(raw_batch)
             if self.mode in ("train_m1", "m1"):
+                batch["curriculum_phase"] = active_phase
                 batch["curriculum_w_t"] = w_t
                 batch["curriculum_alpha"] = alpha
 
@@ -788,7 +791,16 @@ class BaseTrainer:
                                 f"Tier 2 Evaluating latest model weights (Epoch {epoch})."
                             )
 
-                        tier2_metrics = self.tier2_evaluator(self.model, epoch)
+                        active_curric_phase = int(train_metrics.get("curriculum_phase", self.current_curriculum_phase))
+                        sig = inspect.signature(self.tier2_evaluator.__call__)
+                        if "curriculum_phase" in sig.parameters or any(
+                            p.kind == inspect.Parameter.VAR_KEYWORD for p in sig.parameters.values()
+                        ):
+                            tier2_metrics = self.tier2_evaluator(
+                                self.model, epoch, curriculum_phase=active_curric_phase
+                            )
+                        else:
+                            tier2_metrics = self.tier2_evaluator(self.model, epoch)
                         cl_trajectories = tier2_metrics.pop("trajectories", None)
                         cl_transitions = tier2_metrics.pop("transitions", None)
                         if self.replay_buffer is not None:
@@ -798,9 +810,10 @@ class BaseTrainer:
                                 self.replay_buffer.push(cl_transitions)
                             self.replay_buffer.save(self.save_dir / "closed_loop_buffer.pt")
                             num_mppi_eval = int(tier2_metrics["mppi_evaluated_trajectories"])
+                            num_expert_eval = int(tier2_metrics.get("mppi_expert_trajectories", 0))
                             chronicle.log_info(
                                 f"[DAgger Buffer] Ingested {len(self.replay_buffer.trajectories)} trajectories "
-                                f"({len(self.replay_buffer)} total transitions) from {num_mppi_eval} evaluated closed-loop MPPI episodes."
+                                f"({len(self.replay_buffer)} total transitions) from {num_mppi_eval} natural + {num_expert_eval} expert episodes."
                             )
                         val_metrics.update(tier2_metrics)
                         score = tier2_metrics["mppi_score"]
@@ -849,18 +862,17 @@ class BaseTrainer:
                 self.history.append(log_entry)
                 self.save_checkpoint(epoch, is_best=False)
 
-                if hasattr(self.handler, "log_epoch"):
-                    self.handler.log_epoch(
-                        epoch=epoch,
-                        end_epoch=end_epoch,
-                        train_metrics=train_metrics,
-                        val_metrics=val_metrics,
-                        epoch_duration=ep_duration,
-                        total_elapsed=total_elapsed,
-                        is_best=is_best,
-                        best_epoch=self.best_epoch,
-                        best_score=self.best_score,
-                    )
+                self.handler.log_epoch(
+                    epoch=epoch,
+                    end_epoch=end_epoch,
+                    train_metrics=train_metrics,
+                    val_metrics=val_metrics,
+                    epoch_duration=ep_duration,
+                    total_elapsed=total_elapsed,
+                    is_best=is_best,
+                    best_epoch=self.best_epoch,
+                    best_score=self.best_score,
+                )
 
                 # Early stopping evaluation: strictly driven by the active validation tier
                 if self.tier2_evaluator is not None:

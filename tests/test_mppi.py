@@ -101,7 +101,7 @@ def test_mppi_critic_terminal_bootstrapping():
     cost_with_critic = ctrl_with_critic.compute_trajectory_cost(
         ee_pos, target_pos, u_seq, u_prev, z_trajectories=z_trajectories
     )
-    expected_terminal_add = (0.95 ** 5) * 10.0
+    expected_terminal_add = (0.95 ** 5) * ctrl_with_critic.w_pos * 10.0
     assert torch.allclose(cost_with_critic - cost_no_critic, torch.full((8,), expected_terminal_add), atol=1e-5)
 
 

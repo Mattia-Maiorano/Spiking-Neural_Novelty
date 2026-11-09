@@ -186,15 +186,14 @@ def test_elevation_classification_and_rot_error():
 
 def test_compute_structural_score_formula():
     """Validates structural scoring penalties and success bonus logic."""
-    # Case 1: Perfect grasp: small errors, low velocity, aligned rotation -> success bonus (-2.0)
+    # Case 1: Perfect grasp: small errors, low velocity, aligned rotation
     step_errs = [1.2, 1.0, 0.8]  # mean = 1.0 cm (< 3.0)
     final_vel = 0.5               # < 1.5 rad/s
     final_rot = 0.01              # < 0.05
     score, is_succ = compute_structural_score(step_errs, final_vel, final_rot)
     assert is_succ is True
     # expected raw = (1.0/3.0)^2 + (0.5/1.5)^2 + (0.01/0.05)^2 = 1/9 + 1/9 + 1/25 = 0.1111 + 0.1111 + 0.04 = 0.2622
-    # with bonus: 0.2622 - 2.0 = -1.7378
-    assert score < 0.0
+    assert abs(score - ((1.0 / 3.0) ** 2 + (0.5 / 1.5) ** 2 + (0.01 / 0.05) ** 2)) < 1e-5
 
     # Case 2: Poor placement: high error (> 3.0 cm) -> no success bonus
     poor_errs = [6.0, 5.5, 6.0]  # mean = 5.833 cm
@@ -575,6 +574,125 @@ def test_tier2_early_stopping_min_delta(tmp_path):
     assert executed_epochs == [1, 2, 3, 4, 5, 6]
     assert trainer.best_epoch == 2
     assert trainer.best_score == 2.00
+
+
+def test_teacher_forced_blending_metric_isolation_and_round_robin():
+    """
+    Verifies:
+    1. Phases 1, 2, 3 inject 4 expert trajectories and evaluate 2 natural MPPI trajectories.
+    2. Phase 4 decays expert trajectories by 1 on each subsequent Tier 2 evaluation step (4 -> 3 -> 2 -> 1 -> 0).
+    3. Strict Metric Isolation: returned metrics are computed EXCLUSIVELY on the natural trajectories,
+       while all 6 trajectories (natural + expert) are returned for the ClosedLoopBuffer.
+    4. Stratified Round-Robin Rotation: natural trajectory indices rotate via (eval_idx + i) % 6 across Low, Mid, High planes.
+    """
+    device = torch.device("cpu")
+    dataset = SyntheticValDataset(count=6, seq_len=40)
+    fk = DifferentiableForwardKinematics().to(device)
+
+    scorer = MPPIStructuralScorer.from_dataset(
+        val_dataset=dataset,
+        device=device,
+        frequency=5,
+        num_trajectories=6,
+        base_seed=42000,
+        num_samples=8,
+        horizon=6,
+        num_iterations=1,
+        fk=fk,
+        approach_window=6,
+    )
+
+    cfg = ExperimentConfig(
+        data=DataConfig(sequence_length=40),
+        training=TrainingConfig(mode="train_m1", phase_horizon=6),
+    )
+    model = SPWM.from_config(cfg).to(device)
+    model.eval()
+
+    # Track calls to evaluate_trajectory to verify which indices are expert vs natural and verify metric isolation
+    call_records: List[Dict[str, Any]] = []
+    orig_eval_traj = scorer.evaluate_trajectory
+
+    def spy_eval_traj(m, ctrl, batch, seed, use_expert_actions=False):
+        res = orig_eval_traj(m, ctrl, batch, seed=seed, use_expert_actions=use_expert_actions)
+        # Artificially set expert trajectory score to -999.0 and success to 1.0 to prove metric isolation!
+        if use_expert_actions:
+            res["score"] = -999.0
+            res["success"] = 1.0
+            res["mean_cartesian_err_cm"] = 0.0
+        else:
+            res["score"] = 10.0
+            res["success"] = 0.0
+            res["mean_cartesian_err_cm"] = 5.0
+        call_records.append({
+            "traj_id": batch["trajectory_id"],
+            "plane": batch["elevation_plane"],
+            "is_expert": use_expert_actions,
+        })
+        return res
+
+    scorer.evaluate_trajectory = spy_eval_traj  # type: ignore[method-assign]
+
+    # Phase 1 (eval_idx=0): 4 expert, 2 natural -> natural indices {0, 1}
+    call_records.clear()
+    m_p1 = scorer(model, epoch=5, curriculum_phase=1)
+    assert m_p1["mppi_evaluated_trajectories"] == 2.0
+    assert m_p1["mppi_expert_trajectories"] == 4.0
+    assert len(m_p1["trajectories"]) == 6
+    # Strict metric isolation: score must be 10.0 (from natural), NOT polluted by -999.0 (from expert)
+    assert m_p1["mppi_score"] == 10.0
+    assert m_p1["mppi_success_rate"] == 0.0
+    assert m_p1["mppi_mean_error_cm"] == 5.0
+    nat_idx_p1 = [i for i, r in enumerate(call_records) if not r["is_expert"]]
+    assert nat_idx_p1 == [0, 1]
+
+    # Phase 2 (eval_idx=1): 4 expert, 2 natural -> natural indices {1, 2}
+    call_records.clear()
+    m_p2 = scorer(model, epoch=10, curriculum_phase=2)
+    assert m_p2["mppi_evaluated_trajectories"] == 2.0
+    assert m_p2["mppi_expert_trajectories"] == 4.0
+    nat_idx_p2 = [i for i, r in enumerate(call_records) if not r["is_expert"]]
+    assert nat_idx_p2 == [1, 2]
+
+    # Phase 3 (eval_idx=2): 4 expert, 2 natural -> natural indices {2, 3}
+    call_records.clear()
+    m_p3 = scorer(model, epoch=15, curriculum_phase=3)
+    assert m_p3["mppi_evaluated_trajectories"] == 2.0
+    assert m_p3["mppi_expert_trajectories"] == 4.0
+    nat_idx_p3 = [i for i, r in enumerate(call_records) if not r["is_expert"]]
+    assert nat_idx_p3 == [2, 3]
+
+    # Phase 4 Step 1 (eval_idx=3): expert decays 4 -> 3 (natural = 3, indices {3, 4, 5})
+    call_records.clear()
+    m_p4_1 = scorer(model, epoch=20, curriculum_phase=4)
+    assert m_p4_1["mppi_expert_trajectories"] == 3.0
+    assert m_p4_1["mppi_evaluated_trajectories"] == 3.0
+    nat_idx_p4_1 = [i for i, r in enumerate(call_records) if not r["is_expert"]]
+    assert nat_idx_p4_1 == [3, 4, 5]
+
+    # Phase 4 Step 2 (eval_idx=4): expert decays 3 -> 2 (natural = 4, indices {4, 5, 0, 1})
+    call_records.clear()
+    m_p4_2 = scorer(model, epoch=25, curriculum_phase=4)
+    assert m_p4_2["mppi_expert_trajectories"] == 2.0
+    assert m_p4_2["mppi_evaluated_trajectories"] == 4.0
+    nat_idx_p4_2 = [i for i, r in enumerate(call_records) if not r["is_expert"]]
+    assert sorted(nat_idx_p4_2) == [0, 1, 4, 5]
+
+    # Phase 4 Step 3 (eval_idx=5): expert decays 2 -> 1 (natural = 5)
+    m_p4_3 = scorer(model, epoch=30, curriculum_phase=4)
+    assert m_p4_3["mppi_expert_trajectories"] == 1.0
+    assert m_p4_3["mppi_evaluated_trajectories"] == 5.0
+
+    # Phase 4 Step 4 (eval_idx=6): expert decays 1 -> 0 (natural = 6)
+    m_p4_4 = scorer(model, epoch=35, curriculum_phase=4)
+    assert m_p4_4["mppi_expert_trajectories"] == 0.0
+    assert m_p4_4["mppi_evaluated_trajectories"] == 6.0
+
+    # Phase 4 Step 5 (eval_idx=7): stays at 0 expert, 6 natural
+    m_p4_5 = scorer(model, epoch=40, curriculum_phase=4)
+    assert m_p4_5["mppi_expert_trajectories"] == 0.0
+    assert m_p4_5["mppi_evaluated_trajectories"] == 6.0
+
 
 
 

@@ -756,6 +756,18 @@
 - **new results (if any)**: All 33 unit tests in `test_closed_loop_buffer.py`, `test_training_phases.py`, `test_anti_fallback.py`, and `test_architecture_contracts.py` passed with 0 fallback violations. No runs made - code refactoring / configuration only.
 - **verdict on change made**: Preserved.
 
+## SPWM-v0.10.1 — Iteration 1 (Teacher-Forced Tier 2 Action Blending, Strict Metric Isolation, Round-Robin Rotation & Critic/Noise Hyperparameter Calibration)
+- **version afflicted**: `SPWM-v0.10.1`
+- **iteration on version**: Iteration 1 (Teacher-Forced Tier 2 Action Blending, Strict Metric Isolation, Round-Robin Rotation & Critic/Noise Hyperparameter Calibration)
+- **changes made**:
+  1. Layer 0 Hyperparameters (`spwm/contracts/config.py`, `spwm/training/noise.py`, `spwm/training/phases/m1_nominal.py`): Extended `TrainingConfig.mppi_noise_ramp_epochs` (and `LatchCurriculumState.noise_ramp_epochs`) from $10$ to $20$ epochs; added `LossConfig.lambda_critic: float = 1.0` (increasing critic weight $w_{\text{critic}}$ in `M1PhaseStrategy` from $0.1$ to $1.0$).
+  2. Teacher-Forced Tier 2 Action Blending (`spwm/evaluation/mppi.py`, `spwm/training/engine.py`, `spwm/contracts/protocols.py`): Updated `MPPIStructuralScorer` and `BaseTrainer` to inject ground-truth expert actions (`u_t`) for 4 out of 6 validation trajectories during Phases 1, 2, and 3 (leaving 2 as natural pure MPPI), and linearly decay the expert count by 1 at every Tier 2 evaluation step once Phase 4 begins ($4 \to 3 \to 2 \to 1 \to 0$).
+  3. Strict Metric Isolation (`spwm/evaluation/mppi.py`): Separated natural MPPI trajectories from expert-guided trajectories inside `MPPIStructuralScorer.__call__`, computing all Tier 2 validation metrics (`mppi_score`, `mppi_cost`, `mppi_success_rate`, `mppi_mean_error_cm`, `mppi_rot_err_rad`, etc.) exclusively on natural MPPI trajectories while pushing all 6 trajectories into `ClosedLoopBuffer`.
+  4. Stratified Round-Robin Rotation (`spwm/evaluation/mppi.py`): Implemented circular selection `(eval_idx + i) % total_trajs` for natural trajectory assignment so natural MPPI evaluations sweep across Low, Mid, and High target elevation planes across epochs.
+- **new results (if any)**: No runs made - code refactoring / configuration only. All 45 unit tests across `test_anti_fallback.py`, `test_architecture_contracts.py`, `test_mppi.py`, `test_two_tiered_validation.py`, and `test_closed_loop_buffer.py` passed (0 AST fallback violations).
+- **verdict on change made**: Preserved.
+
+
 
 
 

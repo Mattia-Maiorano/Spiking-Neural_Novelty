@@ -40,6 +40,7 @@ class M1PhaseStrategy(PhaseStrategy):
         phase_flags: Optional[torch.Tensor] = None, epoch: Optional[int] = None,
         is_train: bool = True, closed_loop_batch: Optional[Dict[str, torch.Tensor]] = None,
         curriculum_alpha: Optional[float] = None, curriculum_w_t: float = 0.60,
+        curriculum_phase: int = 1,
     ) -> Tuple[torch.Tensor, Dict[str, float]]:
         B, T = events.shape[0], events.shape[1]
         assert_tensor_contract(events, (B, T, self.model.in_channels, self.model.height, self.model.width), "M1.events")
@@ -102,11 +103,11 @@ class M1PhaseStrategy(PhaseStrategy):
                 cl_critic_loss = compute_critic_mc_loss(self.model.critic, self.model.physical_decoder, self.fk, cl_pred.detach(), cl_target, gamma=0.95)
                 loss_critic = 0.5 * (loss_critic + cl_critic_loss)
 
-        w_critic = 0.1
+        w_critic = float(self.cfg.loss.lambda_critic) * (5.0 if curriculum_phase >= 3 else 1.0)
         loss_m1 = float(self.cfg.loss.lambda_position) * loss_pos + float(self.cfg.loss.lambda_velocity) * loss_vel
         total_loss = float(self.cfg.loss.lambda_latent) * loss_m1 + w_critic * loss_critic
         pos_err, vel_err = 0.0, 0.0
-        if flat_kin is not None and hasattr(self.model, "physical_decoder"):
+        if flat_kin is not None and self.model.physical_decoder is not None:
             with torch.no_grad():
                 decoded_kin = self.model.physical_decoder(m1_traj, initial_filter_state=self.model.physical_decoder.warm_up_filter(z_prefix))
                 target_kin, jc = flat_kin[:, t_start + 1 : t_start + 1 + horizon], self.cfg.environment.joint_count
@@ -132,8 +133,10 @@ class M1PhaseStrategy(PhaseStrategy):
         self.model.eval(); self.model.m1.train(); self.model.critic.train()
         assert self.predictor_optimizer is not None
         self.predictor_optimizer.zero_grad()
-        cl_batch, c_alpha, c_wt = batch["closed_loop"] if "closed_loop" in batch else None, (float(batch["curriculum_alpha"]) if "curriculum_alpha" in batch else None), (float(batch["curriculum_w_t"]) if "curriculum_w_t" in batch else 0.60)
-        total_loss, m = self._compute_m1_objectives(*self._extract_batch(batch), epoch=epoch, is_train=True, closed_loop_batch=cl_batch, curriculum_alpha=c_alpha, curriculum_w_t=c_wt)
+        cl_b = batch.get("closed_loop")
+        c_a = float(batch["curriculum_alpha"]) if "curriculum_alpha" in batch else None
+        c_wt, c_p = (float(batch["curriculum_w_t"]) if "curriculum_w_t" in batch else 0.60), (int(batch["curriculum_phase"]) if "curriculum_phase" in batch else 1)
+        total_loss, m = self._compute_m1_objectives(*self._extract_batch(batch), epoch=epoch, is_train=True, closed_loop_batch=cl_b, curriculum_alpha=c_a, curriculum_w_t=c_wt, curriculum_phase=c_p)
         total_loss.backward()
         nn.utils.clip_grad_norm_([p for p in self.model.parameters() if p.requires_grad], self.cfg.training.grad_clip_norm)
         self.predictor_optimizer.step()

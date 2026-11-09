@@ -36,7 +36,7 @@ class LatchCurriculumState:
     dagger_ratio: float = 0.0
     tier2_frequency: int = 5
     sensory_fade_epochs: int = 7
-    noise_ramp_epochs: int = 10
+    noise_ramp_epochs: int = 20
     target_alpha: float = 0.4
     phase1_loss_threshold: float = 0.01
     phase2_loss_threshold: float = 0.008

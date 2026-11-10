@@ -361,6 +361,8 @@ class ClosedLoopBuffer:
                 "targets": targets_t,
                 "length": int(traj["length"]),
                 "trajectory_id": int(traj["trajectory_id"]),
+                "is_expert": bool(traj["is_expert"]) if "is_expert" in traj else False,
+                "elevation_plane": str(traj["elevation_plane"]) if "elevation_plane" in traj else "Unknown",
             }
             clean_gen.append(clean_traj)
 
@@ -459,7 +461,6 @@ class ClosedLoopBuffer:
             acts_list.append(u_i)
             targets_list.append(tgt_i)
 
-        dev = torch.device(device) if device is not None else None
         b_z = torch.stack([z.to(dev) for z in z_inits]) if dev is not None else torch.stack(z_inits)
         b_u = torch.stack([u.to(dev) for u in acts_list]) if dev is not None else torch.stack(acts_list)
         b_tgt = torch.stack([tgt.to(dev) for tgt in targets_list]) if dev is not None else torch.stack(targets_list)
@@ -513,6 +514,20 @@ class ClosedLoopBuffer:
         else:
             self.trajectories = []
             self.eval_generations = []
+
+        # Ensure backward compatibility when extending runs from older configurations
+        # Mark unannotated legacy trajectories explicitly with verbose status; never fabricate boolean origins
+        for gen in self.eval_generations:
+            for t in gen:
+                if "is_expert" not in t:
+                    t["is_expert"] = "UNANNOTATED_LEGACY_ORIGIN"
+                if "elevation_plane" not in t:
+                    t["elevation_plane"] = "UNANNOTATED_LEGACY_ELEVATION"
+        for t in self.trajectories:
+            if "is_expert" not in t:
+                t["is_expert"] = "UNANNOTATED_LEGACY_ORIGIN"
+            if "elevation_plane" not in t:
+                t["elevation_plane"] = "UNANNOTATED_LEGACY_ELEVATION"
 
     def save(self, path: Union[str, Path]) -> None:
         torch.save(self.state_dict(), Path(path))
@@ -664,6 +679,23 @@ class BaseTrainer:
             if self.handler.predictor_optimizer is not None:
                 for pg in self.handler.predictor_optimizer.param_groups:
                     pg["lr"] = target_lr
+            if active_phase == 4 and dagger_ratio > 0.0 and self.replay_buffer is not None and len(self.replay_buffer.trajectories) > 0:
+                buf_nat = [t["trajectory_id"] for t in self.replay_buffer.trajectories if t.get("is_expert") is False]
+                buf_exp = [t["trajectory_id"] for t in self.replay_buffer.trajectories if t.get("is_expert") is True]
+                buf_untracked = [
+                    t["trajectory_id"]
+                    for t in self.replay_buffer.trajectories
+                    if t.get("is_expert") not in (True, False)
+                ]
+                untracked_desc = (
+                    f" | Unannotated Legacy Trajectories (excluded from natural/expert breakdown): {buf_untracked}"
+                    if buf_untracked
+                    else ""
+                )
+                chronicle.log_info(
+                    f"[DAgger Training] Epoch {epoch} training on buffer ({len(self.replay_buffer.trajectories)} trajs, ratio={dagger_ratio:.2f}) | "
+                    f"Verified Natural IDs: {buf_nat} | Verified Expert IDs: {buf_exp}{untracked_desc}"
+                )
         else:
             active_phase, w_t, alpha, dagger_ratio = 1, 0.60, 0.0, 0.0
 
@@ -809,11 +841,35 @@ class BaseTrainer:
                             elif cl_transitions is not None:
                                 self.replay_buffer.push(cl_transitions)
                             self.replay_buffer.save(self.save_dir / "closed_loop_buffer.pt")
+                            if "mppi_evaluated_trajectories" not in tier2_metrics:
+                                raise KeyError(
+                                    "Tier 2 evaluator output is missing contractually required 'mppi_evaluated_trajectories'. "
+                                    "Cannot proceed with unverified trajectory counts."
+                                )
+                            if "mppi_score" not in tier2_metrics:
+                                raise KeyError(
+                                    "Tier 2 evaluator output is missing contractually required 'mppi_score'. "
+                                    "Cannot proceed with unverified evaluation score."
+                                )
                             num_mppi_eval = int(tier2_metrics["mppi_evaluated_trajectories"])
                             num_expert_eval = int(tier2_metrics.get("mppi_expert_trajectories", 0))
+                            expert_blocks = list(tier2_metrics.get("mppi_expert_blocks", []))
+                            expert_ids = list(tier2_metrics.get("mppi_expert_trajectory_ids", []))
+                            natural_blocks = list(tier2_metrics.get("mppi_natural_blocks", []))
+                            natural_ids = list(tier2_metrics.get("mppi_natural_trajectory_ids", []))
                             chronicle.log_info(
-                                f"[DAgger Buffer] Ingested {len(self.replay_buffer.trajectories)} trajectories "
-                                f"({len(self.replay_buffer)} total transitions) from {num_mppi_eval} natural + {num_expert_eval} expert episodes."
+                                f"[DAgger Buffer] Training set updated with {len(self.replay_buffer.trajectories)} trajectories "
+                                f"({len(self.replay_buffer)} total transitions) | "
+                                f"Natural [{num_mppi_eval}]: IDs={natural_ids} ({natural_blocks}) | "
+                                f"Expert [{num_expert_eval}]: IDs={expert_ids} ({expert_blocks})."
+                            )
+                            val_metrics.update(tier2_metrics)
+                            score = float(tier2_metrics["mppi_score"])
+                            chronicle.log_info(
+                                f"[DAgger Buffer] Training set updated with {len(self.replay_buffer.trajectories)} trajectories "
+                                f"({len(self.replay_buffer)} total transitions) | "
+                                f"Natural [{num_mppi_eval}]: IDs={natural_ids} ({natural_blocks}) | "
+                                f"Expert [{num_expert_eval}]: IDs={expert_ids} ({expert_blocks})."
                             )
                         val_metrics.update(tier2_metrics)
                         score = tier2_metrics["mppi_score"]
@@ -920,6 +976,7 @@ class BaseTrainer:
     ) -> List[Dict[str, float]]:
         return self._fit_single_phase(epochs=epochs, patience=patience)
 
+    @torch.no_grad()
     def evaluate(self, loader: Optional[DataLoader] = None) -> Dict[str, float]:
         target_loader = loader if loader is not None else self.val_loader
         if target_loader is None:

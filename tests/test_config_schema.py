@@ -31,7 +31,7 @@ def test_experiment_config_instantiates_cleanly():
     assert cfg.memory.num_timescales == 2
     assert cfg.memory.timescale_dims == (128, 128)
     assert cfg.training.mode == "train_m1"
-    assert cfg.training.phase_horizon in (5, 10, 50)
+    assert cfg.training.phase_horizon in (5, 10, 50, 100)
     assert cfg.training.early_stopping_patience in (10, 20)
     assert cfg.loss.lambda_encoder == 1.0
 

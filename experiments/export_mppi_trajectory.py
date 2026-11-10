@@ -20,7 +20,7 @@ import chronicle
 import numpy as np
 import torch
 
-from spwm.contracts.config import ExperimentConfig
+from spwm.contracts.config import ExperimentConfig, MPPIConfig
 from spwm.contracts.version import GLOBAL_VERSION
 from spwm.data.datasets import create_dataloaders
 from spwm.evaluation.mppi import LatentMPPIController
@@ -227,16 +227,20 @@ def main() -> None:
     s_elbow = 0.2172
     anisotropic_sigmas = [s_base, s_shoulder, s_elbow, s_base, s_base, s_base]
 
-    controller = LatentMPPIController(
-        predictor=model.m1,
-        physical_decoder=model.physical_decoder,
-        forward_kinematics=fk,
+    mppi_cfg = MPPIConfig(
         num_samples=args.num_samples,
         horizon=args.horizon,
         num_iterations=args.num_iterations,
-        noise_sigma=anisotropic_sigmas,
+        noise_sigma=tuple(anisotropic_sigmas),
         noise_beta=0.3778,
         temperature=0.0410,
+    )
+
+    controller = LatentMPPIController(
+        predictor=model.m1,
+        physical_decoder=model.physical_decoder,
+        config=mppi_cfg,
+        forward_kinematics=fk,
         device=device,
     )
 

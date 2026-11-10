@@ -1,0 +1,1126 @@
+{
+  "version": "spwm_v0_10_2",
+  "model_name": "spwm_v0_10_2_train_m1",
+  "total_epochs": 120,
+  "parameters": 394701,
+  "evaluation": {
+    "teacher_forcing_mse": 0.002569225222732012,
+    "mean_spike_rate": 0.14603508321138528,
+    "rollout_mae": 0.22839575537886372,
+    "rollout_score": 1.4484828296525785,
+    "dynamic_score": 1.4484828296525785,
+    "drift_ratio": 7.19037401490551,
+    "horizons": [
+      1,
+      5,
+      10,
+      25,
+      50,
+      100
+    ],
+    "latent_mse_per_horizon": {
+      "1": 0.001354419832261136,
+      "5": 0.003771309436370547,
+      "10": 0.007214804788908133,
+      "25": 0.018887845082924917,
+      "50": 0.0344001564842004,
+      "100": 0.06124836177780078
+    },
+    "position_error_per_horizon": {
+      "1": 0.04601026727603032,
+      "5": 0.06887386510005364,
+      "10": 0.11215207725763321,
+      "25": 0.3308310302404257,
+      "50": 0.34244219614909244,
+      "100": 0.4700650962499472
+    },
+    "velocity_error_per_horizon": {
+      "1": 0.05503288140663734,
+      "5": 0.1827327563212468,
+      "10": 0.36430087914833653,
+      "25": 0.43272597056168777,
+      "50": 0.40823190945845383,
+      "100": 0.3993872587497418
+    },
+    "position_mse_per_horizon": {
+      "1": 0.0003967815651916541,
+      "5": 0.000876212147816729,
+      "10": 0.0028940983331547333,
+      "25": 0.02693540445314004,
+      "50": 0.026800497649953917,
+      "100": 0.048031948220271334
+    },
+    "velocity_mse_per_horizon": {
+      "1": 0.0005490515390052819,
+      "5": 0.007407810467366989,
+      "10": 0.03324097724488148,
+      "25": 0.04315730786094299,
+      "50": 0.038244826575884454,
+      "100": 0.036959910908570655
+    },
+    "q_mse_per_horizon": {
+      "1": 0.00338992875857422,
+      "5": 0.008544473049159233,
+      "10": 0.018455916012708958,
+      "25": 0.03849811307512797,
+      "50": 0.05652729421854019,
+      "100": 0.11341943247960164
+    },
+    "p_mse_per_horizon": {
+      "1": 0.0006759168821960115,
+      "5": 0.0021802551077248957,
+      "10": 0.0034677678217681553,
+      "25": 0.0123510890855239,
+      "50": 0.027024443762806747,
+      "100": 0.0438580045906397
+    },
+    "physical_rollout_degradation": {
+      "position_relative": {
+        "1": 1.0,
+        "5": 1.4969238210866562,
+        "10": 2.437544572058167,
+        "25": 7.19037401490551,
+        "50": 7.442734337852726,
+        "100": 10.216526094705694
+      },
+      "velocity_relative": {
+        "1": 1.0,
+        "5": 3.3204286537540444,
+        "10": 6.619694804938914,
+        "25": 7.863044047508261,
+        "50": 7.417963570579429,
+        "100": 7.257247822418634
+      },
+      "position_normalized": {
+        "1": 0.02300513363801516,
+        "5": 0.03443693255002682,
+        "10": 0.056076038628816605,
+        "25": 0.16541551512021285,
+        "50": 0.17122109807454622,
+        "100": 0.2350325481249736
+      },
+      "velocity_normalized": {
+        "1": 0.02751644070331867,
+        "5": 0.0913663781606234,
+        "10": 0.18215043957416827,
+        "25": 0.21636298528084388,
+        "50": 0.20411595472922692,
+        "100": 0.1996936293748709
+      }
+    },
+    "latent_rollout_degradation": {
+      "latent_relative": {
+        "1": 1.0,
+        "5": 2.7844464076360538,
+        "10": 5.326859971374886,
+        "25": 13.945340014249943,
+        "50": 25.39844416392742,
+        "100": 45.22110524293617
+      },
+      "q_relative": {
+        "1": 1.0,
+        "5": 2.5205464945384213,
+        "10": 5.444337426274228,
+        "25": 11.356614199562118,
+        "50": 16.675068487962907,
+        "100": 33.45776284906502
+      },
+      "p_relative": {
+        "1": 1.0,
+        "5": 3.22562605721784,
+        "10": 5.1304648738785685,
+        "25": 18.273088616156453,
+        "50": 39.98190380303274,
+        "100": 64.88668317936934
+      }
+    }
+  },
+  "training_progression": {
+    "total_epochs": 120,
+    "num_segments": 10,
+    "best_checkpoint": {
+      "epoch": 35,
+      "score": 5.338262
+    },
+    "trends": {
+      "train_loss": {
+        "initial": 47.493474,
+        "final": 0.018629,
+        "best": 0.009923,
+        "best_epoch": 41,
+        "change": -47.474845,
+        "pct_change": "-99.96%"
+      },
+      "val_loss": {
+        "initial": 6.244771,
+        "final": 0.013294,
+        "best": 0.0116,
+        "best_epoch": 44,
+        "change": -6.231477,
+        "pct_change": "-99.79%"
+      },
+      "train_pos_err": {
+        "initial": 2.172473,
+        "final": 0.638164,
+        "best": 0.602305,
+        "best_epoch": 41,
+        "change": -1.534309,
+        "pct_change": "-70.62%"
+      },
+      "val_pos_err": {
+        "initial": 2.107504,
+        "final": 0.483774,
+        "best": 0.399066,
+        "best_epoch": 91,
+        "change": -1.623731,
+        "pct_change": "-77.05%"
+      },
+      "train_vel_err": {
+        "initial": 1.01126,
+        "final": 0.43779,
+        "best": 0.345328,
+        "best_epoch": 27,
+        "change": -0.573471,
+        "pct_change": "-56.71%"
+      },
+      "val_vel_err": {
+        "initial": 0.943239,
+        "final": 0.407978,
+        "best": 0.331949,
+        "best_epoch": 27,
+        "change": -0.535261,
+        "pct_change": "-56.75%"
+      },
+      "score": {
+        "initial": 45.911251,
+        "final": 35.694558,
+        "best": 5.338262,
+        "best_epoch": 35,
+        "change": -10.216692,
+        "pct_change": "-22.25%"
+      },
+      "mppi_score": {
+        "initial": 45.911251,
+        "final": 35.694558,
+        "best": 5.338262,
+        "best_epoch": 35,
+        "change": -10.216692,
+        "pct_change": "-22.25%"
+      },
+      "mppi_cost": {
+        "initial": 45.911251,
+        "final": 35.694558,
+        "best": 5.338262,
+        "best_epoch": 35,
+        "change": -10.216692,
+        "pct_change": "-22.25%"
+      },
+      "mppi_success_rate": {
+        "initial": 0.0,
+        "final": 0.0,
+        "best": 0.0,
+        "best_epoch": 5,
+        "change": 0.0,
+        "pct_change": "+0.00%"
+      },
+      "mppi_mean_error_cm": {
+        "initial": 11.057589,
+        "final": 7.477998,
+        "best": 5.082008,
+        "best_epoch": 55,
+        "change": -3.579591,
+        "pct_change": "-32.37%"
+      },
+      "mppi_grasp_error_cm": {
+        "initial": 2.558253,
+        "final": 4.960765,
+        "best": 2.558253,
+        "best_epoch": 40,
+        "change": 2.402513,
+        "pct_change": "+93.91%"
+      },
+      "mppi_grasp_rot_err_rad": {
+        "initial": 0.146324,
+        "final": 0.157072,
+        "best": 0.119568,
+        "best_epoch": 115,
+        "change": 0.010747,
+        "pct_change": "+7.34%"
+      },
+      "mppi_terminal_error_cm": {
+        "initial": 14.741118,
+        "final": 6.852963,
+        "best": 1.72624,
+        "best_epoch": 35,
+        "change": -7.888155,
+        "pct_change": "-53.51%"
+      },
+      "mppi_steady_state_error_cm": {
+        "initial": 3.196953,
+        "final": 7.033786,
+        "best": 1.895712,
+        "best_epoch": 55,
+        "change": 3.836834,
+        "pct_change": "+120.02%"
+      },
+      "mppi_min_error_cm": {
+        "initial": 1.123237,
+        "final": 1.874575,
+        "best": 0.68254,
+        "best_epoch": 55,
+        "change": 0.751338,
+        "pct_change": "+66.89%"
+      },
+      "mppi_rot_err_rad": {
+        "initial": 0.21469,
+        "final": 0.252134,
+        "best": 0.108943,
+        "best_epoch": 35,
+        "change": 0.037443,
+        "pct_change": "+17.44%"
+      },
+      "mppi_final_vel": {
+        "initial": 0.460913,
+        "final": 0.729664,
+        "best": 0.407911,
+        "best_epoch": 25,
+        "change": 0.268751,
+        "pct_change": "+58.31%"
+      },
+      "mppi_final_rot": {
+        "initial": 0.21469,
+        "final": 0.252134,
+        "best": 0.108943,
+        "best_epoch": 35,
+        "change": 0.037443,
+        "pct_change": "+17.44%"
+      },
+      "mppi_pos_penalty": {
+        "initial": 23.66641,
+        "final": 6.061131,
+        "best": 0.380379,
+        "best_epoch": 35,
+        "change": -17.605279,
+        "pct_change": "-74.39%"
+      },
+      "mppi_vel_penalty": {
+        "initial": 0.117022,
+        "final": 0.290237,
+        "best": 0.089086,
+        "best_epoch": 25,
+        "change": 0.173215,
+        "pct_change": "+148.02%"
+      },
+      "mppi_rot_penalty": {
+        "initial": 22.127819,
+        "final": 29.343191,
+        "best": 4.79773,
+        "best_epoch": 35,
+        "change": 7.215371,
+        "pct_change": "+32.61%"
+      },
+      "train_mppi_noise_alpha": {
+        "initial": 0.0,
+        "final": 0.4,
+        "best": 0.0,
+        "best_epoch": 1,
+        "change": 0.4,
+        "pct_change": "+0.00%"
+      },
+      "mppi_expert_trajectories": {
+        "initial": 4.0,
+        "final": 0.0,
+        "best": 0.0,
+        "best_epoch": 95,
+        "change": -4.0,
+        "pct_change": "-100.00%"
+      }
+    },
+    "sampled_segments": [
+      {
+        "segment": 1,
+        "epoch": 1,
+        "progress_pct": "0.0%",
+        "train_loss": 47.493474,
+        "val_loss": 6.244771,
+        "train_pos_err": 2.172473,
+        "val_pos_err": 2.107504,
+        "train_vel_err": 1.01126,
+        "val_vel_err": 0.943239,
+        "score": null,
+        "train_mppi_noise_alpha": 0.0
+      },
+      {
+        "segment": 2,
+        "epoch": 14,
+        "progress_pct": "11.1%",
+        "train_loss": 0.032854,
+        "val_loss": 0.030612,
+        "train_pos_err": 1.309455,
+        "val_pos_err": 1.270336,
+        "train_vel_err": 0.454095,
+        "val_vel_err": 0.440474,
+        "score": 45.911251,
+        "train_mppi_noise_alpha": 0.0
+      },
+      {
+        "segment": 3,
+        "epoch": 27,
+        "progress_pct": "22.2%",
+        "train_loss": 0.012659,
+        "val_loss": 0.011639,
+        "train_pos_err": 0.736454,
+        "val_pos_err": 0.682265,
+        "train_vel_err": 0.345328,
+        "val_vel_err": 0.331949,
+        "score": 45.911251,
+        "train_mppi_noise_alpha": 0.0
+      },
+      {
+        "segment": 4,
+        "epoch": 41,
+        "progress_pct": "33.3%",
+        "train_loss": 0.009923,
+        "val_loss": 0.012918,
+        "train_pos_err": 0.602305,
+        "val_pos_err": 0.437222,
+        "train_vel_err": 0.369114,
+        "val_vel_err": 0.409839,
+        "score": 5.338262,
+        "train_mppi_noise_alpha": 0.0
+      },
+      {
+        "segment": 5,
+        "epoch": 54,
+        "progress_pct": "44.4%",
+        "train_loss": 0.025519,
+        "val_loss": 0.013936,
+        "train_pos_err": 0.943518,
+        "val_pos_err": 0.578964,
+        "train_vel_err": 0.447224,
+        "val_vel_err": 0.40673,
+        "score": 5.338262,
+        "train_mppi_noise_alpha": 0.28
+      },
+      {
+        "segment": 6,
+        "epoch": 67,
+        "progress_pct": "55.6%",
+        "train_loss": 0.022355,
+        "val_loss": 0.014862,
+        "train_pos_err": 0.833306,
+        "val_pos_err": 0.432913,
+        "train_vel_err": 0.448309,
+        "val_vel_err": 0.44181,
+        "score": 5.338262,
+        "train_mppi_noise_alpha": 0.4
+      },
+      {
+        "segment": 7,
+        "epoch": 80,
+        "progress_pct": "66.7%",
+        "train_loss": 0.020882,
+        "val_loss": 0.014333,
+        "train_pos_err": 0.724453,
+        "val_pos_err": 0.455709,
+        "train_vel_err": 0.444782,
+        "val_vel_err": 0.426635,
+        "score": 401.64793,
+        "mppi_score": 401.64793,
+        "mppi_cost": 401.64793,
+        "mppi_success_rate": 0.0,
+        "mppi_mean_error_cm": 9.797573,
+        "mppi_grasp_error_cm": 4.677955,
+        "mppi_grasp_rot_err_rad": 0.133834,
+        "mppi_terminal_error_cm": 20.118633,
+        "mppi_steady_state_error_cm": 21.85471,
+        "mppi_min_error_cm": 2.846852,
+        "mppi_rot_err_rad": 0.803504,
+        "mppi_final_vel": 0.798796,
+        "mppi_final_rot": 0.803504,
+        "mppi_pos_penalty": 57.677244,
+        "mppi_vel_penalty": 0.37733,
+        "mppi_rot_penalty": 343.593356,
+        "train_mppi_noise_alpha": 0.4,
+        "mppi_expert_trajectories": 3.0,
+        "mppi_expert_blocks": [
+          "Mid",
+          "High",
+          "High"
+        ]
+      },
+      {
+        "segment": 8,
+        "epoch": 94,
+        "progress_pct": "77.8%",
+        "train_loss": 0.018361,
+        "val_loss": 0.013216,
+        "train_pos_err": 0.620781,
+        "val_pos_err": 0.41266,
+        "train_vel_err": 0.428007,
+        "val_vel_err": 0.389575,
+        "score": 5.338262,
+        "train_mppi_noise_alpha": 0.4
+      },
+      {
+        "segment": 9,
+        "epoch": 107,
+        "progress_pct": "88.9%",
+        "train_loss": 0.019993,
+        "val_loss": 0.015088,
+        "train_pos_err": 0.71609,
+        "val_pos_err": 0.4902,
+        "train_vel_err": 0.434166,
+        "val_vel_err": 0.432744,
+        "score": 5.338262,
+        "train_mppi_noise_alpha": 0.4
+      },
+      {
+        "segment": 10,
+        "epoch": 120,
+        "progress_pct": "100.0%",
+        "train_loss": 0.018629,
+        "val_loss": 0.013294,
+        "train_pos_err": 0.638164,
+        "val_pos_err": 0.483774,
+        "train_vel_err": 0.43779,
+        "val_vel_err": 0.407978,
+        "score": 35.694558,
+        "mppi_score": 35.694558,
+        "mppi_cost": 35.694558,
+        "mppi_success_rate": 0.0,
+        "mppi_mean_error_cm": 7.477998,
+        "mppi_grasp_error_cm": 4.960765,
+        "mppi_grasp_rot_err_rad": 0.157072,
+        "mppi_terminal_error_cm": 6.852963,
+        "mppi_steady_state_error_cm": 7.033786,
+        "mppi_min_error_cm": 1.874575,
+        "mppi_rot_err_rad": 0.252134,
+        "mppi_final_vel": 0.729664,
+        "mppi_final_rot": 0.252134,
+        "mppi_pos_penalty": 6.061131,
+        "mppi_vel_penalty": 0.290237,
+        "mppi_rot_penalty": 29.343191,
+        "train_mppi_noise_alpha": 0.4,
+        "mppi_expert_trajectories": 0.0,
+        "mppi_expert_blocks": []
+      }
+    ]
+  },
+  "mppi_progression": {
+    "total_evaluations": 24,
+    "best_checkpoint": {
+      "epoch": 35,
+      "score": 5.338262,
+      "best_success_rate_pct": 0.0
+    },
+    "final_metrics": {
+      "mppi_score": 35.694558,
+      "success_rate_pct": 0.0,
+      "mean_cartesian_error_cm": 7.478,
+      "grasp_error_cm": 4.961,
+      "grasp_rot_err_rad": 0.1571,
+      "terminal_error_cm": 6.853,
+      "rotational_error_rad": 0.2521,
+      "terminal_velocity_rad_s": 0.7297
+    },
+    "expert_execution": {
+      "initial_expert_trajectories": 4,
+      "final_expert_trajectories": 0,
+      "curriculum_annealed_to_autonomous": true,
+      "final_overwritten_blocks": [],
+      "final_overwritten_elevation_counts": {
+        "Low": 0,
+        "Mid": 0,
+        "High": 0
+      },
+      "final_overwritten_trajectory_ids": [],
+      "cumulative_overwritten_blocks": [
+        "Unknown",
+        "Unknown",
+        "Unknown",
+        "Unknown",
+        "Unknown",
+        "Unknown",
+        "Unknown",
+        "Unknown",
+        "Unknown",
+        "Unknown",
+        "Unknown",
+        "Unknown",
+        "Unknown",
+        "Unknown",
+        "Unknown",
+        "Unknown",
+        "Unknown",
+        "Unknown",
+        "Unknown",
+        "Unknown",
+        "Unknown",
+        "Unknown",
+        "Unknown",
+        "Unknown",
+        "Unknown",
+        "Unknown",
+        "Unknown",
+        "Unknown",
+        "Unknown",
+        "Unknown",
+        "Unknown",
+        "Unknown",
+        "Unknown",
+        "Unknown",
+        "Unknown",
+        "Unknown",
+        "Unknown",
+        "Unknown",
+        "Unknown",
+        "Unknown",
+        "Unknown",
+        "Unknown",
+        "Unknown",
+        "Unknown",
+        "Unknown",
+        "Unknown",
+        "Unknown",
+        "Unknown",
+        "Unknown",
+        "Unknown",
+        "Unknown",
+        "Unknown",
+        "Unknown",
+        "Unknown",
+        "Mid",
+        "High",
+        "High",
+        "Low",
+        "High",
+        "Low",
+        "Mid",
+        "High",
+        "High",
+        "Low",
+        "High",
+        "Low"
+      ],
+      "cumulative_elevation_counts": {
+        "Low": 4,
+        "Mid": 2,
+        "High": 6,
+        "Unknown": 54
+      }
+    },
+    "evaluations_history": [
+      {
+        "epoch": 5,
+        "mppi_score": 45.911251,
+        "success_rate_pct": 0.0,
+        "mean_cartesian_error_cm": 11.058,
+        "grasp_error_cm": null,
+        "terminal_error_cm": 14.741,
+        "expert_trajectories_count": 4,
+        "overwritten_blocks": [
+          "Unknown",
+          "Unknown",
+          "Unknown",
+          "Unknown"
+        ],
+        "overwritten_elevation_counts": {
+          "Low": 0,
+          "Mid": 0,
+          "High": 0,
+          "Unknown": 4
+        },
+        "overwritten_trajectory_ids": []
+      },
+      {
+        "epoch": 10,
+        "mppi_score": 125.216894,
+        "success_rate_pct": 0.0,
+        "mean_cartesian_error_cm": 9.842,
+        "grasp_error_cm": null,
+        "terminal_error_cm": 6.472,
+        "expert_trajectories_count": 4,
+        "overwritten_blocks": [
+          "Unknown",
+          "Unknown",
+          "Unknown",
+          "Unknown"
+        ],
+        "overwritten_elevation_counts": {
+          "Low": 0,
+          "Mid": 0,
+          "High": 0,
+          "Unknown": 4
+        },
+        "overwritten_trajectory_ids": []
+      },
+      {
+        "epoch": 15,
+        "mppi_score": 68.89772,
+        "success_rate_pct": 0.0,
+        "mean_cartesian_error_cm": 7.566,
+        "grasp_error_cm": null,
+        "terminal_error_cm": 9.387,
+        "expert_trajectories_count": 4,
+        "overwritten_blocks": [
+          "Unknown",
+          "Unknown",
+          "Unknown",
+          "Unknown"
+        ],
+        "overwritten_elevation_counts": {
+          "Low": 0,
+          "Mid": 0,
+          "High": 0,
+          "Unknown": 4
+        },
+        "overwritten_trajectory_ids": []
+      },
+      {
+        "epoch": 20,
+        "mppi_score": 812.367546,
+        "success_rate_pct": 0.0,
+        "mean_cartesian_error_cm": 9.429,
+        "grasp_error_cm": null,
+        "terminal_error_cm": 14.533,
+        "expert_trajectories_count": 4,
+        "overwritten_blocks": [
+          "Unknown",
+          "Unknown",
+          "Unknown",
+          "Unknown"
+        ],
+        "overwritten_elevation_counts": {
+          "Low": 0,
+          "Mid": 0,
+          "High": 0,
+          "Unknown": 4
+        },
+        "overwritten_trajectory_ids": []
+      },
+      {
+        "epoch": 25,
+        "mppi_score": 1118.717736,
+        "success_rate_pct": 0.0,
+        "mean_cartesian_error_cm": 12.603,
+        "grasp_error_cm": null,
+        "terminal_error_cm": 17.041,
+        "expert_trajectories_count": 4,
+        "overwritten_blocks": [
+          "Unknown",
+          "Unknown",
+          "Unknown",
+          "Unknown"
+        ],
+        "overwritten_elevation_counts": {
+          "Low": 0,
+          "Mid": 0,
+          "High": 0,
+          "Unknown": 4
+        },
+        "overwritten_trajectory_ids": []
+      },
+      {
+        "epoch": 30,
+        "mppi_score": 108.871734,
+        "success_rate_pct": 0.0,
+        "mean_cartesian_error_cm": 12.242,
+        "grasp_error_cm": null,
+        "terminal_error_cm": 14.787,
+        "expert_trajectories_count": 4,
+        "overwritten_blocks": [
+          "Unknown",
+          "Unknown",
+          "Unknown",
+          "Unknown"
+        ],
+        "overwritten_elevation_counts": {
+          "Low": 0,
+          "Mid": 0,
+          "High": 0,
+          "Unknown": 4
+        },
+        "overwritten_trajectory_ids": []
+      },
+      {
+        "epoch": 35,
+        "mppi_score": 5.338262,
+        "success_rate_pct": 0.0,
+        "mean_cartesian_error_cm": 5.808,
+        "grasp_error_cm": null,
+        "terminal_error_cm": 1.726,
+        "expert_trajectories_count": 4,
+        "overwritten_blocks": [
+          "Unknown",
+          "Unknown",
+          "Unknown",
+          "Unknown"
+        ],
+        "overwritten_elevation_counts": {
+          "Low": 0,
+          "Mid": 0,
+          "High": 0,
+          "Unknown": 4
+        },
+        "overwritten_trajectory_ids": []
+      },
+      {
+        "epoch": 40,
+        "mppi_score": 7.436529,
+        "success_rate_pct": 0.0,
+        "mean_cartesian_error_cm": 5.1,
+        "grasp_error_cm": 2.558,
+        "terminal_error_cm": 3.031,
+        "expert_trajectories_count": 4,
+        "overwritten_blocks": [
+          "Unknown",
+          "Unknown",
+          "Unknown",
+          "Unknown"
+        ],
+        "overwritten_elevation_counts": {
+          "Low": 0,
+          "Mid": 0,
+          "High": 0,
+          "Unknown": 4
+        },
+        "overwritten_trajectory_ids": []
+      },
+      {
+        "epoch": 45,
+        "mppi_score": 25.717376,
+        "success_rate_pct": 0.0,
+        "mean_cartesian_error_cm": 7.445,
+        "grasp_error_cm": 5.759,
+        "terminal_error_cm": 7.362,
+        "expert_trajectories_count": 4,
+        "overwritten_blocks": [
+          "Unknown",
+          "Unknown",
+          "Unknown",
+          "Unknown"
+        ],
+        "overwritten_elevation_counts": {
+          "Low": 0,
+          "Mid": 0,
+          "High": 0,
+          "Unknown": 4
+        },
+        "overwritten_trajectory_ids": []
+      },
+      {
+        "epoch": 50,
+        "mppi_score": 38.738818,
+        "success_rate_pct": 0.0,
+        "mean_cartesian_error_cm": 8.077,
+        "grasp_error_cm": 5.429,
+        "terminal_error_cm": 8.979,
+        "expert_trajectories_count": 4,
+        "overwritten_blocks": [
+          "Unknown",
+          "Unknown",
+          "Unknown",
+          "Unknown"
+        ],
+        "overwritten_elevation_counts": {
+          "Low": 0,
+          "Mid": 0,
+          "High": 0,
+          "Unknown": 4
+        },
+        "overwritten_trajectory_ids": []
+      },
+      {
+        "epoch": 55,
+        "mppi_score": 15.809237,
+        "success_rate_pct": 0.0,
+        "mean_cartesian_error_cm": 5.082,
+        "grasp_error_cm": 4.995,
+        "terminal_error_cm": 2.751,
+        "expert_trajectories_count": 4,
+        "overwritten_blocks": [
+          "Unknown",
+          "Unknown",
+          "Unknown",
+          "Unknown"
+        ],
+        "overwritten_elevation_counts": {
+          "Low": 0,
+          "Mid": 0,
+          "High": 0,
+          "Unknown": 4
+        },
+        "overwritten_trajectory_ids": []
+      },
+      {
+        "epoch": 60,
+        "mppi_score": 39.061317,
+        "success_rate_pct": 0.0,
+        "mean_cartesian_error_cm": 8.932,
+        "grasp_error_cm": 4.55,
+        "terminal_error_cm": 9.312,
+        "expert_trajectories_count": 4,
+        "overwritten_blocks": [
+          "Unknown",
+          "Unknown",
+          "Unknown",
+          "Unknown"
+        ],
+        "overwritten_elevation_counts": {
+          "Low": 0,
+          "Mid": 0,
+          "High": 0,
+          "Unknown": 4
+        },
+        "overwritten_trajectory_ids": []
+      },
+      {
+        "epoch": 65,
+        "mppi_score": 43.511384,
+        "success_rate_pct": 0.0,
+        "mean_cartesian_error_cm": 8.765,
+        "grasp_error_cm": 3.454,
+        "terminal_error_cm": 8.814,
+        "expert_trajectories_count": 3,
+        "overwritten_blocks": [
+          "Unknown",
+          "Unknown",
+          "Unknown"
+        ],
+        "overwritten_elevation_counts": {
+          "Low": 0,
+          "Mid": 0,
+          "High": 0,
+          "Unknown": 3
+        },
+        "overwritten_trajectory_ids": []
+      },
+      {
+        "epoch": 70,
+        "mppi_score": 67.88342,
+        "success_rate_pct": 0.0,
+        "mean_cartesian_error_cm": 7.497,
+        "grasp_error_cm": 8.117,
+        "terminal_error_cm": 8.666,
+        "expert_trajectories_count": 2,
+        "overwritten_blocks": [
+          "Unknown",
+          "Unknown"
+        ],
+        "overwritten_elevation_counts": {
+          "Low": 0,
+          "Mid": 0,
+          "High": 0,
+          "Unknown": 2
+        },
+        "overwritten_trajectory_ids": []
+      },
+      {
+        "epoch": 75,
+        "mppi_score": 111.364996,
+        "success_rate_pct": 0.0,
+        "mean_cartesian_error_cm": 9.161,
+        "grasp_error_cm": 5.366,
+        "terminal_error_cm": 13.103,
+        "expert_trajectories_count": 1,
+        "overwritten_blocks": [
+          "Unknown"
+        ],
+        "overwritten_elevation_counts": {
+          "Low": 0,
+          "Mid": 0,
+          "High": 0,
+          "Unknown": 1
+        },
+        "overwritten_trajectory_ids": []
+      },
+      {
+        "epoch": 80,
+        "mppi_score": 401.64793,
+        "success_rate_pct": 0.0,
+        "mean_cartesian_error_cm": 9.798,
+        "grasp_error_cm": 4.678,
+        "terminal_error_cm": 20.119,
+        "expert_trajectories_count": 3,
+        "overwritten_blocks": [
+          "Mid",
+          "High",
+          "High"
+        ],
+        "overwritten_elevation_counts": {
+          "Low": 0,
+          "Mid": 1,
+          "High": 2
+        },
+        "overwritten_trajectory_ids": [
+          3201,
+          3214,
+          3221
+        ]
+      },
+      {
+        "epoch": 85,
+        "mppi_score": 131.187576,
+        "success_rate_pct": 0.0,
+        "mean_cartesian_error_cm": 8.004,
+        "grasp_error_cm": 4.816,
+        "terminal_error_cm": 9.667,
+        "expert_trajectories_count": 2,
+        "overwritten_blocks": [
+          "Low",
+          "High"
+        ],
+        "overwritten_elevation_counts": {
+          "Low": 1,
+          "Mid": 0,
+          "High": 1
+        },
+        "overwritten_trajectory_ids": [
+          3204,
+          3221
+        ]
+      },
+      {
+        "epoch": 90,
+        "mppi_score": 93.584938,
+        "success_rate_pct": 0.0,
+        "mean_cartesian_error_cm": 7.926,
+        "grasp_error_cm": 6.113,
+        "terminal_error_cm": 8.608,
+        "expert_trajectories_count": 1,
+        "overwritten_blocks": [
+          "Low"
+        ],
+        "overwritten_elevation_counts": {
+          "Low": 1,
+          "Mid": 0,
+          "High": 0
+        },
+        "overwritten_trajectory_ids": [
+          3211
+        ]
+      },
+      {
+        "epoch": 95,
+        "mppi_score": 119.281211,
+        "success_rate_pct": 0.0,
+        "mean_cartesian_error_cm": 7.291,
+        "grasp_error_cm": 6.082,
+        "terminal_error_cm": 8.197,
+        "expert_trajectories_count": 0,
+        "overwritten_blocks": [],
+        "overwritten_elevation_counts": {
+          "Low": 0,
+          "Mid": 0,
+          "High": 0
+        },
+        "overwritten_trajectory_ids": []
+      },
+      {
+        "epoch": 100,
+        "mppi_score": 143.039796,
+        "success_rate_pct": 0.0,
+        "mean_cartesian_error_cm": 7.706,
+        "grasp_error_cm": 5.803,
+        "terminal_error_cm": 10.113,
+        "expert_trajectories_count": 0,
+        "overwritten_blocks": [],
+        "overwritten_elevation_counts": {
+          "Low": 0,
+          "Mid": 0,
+          "High": 0
+        },
+        "overwritten_trajectory_ids": []
+      },
+      {
+        "epoch": 105,
+        "mppi_score": 83.47594,
+        "success_rate_pct": 0.0,
+        "mean_cartesian_error_cm": 7.707,
+        "grasp_error_cm": 5.354,
+        "terminal_error_cm": 7.976,
+        "expert_trajectories_count": 3,
+        "overwritten_blocks": [
+          "Mid",
+          "High",
+          "High"
+        ],
+        "overwritten_elevation_counts": {
+          "Low": 0,
+          "Mid": 1,
+          "High": 2
+        },
+        "overwritten_trajectory_ids": [
+          3201,
+          3214,
+          3221
+        ]
+      },
+      {
+        "epoch": 110,
+        "mppi_score": 29.756766,
+        "success_rate_pct": 0.0,
+        "mean_cartesian_error_cm": 7.081,
+        "grasp_error_cm": 4.711,
+        "terminal_error_cm": 7.855,
+        "expert_trajectories_count": 2,
+        "overwritten_blocks": [
+          "Low",
+          "High"
+        ],
+        "overwritten_elevation_counts": {
+          "Low": 1,
+          "Mid": 0,
+          "High": 1
+        },
+        "overwritten_trajectory_ids": [
+          3204,
+          3221
+        ]
+      },
+      {
+        "epoch": 115,
+        "mppi_score": 32.220454,
+        "success_rate_pct": 0.0,
+        "mean_cartesian_error_cm": 7.225,
+        "grasp_error_cm": 4.433,
+        "terminal_error_cm": 5.077,
+        "expert_trajectories_count": 1,
+        "overwritten_blocks": [
+          "Low"
+        ],
+        "overwritten_elevation_counts": {
+          "Low": 1,
+          "Mid": 0,
+          "High": 0
+        },
+        "overwritten_trajectory_ids": [
+          3211
+        ]
+      },
+      {
+        "epoch": 120,
+        "mppi_score": 35.694558,
+        "success_rate_pct": 0.0,
+        "mean_cartesian_error_cm": 7.478,
+        "grasp_error_cm": 4.961,
+        "terminal_error_cm": 6.853,
+        "expert_trajectories_count": 0,
+        "overwritten_blocks": [],
+        "overwritten_elevation_counts": {
+          "Low": 0,
+          "Mid": 0,
+          "High": 0
+        },
+        "overwritten_trajectory_ids": []
+      }
+    ],
+    "spec_verification": {
+      "grasp_success_rate_ge_80pct": false,
+      "placement_accuracy_lt_3cm": false,
+      "rotational_alignment_lt_0_05rad": false,
+      "terminal_velocity_lt_1_5rad_s": true
+    }
+  }
+}

@@ -21,6 +21,7 @@ from spwm.contracts.config import (
     TrainingConfig,
     LossConfig,
     EvaluationConfig,
+    MPPIConfig,
     ExperimentConfig,
 )
 
@@ -35,6 +36,7 @@ CONFIG_SECTIONS: Dict[str, Type] = {
     "training": TrainingConfig,
     "loss": LossConfig,
     "evaluation": EvaluationConfig,
+    "mppi": MPPIConfig,
 }
 
 

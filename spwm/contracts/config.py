@@ -305,6 +305,48 @@ class EvaluationConfig:
 
 
 @dataclass(frozen=True)
+class MPPIConfig:
+    """
+    Model Predictive Path Integral (MPPI) control and planning hyperparameters.
+    Governs action perturbation sampling, horizon, temperature, action limits,
+    cost weightings, and action chunking execution.
+    """
+    num_samples: int = 256                                        #: Number of candidate perturbation trajectories sampled per iteration K.
+    horizon: int = 10                                             #: Temporal planning horizon H in steps.
+    action_dim: int = J                                           #: Dimensionality of the continuous motor action space D_u=6.
+    action_min: float = -1.0                                      #: Lower bound for motor actions.
+    action_max: float = 1.0                                       #: Upper bound for motor actions.
+    noise_sigma: Union[float, Tuple[float, ...]] = 0.28           #: Gaussian noise standard deviation for action perturbations.
+    noise_beta: float = 0.75                                      #: AR(1) temporal correlation smoothing coefficient beta in [0, 1).
+    temperature: float = 0.15                                     #: MPPI temperature lambda for exponential cost-to-go weighting.
+    num_iterations: int = 3                                       #: Number of refinement iterations per planning step.
+    chunk_size: int = 4                                           #: Number of consecutive actions executed open-loop before replanning.
+    gamma_discount: float = 0.95                                  #: Discount factor gamma for terminal critic bootstrapping.
+    terminal_steps: Optional[int] = None                          #: Sliced window of terminal steps for trajectory cost evaluation.
+    w_progress: float = 50.0                                      #: Directional progress reward weight towards target coordinates.
+    w_jerk: float = 0.005                                         #: Action smoothness (jerk) penalty weight across horizon.
+    w_damping: float = 10.0                                       #: Cartesian velocity damping penalty weight inside deadband (braking).
+    w_rot: float = 50.0                                           #: Rotational orientation error penalty weight (1 - cos(theta)).
+    w_pos: float = 20.0                                           #: Positional Cartesian Euclidean distance error penalty weight.
+
+    def __post_init__(self) -> None:
+        if self.num_samples <= 0:
+            raise ValueError(f"num_samples must be > 0, got {self.num_samples}")
+        if self.horizon <= 0:
+            raise ValueError(f"horizon must be > 0, got {self.horizon}")
+        if self.action_dim <= 0:
+            raise ValueError(f"action_dim must be > 0, got {self.action_dim}")
+        if self.temperature <= 0.0:
+            raise ValueError(f"temperature must be > 0.0, got {self.temperature}")
+        if not (0.0 <= self.noise_beta < 1.0):
+            raise ValueError(f"noise_beta must be in [0.0, 1.0), got {self.noise_beta}")
+        if self.chunk_size <= 0:
+            raise ValueError(f"chunk_size must be > 0, got {self.chunk_size}")
+        if self.num_iterations <= 0:
+            raise ValueError(f"num_iterations must be > 0, got {self.num_iterations}")
+
+
+@dataclass(frozen=True)
 class ExperimentConfig:
     """
     Complete typed configuration for an SPWM experiment.
@@ -320,6 +362,7 @@ class ExperimentConfig:
     training: TrainingConfig = field(default_factory=TrainingConfig)
     loss: LossConfig = field(default_factory=LossConfig)
     evaluation: EvaluationConfig = field(default_factory=EvaluationConfig)
+    mppi: MPPIConfig = field(default_factory=MPPIConfig)
 
     def __post_init__(self) -> None:
         assert_phase_space_contract(
@@ -471,3 +514,23 @@ class ExperimentConfig:
         path.parent.mkdir(parents=True, exist_ok=True)
         with open(path, "w", encoding="utf-8") as f:
             yaml.dump(self.to_dict(), f, default_flow_style=False, sort_keys=False)
+
+
+def load_app_config(
+    path: Optional[Union[str, Path]] = None,
+    overrides: Optional[Dict[str, Any]] = None,
+) -> ExperimentConfig:
+    """
+    Global factory / SSOT loader sourcing configuration from YAML or defaults.
+    Guarantees strict frozen immutability and complete validation across all domains.
+    If overrides are provided as a flat or nested dictionary, applies them with strict type checking.
+    """
+    if path is not None:
+        cfg = ExperimentConfig.load(path)
+    else:
+        cfg = ExperimentConfig()
+
+    if overrides:
+        cfg = cfg.with_overrides(**overrides)
+
+    return cfg

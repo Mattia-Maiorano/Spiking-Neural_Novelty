@@ -12,7 +12,9 @@ from spwm.contracts.config import (
     TrainingConfig,
     LossConfig,
     EvaluationConfig,
+    MPPIConfig,
     ExperimentConfig,
+    load_app_config,
     _strict_dict_to_dataclass,
 )
 
@@ -26,6 +28,8 @@ __all__ = [
     "TrainingConfig",
     "LossConfig",
     "EvaluationConfig",
+    "MPPIConfig",
     "ExperimentConfig",
+    "load_app_config",
     "_strict_dict_to_dataclass",
 ]

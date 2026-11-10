@@ -7,6 +7,7 @@ import numpy as np
 import torch
 import torch.nn as nn
 
+from spwm.contracts.config import MPPIConfig
 from spwm.contracts.protocols import Tier2EvaluatorProtocol
 from spwm.contracts.tensors import J, assert_tensor_contract
 from spwm.models.kinematics import DifferentiableForwardKinematics
@@ -48,68 +49,54 @@ class LatentMPPIController:
         self,
         predictor: LatentPredictor,
         physical_decoder: PhysicalDecoder,
+        config: MPPIConfig,
         forward_kinematics: Optional[DifferentiableForwardKinematics] = None,
         critic: Optional[LatentCritic] = None,
-        chunk_size: int = 4,
-        gamma_discount: float = 0.95,
-        num_samples: int = 256,
-        horizon: int = 10,
-        action_dim: int = J,
-        action_min: float = -1.0,
-        action_max: float = 1.0,
-        noise_sigma: Union[float, Sequence[float], torch.Tensor] = 0.28,
-        noise_beta: float = 0.75,
-        temperature: float = 0.15,
-        num_iterations: int = 3,
-        terminal_steps: Optional[int] = None,
         device: Optional[torch.device] = None,
         seed: Optional[int] = None,
     ) -> None:
-        if num_samples <= 0:
-            raise ValueError(f"num_samples must be > 0, got {num_samples}")
-        if horizon <= 0:
-            raise ValueError(f"horizon must be > 0, got {horizon}")
-        if chunk_size <= 0 or chunk_size > horizon:
-            raise ValueError(f"chunk_size must be in 1..{horizon}, got {chunk_size}")
-        resolved_term_steps = int(terminal_steps) if terminal_steps is not None else min(4, horizon)
-        if resolved_term_steps <= 0 or resolved_term_steps > horizon:
-            raise ValueError(f"terminal_steps must be in 1..{horizon}, got {resolved_term_steps}")
-        if temperature <= 0.0:
-            raise ValueError(f"temperature must be > 0.0, got {temperature}")
-        if not (0.0 <= noise_beta < 1.0):
-            raise ValueError(f"noise_beta must be in [0.0, 1.0), got {noise_beta}")
+        if config.chunk_size <= 0 or config.chunk_size > config.horizon:
+            raise ValueError(f"chunk_size must be in 1..{config.horizon}, got {config.chunk_size}")
+        resolved_term_steps = int(config.terminal_steps) if config.terminal_steps is not None else min(4, config.horizon)
+        if resolved_term_steps <= 0 or resolved_term_steps > config.horizon:
+            raise ValueError(f"terminal_steps must be in 1..{config.horizon}, got {resolved_term_steps}")
 
+        self.config = config
         self.predictor = predictor
         self.physical_decoder = physical_decoder
         self.fk = forward_kinematics if forward_kinematics is not None else DifferentiableForwardKinematics()
         self.critic = critic
-        self.chunk_size = int(chunk_size)
-        self.gamma_discount = float(gamma_discount)
+        self.chunk_size = int(config.chunk_size)
+        self.gamma_discount = float(config.gamma_discount)
 
-        self.num_samples = num_samples
-        self.horizon = horizon
+        self.num_samples = config.num_samples
+        self.horizon = config.horizon
         self.terminal_steps = resolved_term_steps
-        self.action_dim = action_dim
-        self.action_min = float(action_min)
-        self.action_max = float(action_max)
-        self.noise_beta = float(noise_beta)
-        self.temperature = float(temperature)
-        self.num_iterations = num_iterations
+        self.action_dim = config.action_dim
+        self.action_min = float(config.action_min)
+        self.action_max = float(config.action_max)
+        self.noise_beta = float(config.noise_beta)
+        self.temperature = float(config.temperature)
+        self.num_iterations = config.num_iterations
 
         # Autonomous weights definition
-        self.w_pos = 20.0
-        self.w_rot = 7.0
-        self.w_jerk = 0.1
+        self.w_pos = float(config.w_pos)
+        self.w_rot = float(config.w_rot)
+        self.w_jerk = float(config.w_jerk)
+        self.w_damping = float(config.w_damping)
         self.w_vel = 0.0
         self.w_act = self.w_jerk
         self.w_term_pos = 0.0
         self.w_term_rot = 0.0
         self.w_altitude = 0.0
+        self.w_progress = float(config.w_progress)
 
         dev = device if device is not None else next(predictor.parameters()).device
         self.device = dev
 
         # Covariance Sigma: boost variance on Shoulder_Lift (idx 1) and Elbow_Flex (idx 2)
+        noise_sigma = config.noise_sigma
+        action_dim = config.action_dim
         if isinstance(noise_sigma, torch.Tensor):
             if noise_sigma.numel() == 1:
                 sigmas = torch.full((action_dim,), float(noise_sigma.item()), device=dev, dtype=torch.float32)
@@ -225,6 +212,11 @@ class LatentMPPIController:
         candidate_w = torch.zeros(K, device=self.device)
         gen = generator if generator is not None else self.generator
 
+        # Compute starting Cartesian position p_0 for directional progress
+        decoded_init = self.physical_decoder(z_init.unsqueeze(0))
+        q_init = decoded_init[:, : self.physical_decoder.joint_count]
+        p_init = self.fk(q_init)[0]
+
         for _ in range(self.num_iterations):
             # 1. Sample temporally correlated action perturbations: AR(1) process
             eta = torch.randn(K, H, D_u, generator=gen, device=self.device) * self.sigma_tensor.view(1, 1, D_u)
@@ -276,6 +268,7 @@ class LatentMPPIController:
                 R_ee=R_ee,
                 target_orientation=target_orientation,
                 z_trajectories=z_trajectories,
+                p_init=p_init,
             )
 
 
@@ -334,19 +327,29 @@ class LatentMPPIController:
         R_ee: Optional[torch.Tensor] = None,
         target_orientation: Optional[torch.Tensor] = None,
         z_trajectories: Optional[torch.Tensor] = None,
+        p_init: Optional[torch.Tensor] = None,
+        w_progress: Optional[float] = None,
+        w_jerk: Optional[float] = None,
+        w_damping: Optional[float] = None,
     ) -> torch.Tensor:
         """Evaluates the physics-grounded, lifting-aware MPPI trajectory cost over K candidates.
 
         Formulation per step t:
           - Positional Cost: W_pos * ||pos_current - target_pos||_2
           - Rotational Cost: W_rot * (1 - cos(theta_error))
-          - Action Smoothness (Jerk Penalty): W_jerk * ||u_t - u_{t-1}||_2^2
+          - Action Smoothness (Jerk Penalty): Constant W_jerk * ||u_t - u_{t-1}||_2^2 across horizon
+          - Directional Progress Reward: - W_progress * sum(progress_t * dist_factor) (deadband attenuation)
+          - Cartesian Velocity Damping: W_damping * sum(||delta_p_t|| * (1 - dist_factor)) (deadband braking)
           - Terminal Critic Bootstrapping: (gamma ** H) * V(z_H)
         """
         K, H, _ = ee_pos.shape
         # 1. Positional Cost: W_pos * ||pos_current - target_pos||_2
         pos_err = torch.norm(ee_pos - target_coords.view(1, 1, 3), p=2, dim=-1)  # [K, H]
         pos_cost = self.w_pos * pos_err.sum(dim=-1)  # [K]
+
+        # Distance-based damping factor (Deadband):
+        # Full reward / zero velocity damping when >= 13cm, dropping to 0 reward / full velocity damping when within 3cm
+        dist_factor = torch.clamp((pos_err - 0.03) / 0.10, 0.0, 1.0)  # [K, H]
 
         # 2. Rotational Cost: W_rot * (1 - cos(theta_error))
         if target_orientation is not None and R_ee is not None:
@@ -358,16 +361,42 @@ class LatentMPPIController:
         else:
             rot_cost = torch.zeros(K, device=ee_pos.device, dtype=ee_pos.dtype)
 
-        # 3. Action Smoothness (Jerk Penalty): W_jerk * ||u_t - u_{t-1}||_2^2
+        # 3. Action Smoothness (Jerk Penalty): Constant W_jerk across horizon to allow braking torques
         delta_u_0 = u_seq[:, 0] - u_prev.unsqueeze(0)
         delta_u_rest = u_seq[:, 1:] - u_seq[:, :-1]
         delta_u = torch.cat([delta_u_0.unsqueeze(1), delta_u_rest], dim=1)  # [K, H, D_u]
         jerk_sq = torch.sum(delta_u ** 2, dim=-1)  # [K, H]
-        jerk_cost = self.w_jerk * jerk_sq.sum(dim=-1)  # [K]
+        curr_w_jerk = self.w_jerk if w_jerk is None else float(w_jerk)
+        jerk_cost = curr_w_jerk * jerk_sq.sum(dim=-1)  # [K]
 
-        total_cost = pos_cost + rot_cost + jerk_cost
+        p_0 = p_init.view(1, 1, 3).expand(K, 1, 3) if p_init is not None else ee_pos[:, 0:1, :]
+        p_traj = torch.cat([p_0, ee_pos], dim=1)  # [K, H + 1, 3]
+        delta_p = p_traj[:, 1:, :] - p_traj[:, :-1, :]  # [K, H, 3]
 
-        # 4. Terminal Value Bootstrapping (TD-MPC Critic)
+        # 4. Directional Progress Reward (Attractor toward target) with Progress Attenuation (Deadband)
+        curr_w_progress = self.w_progress if w_progress is None else float(w_progress)
+        if curr_w_progress != 0.0:
+            dir_vec = target_coords.view(1, 1, 3) - p_traj[:, :-1, :]  # [K, H, 3]
+            dir_target = dir_vec / (torch.norm(dir_vec, dim=-1, keepdim=True) + 1e-6)
+
+            step_progress = torch.sum(delta_p * dir_target, dim=-1)  # [K, H]
+            progress_reward = step_progress * curr_w_progress * dist_factor  # [K, H]
+            c_progress = - progress_reward.sum(dim=-1)  # [K]
+        else:
+            c_progress = torch.zeros(K, device=ee_pos.device, dtype=ee_pos.dtype)
+
+        # 5. Cartesian Velocity Damping: Activates inside deadband (when dist_factor -> 0)
+        curr_w_damping = self.w_damping if w_damping is None else float(w_damping)
+        if curr_w_damping != 0.0:
+            cart_vel = torch.norm(delta_p, dim=-1)  # [K, H]
+            damping_penalty = curr_w_damping * cart_vel * (1.0 - dist_factor)  # [K, H]
+            c_damping = damping_penalty.sum(dim=-1)  # [K]
+        else:
+            c_damping = torch.zeros(K, device=ee_pos.device, dtype=ee_pos.dtype)
+
+        total_cost = pos_cost + rot_cost + jerk_cost + c_progress + c_damping
+
+        # 5. Terminal Value Bootstrapping (TD-MPC Critic)
         if self.critic is not None and z_trajectories is not None:
             terminal_z = z_trajectories[:, -1, :]  # [K, latent_dim]
             raw_terminal_costs = self.critic(terminal_z).squeeze(-1)  # [K]
@@ -459,6 +488,7 @@ class MPPIStructuralScorer:
         num_iterations: int = 3,
         fk: Optional[DifferentiableForwardKinematics] = None,
         approach_window: int = 20,
+        config: Optional[MPPIConfig] = None,
     ) -> None:
         if not fixed_batches:
             raise ValueError("fixed_batches cannot be empty for MPPIStructuralScorer.")
@@ -474,8 +504,14 @@ class MPPIStructuralScorer:
         self.num_iterations = int(num_iterations)
         self.fk = fk if fk is not None else DifferentiableForwardKinematics().to(device)
         self.approach_window = int(approach_window)
+        self.config = config if config is not None else MPPIConfig(
+            num_samples=self.num_samples,
+            horizon=self.horizon,
+            num_iterations=self.num_iterations,
+        )
         self.eval_count: int = 0
         self.phase4_eval_count: int = 0
+        self.last_natural_success_rate: float = 0.0
 
     @classmethod
     def from_dataset(
@@ -490,6 +526,7 @@ class MPPIStructuralScorer:
         num_iterations: int = 3,
         fk: Optional[DifferentiableForwardKinematics] = None,
         approach_window: int = 20,
+        config: Optional[MPPIConfig] = None,
     ) -> "MPPIStructuralScorer":
         """Builds an MPPIStructuralScorer by extracting a balanced, fixed subset of trajectories covering Low, Mid, and High elevations."""
         target_planes = ("Low", "Mid", "High")
@@ -539,6 +576,12 @@ class MPPIStructuralScorer:
                     break
                 selected.append(item)
 
+        scorer_cfg = config if config is not None else MPPIConfig(
+            num_samples=num_samples,
+            horizon=horizon,
+            num_iterations=num_iterations,
+        )
+
         return cls(
             fixed_batches=selected,
             device=device,
@@ -549,6 +592,7 @@ class MPPIStructuralScorer:
             num_iterations=num_iterations,
             fk=forward_kin,
             approach_window=approach_window,
+            config=scorer_cfg,
         )
 
     def evaluate_trajectory(
@@ -570,12 +614,23 @@ class MPPIStructuralScorer:
         t_grasp = min(t_c + 7, q_gt.shape[0] - 1)
         t_start = max(5, t_c - self.approach_window)
 
-        target_pose_mat = self.fk.forward_homogeneous(q_gt[t_c : t_c + 1])[0].detach()
-        target_pos_t = target_pose_mat[:3, 3]
+        # Project targets onto the reachable manifold of PhysicalDecoder via grounded latent states
+        with torch.no_grad():
+            z_start, _, _ = ground_initial_state(model, events, t_start=t_start, actions=actions)
+            z_gt_c, _, _ = ground_initial_state(model, events, t_start=t_c, actions=actions)
+            z_gt_grasp, _, _ = ground_initial_state(model, events, t_start=t_grasp, actions=actions)
 
-        z_start, dyn_state, _ = ground_initial_state(model, events, t_start=t_start, actions=actions)
+            q_reachable_grasp = model.physical_decoder(z_gt_c)[..., :6]
+            target_grasp_mat = self.fk.forward_homogeneous(q_reachable_grasp)[0].detach()
+
+            q_reachable_final = model.physical_decoder(z_gt_grasp)[..., :6]
+            target_final_mat = self.fk.forward_homogeneous(q_reachable_final)[0].detach()
+
+        elevation_plane = classify_elevation(float(target_grasp_mat[1, 3].item()))
+
         dec_start = model.physical_decoder(z_start)
         initial_bias = dec_start[0, :6] / 3.14
+        ee_prev = self.fk.forward_homogeneous(dec_start[:, :6])[0, :3, 3].detach()
 
         # Zero-Stochasticity Guarantee: seed controller explicitly before trajectory unrolling
         controller.reset(initial_action_bias=initial_bias, seed=seed)
@@ -588,23 +643,27 @@ class MPPIStructuralScorer:
         step_errors: List[float] = []
         step_rot_errors_rad: List[float] = []
         step_mppi_costs: List[float] = []
+        grasp_error_cm = 0.0
+        grasp_rot_err_rad = 0.0
         final_vel = 0.0
         final_rot = 0.0
 
         current_chunk: Optional[torch.Tensor] = None
         chunk_idx = 0
 
+        curr_z = z_start.clone()
+
         for t in range(t_start, t_grasp + 1):
-            z_t, dyn_state = step_grounded(
-                model,
-                events[:, t],
-                dyn_state,
-                in_sensory_phase=True,
-                unconstrained=True,
-                action=prev_u.unsqueeze(0),
-            )
-            if len(traj_z) > len(traj_z_next):
-                traj_z_next.append(z_t.detach().cpu())
+            # Target is first the object to grasp (t <= t_c), then the final position and rotation (t > t_c)
+            target_pose_mat = target_grasp_mat if t <= t_c else target_final_mat
+            target_pos_t = target_pose_mat[:3, 3]
+
+            # Invalidate chunk at transition to immediately replan towards final position/rotation
+            if t == t_c + 1:
+                current_chunk = None
+                chunk_idx = 0
+
+            z_t = curr_z
 
             u_before = prev_u.clone()
             if use_expert_actions:
@@ -621,8 +680,16 @@ class MPPIStructuralScorer:
             prev_u = u_exec
             controller.prev_action = u_exec.clone()
 
+            # Autoregressively advance latent state via dynamics predictor M1
+            z_in = z_t if z_t.dim() == 2 else z_t.unsqueeze(0)
+            u_in = u_exec if u_exec.dim() == 2 else u_exec.unsqueeze(0)
+            with torch.no_grad():
+                pred_out = model.predictor(z_in, u_in)
+            z_next = pred_out.predicted_latent
+
             traj_z.append(z_t.detach().cpu())
             traj_u.append(u_exec.detach().cpu())
+            traj_z_next.append(z_next.detach().cpu())
 
             dec_t = model.physical_decoder(z_t)
             T_ee_t = self.fk.forward_homogeneous(dec_t[:, :6])[0].detach()
@@ -635,22 +702,32 @@ class MPPIStructuralScorer:
             rot_err_rad = compute_rot_error(self.fk, dec_t[0, :6], target_pose_mat)
             step_rot_errors_rad.append(rot_err_rad)
 
-            # Evaluate the Lifting-Aware MPPI Cost at step t
-            step_cost = float(
-                controller.compute_trajectory_cost(
-                    ee_pos=ee_t.view(1, 1, 3),
-                    target_coords=target_pos_t,
-                    u_seq=u_exec.view(1, 1, -1),
-                    u_prev=u_before,
-                    R_ee=R_ee_t.view(1, 1, 3, 3),
-                    target_orientation=target_pose_mat[:3, :3],
-                )[0].item()
-            )
-            step_mppi_costs.append(step_cost)
+            # Evaluate the Lifting-Aware MPPI Cost at step t (computed only for natural MPPI trajectories to save evaluation time)
+            if not use_expert_actions:
+                step_cost = float(
+                    controller.compute_trajectory_cost(
+                        ee_pos=ee_t.view(1, 1, 3),
+                        target_coords=target_pos_t,
+                        u_seq=u_exec.view(1, 1, -1),
+                        u_prev=u_before,
+                        R_ee=R_ee_t.view(1, 1, 3, 3),
+                        target_orientation=target_pose_mat[:3, :3],
+                        p_init=ee_prev,
+                    )[0].item()
+                )
+                step_mppi_costs.append(step_cost)
+            ee_prev = ee_t.clone()
+
+            if t == t_c:
+                grasp_error_cm = err_cm
+                grasp_rot_err_rad = rot_err_rad
 
             if t == t_grasp:
                 final_vel = float(torch.norm(dec_t[0, 6:12]).item())
                 final_rot = rot_err_rad
+
+            # Advance to next latent state
+            curr_z = z_next
 
         if len(traj_z) > len(traj_z_next):
             traj_z.pop()
@@ -670,9 +747,11 @@ class MPPIStructuralScorer:
             "targets": torch.stack(traj_z_next).detach().cpu(),
             "length": len(traj_u),
             "trajectory_id": int(batch["trajectory_id"]),
+            "is_expert": bool(use_expert_actions),
+            "elevation_plane": elevation_plane,
         }
 
-        mppi_cost_score = float(np.mean(step_mppi_costs))
+        mppi_cost_score = float(np.mean(step_mppi_costs)) if step_mppi_costs else 0.0
         structural_score_val, is_success = compute_structural_score(step_errors, final_vel, final_rot)
         window_errors = step_errors[-3:] if len(step_errors) >= 3 else step_errors
         steady_state_error = float(np.mean(window_errors))
@@ -684,6 +763,8 @@ class MPPIStructuralScorer:
             "mppi_cost": mppi_cost_score,
             "success": 1.0 if is_success else 0.0,
             "min_error_cm": min(step_errors),
+            "grasp_error_cm": grasp_error_cm,
+            "grasp_rot_err_rad": grasp_rot_err_rad,
             "mean_cartesian_err_cm": mean_cartesian_err_cm,
             "terminal_error_cm": step_errors[-1],
             "steady_state_error_cm": steady_state_error,
@@ -694,6 +775,8 @@ class MPPIStructuralScorer:
             "vel_penalty": (final_vel / 1.5) ** 2,
             "rot_penalty": (final_rot / 0.05) ** 2,
             "is_expert": bool(use_expert_actions),
+            "elevation_plane": elevation_plane,
+            "trajectory_id": int(batch["trajectory_id"]),
             "transitions": packed_transitions,
             "trajectory": packed_trajectory,
         }
@@ -711,11 +794,9 @@ class MPPIStructuralScorer:
         controller = LatentMPPIController(
             predictor=model.m1,
             physical_decoder=model.physical_decoder,
+            config=self.config,
             forward_kinematics=self.fk,
             critic=model.critic,
-            num_samples=self.num_samples,
-            horizon=self.horizon,
-            num_iterations=self.num_iterations,
             device=self.device,
         )
 
@@ -728,8 +809,9 @@ class MPPIStructuralScorer:
         elif curriculum_phase < 4:
             num_expert = min(4, max(0, total_trajs - 2)) if total_trajs >= 3 else 0
         else:
-            self.phase4_eval_count += 1
             base_expert = min(4, max(0, total_trajs - 2)) if total_trajs >= 3 else 0
+            if self.last_natural_success_rate > 0.0:
+                self.phase4_eval_count += 1
             num_expert = max(0, base_expert - self.phase4_eval_count)
 
         num_natural = max(1, total_trajs - num_expert)
@@ -738,6 +820,11 @@ class MPPIStructuralScorer:
         natural_results: List[Dict[str, Any]] = []
         all_transitions: List[Dict[str, torch.Tensor]] = []
         all_trajectories: List[Dict[str, Any]] = []
+        expert_blocks: List[str] = []
+        expert_traj_ids: List[int] = []
+        natural_blocks: List[str] = []
+        natural_traj_ids: List[int] = []
+        all_trials: List[Dict[str, Any]] = []
         for idx, batch in enumerate(self.fixed_batches):
             use_expert = idx not in natural_indices
             traj_id = int(batch["trajectory_id"])
@@ -749,6 +836,29 @@ class MPPIStructuralScorer:
                 seed=traj_seed,
                 use_expert_actions=use_expert,
             )
+            elev = str(res["elevation_plane"])
+            trial_record = {
+                "trajectory_id": traj_id,
+                "elevation_plane": elev,
+                "is_expert": bool(use_expert),
+                "score": round(float(res["score"]), 6),
+                "mean_cartesian_err_cm": round(float(res["mean_cartesian_err_cm"]), 3),
+                "terminal_error_cm": round(float(res["terminal_error_cm"]), 3),
+                "final_vel": round(float(res["final_vel"]), 4),
+                "final_rot": round(float(res["final_rot"]), 4),
+                "grasp_error_cm": round(float(res["grasp_error_cm"]), 3) if res["grasp_error_cm"] is not None else None,
+                "grasp_rot_err_rad": round(float(res["grasp_rot_err_rad"]), 4) if res["grasp_rot_err_rad"] is not None else None,
+                "success": bool(res["success"] > 0.5),
+            }
+            all_trials.append(trial_record)
+
+            if use_expert:
+                expert_blocks.append(elev)
+                expert_traj_ids.append(traj_id)
+            else:
+                natural_blocks.append(elev)
+                natural_traj_ids.append(traj_id)
+
             if "transitions" in res:
                 all_transitions.extend(res["transitions"])
             if "trajectory" in res:
@@ -756,16 +866,37 @@ class MPPIStructuralScorer:
             if not use_expert:
                 natural_results.append(res)
 
+        # Performance breakdown for each trial group / elevation value
+        elevation_breakdown: Dict[str, Dict[str, Any]] = {}
+        for mode_name, is_exp in [("natural", False), ("expert", True)]:
+            for plane in ("Low", "Mid", "High"):
+                matching = [t for t in all_trials if t["is_expert"] == is_exp and t["elevation_plane"] == plane]
+                if matching:
+                    key = f"{mode_name}_{plane.lower()}"
+                    elevation_breakdown[key] = {
+                        "count": len(matching),
+                        "trajectory_ids": [t["trajectory_id"] for t in matching],
+                        "avg_vel_err": round(float(np.mean([t["final_vel"] for t in matching])), 4),
+                        "avg_rot_err": round(float(np.mean([t["final_rot"] for t in matching])), 4),
+                        "avg_cartesian_err_cm": round(float(np.mean([t["mean_cartesian_err_cm"] for t in matching])), 3),
+                        "avg_terminal_err_cm": round(float(np.mean([t["terminal_error_cm"] for t in matching])), 3),
+                    }
+
         n = len(natural_results)
-        mean_score = float(np.mean([r["score"] for r in natural_results]))
-        success_rate = float(np.mean([r["success"] for r in natural_results]))
-        mean_cart_err = float(np.mean([r["mean_cartesian_err_cm"] for r in natural_results]))
-        mean_term_err = float(np.mean([r["terminal_error_cm"] for r in natural_results]))
-        mean_vel = float(np.mean([r["final_vel"] for r in natural_results]))
-        mean_rot = float(np.mean([r["final_rot"] for r in natural_results]))
-        mean_pos_pen = float(np.mean([r["pos_penalty"] for r in natural_results]))
-        mean_vel_pen = float(np.mean([r["vel_penalty"] for r in natural_results]))
-        mean_rot_pen = float(np.mean([r["rot_penalty"] for r in natural_results]))
+        mean_score = float(np.mean([r["score"] for r in natural_results])) if natural_results else 0.0
+        success_rate = float(np.mean([r["success"] for r in natural_results])) if natural_results else 0.0
+        self.last_natural_success_rate = success_rate
+        mean_cart_err = float(np.mean([r["mean_cartesian_err_cm"] for r in natural_results])) if natural_results else 0.0
+        mean_grasp_err = float(np.mean([r["grasp_error_cm"] for r in natural_results])) if natural_results else 0.0
+        mean_grasp_rot = float(np.mean([r["grasp_rot_err_rad"] for r in natural_results])) if natural_results else 0.0
+        mean_term_err = float(np.mean([r["terminal_error_cm"] for r in natural_results])) if natural_results else 0.0
+        mean_steady_state_err = float(np.mean([r["steady_state_error_cm"] for r in natural_results])) if natural_results else 0.0
+        mean_min_err = float(np.mean([r["min_error_cm"] for r in natural_results])) if natural_results else 0.0
+        mean_vel = float(np.mean([r["final_vel"] for r in natural_results])) if natural_results else 0.0
+        mean_rot = float(np.mean([r["final_rot"] for r in natural_results])) if natural_results else 0.0
+        mean_pos_pen = float(np.mean([r["pos_penalty"] for r in natural_results])) if natural_results else 0.0
+        mean_vel_pen = float(np.mean([r["vel_penalty"] for r in natural_results])) if natural_results else 0.0
+        mean_rot_pen = float(np.mean([r["rot_penalty"] for r in natural_results])) if natural_results else 0.0
 
         return {
             "mppi_score": mean_score,
@@ -774,7 +905,13 @@ class MPPIStructuralScorer:
             "success_rate": success_rate,
             "mppi_mean_error_cm": mean_cart_err,
             "mean_cartesian_err_cm": mean_cart_err,
+            "mppi_grasp_error_cm": mean_grasp_err,
+            "grasp_error_cm": mean_grasp_err,
+            "mppi_grasp_rot_err_rad": mean_grasp_rot,
+            "grasp_rot_err_rad": mean_grasp_rot,
             "mppi_terminal_error_cm": mean_term_err,
+            "mppi_steady_state_error_cm": mean_steady_state_err,
+            "mppi_min_error_cm": mean_min_err,
             "mppi_final_vel": mean_vel,
             "mppi_final_rot": mean_rot,
             "mppi_rot_err_rad": mean_rot,
@@ -784,6 +921,17 @@ class MPPIStructuralScorer:
             "mppi_rot_penalty": mean_rot_pen,
             "mppi_evaluated_trajectories": float(n),
             "mppi_expert_trajectories": float(total_trajs - n),
+            "mppi_expert_blocks": expert_blocks,
+            "mppi_expert_elevation_counts": {
+                "Low": expert_blocks.count("Low"),
+                "Mid": expert_blocks.count("Mid"),
+                "High": expert_blocks.count("High"),
+            },
+            "mppi_expert_trajectory_ids": expert_traj_ids,
+            "mppi_natural_blocks": natural_blocks,
+            "mppi_natural_trajectory_ids": natural_traj_ids,
+            "mppi_trials": all_trials,
+            "mppi_elevation_breakdown": elevation_breakdown,
             "transitions": all_transitions,
             "trajectories": all_trajectories,
         }

@@ -37,7 +37,7 @@ import numpy as np
 import torch
 from torch.utils.data import DataLoader
 
-from spwm.contracts.config import ExperimentConfig
+from spwm.contracts.config import ExperimentConfig, MPPIConfig
 from spwm.contracts.tensors import C_EVENT
 from spwm.contracts.version import GLOBAL_VERSION
 from spwm.data.datasets import (
@@ -622,15 +622,18 @@ def main() -> None:
     # --- Suite 2: Downstream Latent MPPI Robustness ---
     chronicle.log_info(f"--- Starting Suite 2: Latent MPPI Robustness ({len(mppi_eval_ids)} episodes) ---")
     fk = DifferentiableForwardKinematics().to(device)
-    controller = LatentMPPIController(
-        predictor=model.m1,
-        physical_decoder=model.physical_decoder,
-        forward_kinematics=fk,
+    mppi_cfg = MPPIConfig(
         num_samples=256,
         horizon=20,
         num_iterations=3,
         noise_sigma=0.20,
         temperature=0.03,
+    )
+    controller = LatentMPPIController(
+        predictor=model.m1,
+        physical_decoder=model.physical_decoder,
+        config=mppi_cfg,
+        forward_kinematics=fk,
         device=device,
     )
 

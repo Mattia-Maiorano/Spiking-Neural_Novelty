@@ -23,10 +23,11 @@ import matplotlib.pyplot as plt
 import numpy as np
 import torch
 
-from spwm.contracts.config import ExperimentConfig
+from spwm.contracts.config import ExperimentConfig, MPPIConfig
 from spwm.contracts.version import GLOBAL_VERSION
 from spwm.data.datasets import create_dataloaders
 from spwm.evaluation.mppi import LatentMPPIController
+from spwm.evaluation.visualizer import plot_mppi_benchmark_results
 from spwm.models.kinematics import DifferentiableForwardKinematics
 from spwm.models.rollout import ground_initial_state, step_grounded
 from spwm.models.world_model import SPWM
@@ -49,6 +50,8 @@ class EpisodeResult:
     grasp_success: bool
     mean_latency_ms: float
     step_errors_cm: List[float]
+    grasp_error_cm: float = 0.0
+    grasp_rot_error_rad: float = 0.0
 
 
 def classify_elevation(y: float) -> str:
@@ -123,8 +126,9 @@ def run_episode(
     p1_indices = (phase_flags == 1).nonzero()
     t_c = int(p1_indices[0].item()) if len(p1_indices) > 0 else 50
     t_grasp = min(t_c + 7, q_gt.shape[0] - 1)
-    target_pose_mat = fk.forward_homogeneous(q_gt[t_c : t_c + 1])[0].detach()
-    target_pos_t = target_pose_mat[:3, 3]
+    target_grasp_mat = fk.forward_homogeneous(q_gt[t_c : t_c + 1])[0].detach()
+    target_final_mat = fk.forward_homogeneous(q_gt[t_grasp : t_grasp + 1])[0].detach()
+    target_pos_t = target_grasp_mat[:3, 3]
     target_pos = (float(target_pos_t[0].item()), float(target_pos_t[1].item()), float(target_pos_t[2].item()))
     elevation = classify_elevation(target_pos[1])
 
@@ -140,8 +144,12 @@ def run_episode(
     latencies: List[float] = []
     final_vel = 0.0
     final_ee = target_pos
+    grasp_err_cm = 0.0
+    grasp_rot_err = 0.0
 
     for t in range(t_start, t_grasp + 1):
+        target_pose_mat = target_grasp_mat if t <= t_c else target_final_mat
+        target_pos_t = target_pose_mat[:3, 3]
         # 1. State Grounding with active perception
         z_t, dyn_state = step_grounded(
             model,
@@ -162,6 +170,10 @@ def run_episode(
         ee_t = fk(dec_t[:, :6])[0].detach()
         err_cm = float((torch.norm(ee_t - target_pos_t) * 100.0).item())
         step_errors.append(err_cm)
+
+        if t == t_c:
+            grasp_err_cm = err_cm
+            grasp_rot_err = compute_rot_error(fk, dec_t[0, :6], target_grasp_mat)
 
         if t == t_grasp:
             final_vel = float(torch.norm(dec_t[0, 6:12]).item())
@@ -199,6 +211,8 @@ def run_episode(
         grasp_success=is_success,
         mean_latency_ms=float(np.mean(latencies)),
         step_errors_cm=step_errors,
+        grasp_error_cm=grasp_err_cm,
+        grasp_rot_error_rad=grasp_rot_err,
     )
 
 
@@ -207,70 +221,7 @@ def generate_benchmark_figures(
     output_path: Path,
 ) -> None:
     """Renders multi-panel benchmark diagnostic visualization."""
-    fig, axes = plt.subplots(1, 3, figsize=(18, 5))
-    fig.patch.set_facecolor("#0F172A")
-
-    for ax in axes:
-        ax.set_facecolor("#1E293B")
-        ax.tick_params(colors="#94A3B8")
-        ax.xaxis.label.set_color("#CBD5E1")
-        ax.yaxis.label.set_color("#CBD5E1")
-        ax.title.set_color("#F8FAFC")
-        for spine in ax.spines.values():
-            spine.set_color("#334155")
-
-    # Panel 1: Success Rate & Mean Error by Elevation Plane
-    planes = ["Low", "Mid", "High"]
-    succ_rates = []
-    mean_errs = []
-    for p in planes:
-        subset = [r for r in results if r.elevation_plane == p]
-        if subset:
-            succ_rates.append(np.mean([1.0 if r.grasp_success else 0.0 for r in subset]) * 100.0)
-            mean_errs.append(np.mean([r.min_placement_error_cm for r in subset]))
-        else:
-            succ_rates.append(0.0)
-            mean_errs.append(0.0)
-
-    x = np.arange(len(planes))
-    width = 0.35
-    axes[0].bar(x - width / 2, succ_rates, width, label="Success Rate (%)", color="#38BDF8")
-    axes[0].bar(x + width / 2, mean_errs, width, label="Mean Error (cm)", color="#F472B6")
-    axes[0].set_xticks(x)
-    axes[0].set_xticklabels(planes)
-    axes[0].set_ylabel("Metric Value")
-    axes[0].set_title("Performance Across Elevation Planes")
-    axes[0].legend(facecolor="#0F172A", edgecolor="#334155", labelcolor="#F8FAFC")
-    axes[0].grid(True, linestyle="--", alpha=0.2, color="#94A3B8")
-
-    # Panel 2: Placement Error vs Payload Mass (1.20 - 4.50 kg)
-    masses = [r.payload_mass for r in results]
-    errors = [r.min_placement_error_cm for r in results]
-    success_flags = [r.grasp_success for r in results]
-
-    colors = ["#34D399" if s else "#F87171" for s in success_flags]
-    axes[1].scatter(masses, errors, c=colors, s=40, alpha=0.85, edgecolors="#0F172A")
-    axes[1].axhline(3.0, color="#F59E0B", linestyle="--", linewidth=1.8, label="Grasp Snap Bound (3.0 cm)")
-    axes[1].set_xlabel("Payload Mass (kg)")
-    axes[1].set_ylabel("Min Placement Error (cm)")
-    axes[1].set_title("Terminal Error vs. Payload Mass (1.2 - 4.5 kg)")
-    axes[1].legend(facecolor="#0F172A", edgecolor="#334155", labelcolor="#F8FAFC")
-    axes[1].grid(True, linestyle="--", alpha=0.2, color="#94A3B8")
-
-    # Panel 3: MPPI Inference Latency Distribution
-    latencies = [r.mean_latency_ms for r in results]
-    axes[2].hist(latencies, bins=15, color="#A78BFA", edgecolor="#0F172A", alpha=0.85)
-    axes[2].axvline(np.mean(latencies), color="#38BDF8", linestyle="--", linewidth=1.8, label=f"Mean: {np.mean(latencies):.1f} ms")
-    axes[2].set_xlabel("MPPI Step Latency (ms)")
-    axes[2].set_ylabel("Count")
-    axes[2].set_title("MPPI Inference Latency (K=256, H=20)")
-    axes[2].legend(facecolor="#0F172A", edgecolor="#334155", labelcolor="#F8FAFC")
-    axes[2].grid(True, linestyle="--", alpha=0.2, color="#94A3B8")
-
-    plt.tight_layout()
-    output_path.parent.mkdir(parents=True, exist_ok=True)
-    plt.savefig(output_path, dpi=200, facecolor=fig.get_facecolor(), bbox_inches="tight")
-    plt.close()
+    plot_mppi_benchmark_results(results, output_path)
     chronicle.log_success(f"Benchmark diagnostic figures saved to: {output_path}")
 
 
@@ -365,16 +316,20 @@ def main() -> None:
     s_elbow = 0.2172
     anisotropic_sigmas = [s_base, s_shoulder, s_elbow, s_base, s_base, s_base]
 
-    controller = LatentMPPIController(
-        predictor=model.m1,
-        physical_decoder=model.physical_decoder,
-        forward_kinematics=fk,
+    mppi_cfg = MPPIConfig(
         num_samples=args.num_samples,
         horizon=args.horizon,
         num_iterations=args.num_iterations,
-        noise_sigma=anisotropic_sigmas,
+        noise_sigma=tuple(anisotropic_sigmas),
         noise_beta=0.3778,
         temperature=0.0410,
+    )
+
+    controller = LatentMPPIController(
+        predictor=model.m1,
+        physical_decoder=model.physical_decoder,
+        config=mppi_cfg,
+        forward_kinematics=fk,
         device=device,
     )
 

@@ -8,7 +8,9 @@ from spwm.contracts.config import (
     TrainingConfig,
     LossConfig,
     EvaluationConfig,
+    MPPIConfig,
     ExperimentConfig,
+    load_app_config,
 )
 
 __all__ = [
@@ -21,5 +23,7 @@ __all__ = [
     "TrainingConfig",
     "LossConfig",
     "EvaluationConfig",
+    "MPPIConfig",
     "ExperimentConfig",
+    "load_app_config",
 ]

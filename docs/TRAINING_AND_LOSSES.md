@@ -112,9 +112,9 @@ classDiagram
 
 - **Loss Constraint & Monte Carlo Critic Bootstrapping**:
   $$\mathcal{L}_{M_1} = \lambda_{\text{position}} \mathcal{L}_{\text{pos}} + \lambda_{\text{velocity}} \mathcal{L}_{\text{vel}}$$
-  $$\mathcal{L}_{\text{critic}} = \text{MSE}\left(V(\hat{\mathbf{z}}_t), \text{stop\_grad}(V_{\text{target}, t})\right), \quad V_{\text{target}, t} = \|\mathbf{x}_{\text{ee}}(\hat{\mathbf{z}}_t) - \mathbf{x}_{\text{target}}\|_2 + \gamma V_{\text{target}, t+1}$$
-  $$\mathcal{L}_{\text{total}} = \lambda_{\text{latent}} \mathcal{L}_{M_1} + \lambda_{\text{critic}} \mathcal{L}_{\text{critic}}$$
-  with discount factor $\gamma = 0.95$ and critic weight $\lambda_{\text{critic}} = 1.0$ (`cfg.loss.lambda_critic`) evaluated across both demonstration rollouts and `ClosedLoopBuffer` trajectories. No kinematic or sensory backpropagation occurs into representation modules in Phase 1; $M_1$ trains in latent phase space to reproduce the driven attractor vector field while `LatentCritic` learns the expected discounted Cartesian cost-to-go. Both training and [`RolloutEvaluator`](file:///Users/Mattia/Desktop/Studies/Temp/spwm/evaluation/evaluator.py) share the identical Active Perception unrolling logic from `rollout_latent`.
+  $$\mathcal{L}_{\text{critic}} = \text{MSE}\left(V(\hat{\mathbf{z}}_t), \text{stop\_grad}(V_{\text{target}, t})\right)$$
+  $$V_{\text{target}, t} = \left(\|\mathbf{x}_{\text{ee}}(\hat{\mathbf{z}}_t) - \mathbf{x}^*_{\text{ee}}(t)\|_2 + w_{\text{rot\_critic}} (1 - \cos(\theta_{\text{error}}(t)))\right) + \gamma V_{\text{target}, t+1}$$
+  with discount factor $\gamma = 0.95$, rotational critic weight $w_{\text{rot\_critic}} = 1.0$, and critic loss weight $\lambda_{\text{critic}} = 1.0$ (`cfg.loss.lambda_critic`) evaluated across both demonstration rollouts and `ClosedLoopBuffer` trajectories. No kinematic or sensory backpropagation occurs into representation modules in Phase 1; $M_1$ trains in latent phase space to reproduce the driven attractor vector field while `LatentCritic` learns the expected discounted composite Cartesian and geodesic rotational cost-to-go. Both training and [`RolloutEvaluator`](file:///Users/Mattia/Desktop/Studies/Temp/spwm/evaluation/evaluator.py) share the identical Active Perception unrolling logic from `rollout_latent`.
 - **Dynamic Learning Rate**: Base learning rate is initialized at $0.0001$ (`cfg.training.learning_rate`), dynamically dropping to $0.00005$ upon entering curriculum Phase 4 (DAgger closed-loop blending) across predictor optimizer parameter groups.
 
 ---

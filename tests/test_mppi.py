@@ -12,11 +12,11 @@ from __future__ import annotations
 import pytest
 import torch
 
+from spwm.contracts.config import ExperimentConfig, DataConfig, TrainingConfig, MPPIConfig
 from spwm.evaluation.mppi import LatentMPPIController, MPPIPlanResult, MPPIStructuralScorer
 from spwm.models.kinematics import DifferentiableForwardKinematics
 from spwm.models.predictors import LatentCritic, LatentPredictor, PhysicalDecoder
 from spwm.models.world_model import SPWM
-from spwm.contracts.config import ExperimentConfig, DataConfig, TrainingConfig
 
 
 @pytest.fixture
@@ -24,13 +24,16 @@ def mppi_setup():
     predictor = LatentPredictor(latent_dim=128, action_dim=6, hidden_dim=256, symplectic=True)
     decoder = PhysicalDecoder(latent_dim=128, q_dim=32, p_dim=96, joint_count=6, hidden_dim=64)
     fk = DifferentiableForwardKinematics()
-    controller = LatentMPPIController(
-        predictor=predictor,
-        physical_decoder=decoder,
-        forward_kinematics=fk,
+    cfg = MPPIConfig(
         num_samples=32,  # Smaller sample size for quick test execution
         horizon=10,
         num_iterations=2,
+    )
+    controller = LatentMPPIController(
+        predictor=predictor,
+        physical_decoder=decoder,
+        config=cfg,
+        forward_kinematics=fk,
     )
     return controller, predictor, decoder, fk
 
@@ -40,13 +43,13 @@ def test_mppi_instantiation_validation():
     decoder = PhysicalDecoder(latent_dim=128, q_dim=32, p_dim=96, joint_count=6, hidden_dim=64)
 
     with pytest.raises(ValueError, match="num_samples must be > 0"):
-        LatentMPPIController(predictor, decoder, num_samples=0)
+        MPPIConfig(num_samples=0)
 
     with pytest.raises(ValueError, match="horizon must be > 0"):
-        LatentMPPIController(predictor, decoder, horizon=0)
+        MPPIConfig(horizon=0)
 
     with pytest.raises(ValueError, match="temperature must be > 0.0"):
-        LatentMPPIController(predictor, decoder, temperature=-1.0)
+        MPPIConfig(temperature=-1.0)
 
 
 def test_mppi_single_step_planning(mppi_setup):
@@ -80,13 +83,14 @@ def test_mppi_critic_terminal_bootstrapping():
             p.zero_()
         critic.net[-1].bias.fill_(10.0)
 
+    cfg = MPPIConfig(chunk_size=4, gamma_discount=0.95, num_samples=8, horizon=5)
     ctrl_no_critic = LatentMPPIController(
-        predictor=predictor, physical_decoder=decoder, forward_kinematics=fk,
-        critic=None, chunk_size=4, gamma_discount=0.95, num_samples=8, horizon=5,
+        predictor=predictor, physical_decoder=decoder, config=cfg, forward_kinematics=fk,
+        critic=None,
     )
     ctrl_with_critic = LatentMPPIController(
-        predictor=predictor, physical_decoder=decoder, forward_kinematics=fk,
-        critic=critic, chunk_size=4, gamma_discount=0.95, num_samples=8, horizon=5,
+        predictor=predictor, physical_decoder=decoder, config=cfg, forward_kinematics=fk,
+        critic=critic,
     )
 
     ee_pos = torch.zeros(8, 5, 3)
@@ -123,25 +127,26 @@ def test_mppi_structural_scorer_action_chunking_execution():
         "phase_flags": torch.tensor([[0] * 10 + [1] * 3 + [2] * 12], dtype=torch.long),
         "elevation_plane": "Mid",
     }
-    scorer = MPPIStructuralScorer(
-        fixed_batches=[fixed_batch],
-        device=device,
-        frequency=10,
-        num_samples=8,
-        horizon=6,
-        num_iterations=1,
-        fk=fk,
-        approach_window=5,
-    )
-    ctrl = LatentMPPIController(
-        predictor=model.m1,
-        physical_decoder=model.physical_decoder,
-        forward_kinematics=fk,
-        critic=model.critic,
+    mppi_sub_cfg = MPPIConfig(
         chunk_size=4,
         num_samples=8,
         horizon=6,
         num_iterations=1,
+    )
+    scorer = MPPIStructuralScorer(
+        fixed_batches=[fixed_batch],
+        device=device,
+        frequency=10,
+        fk=fk,
+        approach_window=5,
+        config=mppi_sub_cfg,
+    )
+    ctrl = LatentMPPIController(
+        predictor=model.m1,
+        physical_decoder=model.physical_decoder,
+        config=mppi_sub_cfg,
+        forward_kinematics=fk,
+        critic=model.critic,
         device=device,
     )
     plan_calls = 0
@@ -157,8 +162,8 @@ def test_mppi_structural_scorer_action_chunking_execution():
     # t_c=10, t_start=max(5, 10-5)=5, t_grasp=min(17, 24)=17 -> 13 steps (t=5..17)
     # With chunk_size=4, 13 steps require ceil(13 / 4) = 4 calls to plan_step (instead of 13!)
     assert plan_calls == 4
-    assert len(res["transitions"]) == 12
-    assert res["trajectory"]["actions"].shape == (12, 6)
+    assert len(res["transitions"]) == 13
+    assert res["trajectory"]["actions"].shape == (13, 6)
 
 
 def test_mppi_se3_orientation_planning(mppi_setup):
@@ -201,4 +206,102 @@ def test_mppi_invalid_inputs(mppi_setup):
 
     with pytest.raises(ValueError, match="LatentMPPIController.target_pos"):
         controller.plan_step(torch.randn(128), torch.tensor([0.0, 1.0]))
+
+
+def test_mppi_directional_progress_reward(mppi_setup):
+    controller, _, _, _ = mppi_setup
+    assert controller.w_progress == 50.0
+    assert controller.w_jerk == 0.005
+
+    target_pos = torch.tensor([1.0, 0.0, 0.0])
+    p_init = torch.tensor([0.0, 0.0, 0.0])
+    u_seq = torch.zeros(1, 3, 6)
+    u_prev = torch.zeros(6)
+
+    # Trajectory A moves towards target along +X
+    ee_pos_towards = torch.tensor([[[0.1, 0.0, 0.0], [0.2, 0.0, 0.0], [0.3, 0.0, 0.0]]])
+    # Trajectory B moves away from target along -X
+    ee_pos_away = torch.tensor([[[-0.1, 0.0, 0.0], [-0.2, 0.0, 0.0], [-0.3, 0.0, 0.0]]])
+
+    cost_towards = controller.compute_trajectory_cost(
+        ee_pos=ee_pos_towards,
+        target_coords=target_pos,
+        u_seq=u_seq,
+        u_prev=u_prev,
+        p_init=p_init,
+        w_progress=50.0,
+    )
+    cost_away = controller.compute_trajectory_cost(
+        ee_pos=ee_pos_away,
+        target_coords=target_pos,
+        u_seq=u_seq,
+        u_prev=u_prev,
+        p_init=p_init,
+        w_progress=50.0,
+    )
+
+    # Cost towards must be significantly lower than cost away due to progress reward
+    assert cost_towards.item() < cost_away.item()
+
+    # Verify zero progress weight yields higher cost than positive progress weight for forward motion
+    cost_towards_no_prog = controller.compute_trajectory_cost(
+        ee_pos=ee_pos_towards,
+        target_coords=target_pos,
+        u_seq=u_seq,
+        u_prev=u_prev,
+        p_init=p_init,
+        w_progress=0.0,
+    )
+    assert cost_towards.item() < cost_towards_no_prog.item()
+
+
+def test_mppi_deadband_attenuation_and_cartesian_damping(mppi_setup):
+    controller, _, _, _ = mppi_setup
+    assert controller.w_jerk == 0.005
+    assert controller.w_damping == 10.0
+
+    target_pos = torch.tensor([0.0, 0.0, 0.0])
+    p_init = torch.tensor([0.02, 0.0, 0.0])  # Within 2cm of target
+    ee_pos_close = torch.tensor([[[0.015, 0.0, 0.0], [0.010, 0.0, 0.0], [0.005, 0.0, 0.0]]])  # In deadband <= 3cm
+
+    u_seq_zero = torch.zeros(1, 3, 6)
+    u_prev_zero = torch.zeros(6)
+
+    # In deadband (<= 3cm), progress reward drops to 0
+    cost_prog = controller.compute_trajectory_cost(
+        ee_pos=ee_pos_close,
+        target_coords=target_pos,
+        u_seq=u_seq_zero,
+        u_prev=u_prev_zero,
+        p_init=p_init,
+        w_progress=50.0,
+        w_damping=0.0,
+    )
+    cost_no_prog = controller.compute_trajectory_cost(
+        ee_pos=ee_pos_close,
+        target_coords=target_pos,
+        u_seq=u_seq_zero,
+        u_prev=u_prev_zero,
+        p_init=p_init,
+        w_progress=0.0,
+        w_damping=0.0,
+    )
+    assert torch.allclose(cost_prog, cost_no_prog, atol=1e-5)
+
+    # Cartesian velocity damping activates inside deadband when w_damping > 0
+    cost_damped = controller.compute_trajectory_cost(
+        ee_pos=ee_pos_close,
+        target_coords=target_pos,
+        u_seq=u_seq_zero,
+        u_prev=u_prev_zero,
+        p_init=p_init,
+        w_progress=0.0,
+        w_damping=10.0,
+    )
+    # delta_p = [[-0.005, 0, 0], [-0.005, 0, 0], [-0.005, 0, 0]], norm = 0.005 per step
+    # dist_factor = 0 in deadband, (1 - dist_factor) = 1.0
+    # damping_penalty = 10.0 * (0.005 * 3) = 0.15
+    assert torch.allclose(cost_damped - cost_no_prog, torch.tensor([0.15]), atol=1e-5)
+
+
 

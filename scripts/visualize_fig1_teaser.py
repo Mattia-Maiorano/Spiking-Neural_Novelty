@@ -44,7 +44,7 @@ import torch.nn as nn
 from torch.utils.data import DataLoader
 
 from figure_style import PALETTE, save_publication_figure, set_paper_style
-from spwm.contracts.config import ExperimentConfig
+from spwm.contracts.config import ExperimentConfig, MPPIConfig
 from spwm.contracts.version import GLOBAL_VERSION
 from spwm.data.datasets import EventWorldDataset, collate_event_batches, partition_trajectories
 from spwm.data.event_camera import EventCameraSimulator
@@ -259,15 +259,18 @@ def compute_mppi_scene(
     events = sample["events"].unsqueeze(0)
     target = fk(q_gt[t_contact : t_contact + 1])[0]
 
-    controller = LatentMPPIController(
-        predictor=model.m1,
-        physical_decoder=model.physical_decoder,
-        forward_kinematics=fk,
+    mppi_cfg = MPPIConfig(
         num_samples=num_samples,
         horizon=horizon,
         num_iterations=num_iterations,
         noise_sigma=MPPI_NOISE_SIGMA,
         temperature=MPPI_TEMPERATURE,
+    )
+    controller = LatentMPPIController(
+        predictor=model.m1,
+        physical_decoder=model.physical_decoder,
+        config=mppi_cfg,
+        forward_kinematics=fk,
         device=torch.device("cpu"),
     )
 

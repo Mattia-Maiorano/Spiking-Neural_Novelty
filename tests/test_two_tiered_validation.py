@@ -32,6 +32,7 @@ from spwm.contracts.config import (
     LossConfig,
     MemoryConfig,
     ModelConfig,
+    MPPIConfig,
     ProjectConfig,
     TrainingConfig,
 )
@@ -112,23 +113,25 @@ def test_zero_stochasticity_guarantee():
     decoder = PhysicalDecoder(latent_dim=128, q_dim=32, p_dim=96, joint_count=6, hidden_dim=32)
     fk = DifferentiableForwardKinematics()
 
-    c1 = LatentMPPIController(
-        predictor=predictor,
-        physical_decoder=decoder,
-        forward_kinematics=fk,
+    mppi_cfg = MPPIConfig(
         num_samples=32,
         horizon=10,
         num_iterations=2,
+    )
+
+    c1 = LatentMPPIController(
+        predictor=predictor,
+        physical_decoder=decoder,
+        config=mppi_cfg,
+        forward_kinematics=fk,
         seed=42000,
         device=device,
     )
     c2 = LatentMPPIController(
         predictor=predictor,
         physical_decoder=decoder,
+        config=mppi_cfg,
         forward_kinematics=fk,
-        num_samples=32,
-        horizon=10,
-        num_iterations=2,
         seed=42000,
         device=device,
     )
@@ -149,10 +152,8 @@ def test_zero_stochasticity_guarantee():
     c3 = LatentMPPIController(
         predictor=predictor,
         physical_decoder=decoder,
+        config=mppi_cfg,
         forward_kinematics=fk,
-        num_samples=32,
-        horizon=10,
-        num_iterations=2,
         seed=99999,
         device=device,
     )
@@ -662,33 +663,48 @@ def test_teacher_forced_blending_metric_isolation_and_round_robin():
     nat_idx_p3 = [i for i, r in enumerate(call_records) if not r["is_expert"]]
     assert nat_idx_p3 == [2, 3]
 
-    # Phase 4 Step 1 (eval_idx=3): expert decays 4 -> 3 (natural = 3, indices {3, 4, 5})
+    # Phase 4 Freeze Check: while natural success_rate == 0.0, expert decay is FROZEN at 4
+    call_records.clear()
+    m_p4_frozen = scorer(model, epoch=16, curriculum_phase=4)
+    assert m_p4_frozen["mppi_expert_trajectories"] == 4.0
+    assert m_p4_frozen["mppi_evaluated_trajectories"] == 2.0
+
+    # Unfreeze: natural trajectories achieve success > 0.0, allowing decay to begin
+    scorer.last_natural_success_rate = 0.50
+
+    # Phase 4 Step 1 (eval_idx=4): expert decays 4 -> 3 (natural = 3, indices {4, 5, 0})
     call_records.clear()
     m_p4_1 = scorer(model, epoch=20, curriculum_phase=4)
     assert m_p4_1["mppi_expert_trajectories"] == 3.0
     assert m_p4_1["mppi_evaluated_trajectories"] == 3.0
     nat_idx_p4_1 = [i for i, r in enumerate(call_records) if not r["is_expert"]]
-    assert nat_idx_p4_1 == [3, 4, 5]
+    assert sorted(nat_idx_p4_1) == [0, 4, 5]
 
-    # Phase 4 Step 2 (eval_idx=4): expert decays 3 -> 2 (natural = 4, indices {4, 5, 0, 1})
+    # Keep natural success > 0.0 so curriculum continues decaying
+    scorer.last_natural_success_rate = 0.50
+
+    # Phase 4 Step 2 (eval_idx=5): expert decays 3 -> 2 (natural = 4, indices {5, 0, 1, 2})
     call_records.clear()
     m_p4_2 = scorer(model, epoch=25, curriculum_phase=4)
     assert m_p4_2["mppi_expert_trajectories"] == 2.0
     assert m_p4_2["mppi_evaluated_trajectories"] == 4.0
     nat_idx_p4_2 = [i for i, r in enumerate(call_records) if not r["is_expert"]]
-    assert sorted(nat_idx_p4_2) == [0, 1, 4, 5]
+    assert sorted(nat_idx_p4_2) == [0, 1, 2, 5]
 
-    # Phase 4 Step 3 (eval_idx=5): expert decays 2 -> 1 (natural = 5)
+    # Phase 4 Step 3 (eval_idx=6): expert decays 2 -> 1 (natural = 5)
+    scorer.last_natural_success_rate = 0.50
     m_p4_3 = scorer(model, epoch=30, curriculum_phase=4)
     assert m_p4_3["mppi_expert_trajectories"] == 1.0
     assert m_p4_3["mppi_evaluated_trajectories"] == 5.0
 
-    # Phase 4 Step 4 (eval_idx=6): expert decays 1 -> 0 (natural = 6)
+    # Phase 4 Step 4 (eval_idx=7): expert decays 1 -> 0 (natural = 6)
+    scorer.last_natural_success_rate = 0.50
     m_p4_4 = scorer(model, epoch=35, curriculum_phase=4)
     assert m_p4_4["mppi_expert_trajectories"] == 0.0
     assert m_p4_4["mppi_evaluated_trajectories"] == 6.0
 
-    # Phase 4 Step 5 (eval_idx=7): stays at 0 expert, 6 natural
+    # Phase 4 Step 5 (eval_idx=8): stays at 0 expert, 6 natural
+    scorer.last_natural_success_rate = 0.50
     m_p4_5 = scorer(model, epoch=40, curriculum_phase=4)
     assert m_p4_5["mppi_expert_trajectories"] == 0.0
     assert m_p4_5["mppi_evaluated_trajectories"] == 6.0

@@ -116,38 +116,279 @@ def plot_rollout_trajectory(
 plot_relay_rollout = plot_rollout_trajectory
 
 
-def plot_training_curves(history: List[Dict[str, float]], save_path: Union[str, Path]) -> None:
+def plot_training_curves(history: List[Dict[str, Any]], save_path: Union[str, Path]) -> None:
     set_paper_style()
     epochs = [rec.get("epoch", i + 1) for i, rec in enumerate(history)]
     fig, axes = plt.subplots(1, 3, figsize=(15, 4.5))
 
+    def _extract_series(key: str) -> Tuple[List[int], List[float]]:
+        pts = [
+            (epochs[i], float(r[key]))
+            for i, r in enumerate(history)
+            if key in r and r[key] is not None and isinstance(r[key], (int, float, np.number)) and np.isfinite(r[key])
+        ]
+        if not pts:
+            return [], []
+        x, y = zip(*pts)
+        return list(x), list(y)
+
     # Loss curve
-    train_losses = [r.get("train_loss", 0.0) for r in history]
-    val_losses = [r.get("val_loss", 0.0) for r in history]
-    axes[0].plot(epochs, train_losses, label="Train Loss", color="#2563EB")
-    axes[0].plot(epochs, val_losses, label="Val Loss", color="#DC2626", linestyle="--")
+    tr_ep, tr_loss = _extract_series("train_loss")
+    val_ep, val_loss = _extract_series("val_loss")
+    if tr_ep:
+        axes[0].plot(tr_ep, tr_loss, label="Train Loss", color="#2563EB")
+    if val_ep:
+        axes[0].plot(val_ep, val_loss, label="Val Loss", color="#DC2626", linestyle="--")
     axes[0].set_title("Loss Evolution (Train / Val)")
     axes[0].set_xlabel("Epoch")
-    axes[0].legend()
+    if tr_ep or val_ep:
+        axes[0].legend()
 
     # Kinematics
-    axes[1].plot(epochs, [r.get("train_pos_err", 0.0) for r in history], label="Train Pos Err", color="#059669")
-    axes[1].plot(epochs, [r.get("val_pos_err", 0.0) for r in history], label="Val Pos Err", color="#D97706", linestyle="--")
+    tr_pos_ep, tr_pos_err = _extract_series("train_pos_err")
+    val_pos_ep, val_pos_err = _extract_series("val_pos_err")
+    if tr_pos_ep:
+        axes[1].plot(tr_pos_ep, tr_pos_err, label="Train Pos Err", color="#059669")
+    if val_pos_ep:
+        axes[1].plot(val_pos_ep, val_pos_err, label="Val Pos Err", color="#D97706", linestyle="--")
     axes[1].set_title("Kinematic Position Error")
     axes[1].set_xlabel("Epoch")
-    axes[1].legend()
+    if tr_pos_ep or val_pos_ep:
+        axes[1].legend()
 
     # Velocity Error
-    axes[2].plot(epochs, [r.get("train_vel_err", 0.0) for r in history], label="Train Vel Err", color="#059669")
-    axes[2].plot(epochs, [r.get("val_vel_err", 0.0) for r in history], label="Val Vel Err", color="#D97706", linestyle="--")
+    tr_vel_ep, tr_vel_err = _extract_series("train_vel_err")
+    val_vel_ep, val_vel_err = _extract_series("val_vel_err")
+    if tr_vel_ep:
+        axes[2].plot(tr_vel_ep, tr_vel_err, label="Train Vel Err", color="#059669")
+    if val_vel_ep:
+        axes[2].plot(val_vel_ep, val_vel_err, label="Val Vel Err", color="#D97706", linestyle="--")
     axes[2].set_title("Kinematic Velocity Error")
     axes[2].set_xlabel("Epoch")
-    axes[2].legend()
+    if tr_vel_ep or val_vel_ep:
+        axes[2].legend()
 
     save_path = Path(save_path)
     save_path.parent.mkdir(parents=True, exist_ok=True)
     plt.tight_layout()
     plt.savefig(save_path, dpi=300)
+    plt.close()
+
+    # If MPPI evaluation metrics are present in training history, automatically generate MPPI curves
+    has_mppi = any("mppi_score" in r or "mppi_success_rate" in r for r in history)
+    if has_mppi:
+        mppi_save_path = save_path.parent / "mppi_training_curves.png"
+        plot_mppi_training_curves(history, mppi_save_path)
+
+
+def plot_mppi_training_curves(history: List[Dict[str, Any]], save_path: Union[str, Path]) -> None:
+    """
+    Renders publication-ready diagnostic curves for Closed-Loop Latent MPPI training.
+    Visualizes the Two-Stage Phasic Target Switching (Stage 1 Grasp at t_c vs Stage 2 Placement at t_grasp),
+    structural score / cost convergence, success rate, and terminal kinematic stability.
+    """
+    set_paper_style()
+    epochs = [rec.get("epoch", i + 1) for i, rec in enumerate(history)]
+
+    def _extract_series(key: str) -> Tuple[List[int], List[float]]:
+        pts = [
+            (epochs[i], float(r[key]))
+            for i, r in enumerate(history)
+            if key in r and r[key] is not None and isinstance(r[key], (int, float, np.number)) and np.isfinite(r[key])
+        ]
+        if not pts:
+            return [], []
+        x, y = zip(*pts)
+        return list(x), list(y)
+
+    fig, axes = plt.subplots(2, 2, figsize=(14, 9))
+
+    # Panel (0, 0): MPPI Cost & Structural Score Evolution
+    score_ep, score_vals = _extract_series("mppi_score")
+    if not score_ep:
+        score_ep, score_vals = _extract_series("score")
+    cost_ep, cost_vals = _extract_series("mppi_cost")
+    pos_pen_ep, pos_pen_vals = _extract_series("mppi_pos_penalty")
+    vel_pen_ep, vel_pen_vals = _extract_series("mppi_vel_penalty")
+    rot_pen_ep, rot_pen_vals = _extract_series("mppi_rot_penalty")
+
+    if score_ep:
+        axes[0, 0].plot(score_ep, score_vals, label="MPPI Score", color="#2563EB", marker="o", lw=2.2)
+        best_idx = int(np.argmin(score_vals))
+        axes[0, 0].plot(score_ep[best_idx], score_vals[best_idx], marker="*", markersize=14, color="#E11D48", label=f"Best: {score_vals[best_idx]:.3f} (Ep {score_ep[best_idx]})")
+    elif cost_ep:
+        axes[0, 0].plot(cost_ep, cost_vals, label="MPPI Cost", color="#2563EB", marker="o", lw=2.2)
+
+    if pos_pen_ep:
+        axes[0, 0].plot(pos_pen_ep, pos_pen_vals, label="Pos Penalty", color="#D97706", linestyle="--", alpha=0.8)
+    if vel_pen_ep:
+        axes[0, 0].plot(vel_pen_ep, vel_pen_vals, label="Vel Penalty", color="#DC2626", linestyle=":", alpha=0.8)
+    if rot_pen_ep:
+        axes[0, 0].plot(rot_pen_ep, rot_pen_vals, label="Rot Penalty", color="#7C3AED", linestyle="-.", alpha=0.8)
+
+    axes[0, 0].set_title("MPPI Structural Score & Cost")
+    axes[0, 0].set_xlabel("Epoch")
+    axes[0, 0].set_ylabel("Score / Penalty")
+    axes[0, 0].legend(loc="upper right")
+
+    # Panel (0, 1): Autonomous Closed-Loop Success Rate (%)
+    succ_ep, succ_vals = _extract_series("mppi_success_rate")
+    if not succ_ep:
+        succ_ep, succ_vals = _extract_series("success_rate")
+    if succ_ep:
+        pct_vals = [v * 100.0 if v <= 1.0 else v for v in succ_vals]
+        axes[0, 1].plot(succ_ep, pct_vals, label="Success Rate (%)", color="#059669", marker="s", lw=2.2)
+        axes[0, 1].axhline(80.0, color="#10B981", linestyle="--", lw=1.8, label="Target Spec (80%)")
+        axes[0, 1].set_ylim(-5, 105)
+    axes[0, 1].set_title("Closed-Loop Grasp Success Rate")
+    axes[0, 1].set_xlabel("Epoch")
+    axes[0, 1].set_ylabel("Success Rate (%)")
+    axes[0, 1].legend(loc="lower right")
+
+    # Panel (1, 0): Two-Stage Phasic Tracking & Grasp Accuracy (cm)
+    grasp_ep, grasp_err = _extract_series("mppi_grasp_error_cm")
+    if not grasp_ep:
+        grasp_ep, grasp_err = _extract_series("grasp_error_cm")
+    term_ep, term_err = _extract_series("mppi_terminal_error_cm")
+    if not term_ep:
+        term_ep, term_err = _extract_series("terminal_error_cm")
+    mean_ep, mean_err = _extract_series("mppi_mean_error_cm")
+    if not mean_ep:
+        mean_ep, mean_err = _extract_series("mean_cartesian_err_cm")
+
+    if grasp_ep:
+        axes[1, 0].plot(grasp_ep, grasp_err, label="Stage 1: Grasp Contact (t_c)", color="#0284C7", marker="^", lw=2.0)
+    if term_ep:
+        axes[1, 0].plot(term_ep, term_err, label="Stage 2: Placement (t_grasp)", color="#E11D48", marker="v", lw=2.0)
+    if mean_ep:
+        axes[1, 0].plot(mean_ep, mean_err, label="Mean Cartesian Error", color="#64748B", linestyle="--", lw=1.8)
+
+    axes[1, 0].axhline(3.0, color="#F59E0B", linestyle="--", lw=1.8, label="Grasp Snap Bound (3.0 cm)")
+    axes[1, 0].set_title("Two-Stage Phasic Cartesian Accuracy")
+    axes[1, 0].set_xlabel("Epoch")
+    axes[1, 0].set_ylabel("Error (cm)")
+    axes[1, 0].legend(loc="upper right")
+
+    # Panel (1, 1): Terminal Kinematic & Orientation Stability
+    rot_ep, rot_vals = _extract_series("mppi_rot_err_rad")
+    if not rot_ep:
+        rot_ep, rot_vals = _extract_series("mppi_final_rot")
+    vel_ep, vel_vals = _extract_series("mppi_final_vel")
+
+    ax_rot = axes[1, 1]
+    lines = []
+    labels = []
+    if rot_ep:
+        l1 = ax_rot.plot(rot_ep, rot_vals, label="Terminal Rot Err (rad)", color="#7C3AED", marker="o", lw=2.0)
+        l2 = ax_rot.axhline(0.05, color="#A78BFA", linestyle="--", lw=1.5, label="Rot Bound (0.05 rad)")
+        lines.extend(l1)
+        labels.append("Terminal Rot Err (rad)")
+        lines.append(l2)
+        labels.append("Rot Bound (0.05 rad)")
+    ax_rot.set_xlabel("Epoch")
+    ax_rot.set_ylabel("Orientation Error (rad)", color="#7C3AED")
+    ax_rot.tick_params(axis="y", labelcolor="#7C3AED")
+
+    if vel_ep:
+        ax_vel = ax_rot.twinx()
+        l3 = ax_vel.plot(vel_ep, vel_vals, label="Terminal Joint Vel (rad/s)", color="#DC2626", marker="x", linestyle="-.", lw=2.0)
+        l4 = ax_vel.axhline(1.5, color="#F87171", linestyle=":", lw=1.5, label="Vel Bound (1.5 rad/s)")
+        lines.extend(l3)
+        labels.append("Terminal Joint Vel (rad/s)")
+        lines.append(l4)
+        labels.append("Vel Bound (1.5 rad/s)")
+        ax_vel.set_ylabel("Velocity Norm (rad/s)", color="#DC2626")
+        ax_vel.tick_params(axis="y", labelcolor="#DC2626")
+        ax_vel.grid(False)
+
+    ax_rot.set_title("Terminal Stability (Orientation & Velocity)")
+    if lines:
+        ax_rot.legend(lines, labels, loc="upper right")
+
+    save_path = Path(save_path)
+    save_path.parent.mkdir(parents=True, exist_ok=True)
+    plt.tight_layout()
+    plt.savefig(save_path, dpi=300)
+    plt.close()
+
+
+def plot_mppi_benchmark_results(
+    results: Sequence[Any],
+    save_path: Union[str, Path],
+) -> None:
+    """
+    Renders multi-panel benchmark diagnostic visualization for Latent MPPI control episodes.
+    Works with both EpisodeResult objects and dictionary records.
+    """
+    set_paper_style()
+    fig, axes = plt.subplots(1, 3, figsize=(18, 5))
+    fig.patch.set_facecolor("#0F172A")
+
+    for ax in axes:
+        ax.set_facecolor("#1E293B")
+        ax.tick_params(colors="#94A3B8")
+        ax.xaxis.label.set_color("#CBD5E1")
+        ax.yaxis.label.set_color("#CBD5E1")
+        ax.title.set_color("#F8FAFC")
+        for spine in ax.spines.values():
+            spine.set_color("#334155")
+
+    def _get(obj: Any, key: str) -> Any:
+        return obj[key] if isinstance(obj, dict) else getattr(obj, key)
+
+    # Panel 1: Success Rate & Mean Error by Elevation Plane
+    planes = ["Low", "Mid", "High"]
+    succ_rates = []
+    mean_errs = []
+    for p in planes:
+        subset = [r for r in results if _get(r, "elevation_plane") == p]
+        if subset:
+            succ_rates.append(float(np.mean([1.0 if _get(r, "grasp_success") else 0.0 for r in subset]) * 100.0))
+            mean_errs.append(float(np.mean([_get(r, "min_placement_error_cm") for r in subset])))
+        else:
+            succ_rates.append(0.0)
+            mean_errs.append(0.0)
+
+    x = np.arange(len(planes))
+    width = 0.35
+    axes[0].bar(x - width / 2, succ_rates, width, label="Success Rate (%)", color="#38BDF8")
+    axes[0].bar(x + width / 2, mean_errs, width, label="Mean Error (cm)", color="#F472B6")
+    axes[0].set_xticks(x)
+    axes[0].set_xticklabels(planes)
+    axes[0].set_ylabel("Metric Value")
+    axes[0].set_title("Performance Across Elevation Planes")
+    axes[0].legend(facecolor="#0F172A", edgecolor="#334155", labelcolor="#F8FAFC")
+    axes[0].grid(True, linestyle="--", alpha=0.2, color="#94A3B8")
+
+    # Panel 2: Placement Error vs Payload Mass (1.20 - 4.50 kg)
+    masses = [float(_get(r, "payload_mass")) for r in results]
+    errors = [float(_get(r, "min_placement_error_cm")) for r in results]
+    success_flags = [bool(_get(r, "grasp_success")) for r in results]
+
+    colors = ["#34D399" if s else "#F87171" for s in success_flags]
+    axes[1].scatter(masses, errors, c=colors, s=40, alpha=0.85, edgecolors="#0F172A")
+    axes[1].axhline(3.0, color="#F59E0B", linestyle="--", linewidth=1.8, label="Grasp Snap Bound (3.0 cm)")
+    axes[1].set_xlabel("Payload Mass (kg)")
+    axes[1].set_ylabel("Min Placement Error (cm)")
+    axes[1].set_title("Terminal Error vs. Payload Mass (1.2 - 4.5 kg)")
+    axes[1].legend(facecolor="#0F172A", edgecolor="#334155", labelcolor="#F8FAFC")
+    axes[1].grid(True, linestyle="--", alpha=0.2, color="#94A3B8")
+
+    # Panel 3: MPPI Inference Latency Distribution
+    latencies = [float(_get(r, "mean_latency_ms")) for r in results]
+    axes[2].hist(latencies, bins=15, color="#A78BFA", edgecolor="#0F172A", alpha=0.85)
+    mean_lat = float(np.mean(latencies)) if latencies else 0.0
+    axes[2].axvline(mean_lat, color="#38BDF8", linestyle="--", linewidth=1.8, label=f"Mean: {mean_lat:.1f} ms")
+    axes[2].set_xlabel("MPPI Step Latency (ms)")
+    axes[2].set_ylabel("Count")
+    axes[2].set_title("MPPI Inference Latency")
+    axes[2].legend(facecolor="#0F172A", edgecolor="#334155", labelcolor="#F8FAFC")
+    axes[2].grid(True, linestyle="--", alpha=0.2, color="#94A3B8")
+
+    plt.tight_layout()
+    target_path = Path(save_path)
+    target_path.parent.mkdir(parents=True, exist_ok=True)
+    plt.savefig(target_path, dpi=200, facecolor=fig.get_facecolor(), bbox_inches="tight")
     plt.close()
 
 

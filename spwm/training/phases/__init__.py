@@ -174,6 +174,21 @@ class PredictorPhaseHandler(PhaseStrategy):
                 f"Rotational Err (rad): {mppi_rot:.4f} rad | Success Rate: {mppi_succ:.1f}%",
                 indent_level=1,
             )
+            expert_trajs = int(val_metrics.get("mppi_expert_trajectories", 0))
+            if expert_trajs > 0:
+                expert_blocks = val_metrics.get("mppi_expert_blocks", ["Unknown"] * expert_trajs)
+                blocks_str = ", ".join(expert_blocks) if expert_blocks else "Unknown"
+                chronicle.log_detail(
+                    "🎮 DAgger Expert Overwrites",
+                    f"{expert_trajs} Trajectories Overwritten | Elevation Blocks: [{blocks_str}]",
+                    indent_level=1,
+                )
+            else:
+                chronicle.log_detail(
+                    "🎮 Policy Autonomy",
+                    "100% Autonomous (0 Expert Overrides)",
+                    indent_level=1,
+                )
             curr_score = mppi_s
             sel_desc = f"Tier 2 MPPI Cost: {curr_score:.5f}"
         else:

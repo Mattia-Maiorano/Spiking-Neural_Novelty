@@ -55,23 +55,34 @@ def compute_critic_mc_loss(
     pred_latents: torch.Tensor,
     target_latents: torch.Tensor,
     gamma: float = 0.95,
+    w_rot_critic: float = 1.0,
 ) -> torch.Tensor:
-    """Computes Monte Carlo discounted cost-to-go MSE loss for LatentCritic.
+    """Computes Monte Carlo discounted cost-to-go MSE loss for LatentCritic with geodesic rotation error.
 
-    Target value backward recursion: V_target_t = pos_err_t + gamma * V_target_{t+1},
-    where pos_err_t is the L2 Cartesian distance between decoded end-effector and target.
+    Target value backward recursion: V_target_t = step_cost_t + gamma * V_target_{t+1},
+    where step_cost_t = pos_err_t + w_rot_critic * rot_err_t.
     """
     with torch.no_grad():
         jc = physical_decoder.joint_count
         pred_q = physical_decoder(pred_latents.detach())[..., :jc]
         tgt_q = physical_decoder(target_latents.detach())[..., :jc]
-        pred_ee = fk(pred_q)
-        tgt_ee = fk(tgt_q)
+        pred_ee_homo = fk.forward_homogeneous(pred_q)
+        tgt_ee_homo = fk.forward_homogeneous(tgt_q)
+        pred_ee = pred_ee_homo[..., :3, 3]
+        tgt_ee = tgt_ee_homo[..., :3, 3]
         pos_err = torch.norm(pred_ee - tgt_ee, p=2, dim=-1)  # [B, H]
-        v_target = torch.zeros_like(pos_err)
-        v_next = torch.zeros_like(pos_err[:, 0])
-        for t in range(pos_err.shape[1] - 1, -1, -1):
-            v_next = pos_err[:, t] + float(gamma) * v_next
+
+        pred_R = pred_ee_homo[..., :3, :3]
+        tgt_R = tgt_ee_homo[..., :3, :3]
+        trace = torch.diagonal(torch.matmul(pred_R.transpose(-1, -2), tgt_R), dim1=-2, dim2=-1).sum(-1)
+        cos_theta = torch.clamp((trace - 1.0) / 2.0, -1.0, 1.0)
+        rot_err = 1.0 - cos_theta
+
+        step_cost = pos_err + float(w_rot_critic) * rot_err  # [B, H]
+        v_target = torch.zeros_like(step_cost)
+        v_next = torch.zeros_like(step_cost[:, 0])
+        for t in range(step_cost.shape[1] - 1, -1, -1):
+            v_next = step_cost[:, t] + float(gamma) * v_next
             v_target[:, t] = v_next
 
     predicted_v = critic(pred_latents).squeeze(-1)  # [B, H]

@@ -19,7 +19,7 @@ from optuna.samplers import CmaEsSampler
 import torch
 import torch.nn.functional as F
 
-from spwm.contracts.config import ExperimentConfig
+from spwm.contracts.config import ExperimentConfig, MPPIConfig
 from spwm.contracts.version import GLOBAL_VERSION
 from spwm.data.datasets import create_dataloaders
 from spwm.evaluation.mppi import LatentMPPIController, MPPIPlanResult
@@ -34,8 +34,26 @@ class NeuralCostMPPIController(LatentMPPIController):
     Abandons algebraic cost equations for an evolved Micro-MLP.
     Maps physical state features directly to trajectory cost.
     """
-    def __init__(self, *args, neural_weights: List[float], **kwargs):
-        super().__init__(*args, **kwargs)
+    def __init__(
+        self,
+        predictor: LatentPredictor,
+        physical_decoder: PhysicalDecoder,
+        config: MPPIConfig,
+        neural_weights: List[float],
+        forward_kinematics: Optional[DifferentiableForwardKinematics] = None,
+        critic: Optional[LatentCritic] = None,
+        device: Optional[torch.device] = None,
+        seed: Optional[int] = None,
+    ):
+        super().__init__(
+            predictor=predictor,
+            physical_decoder=physical_decoder,
+            config=config,
+            forward_kinematics=forward_kinematics,
+            critic=critic,
+            device=device,
+            seed=seed,
+        )
         
         # Reconstruct the Micro-MLP from the flat list of Optuna parameters
         # Architecture: 4 Inputs -> 6 Hidden (ELU) -> 1 Output (Softplus)
@@ -190,8 +208,8 @@ def evaluate_mppi_config(model: SPWM, controller: NeuralCostMPPIController, fk: 
     t_c = int(p1_indices[0].item()) if len(p1_indices) > 0 else 50
     t_grasp = min(t_c + 7, q_gt.shape[0] - 1)
     
-    target_pose_mat = fk.forward_homogeneous(q_gt[t_c : t_c + 1])[0].detach()
-    target_pos_t = target_pose_mat[:3, 3]
+    target_grasp_mat = fk.forward_homogeneous(q_gt[t_c : t_c + 1])[0].detach()
+    target_final_mat = fk.forward_homogeneous(q_gt[t_grasp : t_grasp + 1])[0].detach()
 
     traj_id = int(batch["trajectory_ids"][0].item()) if "trajectory_ids" in batch else 0
 
@@ -203,6 +221,8 @@ def evaluate_mppi_config(model: SPWM, controller: NeuralCostMPPIController, fk: 
     final_vel, final_rot = 0.0, 0.0
 
     for t in range(max(5, t_c - 20), t_grasp + 1):
+        target_pose_mat = target_grasp_mat if t <= t_c else target_final_mat
+        target_pos_t = target_pose_mat[:3, 3]
         z_t, dyn_state = step_grounded(model, events[:, t], dyn_state, in_sensory_phase=True, unconstrained=True, action=prev_u.unsqueeze(0))
         res = controller.plan_step(z_t, target_pose_mat, prev_action=prev_u)
         prev_u = res.action
@@ -242,17 +262,21 @@ def objective(trial: optuna.Trial, model: SPWM, fk: DifferentiableForwardKinemat
     # CMA-ES will handle these correlations beautifully
     neural_weights = [trial.suggest_float(f"nw_{i}", -2.0, 2.0) for i in range(37)]
 
-    controller = NeuralCostMPPIController(
-        predictor=model.m1,
-        physical_decoder=model.physical_decoder,
-        forward_kinematics=fk,
+    mppi_cfg = MPPIConfig(
         num_samples=256,
         horizon=20,
         num_iterations=3,
-        noise_sigma=[sigma_base, sigma_shoulder, sigma_elbow, sigma_base, sigma_base, sigma_base],
+        noise_sigma=(sigma_base, sigma_shoulder, sigma_elbow, sigma_base, sigma_base, sigma_base),
         noise_beta=noise_beta,
         temperature=temperature,
+    )
+
+    controller = NeuralCostMPPIController(
+        predictor=model.m1,
+        physical_decoder=model.physical_decoder,
+        config=mppi_cfg,
         neural_weights=neural_weights,
+        forward_kinematics=fk,
         device=device,
     )
 

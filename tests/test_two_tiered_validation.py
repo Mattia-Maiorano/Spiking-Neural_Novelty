@@ -453,6 +453,7 @@ def test_tier2_early_stopping_patience_checks(tmp_path):
             tier2_frequency=2,
             tier2_patience=2,  # Stop after 2 consecutive failed Tier 2 evaluations
             tier2_min_delta=0.01,
+            classic_patience=True,
         ),
     )
     model = SPWM.from_config(cfg).to(device)
@@ -531,6 +532,7 @@ def test_tier2_early_stopping_min_delta(tmp_path):
             tier2_frequency=2,
             tier2_patience=2,
             tier2_min_delta=0.05,  # Requires at least 0.05 improvement
+            classic_patience=True,
         ),
     )
     model = SPWM.from_config(cfg).to(device)
@@ -575,6 +577,79 @@ def test_tier2_early_stopping_min_delta(tmp_path):
     assert executed_epochs == [1, 2, 3, 4, 5, 6]
     assert trainer.best_epoch == 2
     assert trainer.best_score == 2.00
+
+
+def test_tier2_metrics_storage_and_deactivated_classic_patience(tmp_path):
+    """
+    Verifies that when classic_patience=False:
+    1. Exceeding patience does NOT terminate execution early.
+    2. Training executes all requested epochs.
+    3. Metrics storage saves training_log.json and training_log.csv at each metrics_storage Tier 2 run.
+    """
+    device = torch.device("cpu")
+    cfg = ExperimentConfig(
+        project=ProjectConfig(name="test_metrics_storage"),
+        data=DataConfig(sequence_length=40),
+        training=TrainingConfig(
+            mode="train_m1",
+            phase_horizon=10,
+            epochs=6,
+            tier2_frequency=2,
+            tier2_patience=1,  # Would stop at epoch 4 if classic_patience was True
+            classic_patience=False,
+            metrics_storage=1,
+        ),
+    )
+    model = SPWM.from_config(cfg).to(device)
+    dataset = SyntheticValDataset(count=4, seq_len=40)
+    train_loader = DataLoader(dataset, batch_size=2, collate_fn=synthetic_collate)
+    val_loader = DataLoader(dataset, batch_size=2, collate_fn=synthetic_collate)
+
+    class NonImprovingEvaluator:
+        frequency = 2
+
+        def __call__(self, m: nn.Module, candidate_epoch: int) -> Dict[str, float]:
+            return {
+                "mppi_score": 10.0,
+                "mppi_success_rate": 0.5,
+                "mppi_mean_error_cm": 2.0,
+                "mppi_terminal_error_cm": 2.0,
+                "mppi_final_vel": 0.1,
+                "mppi_final_rot": 0.01,
+                "mppi_pos_penalty": 0.1,
+                "mppi_vel_penalty": 0.02,
+                "mppi_rot_penalty": 0.04,
+                "mppi_evaluated_trajectories": 4.0,
+            }
+
+    callback_calls = []
+
+    def mock_artifact_cb(t: BaseTrainer) -> None:
+        callback_calls.append(len(t.history))
+
+    save_dir = tmp_path / "metrics_storage_test"
+    trainer = BaseTrainer(
+        model=model,
+        cfg=cfg,
+        train_loader=train_loader,
+        val_loader=val_loader,
+        device=device,
+        save_dir=save_dir,
+        tier2_evaluator=NonImprovingEvaluator(),
+        artifact_callback=mock_artifact_cb,
+    )
+
+    history = trainer.fit(epochs=6)
+    executed_epochs = [h["epoch"] for h in history]
+    # Did not stop early despite tier2_patience=1!
+    assert executed_epochs == [1, 2, 3, 4, 5, 6]
+    # Metrics files and phase checkpoint exist
+    assert (save_dir / "training_log.json").is_file()
+    assert (save_dir / "training_log.csv").is_file()
+    assert (save_dir / "config.yaml").is_file()
+    assert (save_dir / "checkpoint_phase_1.pt").is_file()
+    # Artifact callback was called periodically
+    assert len(callback_calls) > 0
 
 
 def test_teacher_forced_blending_metric_isolation_and_round_robin():

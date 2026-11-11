@@ -169,6 +169,24 @@ def parse_args() -> argparse.Namespace:
         help="Override Tier 2 early stopping patience in consecutive Tier 2 checks (default: 3 checks)",
     )
     parser.add_argument(
+        "--metrics-storage",
+        type=int,
+        default=None,
+        help="Store metrics each tot Tier 2 validation runs (default: 1)",
+    )
+    parser.add_argument(
+        "--classic-patience",
+        action="store_true",
+        default=None,
+        help="Activate classic patience early stopping termination when patience limit is reached",
+    )
+    parser.add_argument(
+        "--no-classic-patience",
+        action="store_false",
+        dest="classic_patience",
+        help="Deactivate classic patience early stopping termination (save metrics instead of terminating)",
+    )
+    parser.add_argument(
         "--tier2-min-delta",
         type=float,
         default=None,
@@ -387,6 +405,10 @@ def main() -> None:
         overrides["tier2_patience"] = args.tier2_patience
     if args.tier2_min_delta is not None:
         overrides["tier2_min_delta"] = args.tier2_min_delta
+    if args.metrics_storage is not None:
+        overrides["metrics_storage"] = args.metrics_storage
+    if args.classic_patience is not None:
+        overrides["classic_patience"] = args.classic_patience
     if args.ema_decay is not None:
         overrides["ema_decay"] = args.ema_decay
     if args.mppi_noise_warmup_epochs is not None:
@@ -463,6 +485,22 @@ def main() -> None:
             f"(Evaluates every {tier2_evaluator.frequency} epochs; Zero-Stochasticity seed={cfg.training.tier2_seed})."
         )
 
+    def _on_store_artifacts(trainer: BaseTrainer) -> None:
+        training_state = {k: v.cpu().clone() for k, v in trainer.model.state_dict().items()}
+        is_training = trainer.model.training
+        try:
+            _evaluate_and_save_phase_artifacts(
+                model=trainer.model,
+                cfg=trainer.cfg,
+                phase_mode=trainer.mode,
+                save_dir=trainer.save_dir,
+                history=trainer.history,
+                device=trainer.device,
+            )
+        finally:
+            trainer.model.load_state_dict(training_state, strict=True)
+            trainer.model.train(is_training)
+
     engine = BaseTrainer(
         model=model,
         cfg=cfg,
@@ -473,6 +511,7 @@ def main() -> None:
         results_root=results_root,
         tier2_evaluator=tier2_evaluator,
         closed_loop_buffer=args.closed_loop_buffer,
+        artifact_callback=_on_store_artifacts,
     )
 
     resume_ckpt = Path(args.checkpoint) if args.checkpoint is not None else (save_dir / "checkpoint.pt")

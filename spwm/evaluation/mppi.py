@@ -336,7 +336,7 @@ class LatentMPPIController:
 
         Formulation per step t:
           - Positional Cost: W_pos * ||pos_current - target_pos||_2
-          - Rotational Cost: W_rot * (1 - cos(theta_error))
+          - Rotational Cost: Smooth linear geodesic angle without step discontinuity
           - Action Smoothness (Jerk Penalty): Constant W_jerk * ||u_t - u_{t-1}||_2^2 across horizon
           - Directional Progress Reward: - W_progress * sum(progress_t * dist_factor) (deadband attenuation)
           - Cartesian Velocity Damping: W_damping * sum(||delta_p_t|| * (1 - dist_factor)) (deadband braking)
@@ -351,15 +351,25 @@ class LatentMPPIController:
         # Full reward / zero velocity damping when >= 13cm, dropping to 0 reward / full velocity damping when within 3cm
         dist_factor = torch.clamp((pos_err - 0.03) / 0.10, 0.0, 1.0)  # [K, H]
 
-        # 2. Rotational Cost: W_rot * (1 - cos(theta_error))
+        # 2. Rotational Cost: Combined macro-basin and micro-V-shape# 2. Rotational Cost: Dynamic Exponential Weighting
         if target_orientation is not None and R_ee is not None:
-            r_rel = torch.matmul(R_ee.transpose(-1, -2), target_orientation.view(1, 1, 3, 3))
+            # Support both single [3, 3] and horizon sequence [H, 3, 3] target_orientation
+            target_R = target_orientation.unsqueeze(0) if target_orientation.ndim == 3 else target_orientation.view(1, 1, 3, 3)
+            r_rel = torch.matmul(R_ee.transpose(-1, -2), target_R)
             trace_r = torch.diagonal(r_rel, dim1=-2, dim2=-1).sum(-1)  # [K, H]
-            cos_theta = torch.clamp((trace_r - 1.0) * 0.5, -1.0, 1.0)
-            rot_err_step = 1.0 - cos_theta
-            rot_cost = self.w_rot * rot_err_step.sum(dim=-1)  # [K]
+            cos_theta = torch.clamp((trace_r - 1.0) * 0.5, -1.0 + 1e-6, 1.0 - 1e-6)
+            rot_err_rad = torch.acos(cos_theta)  # [K, H] in radians
+            
+            # Ponderazione Dinamica (Dynamic Weighting)
+            # Assume 'pos_err' sia calcolato precedentemente nel blocco posizionale: [K, H]
+            # Se pos_err > 10 cm, w_rot_dinamico è ~8.0.
+            # Se pos_err si avvicina a 0 cm, w_rot_dinamico sale dolcemente a ~35.0.
+            w_rot_dinamico = 5.0 + 30.0 * torch.exp(-pos_err / 0.05)
+            
+            rot_cost = (w_rot_dinamico * rot_err_rad).sum(dim=-1)  # [K]
         else:
             rot_cost = torch.zeros(K, device=ee_pos.device, dtype=ee_pos.dtype)
+
 
         # 3. Action Smoothness (Jerk Penalty): Constant W_jerk across horizon to allow braking torques
         delta_u_0 = u_seq[:, 0] - u_prev.unsqueeze(0)

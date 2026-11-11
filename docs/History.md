@@ -765,11 +765,17 @@
   3. Strict Metric Isolation (`spwm/evaluation/mppi.py`): Separated natural MPPI trajectories from expert-guided trajectories inside `MPPIStructuralScorer.__call__`, computing all Tier 2 validation metrics (`mppi_score`, `mppi_cost`, `mppi_success_rate`, `mppi_mean_error_cm`, `mppi_rot_err_rad`, etc.) exclusively on natural MPPI trajectories while pushing all 6 trajectories into `ClosedLoopBuffer`.
   4. Stratified Round-Robin Rotation (`spwm/evaluation/mppi.py`): Implemented circular selection `(eval_idx + i) % total_trajs` for natural trajectory assignment so natural MPPI evaluations sweep across Low, Mid, and High target elevation planes across epochs.
 - **new results (if any)**: No runs made - code refactoring / configuration only. All 45 unit tests across `test_anti_fallback.py`, `test_architecture_contracts.py`, `test_mppi.py`, `test_two_tiered_validation.py`, and `test_closed_loop_buffer.py` passed (0 AST fallback violations).
+## SPWM-v0.11.0 — Iteration 1 (Smooth Continuous Linear Geodesic Rotation Cost)
+- **version afflicted**: `SPWM-v0.11.0`
+- **iteration on version**: Iteration 1 (Smooth Continuous Linear Geodesic Rotation Cost)
+- **changes made**:
+  1. Eliminated step discontinuity `torch.where(pos_err < 0.10, ...)` in `LatentMPPIController.compute_trajectory_cost` (`spwm/evaluation/mppi.py`), preventing repulsive cost barrier at $d = 0.10\,\text{m}$.
+  2. Implemented continuous linear geodesic rotation penalty $\mathcal{C}_{\text{rot}} = \sum (6.0 \cdot \theta_{\text{err}})$ with tensor dimension broadcasting supporting both single $[3, 3]$ and sequence $[H, 3, 3]$ `target_orientation`, physically balanced against Cartesian position error ($0.05\,\text{rad} \to 0.30$ vs. $1.5\,\text{cm} \to 0.30$).
+  3. Evaluated checkpoint `best_model.pt` (Epoch 125) under pure natural MPPI execution across validation trajectories 3204, 3211, and 3200.
+- **new results (if any)**: Natural MPPI validation on Epoch 125 checkpoint:
+  - Trajectory 3204 (Low): `terminal_error_cm = 1.293`, `mean_cartesian_err_cm = 3.640`, `final_rot = 0.1216 rad`, `final_vel = 0.3901 rad/s`, `success = 0.0`.
+  - Trajectory 3211 (Low): `terminal_error_cm = 5.317`, `mean_cartesian_err_cm = 4.096`, `final_rot = 0.1271 rad`, `final_vel = 0.4515 rad/s`, `success = 0.0`.
+  - Trajectory 3200 (Mid): `terminal_error_cm = 4.428`, `mean_cartesian_err_cm = 6.713`, `final_rot = 0.1461 rad`, `final_vel = 0.5025 rad/s`, `success = 0.0`.
 - **verdict on change made**: Preserved.
-
-
-
-
-
 
 

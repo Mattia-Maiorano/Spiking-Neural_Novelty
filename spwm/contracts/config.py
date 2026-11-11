@@ -233,6 +233,8 @@ class TrainingConfig:
     tier2_candidate_selection: str = "ema"            #: Candidate model to evaluate in Tier 2: "ema" (default: evaluate exponential moving average weights) or "latest".
     tier2_patience: int = 5                           #: Consecutive Tier 2 evaluation checks without MPPI score improvement before early stopping.
     tier2_min_delta: float = 0.001                    #: Minimum improvement threshold on MPPI cost score to reset early stopping patience.
+    metrics_storage: int = 5                          #: Frequency (in Tier 2 validation runs) at which training and validation metrics are stored to disk.
+    classic_patience: bool = False                    #: Flag to activate (True) or deactivate (False) classic early stopping termination when patience is exceeded.
     ema_decay: float = 0.990                          #: Decay factor tau for Exponential Moving Average (EMA) of model weights.
     mppi_noise_warmup_epochs: int = 10                #: Initial training epochs with zero AR(1) action noise before curriculum ramp.
     mppi_noise_ramp_epochs: int = 20                  #: Number of epochs over which AR(1) action noise linearly ramps to target alpha.
@@ -255,6 +257,10 @@ class TrainingConfig:
             raise ValueError(f"tier2_patience must be > 0, got {self.tier2_patience}")
         if self.tier2_min_delta < 0.0:
             raise ValueError(f"tier2_min_delta must be non-negative, got {self.tier2_min_delta}")
+        if self.metrics_storage <= 0:
+            raise ValueError(f"metrics_storage must be > 0, got {self.metrics_storage}")
+        if not isinstance(self.classic_patience, bool):
+            raise ValueError(f"classic_patience must be a bool, got {type(self.classic_patience).__name__}")
         valid_selections = ("ema", "latest")
         if self.tier2_candidate_selection not in valid_selections:
             raise ValueError(
@@ -414,6 +420,8 @@ class ExperimentConfig:
         tier2_candidate_selection: Optional[str] = None,
         tier2_patience: Optional[int] = None,
         tier2_min_delta: Optional[float] = None,
+        metrics_storage: Optional[int] = None,
+        classic_patience: Optional[bool] = None,
         ema_decay: Optional[float] = None,
         mppi_noise_warmup_epochs: Optional[int] = None,
         mppi_noise_ramp_epochs: Optional[int] = None,
@@ -469,6 +477,10 @@ class ExperimentConfig:
             train_updates["tier2_patience"] = tier2_patience
         if tier2_min_delta is not None:
             train_updates["tier2_min_delta"] = tier2_min_delta
+        if metrics_storage is not None:
+            train_updates["metrics_storage"] = metrics_storage
+        if classic_patience is not None:
+            train_updates["classic_patience"] = classic_patience
         if ema_decay is not None:
             train_updates["ema_decay"] = ema_decay
         if mppi_noise_warmup_epochs is not None:

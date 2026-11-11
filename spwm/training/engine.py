@@ -560,6 +560,7 @@ class BaseTrainer:
         results_root: Union[str, Path] = "results",
         tier2_evaluator: Optional[Tier2EvaluatorProtocol] = None,
         closed_loop_buffer: Optional[Union[str, Path]] = None,
+        artifact_callback: Optional[Callable[["BaseTrainer"], None]] = None,
     ) -> None:
         self.model = model
         self.cfg = cfg
@@ -567,10 +568,14 @@ class BaseTrainer:
         self.val_loader = val_loader
         self.results_root = Path(results_root)
         self.tier2_evaluator = tier2_evaluator
+        self.artifact_callback = artifact_callback
         self.tier2_frequency = cfg.training.tier2_frequency
         self.tier2_candidate_selection = cfg.training.tier2_candidate_selection
         self.tier2_patience = cfg.training.tier2_patience
         self.tier2_min_delta = cfg.training.tier2_min_delta
+        self.metrics_storage = cfg.training.metrics_storage
+        self.classic_patience = cfg.training.classic_patience
+        self.tier2_run_count = 0
         self.ema_decay = cfg.training.ema_decay
 
         if device is None:
@@ -803,6 +808,7 @@ class BaseTrainer:
 
         epochs_without_improvement = 0
         tier2_checks_without_improvement = 0
+        self.tier2_run_count = 0
         start_time = time.time()
         try:
             for epoch in range(self.start_epoch, end_epoch + 1):
@@ -952,25 +958,53 @@ class BaseTrainer:
                     best_score=self.best_score,
                 )
 
-                # Early stopping evaluation: strictly driven by the active validation tier
+                if is_tier2_epoch:
+                    self.tier2_run_count += 1
+                    if self.tier2_run_count % self.metrics_storage == 0:
+                        chronicle.log_info(
+                            f"[Metrics Storage] Triggering conclusion metrics and artifacts at epoch {epoch} "
+                            f"(Tier 2 run #{self.tier2_run_count}, metrics_storage={self.metrics_storage})."
+                        )
+                        self.store_conclusion_metrics()
+
+                # Early stopping / patience evaluation: strictly driven by the active validation tier
                 if self.tier2_evaluator is not None:
                     if is_tier2_epoch and tier2_checks_without_improvement >= tier2_patience_limit:
-                        chronicle.log_info(
-                            f"Early stopping triggered in [{self.mode.upper()}] after "
-                            f"{tier2_checks_without_improvement} consecutive Tier 2 evaluations ({epochs_without_improvement} epochs) "
-                            f"without MPPI structural improvement (Best Score: {self.best_score:.5f} @ Epoch {self.best_epoch})."
-                        )
-                        break
+                        if self.classic_patience:
+                            chronicle.log_info(
+                                f"Early stopping triggered in [{self.mode.upper()}] after "
+                                f"{tier2_checks_without_improvement} consecutive Tier 2 evaluations ({epochs_without_improvement} epochs) "
+                                f"without MPPI structural improvement (Best Score: {self.best_score:.5f} @ Epoch {self.best_epoch})."
+                            )
+                            break
+                        else:
+                            chronicle.log_info(
+                                f"Tier 2 patience threshold reached ({tier2_checks_without_improvement} checks without improvement) "
+                                f"in [{self.mode.upper()}]. Classic patience is deactivated; storing conclusion metrics and artifacts and continuing execution."
+                            )
+                            self.store_conclusion_metrics()
                 else:
                     if epochs_without_improvement >= max_no_improve:
-                        chronicle.log_info(
-                            f"Early stopping triggered in [{self.mode.upper()}] after {epochs_without_improvement} "
-                            f"epochs without validation improvement (Best: {self.best_score:.5f} @ Epoch {self.best_epoch})."
-                        )
-                        break
+                        if self.classic_patience:
+                            chronicle.log_info(
+                                f"Early stopping triggered in [{self.mode.upper()}] after {epochs_without_improvement} "
+                                f"epochs without validation improvement (Best: {self.best_score:.5f} @ Epoch {self.best_epoch})."
+                            )
+                            break
+                        else:
+                            chronicle.log_info(
+                                f"Validation patience threshold reached ({epochs_without_improvement} epochs without improvement) "
+                                f"in [{self.mode.upper()}]. Classic patience is deactivated; storing conclusion metrics and artifacts and continuing execution."
+                            )
+                            self.store_conclusion_metrics()
         except KeyboardInterrupt:
             chronicle.log_warning("[INTERRUPT] Training interrupted manually.")
 
+        self.store_conclusion_metrics()
+        return self.history
+
+    def store_conclusion_metrics(self) -> None:
+        """Store conclusion metrics and artifacts (phase checkpoint, training logs, and evaluation artifacts)."""
         best_model_path = self.save_dir / "model.pt"
         if not best_model_path.is_file() and self.history:
             self.save_checkpoint(self.history[-1]["epoch"], is_best=True)
@@ -989,7 +1023,10 @@ class BaseTrainer:
             f"Session complete [{self.mode.upper()}]. Logs saved in '{self.save_dir}'. "
             f"Best Selection Score: {self.best_score:.5f} @ Epoch {self.best_epoch}"
         )
-        return self.history
+        self.cfg.save(self.save_dir / "config.yaml")
+
+        if self.artifact_callback is not None:
+            self.artifact_callback(self)
 
     def fit(
         self,
@@ -1147,6 +1184,8 @@ class Trainer(BaseTrainer):
         action_dim: int = 6,
         phase_horizon: int = 10,
         early_stopping_patience: int = 20,
+        metrics_storage: int = 1,
+        classic_patience: bool = False,
         auto_enforce_checkpoints: bool = False,
         results_root: Union[str, Path] = "results",
         tier2_evaluator: Optional[Tier2EvaluatorProtocol] = None,
@@ -1193,6 +1232,8 @@ class Trainer(BaseTrainer):
                     probe_lr=probe_lr,
                     probe_weight_decay=probe_weight_decay,
                     phase_horizon=phase_horizon,
+                    metrics_storage=metrics_storage,
+                    classic_patience=classic_patience,
                 ),
                 loss=LossConfig(),
                 evaluation=EvaluationConfig(rollout_horizons=roll_h),

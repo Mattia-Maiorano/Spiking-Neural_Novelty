@@ -102,8 +102,7 @@ class LatentPredictor(nn.Module):
             f_q = self.restorative_q_head(h)
 
             p_next = (1.0 - self.dt * gamma) * p_t + f_p
-            p_for_q = p_next[..., : self.q_dim] if self.p_dim != self.q_dim else p_next
-            q_next = q_t + self.dt * (p_for_q + f_q)
+            q_next = q_t + self.dt * (p_next[..., : self.q_dim] + f_q)
             z_next = torch.cat([q_next, p_next], dim=-1)
         else:
             delta_z = self.net(zu)

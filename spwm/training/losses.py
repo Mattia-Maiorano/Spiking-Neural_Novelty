@@ -85,7 +85,7 @@ def compute_critic_mc_loss(
             v_next = step_cost[:, t] + float(gamma) * v_next
             v_target[:, t] = v_next
 
-    predicted_v = critic(pred_latents).squeeze(-1)  # [B, H]
+    predicted_v = critic(pred_latents.detach()).squeeze(-1)  # [B, H]
     return F.mse_loss(predicted_v, v_target.detach())
 
 

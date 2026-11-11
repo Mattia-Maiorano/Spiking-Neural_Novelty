@@ -19,9 +19,9 @@ class LatchCurriculumState:
 
     Phases:
       1. Warmup Nominal: 100% Open-Loop, alpha = 0.0, w_t = 0.60.
-         Trigger -> Phase 2: train_loss < 0.01.
+         Trigger -> Phase 2: loss_m1_latent < 0.01.
       2. Sensory Fade-Out: 100% Open-Loop, alpha = 0.0, linearly decay w_t from 0.60 to 0.0 over 7 epochs.
-         Trigger -> Phase 3: w_t == 0.0 and train_loss < 0.008.
+         Trigger -> Phase 3: w_t == 0.0 and loss_m1_latent < 0.008.
       3. Noise Ramp-Up: 100% Open-Loop, w_t = 0.0, linearly ramp alpha from 0.0 to 0.4 over 10 epochs.
          Trigger -> Phase 4: alpha == 0.4.
       4. Fast DAgger Integration: Mixed batch scaling DAgger ratio from 10% to 50% over 2 * tier2_frequency epochs.
@@ -75,14 +75,26 @@ class LatchCurriculumState:
 
         return self.current_curriculum_phase, self.w_t, self.alpha, self.dagger_ratio
 
-    def end_epoch(self, train_loss: float) -> int:
-        """Evaluate irreversible latch transitions at the conclusion of a training epoch."""
+    def end_epoch(
+        self,
+        loss_m1_latent: Optional[float] = None,
+        *,
+        train_loss: Optional[float] = None,
+    ) -> int:
+        """Evaluate irreversible latch transitions strictly against `loss_m1_latent` (excluding `loss_critic`)."""
+        if loss_m1_latent is None:
+            if train_loss is None:
+                raise ValueError("end_epoch requires `loss_m1_latent` (excluding critic loss).")
+            metric_val = float(train_loss)
+        else:
+            metric_val = float(loss_m1_latent)
+
         if self.current_curriculum_phase == 1:
-            if train_loss < self.phase1_loss_threshold:
+            if metric_val < self.phase1_loss_threshold:
                 self.current_curriculum_phase = 2
                 self.phase_epochs = 0
         elif self.current_curriculum_phase == 2:
-            if self.w_t == 0.0 and train_loss < self.phase2_loss_threshold:
+            if self.w_t == 0.0 and metric_val < self.phase2_loss_threshold:
                 self.current_curriculum_phase = 3
                 self.phase_epochs = 0
         elif self.current_curriculum_phase == 3:

@@ -87,32 +87,37 @@ LatentCritic learns the expected discounted Cartesian and geodesic rotational tr
 5. Per-step cost: $c_t = e_t^{\text{pos}} + w_{\text{rot\_critic}} \cdot e_t^{\text{rot}}$ ($w_{\text{rot\_critic}} = 1.0$).
 6. Backward Bellman recursion:
    $$V_H^* = c_H, \quad V_t^* = c_t + \gamma V_{t+1}^* \quad (\gamma = 0.95)$$
-7. Critic MSE Loss:
-   $$\mathcal{L}_{\text{critic}} = \frac{1}{B \cdot H} \sum_{b=1}^B \sum_{t=1}^H \left(\text{Critic}(\hat{z}_{b,t}) - V_{b,t}^*\right)^2$$
+7. Critic MSE Loss & Gradient Isolation:
+   To ensure strict gradient isolation, predicted latent states are detached before passing to the critic network ($\hat{z}_{b,t}.\text{detach}()$), preventing critic value gradients from corrupting the M1 attractor backbone:
+   $$\mathcal{L}_{\text{critic}} = \frac{1}{B \cdot H} \sum_{b=1}^B \sum_{t=1}^H \left(\text{Critic}(\hat{z}_{b,t}.\text{detach}()) - V_{b,t}^*\right)^2$$
 
-> [!NOTE]
-> L'inclusione dell'errore geodetico $\mathrm{SO}(3)$ nel target Monte Carlo ($c_t = e_t^{\text{pos}} + w_{\text{rot\_critic}} \cdot e_t^{\text{rot}}$) introduce una componente intrinseca di costo aggiuntivo non nulla rispetto al solo errore euclideo. Di conseguenza, il floor numerico di $\mathcal{L}_{\text{critic}}$ scala in alto e influisce direttamente sul valore asintotico di $\mathcal{L}_{\text{total}}$.
+#### Kinematic Supervision for M1 ($\mathcal{L}_{\text{kin\_M1}}$)
+During the M1 training phase, predicted latents $(\hat{q}_t, \hat{p}_t)$ are passed through the frozen physical decoder heads ($\text{pos\_head}$ and $\text{vel\_head}$) to enforce joint-space kinematic consistency:
+$$\hat{q}^*_t = \text{pos\_head}(\hat{q}_t), \quad \hat{p}^*_t = \text{vel\_head}(\hat{p}_t)$$
+$$\mathcal{L}_{\text{kin\_M1}} = \frac{1}{B \cdot H \cdot J} \sum_{b,t,j} (\hat{q}^*_{b,t,j} - q^*_{b,t,j})^2 + \frac{0.5}{B \cdot H \cdot J} \sum_{b,t,j} (\hat{p}^*_{b,t,j} - p^*_{b,t,j})^2$$
 
 #### Total M1 Loss
-$$\mathcal{L}_{\text{total}} = \lambda_{\text{latent}} \mathcal{L}_{M1} + w_{\text{critic}} \mathcal{L}_{\text{critic}}$$
+The latent attractor loss $\mathcal{L}_{M1,\text{latent}} = \lambda_{\text{position}} \mathcal{L}_{\text{pos}} + \lambda_{\text{velocity}} \mathcal{L}_{\text{vel}}$ is augmented with kinematic supervision, and critic loss is kept decoupled:
+$$\mathcal{L}_{M1,\text{total}} = \mathcal{L}_{M1,\text{latent}} + 1.0 \cdot \mathcal{L}_{\text{kin\_M1}}$$
+$$\mathcal{L}_{\text{total}} = \mathcal{L}_{M1,\text{total}} + w_{\text{critic}} \mathcal{L}_{\text{critic}}$$
 where $w_{\text{critic}} = \lambda_{\text{critic}} \times (5.0 \text{ if curriculum\_phase} \ge 3 \text{ else } 1.0)$.
 
 ---
 
 ## 3. Four-Phase Latch Curriculum (`spwm/training/noise.py`)
 
-The M1 training phase employs an irreversible threshold latch state machine to bridge open-loop trajectory imitation and closed-loop control:
+The M1 training phase employs an irreversible threshold latch state machine to bridge open-loop trajectory imitation and closed-loop control. The latch transition thresholds are evaluated **strictly against $\mathcal{L}_{M1,\text{latent}}$** (coordinate + momentum MSE), completely excluding $\mathcal{L}_{\text{critic}}$ and $\mathcal{L}_{\text{kin\_M1}}$:
 
 1. **Curriculum Phase 1: Warmup Nominal**
    - Condition: 100% open-loop offline demonstrations.
    - Action noise level: $\alpha = 0.0$.
    - Active perception injection weight: $w_t = 0.60$.
-   - Latch Transition: Triggers to Phase 2 when $\mathcal{L}_{\text{train}} < 0.01$.
+   - Latch Transition: Triggers to Phase 2 when $\mathcal{L}_{M1,\text{latent}} < 0.01$.
 2. **Curriculum Phase 2: Sensory Fade-Out**
    - Decays sensory grounding weight linearly from $0.60 \to 0.0$ over 7 epochs:
      $$w_t = 0.60 \times \left(1 - \frac{\text{epoch}}{\text{fade\_epochs}}\right)$$
    - Action noise: $\alpha = 0.0$.
-   - Latch Transition: Triggers to Phase 3 when $w_t = 0.0$ and $\mathcal{L}_{\text{train}} < 0.008$.
+   - Latch Transition: Triggers to Phase 3 when $w_t = 0.0$ and $\mathcal{L}_{M1,\text{latent}} < 0.008$.
 3. **Curriculum Phase 3: Noise Ramp-Up**
    - Sensory weight: $w_t = 0.0$ (fully autonomous mental simulation).
    - Linearly ramps AR(1) Gaussian noise amplitude $\alpha$ from $0.0 \to 0.40$ over 10 epochs.
@@ -139,32 +144,32 @@ Validation operates on a two-tier hierarchy:
 
 ### Tier 2 Validation: Closed-Loop MPPI Evaluation (Every `tier2_frequency` Epochs)
 - Evaluates real closed-loop task execution using `LatentMPPIController` (`spwm/evaluation/mppi.py`).
+- Standard receding horizon control is enabled by setting `chunk_size = 1` (re-planning at every control step).
 - Candidate selection evaluated on Exponential Moving Average (EMA) weights ($\lambda_{\text{ema}} = 0.995$) or latest model weights.
 - Executes online planning across procedural evaluation trajectories across Low, Mid, and High elevation target planes.
 
 #### Definizione del Target di Traiettoria ($\mathbf{p}_{\text{target}}$) in MPPI
-Il riferimento di posa $\mathbf{p}_{\text{target}}$ e orientamento fornito a `LatentMPPIController` durante l'orizzonte di valutazione è governato da una commutazione discreta a due fasi su waypoint statici:
-- **Phase 1: Approach ($t \le t_c$, con $t_c = \text{approach\_window}$)**: L'obiettivo $\mathbf{p}_{\text{target}}$ coincide staticamente con la posa di presa/oggetto ($\mathbf{p}_{\text{grasp}}$). Rimane costante per tutta la durata dell'avvicinamento.
-- **Phase 2: Transport ($t > t_c$)**: Al passaggio temporale $t = t_c + 1$, l'action chunking viene forzatamente invalidato e $\mathbf{p}_{\text{target}}$ commuta istantaneamente sulla posa finale di trasporto ($\mathbf{p}_{\text{final}}$), rimanendovi fisso fino alla fine dell'episodio.
-MPPI riceve dunque un target statico per fase e non un waypoint mobile interpolato passo-passo.
+Il riferimento di posa $\mathbf{p}_{\text{target}}$ e orientamento fornito a `LatentMPPIController` è una **sequenza temporale sull'orizzonte di predizione** $\mathbf{p}_{\text{target},\tau} \in \mathbb{R}^{H \times 4 \times 4}$ per ciascuno step $\tau \in \{1, \dots, H\}$:
+- **Approach Window ($t + \tau \le t_c$)**: Il target per lo step $\tau$ è la posa di presa/oggetto $\mathbf{p}_{\text{grasp}}$.
+- **Transport Window ($t + \tau > t_c$)**: Il target per lo step $\tau$ è la posa finale di trasporto $\mathbf{p}_{\text{final}}$.
+L'errore cartesiano e rotazionale di ciascuno step dell'orizzonte viene valutato direttamente contro `target_pose_seq[tau]`.
 
 #### Meccanica e Funzione di Costo di `LatentMPPIController`
-Durante il planning online in closed-loop, MPPI **non** si limita ad ottimizzare il valore di `LatentCritic(z_t)`:
+Durante il planning online in closed-loop, MPPI ottimizza le traiettorie su base geometrica e cinematica nello spazio cartesiano:
 1. **Mental Simulation in Latent Space**: Esegue il rollout autoregressivo di $K$ traiettorie candidate per $H$ passi temporali usando esclusivamente il predittore latente $\mathcal{M}_1$:
    $$\mathbf{z}_{t+\tau} = \mathcal{M}_1(\mathbf{z}_{t+\tau-1}, \mathbf{u}_{t+\tau-1})$$
 2. **Kinematic Decoding & FK**: A ogni step dell'orizzonte decodifica le configurazioni articolari $\hat{q} \in \mathbb{R}^6$ tramite il `PhysicalDecoder` ($\hat{k} = [\hat{q}, \hat{p}] = \mathcal{D}_{\text{phys}}(\mathbf{z})$) e calcola la posa cartesiana dell'end-effector (posizione 3D $\mathbf{p}_{\text{ee}} \in \mathbb{R}^3$ e matrice di rotazione $\mathbf{R}_{\text{ee}} \in \mathrm{SO}(3)$) tramite `DifferentiableForwardKinematics`.
 3. **Composizione Esatta della Funzione di Costo**: La funzione di costo di ciascuna traiettoria candidata $k \in \{1, \dots, K\}$ è composta da:
-   - **Positional Cost**: $w_{\text{pos}} \sum_{\tau=1}^H \|\mathbf{p}_{\text{ee},\tau} - \mathbf{p}_{\text{target}}\|_2$ (distanza euclidea dal target 3D).
-   - **Rotational Cost**: $w_{\text{rot}} \sum_{\tau=1}^H (1 - \cos \theta_{\text{err},\tau})$ (errore geodetico $\mathrm{SO}(3)$ rispetto all'orientamento target desiderato).
+   - **Positional Cost**: $w_{\text{pos}} \sum_{\tau=1}^H \|\mathbf{p}_{\text{ee},\tau} - \mathbf{p}_{\text{target},\tau}\|_2$ (distanza euclidea dal target sequenziale a step $\tau$).
+   - **Rotational Cost**: $w_{\text{rot}} \sum_{\tau=1}^H (1 - \cos \theta_{\text{err},\tau})$ (errore geodetico $\mathrm{SO}(3)$ rispetto all'orientamento desiderato a step $\tau$).
    - **Action Smoothness / Jerk Penalty**: $w_{\text{jerk}} \sum_{\tau=1}^H \|\mathbf{u}_\tau - \mathbf{u}_{\tau-1}\|_2^2$ (penalizzazione sulla variazione brusca dei comandi di controllo).
-   - **Directional Progress Reward**: $- w_{\text{progress}} \sum_{\tau=1}^H (\Delta \mathbf{p}_\tau \cdot \hat{\mathbf{d}}_{\text{target}}) \cdot \text{dist\_factor}$ (premio direzionale verso il target modulato da deadband).
+   - **Directional Progress Reward**: $- w_{\text{progress}} \sum_{\tau=1}^H (\Delta \mathbf{p}_\tau \cdot \hat{\mathbf{d}}_{\text{target},\tau}) \cdot \text{dist\_factor}$ (premio direzionale verso il target a step $\tau$ modulato da deadband).
    - **Cartesian Velocity Damping**: $w_{\text{damping}} \sum_{\tau=1}^H \|\Delta \mathbf{p}_\tau\| \cdot (1 - \text{dist\_factor})$ (frenatura e smorzamento cinetico quando l'end-effector entra nella deadband vicina al target, sotto i $13\text{ cm}$).
-   - **Terminal Value Bootstrapping (`LatentCritic`)**: Se il Critic è fornito, all'ultimo stato latente dell'orizzonte $\mathbf{z}_H$ viene calcolato il costo residuo terminale pesato e scontato:
-     $$\mathcal{C}_{\text{terminal}} = \gamma^H \cdot w_{\text{pos}} \cdot V(\mathbf{z}_H), \quad V(\mathbf{z}_H) = \text{LatentCritic}(\mathbf{z}_H)$$
-   MPPI calcola dunque una combinazione di tracking geometrico/cinematico nello spazio cartesiano tramite decodifica fisica + FK combinata al costo terminale stimato dal `LatentCritic`.
+   - **Terminal Value Bootstrapping (`LatentCritic`)**: Forzato a $w_{\text{critic}} = 0.0$ per tutto il controllo online fino a quando il Critic non sarà condizionato al goal.
 
 - **Structural MPPI Score**:
-  $$S_{\text{MPPI}} = \text{Settling Pos Error} + 0.1 \cdot \text{Final Velocity} + 0.2 \cdot \text{Geodesic Rot Error}$$
+  Il punteggio $S_{\text{MPPI}}$ per Early Stopping e selezione del miglior checkpoint incorpora direttamente l'errore di grasping cartesiano a $t = t_c$:
+  $$S_{\text{MPPI}} = \text{grasp\_error\_cm} + \text{settling\_pos\_error\_cm} + 0.1 \cdot \text{final\_velocity} + 0.2 \cdot \text{geodesic\_rot\_error}$$
 
 #### Modalità Autonoma vs Teacher-Forcing (`is_expert`) e Isolamento delle Metriche
 Durante la valutazione di Tier 2, ciascuna traiettoria registrata nei record di prova (`FINAL_TRIALS`) opera secondo uno dei due regimi determinati dal flag `is_expert`:

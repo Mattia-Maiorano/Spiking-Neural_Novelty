@@ -742,14 +742,17 @@ class BaseTrainer:
         if self.mode in ("train_m1", "m1"):
             prev_phase = self.current_curriculum_phase
 
-            kinematic_loss = epoch_metrics.get("train_loss_position", float("inf")) + epoch_metrics.get("train_loss_velocity", float("inf"))
-            next_phase = self.curriculum.end_epoch(kinematic_loss)
+            if "train_loss_m1_latent" in epoch_metrics:
+                loss_m1_latent = float(epoch_metrics["train_loss_m1_latent"])
+            else:
+                loss_m1_latent = epoch_metrics.get("train_loss_position", float("inf")) + epoch_metrics.get("train_loss_velocity", float("inf"))
+            next_phase = self.curriculum.end_epoch(loss_m1_latent)
 
             self.current_curriculum_phase = next_phase
             if next_phase > prev_phase:
                 chronicle.log_info(
                     f"[Latch Curriculum] Irreversible transition triggered at Epoch {epoch}: "
-                    f"Phase {prev_phase} -> Phase {next_phase} (train_loss={epoch_metrics.get('train_loss', 0.0):.5f})."
+                    f"Phase {prev_phase} -> Phase {next_phase} (loss_m1_latent={loss_m1_latent:.5f})."
                 )
                 self.save_checkpoint(epoch, is_best=False, phase_label=f"checkpoint_phase_{prev_phase}")
 
@@ -835,6 +838,25 @@ class BaseTrainer:
                             tier2_metrics = self.tier2_evaluator(self.model, epoch)
                         cl_trajectories = tier2_metrics.pop("trajectories", None)
                         cl_transitions = tier2_metrics.pop("transitions", None)
+                        if all(
+                            k in tier2_metrics
+                            for k in (
+                                "mppi_grasp_error_cm",
+                                "mppi_steady_state_error_cm",
+                                "mppi_final_vel",
+                                "mppi_final_rot",
+                            )
+                        ):
+                            grasp_error_cm = float(tier2_metrics["mppi_grasp_error_cm"])
+                            settling_pos_error_cm = float(tier2_metrics["mppi_steady_state_error_cm"])
+                            final_velocity = float(tier2_metrics["mppi_final_vel"])
+                            geodesic_rot_error = float(tier2_metrics["mppi_final_rot"])
+                            tier2_metrics["mppi_score"] = (
+                                grasp_error_cm
+                                + settling_pos_error_cm
+                                + 0.1 * final_velocity
+                                + 0.2 * geodesic_rot_error
+                            )
                         if self.replay_buffer is not None:
                             if cl_trajectories is not None:
                                 self.replay_buffer.push_trajectories(cl_trajectories)

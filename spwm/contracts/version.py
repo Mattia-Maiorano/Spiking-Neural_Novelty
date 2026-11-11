@@ -27,8 +27,8 @@ class VersionSolver:
     """
 
     version: int = 0
-    minor: int = 10
-    patch: int = 4
+    minor: int = 11
+    patch: int = 0
     prefix: str = "SPWM"
 
     def __post_init__(self) -> None:

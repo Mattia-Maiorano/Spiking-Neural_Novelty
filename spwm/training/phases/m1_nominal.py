@@ -3,6 +3,7 @@ from __future__ import annotations
 from typing import Dict, Optional, Tuple
 import torch
 import torch.nn as nn
+import torch.nn.functional as F
 
 from spwm.contracts.protocols import PhaseStrategy
 from spwm.contracts.states import DynamicsState
@@ -104,17 +105,32 @@ class M1PhaseStrategy(PhaseStrategy):
                 loss_critic = 0.5 * (loss_critic + cl_critic_loss)
 
         w_critic = float(self.cfg.loss.lambda_critic) * (5.0 if curriculum_phase >= 3 else 1.0)
-        loss_m1 = float(self.cfg.loss.lambda_position) * loss_pos + float(self.cfg.loss.lambda_velocity) * loss_vel
-        total_loss = float(self.cfg.loss.lambda_latent) * loss_m1 + w_critic * loss_critic
+        loss_m1_latent = float(self.cfg.loss.lambda_latent) * (
+            float(self.cfg.loss.lambda_position) * loss_pos + float(self.cfg.loss.lambda_velocity) * loss_vel
+        )
+        loss_kin_m1 = torch.zeros((), device=events.device, dtype=m1_traj.dtype)
         pos_err, vel_err = 0.0, 0.0
         if flat_kin is not None and self.model.physical_decoder is not None:
+            target_kin = flat_kin[:, t_start + 1 : t_start + 1 + horizon]
+            jc = self.cfg.environment.joint_count
+            target_q_joints = target_kin[..., :jc]
+            target_p_joints = target_kin[..., jc : 2 * jc]
+            q_hat = m1_traj[..., :q_dim]
+            p_hat = m1_traj[..., q_dim:]
+            pred_q_joints = self.model.physical_decoder.pos_head(q_hat)
+            pred_p_joints = self.model.physical_decoder.vel_head(p_hat)
+            loss_kin_m1 = F.mse_loss(pred_q_joints, target_q_joints) + 0.5 * F.mse_loss(pred_p_joints, target_p_joints)
+
             with torch.no_grad():
                 decoded_kin = self.model.physical_decoder(m1_traj, initial_filter_state=self.model.physical_decoder.warm_up_filter(z_prefix))
-                target_kin, jc = flat_kin[:, t_start + 1 : t_start + 1 + horizon], self.cfg.environment.joint_count
                 pos_err, vel_err = position_error(decoded_kin, target_kin, joint_count=jc), velocity_error(decoded_kin, target_kin, joint_count=jc)
 
+        loss_m1_total = loss_m1_latent + 1.0 * loss_kin_m1
+        total_loss = loss_m1_total + w_critic * loss_critic
+
         metrics = {
-            "loss": float(loss_m1.item()), "loss_total": float(total_loss.item()), "loss_m1": float(loss_m1.item()), "loss_latent": float(loss_m1.item()),
+            "loss": float(loss_m1_total.item()), "loss_total": float(total_loss.item()), "loss_m1": float(loss_m1_total.item()),
+            "loss_m1_latent": float(loss_m1_latent.item()), "loss_latent": float(loss_m1_latent.item()), "loss_kin_m1": float(loss_kin_m1.item()),
             "loss_critic": float(loss_critic.item()), "loss_position": float(loss_pos.item()), "loss_velocity": float(loss_vel.item()),
             "pos_err": pos_err, "vel_err": vel_err, "mppi_noise_alpha": float(noise_alpha), "active_perception_w_t": float(curriculum_w_t),
         }

@@ -126,8 +126,7 @@ $$p_t = \text{LayerNorm}(W_{\text{spk}} z_t + W_{\text{mem}} m_{\text{analog}})$
   $$\bar{z}_t = \lambda_{\text{ema}} \bar{z}_{t-1} + (1 - \lambda_{\text{ema}}) z_t, \quad \lambda_{\text{ema}} = 0.90$$
 
 #### Coordinate Subspace & Anti-Evanescence Gating
-Generalized coordinate update maps momentum to coordinate velocity via $v_p = \text{vel}(p_t) = W_{\text{vel\_proj}} p_t$:
-- `vel_proj`: `Linear(96, 32, bias=False)` (3,072 params, initialized with an identity block for the first 32 dimensions).
+Generalized coordinate update maps momentum to coordinate velocity via a direct slice of the first 32 dimensions $v_p = \text{vel}(p_t) = p_t[0:32]$ (strictly aligned with Phase 0 and $\mathcal{L}_{\text{derivative}}$ without parameter projection layers):
 - Event Activity: $a_t = \text{mean}(|E_t|)$.
 - Dynamic Blending Factor $K_{\text{gate}}$:
   $$a_{\text{eff}} = \max(0, a_t - \theta_{\text{act}}), \quad \theta_{\text{act}} = 0.001$$

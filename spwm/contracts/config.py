@@ -320,7 +320,7 @@ class MPPIConfig:
     noise_beta: float = 0.75                                      #: AR(1) temporal correlation smoothing coefficient beta in [0, 1).
     temperature: float = 0.15                                     #: MPPI temperature lambda for exponential cost-to-go weighting.
     num_iterations: int = 3                                       #: Number of refinement iterations per planning step.
-    chunk_size: int = 4                                           #: Number of consecutive actions executed open-loop before replanning.
+    chunk_size: int = 1                                           #: Number of consecutive actions executed open-loop before replanning.
     gamma_discount: float = 0.95                                  #: Discount factor gamma for terminal critic bootstrapping.
     terminal_steps: Optional[int] = None                          #: Sliced window of terminal steps for trajectory cost evaluation.
     w_progress: float = 50.0                                      #: Directional progress reward weight towards target coordinates.
@@ -328,6 +328,7 @@ class MPPIConfig:
     w_damping: float = 10.0                                       #: Cartesian velocity damping penalty weight inside deadband (braking).
     w_rot: float = 50.0                                           #: Rotational orientation error penalty weight (1 - cos(theta)).
     w_pos: float = 20.0                                           #: Positional Cartesian Euclidean distance error penalty weight.
+    w_critic: float = 0.0                                         #: Terminal critic bootstrapping weight (forced 0.0 until goal-conditioned).
 
     def __post_init__(self) -> None:
         if self.num_samples <= 0:

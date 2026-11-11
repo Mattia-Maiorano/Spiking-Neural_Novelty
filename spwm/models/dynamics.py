@@ -81,12 +81,6 @@ class SpikingLatentDynamics(nn.Module):
         self.action_proj = nn.Linear(self.action_dim, self.total_memory_dim, bias=False)
         nn.init.zeros_(self.action_proj.weight)
 
-        self.vel_proj = nn.Linear(self.p_dim, self.q_dim, bias=False)
-        with torch.no_grad():
-            self.vel_proj.weight.zero_()
-            min_dim = min(self.q_dim, self.p_dim)
-            self.vel_proj.weight[:min_dim, :min_dim] = torch.eye(min_dim)
-
         self.W_vel = nn.Linear(self.total_memory_dim, self.q_dim, bias=False)
         nn.init.normal_(self.W_vel.weight, mean=0.0, std=0.01)
 
@@ -98,7 +92,7 @@ class SpikingLatentDynamics(nn.Module):
 
     def vel(self, p: torch.Tensor) -> torch.Tensor:
         """Velocity mapping from momentum subspace p in R^{p_dim} to coordinate velocity in R^{q_dim}."""
-        return self.vel_proj(p)
+        return p[..., : self.q_dim]
 
     def compute_k_gate(
         self,
@@ -166,7 +160,7 @@ class SpikingLatentDynamics(nn.Module):
 
         ema_spikes = self.ema_decay * state.ema_spikes + (1.0 - self.ema_decay) * spikes
 
-        v_p = self.vel(p_next)
+        v_p = p_next[:, : self.q_dim]
         if sensory_keypoints is not None and in_sensory_phase:
             assert_tensor_contract(sensory_keypoints, (B, self.q_dim), "SpikingLatentDynamics.sensory_keypoints")
             raw_corr = sensory_keypoints - q_prev

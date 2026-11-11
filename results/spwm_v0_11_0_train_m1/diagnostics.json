@@ -1,0 +1,44 @@
+{
+  "model_name": "spwm_v0_11_0_train_m1",
+  "version": "spwm_v0_11_0",
+  "mode": "train_m1",
+  "spike_statistics": {
+    "mean_spike_rate": 0.15368303656578064,
+    "median_spike_rate": 0.06086309254169464,
+    "min_spike_rate": 0.0,
+    "max_spike_rate": 0.9065476059913635,
+    "fraction_silent_neurons": 0.43359375,
+    "fraction_hyperactive_neurons": 0.0546875,
+    "histogram_counts": [
+      134,
+      37,
+      25,
+      40,
+      6,
+      6,
+      4,
+      2,
+      1,
+      1
+    ],
+    "histogram_bin_edges": [
+      0.0,
+      0.10000000149011612,
+      0.20000000298023224,
+      0.30000001192092896,
+      0.4000000059604645,
+      0.5,
+      0.6000000238418579,
+      0.699999988079071,
+      0.800000011920929,
+      0.8999999761581421,
+      1.0
+    ]
+  },
+  "gradient_diagnostics": {
+    "total_norm": 0.0,
+    "has_nan": false,
+    "has_inf": false,
+    "zero_gradient_ratio": 1.0
+  }
+}

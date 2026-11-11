@@ -90,6 +90,8 @@ class LatentMPPIController:
         self.w_term_rot = 0.0
         self.w_altitude = 0.0
         self.w_progress = float(config.w_progress)
+        # Force terminal critic weight to 0.0 for all online planning until critic is goal-conditioned
+        self.w_critic = 0.0
 
         dev = device if device is not None else next(predictor.parameters()).device
         self.device = dev
@@ -159,9 +161,10 @@ class LatentMPPIController:
 
         Args:
             z_grounded: Grounded latent state z_t [128] or [1, 128].
-            target_pos: Target 3D Cartesian coordinates (x, y, z) [3] or [1, 3], or full 4x4 SE(3) matrix.
+            target_pos: Target 3D Cartesian coordinates (x, y, z) [3] or [1, 3], [H, 3],
+                single 4x4 SE(3) matrix, or temporal horizon target sequence [H, 4, 4].
             prev_action: Optional previous action u_{t-1} [action_dim].
-            target_rot: Optional target 3x3 rotation matrix [3, 3] if not embedded in target_pos.
+            target_rot: Optional target 3x3 rotation matrix [3, 3] or [H, 3, 3] if not embedded in target_pos.
 
         Returns:
             MPPIPlanResult with planned immediate action u_t^* and planning diagnostics.
@@ -176,11 +179,32 @@ class LatentMPPIController:
         assert_tensor_contract(z_init, (self.predictor.latent_dim,), "LatentMPPIController.z_init")
 
         target_orientation: Optional[torch.Tensor] = None
-        if target_pos.shape == (4, 4) or (target_pos.dim() == 3 and target_pos.shape[-2:] == (4, 4)):
-            # Full 4x4 SE(3) transformation matrix passed as target
-            t_mat = target_pos[0] if target_pos.dim() == 3 else target_pos
-            target_coords = t_mat[:3, 3].to(device=self.device, dtype=torch.float32)
-            target_orientation = t_mat[:3, :3].to(device=self.device, dtype=torch.float32)
+        if target_pos.dim() == 3 and target_pos.shape[-2:] == (4, 4):
+            if target_pos.shape[0] == self.horizon:
+                t_seq = target_pos.to(device=self.device, dtype=torch.float32)
+                target_coords = t_seq[:, :3, 3]
+                target_orientation = t_seq[:, :3, :3]
+            elif target_pos.shape[0] == 1:
+                t_mat = target_pos[0].to(device=self.device, dtype=torch.float32)
+                target_coords = t_mat[:3, 3]
+                target_orientation = t_mat[:3, :3]
+            else:
+                raise ValueError(
+                    f"target_pos SE(3) sequence length ({target_pos.shape[0]}) must match horizon ({self.horizon}) or 1."
+                )
+        elif target_pos.shape == (4, 4):
+            t_mat = target_pos.to(device=self.device, dtype=torch.float32)
+            target_coords = t_mat[:3, 3]
+            target_orientation = t_mat[:3, :3]
+        elif target_pos.dim() == 2 and target_pos.shape == (self.horizon, 3):
+            target_coords = target_pos.to(device=self.device, dtype=torch.float32)
+            if target_rot is not None:
+                if target_rot.dim() == 3 and target_rot.shape == (self.horizon, 3, 3):
+                    target_orientation = target_rot.to(device=self.device, dtype=torch.float32)
+                else:
+                    t_rot = target_rot[0] if target_rot.dim() == 3 else target_rot
+                    assert_tensor_contract(t_rot, (3, 3), "LatentMPPIController.target_rot")
+                    target_orientation = t_rot.to(device=self.device, dtype=torch.float32)
         else:
             if target_pos.dim() == 2:
                 target_pos_3d = target_pos[0]
@@ -343,8 +367,14 @@ class LatentMPPIController:
           - Terminal Critic Bootstrapping: (gamma ** H) * V(z_H)
         """
         K, H, _ = ee_pos.shape
+        if target_coords.dim() == 2:
+            assert_tensor_contract(target_coords, (H, 3), "compute_trajectory_cost.target_coords")
+            tgt_coords_view = target_coords.unsqueeze(0)  # [1, H, 3]
+        else:
+            tgt_coords_view = target_coords.view(1, 1, 3)
+
         # 1. Positional Cost: W_pos * ||pos_current - target_pos||_2
-        pos_err = torch.norm(ee_pos - target_coords.view(1, 1, 3), p=2, dim=-1)  # [K, H]
+        pos_err = torch.norm(ee_pos - tgt_coords_view, p=2, dim=-1)  # [K, H]
         pos_cost = self.w_pos * pos_err.sum(dim=-1)  # [K]
 
         # Distance-based damping factor (Deadband):
@@ -353,7 +383,12 @@ class LatentMPPIController:
 
         # 2. Rotational Cost: W_rot * (1 - cos(theta_error))
         if target_orientation is not None and R_ee is not None:
-            r_rel = torch.matmul(R_ee.transpose(-1, -2), target_orientation.view(1, 1, 3, 3))
+            if target_orientation.dim() == 3:
+                assert_tensor_contract(target_orientation, (H, 3, 3), "compute_trajectory_cost.target_orientation")
+                tgt_rot_view = target_orientation.unsqueeze(0)  # [1, H, 3, 3]
+            else:
+                tgt_rot_view = target_orientation.view(1, 1, 3, 3)
+            r_rel = torch.matmul(R_ee.transpose(-1, -2), tgt_rot_view)
             trace_r = torch.diagonal(r_rel, dim1=-2, dim2=-1).sum(-1)  # [K, H]
             cos_theta = torch.clamp((trace_r - 1.0) * 0.5, -1.0, 1.0)
             rot_err_step = 1.0 - cos_theta
@@ -376,7 +411,7 @@ class LatentMPPIController:
         # 4. Directional Progress Reward (Attractor toward target) with Progress Attenuation (Deadband)
         curr_w_progress = self.w_progress if w_progress is None else float(w_progress)
         if curr_w_progress != 0.0:
-            dir_vec = target_coords.view(1, 1, 3) - p_traj[:, :-1, :]  # [K, H, 3]
+            dir_vec = tgt_coords_view - p_traj[:, :-1, :]  # [K, H, 3]
             dir_target = dir_vec / (torch.norm(dir_vec, dim=-1, keepdim=True) + 1e-6)
 
             step_progress = torch.sum(delta_p * dir_target, dim=-1)  # [K, H]
@@ -397,11 +432,11 @@ class LatentMPPIController:
         total_cost = pos_cost + rot_cost + jerk_cost + c_progress + c_damping
 
         # 5. Terminal Value Bootstrapping (TD-MPC Critic)
-        if self.critic is not None and z_trajectories is not None:
+        if self.w_critic != 0.0 and self.critic is not None and z_trajectories is not None:
             terminal_z = z_trajectories[:, -1, :]  # [K, latent_dim]
             raw_terminal_costs = self.critic(terminal_z).squeeze(-1)  # [K]
             scaled_terminal_costs = self.w_pos * raw_terminal_costs
-            total_cost = total_cost + (self.gamma_discount ** H) * scaled_terminal_costs
+            total_cost = total_cost + self.w_critic * (self.gamma_discount ** H) * scaled_terminal_costs
 
         return total_cost
 
@@ -670,7 +705,25 @@ class MPPIStructuralScorer:
                 u_exec = actions[0, t].clone()
             else:
                 if current_chunk is None or chunk_idx >= controller.chunk_size:
-                    res = controller.plan_step(z_t, target_pose_mat, prev_action=prev_u)
+                    H = controller.horizon
+                    device = target_grasp_mat.device
+
+                    # Crea il target intermedio per la Phase 1.5 (Sensory Heft)
+                    target_heft_mat = target_grasp_mat.clone()
+                    target_heft_mat[1, 3] += 0.10  # Sollevamento verticale di +10 cm
+
+                    # Costruisci la sequenza temporale per l'orizzonte H
+                    target_pose_seq = torch.empty((H, 4, 4), device=device)
+                    for tau in range(1, H + 1):
+                        future_t = t + tau
+                        if future_t <= t_c:
+                            target_pose_seq[tau - 1] = target_grasp_mat
+                        elif future_t <= t_c + 12:
+                            target_pose_seq[tau - 1] = target_heft_mat
+                        else:
+                            target_pose_seq[tau - 1] = target_final_mat
+
+                    res = controller.plan_step(z_t, target_pose_seq, prev_action=prev_u)
                     current_chunk = res.action_chunk
                     chunk_idx = 0
 

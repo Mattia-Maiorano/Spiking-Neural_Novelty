@@ -57,20 +57,10 @@ from spwm.evaluation.robustness import (
     render_events_from_kinematics,
     simulate_perturbed_kinematics,
 )
-from spwm.models.kinematics import DifferentiableForwardKinematics
+from spwm.models.kinematics import DifferentiableForwardKinematics, classify_elevation
 from spwm.models.rollout import ground_initial_state, step_grounded
 from spwm.models.world_model import SPWM
 from spwm.utils.reproducibility import set_seed
-
-
-def classify_elevation(y: float) -> str:
-    """Classifies vertical Cartesian elevation into Low, Mid, or High plane."""
-    if y < 1.08:
-        return "Low"
-    elif y < 1.18:
-        return "Mid"
-    else:
-        return "High"
 
 
 def load_trajectory_metadata(dataset_dir: Path, traj_id: int) -> Tuple[float, str]:

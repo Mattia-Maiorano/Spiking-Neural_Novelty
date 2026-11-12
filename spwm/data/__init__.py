@@ -7,11 +7,10 @@ from spwm.data.datasets import (
     EventWorldDataset,
     collate_event_batches,
     create_dataloaders,
-    export_unity_trajectory_file,
-    parse_unity_trajectory_file,
     partition_trajectories,
-    simulate_articulated_trajectory,
 )
+from spwm.data.io_unity import export_unity_trajectory_file, parse_unity_trajectory_file
+from spwm.data.sim_6dof import simulate_articulated_trajectory
 
 __all__ = [
     "RoboticTrajectory",

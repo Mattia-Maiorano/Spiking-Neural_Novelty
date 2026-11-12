@@ -36,7 +36,7 @@ from torch.utils.data import DataLoader
 
 from spwm.contracts.config import ExperimentConfig
 from spwm.contracts.version import GLOBAL_VERSION
-from spwm.data.datasets import create_dataloaders
+from spwm.data.datasets import create_dataloaders_from_config
 from spwm.evaluation.evaluator import RolloutEvaluator
 from spwm.models.world_model import SPWM
 from spwm.training.metrics import parameter_count
@@ -229,25 +229,9 @@ def evaluate_trained_m1_model(
     model.eval()
 
     eval_seq_len = max(cfg.data.sequence_length, cfg.training.temporal_burn_in + max(horizons) + 1)
-    dataloaders = create_dataloaders(
-        total_trajectories=cfg.data.total_trajectories,
-        train_split=cfg.data.train_split,
-        val_split=cfg.data.val_split,
+    dataloaders = create_dataloaders_from_config(
+        cfg,
         sequence_length=eval_seq_len,
-        batch_size=cfg.data.batch_size,
-        height=cfg.environment.height,
-        width=cfg.environment.width,
-        joint_count=cfg.environment.joint_count,
-        action_dim=cfg.environment.action_dim,
-        in_channels=cfg.model.in_channels,
-        standard_velocity_range=cfg.data.standard_velocity_range,
-        extrapolation_velocity_range=cfg.data.extrapolation_velocity_range,
-        event_threshold=cfg.environment.event_threshold,
-        dt=cfg.environment.dt,
-        num_workers=cfg.data.num_workers,
-        cache_data=cfg.data.cache_data,
-        dataset_dir=cfg.data.dataset_dir,
-        strict_dataset=cfg.data.strict_dataset,
     )
 
     evaluator = RolloutEvaluator(

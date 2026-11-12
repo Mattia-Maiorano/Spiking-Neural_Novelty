@@ -11,7 +11,7 @@ Zero AST Fallbacks strictly enforced.
 from __future__ import annotations
 
 import argparse
-from dataclasses import asdict, dataclass
+from dataclasses import asdict, dataclass, replace
 import gzip
 import json
 from pathlib import Path
@@ -25,10 +25,14 @@ import torch
 
 from spwm.contracts.config import ExperimentConfig, MPPIConfig
 from spwm.contracts.version import GLOBAL_VERSION
-from spwm.data.datasets import create_dataloaders
-from spwm.evaluation.mppi import LatentMPPIController
+from spwm.data.datasets import create_dataloaders_from_config
+from spwm.evaluation.mppi import LatentMPPIController, resolve_effective_vel_threshold
 from spwm.evaluation.visualizer import plot_mppi_benchmark_results
-from spwm.models.kinematics import DifferentiableForwardKinematics
+from spwm.models.kinematics import (
+    DifferentiableForwardKinematics,
+    classify_elevation,
+    compute_rot_error,
+)
 from spwm.models.rollout import ground_initial_state, step_grounded
 from spwm.models.world_model import SPWM
 from spwm.utils.reproducibility import set_seed
@@ -54,16 +58,6 @@ class EpisodeResult:
     grasp_rot_error_rad: float = 0.0
 
 
-def classify_elevation(y: float) -> str:
-    """Classifies vertical Cartesian elevation into Low, Mid, or High plane."""
-    if y < 1.08:
-        return "Low"
-    elif y < 1.18:
-        return "Mid"
-    else:
-        return "High"
-
-
 def load_trajectory_metadata(dataset_dir: Path, traj_id: int) -> Tuple[float, str]:
     """Reads payload mass and shape metadata directly from exported trajectory file."""
     gz_path = dataset_dir / f"trajectory_{traj_id:05d}.json.gz"
@@ -82,31 +76,6 @@ def load_trajectory_metadata(dataset_dir: Path, traj_id: int) -> Tuple[float, st
     shape = str(doc["payload_shape"])
     return mass, shape
 
-def compute_rot_error(
-    fk: DifferentiableForwardKinematics, 
-    q: torch.Tensor, 
-    target_pose_mat: torch.Tensor
-) -> float:
-    """
-    Computes SE(3) rotation error matching the MPPI cost function formulation.
-    Returns a value >= 0.0, where 0.0 is perfect alignment.
-    """
-    # Forward kinematics for current joint angles [1, 6]
-    T_ee = fk.forward_homogeneous(q.unsqueeze(0))[0] # [4, 4]
-    R_ee = T_ee[:3, :3]
-    target_rot = target_pose_mat[:3, :3]
-
-    # Extract forward (+Z) and up (+Y) vectors[span_1](start_span)[span_1](end_span)
-    ee_fwd = R_ee[:, 2]
-    ee_up = R_ee[:, 1]
-    t_fwd = target_rot[:, 2]
-    t_up = target_rot[:, 1]
-
-    # Cosine similarity penalty (1.0 - dot_product)[span_2](start_span)[span_2](end_span)
-    fwd_err = 1.0 - torch.sum(ee_fwd * t_fwd, dim=-1)
-    up_err = 1.0 - torch.sum(ee_up * t_up, dim=-1)
-    
-    return float((fwd_err + up_err).item())
 
 def run_episode(
     model: SPWM,
@@ -121,6 +90,7 @@ def run_episode(
     device: torch.device,
     actions: Optional[torch.Tensor] = None,
     approach_window: int = 20,
+    p_gt: Optional[torch.Tensor] = None,
 ) -> EpisodeResult:
     """Executes closed-loop latent MPPI reaching on a single test trajectory."""
     p1_indices = (phase_flags == 1).nonzero()
@@ -187,8 +157,10 @@ def run_episode(
     window_errors = step_errors[-settling_steps:] if len(step_errors) >= settling_steps else step_errors
     is_spatially_stable = all(err < 3.0 for err in window_errors)
 
-    # 2. Terminal Kinematic Stability: Low joint velocity at the moment of grasp
-    is_kinematically_stable = (final_vel < 1.5)
+    # 2. Terminal Kinematic Stability: Low joint velocity at the moment of grasp (normalized for fast GT grasps)
+    gt_final_vel = float(torch.norm(p_gt[t_grasp]).item()) if p_gt is not None else None
+    effective_vel_threshold = resolve_effective_vel_threshold(1.5, gt_final_vel)
+    is_kinematically_stable = (final_vel < effective_vel_threshold)
     
     # Pass the decoded joint positions (first 6 dims) to the function
     final_rot_err = compute_rot_error(fk, dec_t[0, :6], target_pose_mat) 
@@ -254,38 +226,44 @@ def main() -> None:
     parser.add_argument(
         "--num-samples",
         type=int,
-        default=256,
-        help="Number of MPPI candidate trajectories K (default: 256).",
+        default=None,
+        help="Override MPPIConfig.num_samples (default: from config.mppi).",
     )
     parser.add_argument(
         "--horizon",
         type=int,
-        default=20,
-        help="MPPI planning horizon H (default: 20).",
+        default=None,
+        help="Override MPPIConfig.horizon (default: from config.mppi).",
     )
     parser.add_argument(
         "--num-iterations",
         type=int,
-        default=3,
-        help="MPPI sample-and-update iterations per control step (default: 3).",
+        default=None,
+        help="Override MPPIConfig.num_iterations (default: from config.mppi).",
     )
     parser.add_argument(
         "--noise-beta",
         type=float,
-        default=0.75,
-        help="Temporal correlation parameter beta for AR(1) action noise (default: 0.75).",
+        default=None,
+        help="Override MPPIConfig.noise_beta AR(1) correlation (default: from config.mppi).",
+    )
+    parser.add_argument(
+        "--temperature",
+        type=float,
+        default=None,
+        help="Override MPPIConfig.temperature (default: from config.mppi).",
     )
     parser.add_argument(
         "--w-act",
         type=float,
-        default=0.005,
-        help="Action rate-of-change smoothness penalty weight (default: 0.005).",
+        default=None,
+        help="Override MPPIConfig.w_jerk action smoothness weight (default: from config.mppi).",
     )
     parser.add_argument(
         "--w-rot",
         type=float,
-        default=0.5,
-        help="SE(3) orientation alignment penalty weight (default: 0.5).",
+        default=None,
+        help="Override MPPIConfig.w_rot SE(3) orientation penalty weight (default: from config.mppi).",
     )
     parser.add_argument(
         "--device",
@@ -310,20 +288,22 @@ def main() -> None:
     model.eval()
 
     fk = DifferentiableForwardKinematics().to(device)
-    # Construct the anisotropic noise vector from base, shoulder, and elbow
-    s_base = 0.1226
-    s_shoulder = 0.5894
-    s_elbow = 0.2172
-    anisotropic_sigmas = [s_base, s_shoulder, s_elbow, s_base, s_base, s_base]
-
-    mppi_cfg = MPPIConfig(
-        num_samples=args.num_samples,
-        horizon=args.horizon,
-        num_iterations=args.num_iterations,
-        noise_sigma=tuple(anisotropic_sigmas),
-        noise_beta=0.3778,
-        temperature=0.0410,
-    )
+    mppi_overrides: Dict[str, Any] = {}
+    if args.num_samples is not None:
+        mppi_overrides["num_samples"] = args.num_samples
+    if args.horizon is not None:
+        mppi_overrides["horizon"] = args.horizon
+    if args.num_iterations is not None:
+        mppi_overrides["num_iterations"] = args.num_iterations
+    if args.noise_beta is not None:
+        mppi_overrides["noise_beta"] = args.noise_beta
+    if args.temperature is not None:
+        mppi_overrides["temperature"] = args.temperature
+    if args.w_act is not None:
+        mppi_overrides["w_jerk"] = args.w_act
+    if args.w_rot is not None:
+        mppi_overrides["w_rot"] = args.w_rot
+    mppi_cfg: MPPIConfig = replace(cfg.mppi, **mppi_overrides) if mppi_overrides else cfg.mppi
 
     controller = LatentMPPIController(
         predictor=model.m1,
@@ -335,21 +315,9 @@ def main() -> None:
 
 
     chronicle.log_info(f"Creating test DataLoader for {args.num_episodes} evaluation episodes...")
-    loaders = create_dataloaders(
-        total_trajectories=cfg.data.total_trajectories,
-        train_split=cfg.data.train_split,
-        val_split=cfg.data.val_split,
-        sequence_length=cfg.data.sequence_length,
+    loaders = create_dataloaders_from_config(
+        cfg,
         batch_size=1,
-        height=cfg.environment.height,
-        width=cfg.environment.width,
-        joint_count=cfg.environment.joint_count,
-        action_dim=cfg.environment.action_dim,
-        in_channels=cfg.model.in_channels,
-        event_threshold=cfg.environment.event_threshold,
-        dt=cfg.environment.dt,
-        dataset_dir=cfg.data.dataset_dir,
-        strict_dataset=cfg.data.strict_dataset,
         cache_data=False,
     )
 
@@ -360,7 +328,7 @@ def main() -> None:
     total_to_eval = min(args.num_episodes, len(test_loader))
 
     chronicle.log_info(
-        f"Starting Latent MPPI Closed-Loop Benchmark: K={args.num_samples}, H={args.horizon}, "
+        f"Starting Latent MPPI Closed-Loop Benchmark: K={mppi_cfg.num_samples}, H={mppi_cfg.horizon}, "
         f"Episodes={total_to_eval} across Low/Mid/High elevation and masses 1.20 - 4.50 kg"
     )
 
@@ -385,6 +353,7 @@ def main() -> None:
             payload_shape=shape,
             device=device,
             actions=batch["actions"].to(device) if "actions" in batch else None,
+            p_gt=batch["joint_velocities"][0].to(device) if "joint_velocities" in batch else None,
         )
         results.append(ep_res)
 
@@ -467,7 +436,7 @@ def main() -> None:
     md_content = f"""# {GLOBAL_VERSION.formatted} Latent MPPI Downstream Control Benchmark
 
 **Evaluated Configuration:**
-- **Planner:** Latent MPPI Controller ($K = {args.num_samples}$, $H = {args.horizon}$, Iterations = ${args.num_iterations}$)
+- **Planner:** Latent MPPI Controller ($K = {mppi_cfg.num_samples}$, $H = {mppi_cfg.horizon}$, Iterations = ${mppi_cfg.num_iterations}$)
 - **Checkpoint:** `{args.checkpoint}`
 - **Test Episodes:** {len(results)} trajectories across test partition
 - **Payload Masses:** $1.20 - 4.50$ kg

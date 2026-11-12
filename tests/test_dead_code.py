@@ -76,6 +76,10 @@ OBSOLETE_FILE_PATHS = [
     Path("spwm/learning/losses.py"),
     Path("spwm/learning/metrics.py"),
     Path("spwm/learning/trainer.py"),
+    Path("spwm/config/__init__.py"),
+    Path("spwm/config/schema.py"),
+    Path("spwm/models/spwm.py"),
+    Path("spwm/training/rollout.py"),
 ]
 
 

@@ -6,7 +6,7 @@ import torch.nn as nn
 from spwm.training.engine import ClosedLoopBuffer
 from spwm.contracts.config import ExperimentConfig, TrainingConfig, LossConfig, EnvironmentConfig, DataConfig, ModelConfig
 from spwm.training.phases.m1_nominal import M1PhaseStrategy
-from spwm.models.spwm import SPWM
+from spwm.models.world_model import SPWM
 
 
 def test_closed_loop_buffer_push_sample_eviction():
@@ -376,6 +376,86 @@ def test_closed_loop_buffer_default_3_generations():
     # After 4 generations pushed, Gen 1 (101) is discarded and only Gens 2, 3, 4 remain
     assert len(buf.eval_generations) == 3
     assert [t["trajectory_id"] for t in buf.trajectories] == [201, 301, 401]
+
+
+def _assert_only_primitives_and_tensors(obj, path="root"):
+    if isinstance(obj, torch.Tensor):
+        return
+    if obj is None or type(obj) in (bool, int, float, str):
+        return
+    if type(obj) is dict:
+        for k, v in obj.items():
+            assert type(k) in (bool, int, float, str), f"Non-primitive key {type(k)} at {path}"
+            _assert_only_primitives_and_tensors(v, f"{path}.{k}")
+        return
+    if type(obj) in (list, tuple):
+        for idx, item in enumerate(obj):
+            _assert_only_primitives_and_tensors(item, f"{path}[{idx}]")
+        return
+    raise AssertionError(f"Non-primitive object {type(obj).__name__} found at {path}")
+
+
+def test_closed_loop_buffer_and_ema_roundtrip_primitives_only(tmp_path):
+    """Verify ClosedLoopBuffer.save()/load() and EMATracker.state_dict() serialize strictly primitives and tensors."""
+    from spwm.training import ClosedLoopBuffer as TopClosedLoopBuffer, EMATracker as TopEMATracker
+    from spwm.training.engine import ClosedLoopBuffer as EngineClosedLoopBuffer, EMATracker as EngineEMATracker
+    from spwm.training.replay_buffer import ClosedLoopBuffer as CanonicalClosedLoopBuffer, EMATracker as CanonicalEMATracker
+
+    assert TopClosedLoopBuffer is CanonicalClosedLoopBuffer
+    assert EngineClosedLoopBuffer is CanonicalClosedLoopBuffer
+    assert TopEMATracker is CanonicalEMATracker
+    assert EngineEMATracker is CanonicalEMATracker
+
+    buf = CanonicalClosedLoopBuffer(capacity=50, max_eval_generations=2)
+    buf.push_trajectories(
+        [
+            {
+                "z_init": torch.randn(16),
+                "actions": torch.randn(6, 4),
+                "targets": torch.randn(6, 16),
+                "length": 6,
+                "trajectory_id": 7,
+                "is_expert": False,
+                "elevation_plane": "Mid",
+            }
+        ]
+    )
+    sd = buf.state_dict()
+    _assert_only_primitives_and_tensors(sd, "closed_loop_buffer.state_dict")
+
+    buf_path = tmp_path / "closed_loop_buffer.pt"
+    buf.save(buf_path)
+
+    # Must load cleanly even with weights_only=True (zero pickled class instances)
+    raw_safe = torch.load(buf_path, map_location="cpu", weights_only=True)
+    _assert_only_primitives_and_tensors(raw_safe, "closed_loop_buffer.pt")
+
+    restored = CanonicalClosedLoopBuffer(capacity=10)
+    restored.load(buf_path)
+    assert restored.capacity == 50
+    assert restored.max_eval_generations == 2
+    assert len(restored) == len(buf)
+    assert len(restored.trajectories) == 1
+    assert restored.trajectories[0]["trajectory_id"] == 7
+    assert restored.trajectories[0]["is_expert"] is False
+    assert restored.trajectories[0]["elevation_plane"] == "Mid"
+    assert torch.allclose(restored.trajectories[0]["z_init"], buf.trajectories[0]["z_init"])
+    assert torch.allclose(restored.trajectories[0]["actions"], buf.trajectories[0]["actions"])
+    assert torch.allclose(restored.trajectories[0]["targets"], buf.trajectories[0]["targets"])
+
+    # Verify EMATracker state_dict & strict copy_to round-trip
+    model_a = nn.Sequential(nn.Linear(8, 8), nn.ReLU(), nn.Linear(8, 4))
+    model_b = nn.Sequential(nn.Linear(8, 8), nn.ReLU(), nn.Linear(8, 4))
+    ema_src = CanonicalEMATracker(model_a, decay=0.95)
+    ema_sd = ema_src.state_dict()
+    _assert_only_primitives_and_tensors(ema_sd, "ema_tracker.state_dict")
+
+    ema_dst = CanonicalEMATracker(model_b, decay=0.95)
+    ema_dst.load_state_dict(ema_sd)
+    ema_dst.copy_to(model_b)
+    for pa, pb in zip(model_a.parameters(), model_b.parameters()):
+        assert torch.allclose(pa, pb)
+
 
 
 

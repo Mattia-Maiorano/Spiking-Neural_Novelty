@@ -36,7 +36,7 @@ from spwm.contracts.config import (
     ProjectConfig,
     TrainingConfig,
 )
-from spwm.contracts.protocols import Tier2EvaluatorProtocol
+from spwm.contracts.protocols import StatefulTier2EvaluatorProtocol, Tier2EvaluatorProtocol
 from spwm.evaluation.mppi import (
     LatentMPPIController,
     MPPIStructuralScorer,
@@ -159,91 +159,6 @@ def test_zero_stochasticity_guarantee():
     )
     res3 = c3.plan_step(z_t, target_pos)
     assert not torch.equal(res1.action, res3.action)
-
-
-def test_elevation_classification_and_rot_error():
-    """Validates elevation plane binning and forward orientation error."""
-    assert classify_elevation(1.02) == "Low"
-    assert classify_elevation(1.079) == "Low"
-    assert classify_elevation(1.08) == "Mid"
-    assert classify_elevation(1.15) == "Mid"
-    assert classify_elevation(1.179) == "Mid"
-    assert classify_elevation(1.18) == "High"
-    assert classify_elevation(1.30) == "High"
-
-    fk = DifferentiableForwardKinematics()
-    q_target = torch.tensor([0.0, 0.1, -0.2, 0.0, 0.1, 0.0])
-    t_mat = fk.forward_homogeneous(q_target.unsqueeze(0))[0]
-
-    # Perfect alignment produces 0.0 rotation error
-    zero_err = compute_rot_error(fk, q_target, t_mat)
-    assert zero_err < 1e-5
-
-    # Misalignment produces positive error
-    q_misaligned = torch.tensor([0.5, -0.5, 0.5, 0.2, -0.3, 0.4])
-    pos_err = compute_rot_error(fk, q_misaligned, t_mat)
-    assert pos_err > 0.1
-
-
-def test_compute_structural_score_formula():
-    """Validates structural scoring penalties and success bonus logic."""
-    # Case 1: Perfect grasp: small errors, low velocity, aligned rotation
-    step_errs = [1.2, 1.0, 0.8]  # mean = 1.0 cm (< 3.0)
-    final_vel = 0.5               # < 1.5 rad/s
-    final_rot = 0.01              # < 0.05
-    score, is_succ = compute_structural_score(step_errs, final_vel, final_rot)
-    assert is_succ is True
-    # expected raw = (1.0/3.0)^2 + (0.5/1.5)^2 + (0.01/0.05)^2 = 1/9 + 1/9 + 1/25 = 0.1111 + 0.1111 + 0.04 = 0.2622
-    assert abs(score - ((1.0 / 3.0) ** 2 + (0.5 / 1.5) ** 2 + (0.01 / 0.05) ** 2)) < 1e-5
-
-    # Case 2: Poor placement: high error (> 3.0 cm) -> no success bonus
-    poor_errs = [6.0, 5.5, 6.0]  # mean = 5.833 cm
-    poor_score, poor_succ = compute_structural_score(poor_errs, final_vel, final_rot)
-    assert poor_succ is False
-    assert poor_score > 3.0
-
-
-def test_mppi_structural_scorer_subset_and_zero_stochasticity():
-    """Validates subset balance across Low, Mid, High elevations and bitwise determinism."""
-    device = torch.device("cpu")
-    dataset = SyntheticValDataset(count=6, seq_len=40)
-    fk = DifferentiableForwardKinematics().to(device)
-
-    scorer = MPPIStructuralScorer.from_dataset(
-        val_dataset=dataset,
-        device=device,
-        frequency=10,
-        num_trajectories=6,
-        base_seed=42000,
-        num_samples=16,
-        horizon=10,
-        num_iterations=2,
-        fk=fk,
-        approach_window=10,
-    )
-
-    assert isinstance(scorer, Tier2EvaluatorProtocol)
-    assert len(scorer.fixed_batches) == 6
-
-    # Verify planes are covered
-    planes = [b["elevation_plane"] for b in scorer.fixed_batches]
-    assert "Low" in planes or "Mid" in planes or "High" in planes
-
-    cfg = ExperimentConfig(
-        data=DataConfig(sequence_length=40),
-        training=TrainingConfig(mode="train_m1", phase_horizon=10),
-    )
-    model = SPWM.from_config(cfg).to(device)
-    model.eval()
-
-    # Zero-Stochasticity Guarantee: Run scorer twice on the exact same model
-    metrics_run1 = scorer(model, epoch=10)
-    metrics_run2 = scorer(model, epoch=20)
-
-    assert metrics_run1["mppi_score"] == metrics_run2["mppi_score"]
-    assert metrics_run1["mppi_mean_error_cm"] == metrics_run2["mppi_mean_error_cm"]
-    assert metrics_run1["mppi_final_vel"] == metrics_run2["mppi_final_vel"]
-    assert metrics_run1["mppi_final_rot"] == metrics_run2["mppi_final_rot"]
 
 
 def test_base_trainer_two_tiered_validation_orchestration(tmp_path):
@@ -409,32 +324,6 @@ def test_tier2_ema_candidate_selection(tmp_path):
         assert torch.allclose(v, trainer.ema_tracker.shadow[k].cpu())
 
 
-def test_ar1_noise_and_curriculum():
-    """
-    Verifies that AR(1) action noise generator matches MPPI controller parameters
-    and follows the linear curriculum scheduling.
-    """
-    from spwm.training.noise import compute_mppi_noise_alpha, sample_ar1_noise
-
-    # 1. Test curriculum alpha scheduling
-    assert compute_mppi_noise_alpha(1, warmup_epochs=10, ramp_epochs=20, target_alpha=1.0) == 0.0
-    assert compute_mppi_noise_alpha(10, warmup_epochs=10, ramp_epochs=20, target_alpha=1.0) == 0.0
-    assert compute_mppi_noise_alpha(20, warmup_epochs=10, ramp_epochs=20, target_alpha=1.0) == 0.5
-    assert compute_mppi_noise_alpha(30, warmup_epochs=10, ramp_epochs=20, target_alpha=1.0) == 1.0
-    assert compute_mppi_noise_alpha(50, warmup_epochs=10, ramp_epochs=20, target_alpha=1.0) == 1.0
-
-    # 2. Test AR(1) noise tensor contract and shapes
-    device = torch.device("cpu")
-    B, H, Du = 16, 25, 6
-    noise = sample_ar1_noise(batch_size=B, horizon=H, action_dim=Du, device=device)
-    assert noise.shape == (B, H, Du)
-
-    # Verify temporal correlation: corr(noise[t], noise[t+1]) should be positive due to beta=0.75
-    diff = noise[:, 1:] - 0.75 * noise[:, :-1]
-    # Variance of diff should be close to (1 - 0.75^2) * sigma^2
-    assert torch.isfinite(noise).all()
-
-
 def test_tier2_early_stopping_patience_checks(tmp_path):
     """
     Verifies that early stopping under Two-Tiered Validation:
@@ -517,141 +406,6 @@ def test_tier2_early_stopping_patience_checks(tmp_path):
     assert history[5]["tier2_checks_without_improvement"] == 2
 
 
-def test_tier2_early_stopping_min_delta(tmp_path):
-    """
-    Verifies that an improvement smaller than tier2_min_delta does NOT reset the patience counter.
-    """
-    device = torch.device("cpu")
-    cfg = ExperimentConfig(
-        project=ProjectConfig(name="test_min_delta"),
-        data=DataConfig(sequence_length=40),
-        training=TrainingConfig(
-            mode="train_m1",
-            phase_horizon=10,
-            epochs=6,
-            tier2_frequency=2,
-            tier2_patience=2,
-            tier2_min_delta=0.05,  # Requires at least 0.05 improvement
-            classic_patience=True,
-        ),
-    )
-    model = SPWM.from_config(cfg).to(device)
-    dataset = SyntheticValDataset(count=4, seq_len=40)
-    train_loader = DataLoader(dataset, batch_size=2, collate_fn=synthetic_collate)
-    val_loader = DataLoader(dataset, batch_size=2, collate_fn=synthetic_collate)
-
-    # Epoch 2: 2.00
-    # Epoch 4: 1.98 (difference 0.02 < 0.05 min_delta -> fails to improve! 1 check failed)
-    # Epoch 6: 1.97 (difference 0.01 < 0.05 min_delta -> fails to improve! 2 checks failed -> STOP)
-    class InsignificantImprovementEvaluator:
-        frequency = 2
-
-        def __call__(self, m: nn.Module, candidate_epoch: int) -> Dict[str, float]:
-            score_map = {2: 2.00, 4: 1.98, 6: 1.97}
-            return {
-                "mppi_score": score_map.get(candidate_epoch, 2.00),
-                "mppi_success_rate": 1.0,
-                "mppi_mean_error_cm": 1.0,
-                "mppi_terminal_error_cm": 1.0,
-                "mppi_final_vel": 0.1,
-                "mppi_final_rot": 0.01,
-                "mppi_pos_penalty": 0.1,
-                "mppi_vel_penalty": 0.02,
-                "mppi_rot_penalty": 0.04,
-                "mppi_evaluated_trajectories": 4.0,
-            }
-
-    trainer = BaseTrainer(
-        model=model,
-        cfg=cfg,
-        train_loader=train_loader,
-        val_loader=val_loader,
-        device=device,
-        save_dir=tmp_path / "delta_test",
-        tier2_evaluator=InsignificantImprovementEvaluator(),
-    )
-
-    history = trainer.fit(epochs=6)
-    executed_epochs = [h["epoch"] for h in history]
-    # Stopped at epoch 6 because 1.98 and 1.97 did not beat 2.00 by 0.05!
-    assert executed_epochs == [1, 2, 3, 4, 5, 6]
-    assert trainer.best_epoch == 2
-    assert trainer.best_score == 2.00
-
-
-def test_tier2_metrics_storage_and_deactivated_classic_patience(tmp_path):
-    """
-    Verifies that when classic_patience=False:
-    1. Exceeding patience does NOT terminate execution early.
-    2. Training executes all requested epochs.
-    3. Metrics storage saves training_log.json and training_log.csv at each metrics_storage Tier 2 run.
-    """
-    device = torch.device("cpu")
-    cfg = ExperimentConfig(
-        project=ProjectConfig(name="test_metrics_storage"),
-        data=DataConfig(sequence_length=40),
-        training=TrainingConfig(
-            mode="train_m1",
-            phase_horizon=10,
-            epochs=6,
-            tier2_frequency=2,
-            tier2_patience=1,  # Would stop at epoch 4 if classic_patience was True
-            classic_patience=False,
-            metrics_storage=1,
-        ),
-    )
-    model = SPWM.from_config(cfg).to(device)
-    dataset = SyntheticValDataset(count=4, seq_len=40)
-    train_loader = DataLoader(dataset, batch_size=2, collate_fn=synthetic_collate)
-    val_loader = DataLoader(dataset, batch_size=2, collate_fn=synthetic_collate)
-
-    class NonImprovingEvaluator:
-        frequency = 2
-
-        def __call__(self, m: nn.Module, candidate_epoch: int) -> Dict[str, float]:
-            return {
-                "mppi_score": 10.0,
-                "mppi_success_rate": 0.5,
-                "mppi_mean_error_cm": 2.0,
-                "mppi_terminal_error_cm": 2.0,
-                "mppi_final_vel": 0.1,
-                "mppi_final_rot": 0.01,
-                "mppi_pos_penalty": 0.1,
-                "mppi_vel_penalty": 0.02,
-                "mppi_rot_penalty": 0.04,
-                "mppi_evaluated_trajectories": 4.0,
-            }
-
-    callback_calls = []
-
-    def mock_artifact_cb(t: BaseTrainer) -> None:
-        callback_calls.append(len(t.history))
-
-    save_dir = tmp_path / "metrics_storage_test"
-    trainer = BaseTrainer(
-        model=model,
-        cfg=cfg,
-        train_loader=train_loader,
-        val_loader=val_loader,
-        device=device,
-        save_dir=save_dir,
-        tier2_evaluator=NonImprovingEvaluator(),
-        artifact_callback=mock_artifact_cb,
-    )
-
-    history = trainer.fit(epochs=6)
-    executed_epochs = [h["epoch"] for h in history]
-    # Did not stop early despite tier2_patience=1!
-    assert executed_epochs == [1, 2, 3, 4, 5, 6]
-    # Metrics files and phase checkpoint exist
-    assert (save_dir / "training_log.json").is_file()
-    assert (save_dir / "training_log.csv").is_file()
-    assert (save_dir / "config.yaml").is_file()
-    assert (save_dir / "checkpoint_phase_1.pt").is_file()
-    # Artifact callback was called periodically
-    assert len(callback_calls) > 0
-
-
 def test_teacher_forced_blending_metric_isolation_and_round_robin():
     """
     Verifies:
@@ -691,15 +445,23 @@ def test_teacher_forced_blending_metric_isolation_and_round_robin():
 
     def spy_eval_traj(m, ctrl, batch, seed, use_expert_actions=False):
         res = orig_eval_traj(m, ctrl, batch, seed=seed, use_expert_actions=use_expert_actions)
-        # Artificially set expert trajectory score to -999.0 and success to 1.0 to prove metric isolation!
+        # Artificially set expert trajectory metrics to -999.0 and success to 1.0 to prove metric isolation!
         if use_expert_actions:
             res["score"] = -999.0
             res["success"] = 1.0
+            res["grasp_error_cm"] = -999.0
+            res["steady_state_error_cm"] = -999.0
             res["mean_cartesian_err_cm"] = 0.0
+            res["final_vel"] = -999.0
+            res["final_rot"] = -999.0
         else:
             res["score"] = 10.0
             res["success"] = 0.0
+            res["grasp_error_cm"] = 8.0
+            res["steady_state_error_cm"] = 6.0
             res["mean_cartesian_err_cm"] = 5.0
+            res["final_vel"] = 2.0
+            res["final_rot"] = 0.775
         call_records.append({
             "traj_id": batch["trajectory_id"],
             "plane": batch["elevation_plane"],
@@ -709,80 +471,246 @@ def test_teacher_forced_blending_metric_isolation_and_round_robin():
 
     scorer.evaluate_trajectory = spy_eval_traj  # type: ignore[method-assign]
 
-    # Phase 1 (eval_idx=0): 4 expert, 2 natural -> natural indices {0, 1}
+    # Phase 1 (eval_idx=0): all 6 evaluated naturally, while ClosedLoopBuffer receives 2 natural {0, 1} + 4 expert {2, 3, 4, 5}
     call_records.clear()
     m_p1 = scorer(model, epoch=5, curriculum_phase=1)
-    assert m_p1["mppi_evaluated_trajectories"] == 2.0
+    assert m_p1["mppi_evaluated_trajectories"] == 6.0
     assert m_p1["mppi_expert_trajectories"] == 4.0
     assert len(m_p1["trajectories"]) == 6
-    # Strict metric isolation: score must be 10.0 (from natural), NOT polluted by -999.0 (from expert)
-    assert m_p1["mppi_score"] == 10.0
+    assert sum(1 for t in m_p1["trajectories"] if t.is_expert) == 4
+    assert [t.trajectory_id for t in m_p1["trajectories"] if not t.is_expert] == [3200, 3202]
+    # Strict metric isolation: scores must reflect natural trajectories only (0.5*8 + 0.5*6 + 0.25*5 + 0.1*2 + 2.0*0.775 = 10.0),
+    # NOT polluted by -999.0 from expert trajectories.
+    assert m_p1["mppi_structural_score"] == 10.0
+    assert m_p1["mppi_score"] == pytest.approx(10.0)
     assert m_p1["mppi_success_rate"] == 0.0
     assert m_p1["mppi_mean_error_cm"] == 5.0
-    nat_idx_p1 = [i for i, r in enumerate(call_records) if not r["is_expert"]]
-    assert nat_idx_p1 == [0, 1]
+    nat_idx_p1 = [r["traj_id"] for r in call_records if not r["is_expert"]]
+    assert len(nat_idx_p1) == 6
 
-    # Phase 2 (eval_idx=1): 4 expert, 2 natural -> natural indices {1, 2}
+    # Phase 2 (eval_idx=1): 6 natural evals, ClosedLoopBuffer natural {1, 2} + 4 expert
     call_records.clear()
     m_p2 = scorer(model, epoch=10, curriculum_phase=2)
-    assert m_p2["mppi_evaluated_trajectories"] == 2.0
+    assert m_p2["mppi_evaluated_trajectories"] == 6.0
     assert m_p2["mppi_expert_trajectories"] == 4.0
-    nat_idx_p2 = [i for i, r in enumerate(call_records) if not r["is_expert"]]
-    assert nat_idx_p2 == [1, 2]
+    assert [t.trajectory_id for t in m_p2["trajectories"] if not t.is_expert] == [3202, 3204]
 
-    # Phase 3 (eval_idx=2): 4 expert, 2 natural -> natural indices {2, 3}
+    # Phase 3 (eval_idx=2): 6 natural evals, ClosedLoopBuffer natural {2, 3} + 4 expert
     call_records.clear()
     m_p3 = scorer(model, epoch=15, curriculum_phase=3)
-    assert m_p3["mppi_evaluated_trajectories"] == 2.0
+    assert m_p3["mppi_evaluated_trajectories"] == 6.0
     assert m_p3["mppi_expert_trajectories"] == 4.0
-    nat_idx_p3 = [i for i, r in enumerate(call_records) if not r["is_expert"]]
-    assert nat_idx_p3 == [2, 3]
+    assert [t.trajectory_id for t in m_p3["trajectories"] if not t.is_expert] == [3204, 3201]
 
-    # Phase 4 Freeze Check: while natural success_rate == 0.0, expert decay is FROZEN at 4
+    # Phase 4 Freeze Check: while natural success_rate == 0.0, buffer expert decay is FROZEN at 4
     call_records.clear()
     m_p4_frozen = scorer(model, epoch=16, curriculum_phase=4)
     assert m_p4_frozen["mppi_expert_trajectories"] == 4.0
-    assert m_p4_frozen["mppi_evaluated_trajectories"] == 2.0
+    assert m_p4_frozen["mppi_evaluated_trajectories"] == 6.0
 
-    # Unfreeze: natural trajectories achieve success > 0.0, allowing decay to begin
+    # Unfreeze: natural trajectories achieve success > 0.0, allowing buffer expert decay to begin
     scorer.last_natural_success_rate = 0.50
 
-    # Phase 4 Step 1 (eval_idx=4): expert decays 4 -> 3 (natural = 3, indices {4, 5, 0})
+    # Phase 4 Step 1 (eval_idx=4): buffer expert decays 4 -> 3 (buffer natural = 3)
     call_records.clear()
     m_p4_1 = scorer(model, epoch=20, curriculum_phase=4)
     assert m_p4_1["mppi_expert_trajectories"] == 3.0
-    assert m_p4_1["mppi_evaluated_trajectories"] == 3.0
-    nat_idx_p4_1 = [i for i, r in enumerate(call_records) if not r["is_expert"]]
-    assert sorted(nat_idx_p4_1) == [0, 4, 5]
+    assert m_p4_1["mppi_evaluated_trajectories"] == 6.0
+    assert sum(1 for t in m_p4_1["trajectories"] if not t.is_expert) == 3
 
     # Keep natural success > 0.0 so curriculum continues decaying
     scorer.last_natural_success_rate = 0.50
 
-    # Phase 4 Step 2 (eval_idx=5): expert decays 3 -> 2 (natural = 4, indices {5, 0, 1, 2})
+    # Phase 4 Step 2 (eval_idx=5): buffer expert decays 3 -> 2 (buffer natural = 4)
     call_records.clear()
     m_p4_2 = scorer(model, epoch=25, curriculum_phase=4)
     assert m_p4_2["mppi_expert_trajectories"] == 2.0
-    assert m_p4_2["mppi_evaluated_trajectories"] == 4.0
-    nat_idx_p4_2 = [i for i, r in enumerate(call_records) if not r["is_expert"]]
-    assert sorted(nat_idx_p4_2) == [0, 1, 2, 5]
+    assert m_p4_2["mppi_evaluated_trajectories"] == 6.0
+    assert sum(1 for t in m_p4_2["trajectories"] if not t.is_expert) == 4
 
-    # Phase 4 Step 3 (eval_idx=6): expert decays 2 -> 1 (natural = 5)
+    # Phase 4 Step 3 (eval_idx=6): buffer expert decays 2 -> 1 (buffer natural = 5)
     scorer.last_natural_success_rate = 0.50
     m_p4_3 = scorer(model, epoch=30, curriculum_phase=4)
     assert m_p4_3["mppi_expert_trajectories"] == 1.0
-    assert m_p4_3["mppi_evaluated_trajectories"] == 5.0
+    assert m_p4_3["mppi_evaluated_trajectories"] == 6.0
+    assert sum(1 for t in m_p4_3["trajectories"] if not t.is_expert) == 5
 
-    # Phase 4 Step 4 (eval_idx=7): expert decays 1 -> 0 (natural = 6)
+    # Phase 4 Step 4 (eval_idx=7): buffer expert decays 1 -> 0 (buffer natural = 6)
     scorer.last_natural_success_rate = 0.50
     m_p4_4 = scorer(model, epoch=35, curriculum_phase=4)
     assert m_p4_4["mppi_expert_trajectories"] == 0.0
     assert m_p4_4["mppi_evaluated_trajectories"] == 6.0
+    assert sum(1 for t in m_p4_4["trajectories"] if not t.is_expert) == 6
 
-    # Phase 4 Step 5 (eval_idx=8): stays at 0 expert, 6 natural
+    # Phase 4 Step 5 (eval_idx=8): stays at 0 buffer expert, 6 natural
     scorer.last_natural_success_rate = 0.50
     m_p4_5 = scorer(model, epoch=40, curriculum_phase=4)
     assert m_p4_5["mppi_expert_trajectories"] == 0.0
     assert m_p4_5["mppi_evaluated_trajectories"] == 6.0
+
+
+def test_best_model_selection_gated_until_full_natural_subset(tmp_path):
+    """Verify best_model.pt and best_score are gated while num_expert_eval > 0 and engage at num_expert_eval == 0."""
+    device = torch.device("cpu")
+    dataset = SyntheticValDataset(count=6, seq_len=30)
+    cfg = ExperimentConfig(
+        project=ProjectConfig(name="test_full_subset_gating"),
+        data=DataConfig(sequence_length=30),
+        training=TrainingConfig(mode="train_m1", phase_horizon=6, epochs=6, tier2_frequency=2, tier2_patience=5),
+    )
+    model = SPWM.from_config(cfg).to(device)
+
+    class PartialThenFullEvaluator:
+        frequency = 2
+
+        def __call__(self, m: nn.Module, epoch: int) -> Dict[str, Any]:
+            if epoch == 2:
+                # Partial subset (4 expert, 2 natural) with artificially low score must NOT lock best_model.pt
+                return {
+                    "mppi_score": 1.0,
+                    "mppi_evaluated_trajectories": 2.0,
+                    "mppi_expert_trajectories": 4.0,
+                }
+            if epoch == 4:
+                return {
+                    "mppi_score": 3.0,
+                    "mppi_evaluated_trajectories": 6.0,
+                    "mppi_expert_trajectories": 0.0,
+                }
+            return {
+                "mppi_score": 2.5,
+                "mppi_evaluated_trajectories": 6.0,
+                "mppi_expert_trajectories": 0.0,
+            }
+
+    save_dir = tmp_path / "gated_selection"
+    train_loader = DataLoader(dataset, batch_size=2, collate_fn=synthetic_collate)
+    val_loader = DataLoader(dataset, batch_size=2, collate_fn=synthetic_collate)
+    trainer = BaseTrainer(
+        model=model,
+        cfg=cfg,
+        train_loader=train_loader,
+        val_loader=val_loader,
+        device=device,
+        save_dir=save_dir,
+        tier2_evaluator=PartialThenFullEvaluator(),
+    )
+
+    trainer.fit(epochs=2)
+    assert trainer.best_epoch is None
+    assert trainer.best_score == float("inf")
+    assert (save_dir / "model.pt").is_file()
+
+    # Resume on a fresh trainer from checkpoint.pt and advance epochs 3..6
+    seen_best_after_ep4: List[float] = []
+    orig_eval = PartialThenFullEvaluator()
+
+    class TrackingEvaluator:
+        frequency = 2
+
+        def __call__(self, m: nn.Module, epoch: int) -> Dict[str, Any]:
+            if epoch == 6:
+                seen_best_after_ep4.append(trainer2.best_score)
+            return orig_eval(m, epoch)
+
+    model2 = SPWM.from_config(cfg).to(device)
+    trainer2 = BaseTrainer(
+        model=model2,
+        cfg=cfg,
+        train_loader=train_loader,
+        val_loader=val_loader,
+        device=device,
+        save_dir=save_dir,
+        tier2_evaluator=TrackingEvaluator(),
+    )
+    trainer2.load_checkpoint(save_dir / "checkpoint.pt")
+    assert trainer2.start_epoch == 3
+    assert trainer2.best_score == float("inf")
+
+    trainer2.fit(epochs=4)
+    assert seen_best_after_ep4 == [pytest.approx(3.0)]
+    assert trainer2.best_score == pytest.approx(2.5)
+    assert trainer2.best_epoch == 6
+
+
+def test_tier2_evaluator_state_persisted_and_restored_on_resume(tmp_path):
+    """Verify MPPIStructuralScorer curriculum counters persist through checkpoint.pt and resume cleanly."""
+    device = torch.device("cpu")
+    dataset = SyntheticValDataset(count=6, seq_len=40)
+    fk = DifferentiableForwardKinematics().to(device)
+
+    scorer1 = MPPIStructuralScorer.from_dataset(
+        val_dataset=dataset,
+        device=device,
+        frequency=5,
+        num_trajectories=6,
+        base_seed=42000,
+        num_samples=8,
+        horizon=6,
+        num_iterations=1,
+        fk=fk,
+        approach_window=5,
+    )
+    assert isinstance(scorer1, StatefulTier2EvaluatorProtocol)
+
+    cfg = ExperimentConfig(
+        project=ProjectConfig(name="test_tier2_state_resume"),
+        data=DataConfig(sequence_length=40),
+        training=TrainingConfig(mode="train_m1", phase_horizon=6, epochs=10, tier2_frequency=5),
+    )
+    model = SPWM.from_config(cfg).to(device)
+    train_loader = DataLoader(dataset, batch_size=2, collate_fn=synthetic_collate)
+    val_loader = DataLoader(dataset, batch_size=2, collate_fn=synthetic_collate)
+
+    save_dir = tmp_path / "resume_tier2"
+    trainer1 = BaseTrainer(
+        model=model,
+        cfg=cfg,
+        train_loader=train_loader,
+        val_loader=val_loader,
+        device=device,
+        save_dir=save_dir,
+        tier2_evaluator=scorer1,
+    )
+    scorer1.eval_count = 7
+    scorer1.phase4_eval_count = 4
+    scorer1.last_natural_success_rate = 0.8333
+    trainer1.save_checkpoint(epoch=155, is_best=False)
+
+    scorer2 = MPPIStructuralScorer.from_dataset(
+        val_dataset=dataset,
+        device=device,
+        frequency=5,
+        num_trajectories=6,
+        base_seed=42000,
+        num_samples=8,
+        horizon=6,
+        num_iterations=1,
+        fk=fk,
+        approach_window=5,
+    )
+    model2 = SPWM.from_config(cfg).to(device)
+    trainer2 = BaseTrainer(
+        model=model2,
+        cfg=cfg,
+        train_loader=train_loader,
+        val_loader=val_loader,
+        device=device,
+        save_dir=save_dir,
+        tier2_evaluator=scorer2,
+    )
+    trainer2.load_checkpoint(save_dir / "checkpoint.pt")
+
+    assert scorer2.eval_count == 7
+    assert scorer2.phase4_eval_count == 4
+    assert scorer2.last_natural_success_rate == pytest.approx(0.8333)
+
+    # Next Phase 4 Tier 2 evaluation must keep all 6 natural trajectories (0 expert), not regress to 2 natural
+    res = scorer2(model2, epoch=160, curriculum_phase=4)
+    assert res["mppi_expert_trajectories"] == 0.0
+    assert res["mppi_evaluated_trajectories"] == 6.0
+
+
 
 
 

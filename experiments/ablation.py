@@ -16,7 +16,7 @@ import chronicle
 import torch
 
 from spwm.contracts.config import ExperimentConfig
-from spwm.data.datasets import create_dataloaders
+from spwm.data.datasets import create_dataloaders_from_config
 from spwm.evaluation.evaluator import RolloutEvaluator
 from spwm.evaluation.visualizer import plot_ablation_comparison
 from spwm.models.world_model import SPWM
@@ -87,19 +87,7 @@ def main() -> None:
     else:
         device = torch.device("cpu")
 
-    dataloaders = create_dataloaders(
-        total_trajectories=base_cfg.data.total_trajectories,
-        train_split=base_cfg.data.train_split,
-        val_split=base_cfg.data.val_split,
-        sequence_length=base_cfg.data.sequence_length,
-        batch_size=base_cfg.data.batch_size,
-        height=base_cfg.environment.height,
-        width=base_cfg.environment.width,
-        joint_count=base_cfg.environment.joint_count,
-        action_dim=base_cfg.environment.action_dim,
-        in_channels=base_cfg.model.in_channels,
-        dataset_dir=base_cfg.data.dataset_dir,
-    )
+    dataloaders = create_dataloaders_from_config(base_cfg)
 
     ablation_matrix = {
         "Full SPWM (Nominal)": base_cfg,

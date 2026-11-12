@@ -3,9 +3,12 @@ BaseTrainer & Trainer Engine for SPWM (Layer 2 — Training).
 
 Single source of truth for:
 - Epoch lifecycle orchestration (`fit`, `train_epoch`, `evaluate`)
-- Scoped `strict=True` checkpoint management (`save_checkpoint`, `load_checkpoint`,
-  `load_representation_checkpoint`)
+- Scoped `strict=True` checkpoint management (`state_dict`, `save_checkpoint`, `load_checkpoint`)
 - Gradient isolation verification (`verify_gradient_isolation`)
+
+Checkpoint resolution helpers and replay/EMA utilities live in
+`spwm/training/checkpoints.py` and `spwm/training/replay_buffer.py`, and are
+re-exported here for backward compatibility.
 
 Zero upward imports into `spwm.evaluation` and zero silent `getattr` or `strict=False` fallbacks.
 """
@@ -13,13 +16,14 @@ Zero upward imports into `spwm.evaluation` and zero silent `getattr` or `strict=
 from __future__ import annotations
 
 import csv
-from dataclasses import dataclass
 import inspect
 import json
 from pathlib import Path
+import re
 import time
-from typing import Any, Dict, List, Optional, Sequence, Union
+from typing import Any, Callable, Dict, List, Optional, Sequence, Union
 import chronicle
+import numpy as np
 import torch
 import torch.nn as nn
 from torch.utils.data import DataLoader
@@ -36,508 +40,55 @@ from spwm.contracts.config import (
     ProjectConfig,
     TrainingConfig,
 )
-from spwm.contracts.protocols import PhaseStrategy, Tier2EvaluatorProtocol
-from spwm.contracts.version import GLOBAL_VERSION
+from spwm.contracts.protocols import (
+    PhaseStrategy,
+    StatefulTier2EvaluatorProtocol,
+    Tier2EvaluatorProtocol,
+)
+from spwm.contracts.states import Tier2EvalResult
+from spwm.training.checkpoints import (
+    _extract_submodel_state,
+    enforce_phase_prerequisites,
+    load_representation_checkpoint,
+    resolve_closed_loop_buffer,
+    resolve_version_checkpoint,
+)
 from spwm.training.losses import SPWMLoss
 from spwm.training.noise import LatchCurriculumState, compute_dagger_ratio
 from spwm.training.phases import PredictorPhaseHandler
+from spwm.training.replay_buffer import ClosedLoopBuffer, EMATracker
 
 
-def _extract_submodel_state(full_state: Dict[str, torch.Tensor], prefix: str) -> Dict[str, torch.Tensor]:
-    """Extract keys starting with `prefix.` and strip the prefix."""
-    p_dot = f"{prefix}."
-    sub_state = {k[len(p_dot) :]: v for k, v in full_state.items() if k.startswith(p_dot)}
-    if not sub_state:
-        raise RuntimeError(f"Checkpoint state_dict contains no keys for submodule prefix '{prefix}.'")
-    return sub_state
-
-
-def load_representation_checkpoint(
-    model: nn.Module,
-    ckpt_path: Union[str, Path],
-    device: Optional[Union[str, torch.device]] = None,
-) -> None:
-    """Strictly load Phase 0 (`train_representation`) trained components into `model`.
-
-    Loads `encoder`, `sensory_predictor`, `dynamics`, and `physical_decoder`
-    each with `strict=True`.
-    """
-    path = Path(ckpt_path)
-    if not path.is_file():
-        raise FileNotFoundError(f"Representation checkpoint not found at: {path}")
-    raw = torch.load(path, map_location=device or "cpu", weights_only=False)
-    state_dict = raw["model_state"] if isinstance(raw, dict) and "model_state" in raw else raw
-
-    model.encoder.load_state_dict(_extract_submodel_state(state_dict, "encoder"), strict=True)
-    model.sensory_predictor.load_state_dict(
-        _extract_submodel_state(state_dict, "sensory_predictor"), strict=True
-    )
-    model.dynamics.load_state_dict(_extract_submodel_state(state_dict, "dynamics"), strict=True)
-    model.physical_decoder.load_state_dict(
-        _extract_submodel_state(state_dict, "physical_decoder"), strict=True
-    )
-
-
-def resolve_version_checkpoint(
-    version_name: str,
-    phase_mode: str,
-    explicit_path: Optional[Union[str, Path]] = None,
-    results_root: Union[str, Path] = "results",
-) -> Path:
-    """Resolve and strictly verify the best validation `model.pt` for a given version and phase.
-
-    Searches `explicit_path` if provided, otherwise searches `<results_root>/*<version_name>*_<phase_mode>/model.pt`
-    (never `checkpoint.pt`). Raises `FileNotFoundError` if no matching `model.pt` exists.
-    """
-    if explicit_path is not None:
-        cand = Path(explicit_path)
-        if cand.is_dir():
-            cand = cand / "model.pt"
-        if not cand.is_file():
-            raise FileNotFoundError(
-                f"Required best-validation checkpoint 'model.pt' for {phase_mode} not found at: {cand}"
-            )
-        return cand
-
-    root = Path(results_root)
-    exact_cand = root / f"{version_name}_{phase_mode}" / "model.pt"
-    if exact_cand.is_file():
-        return exact_cand
-
-    clean_ver = version_name[5:] if version_name.startswith("spwm_") else version_name
-    alt_cand = root / f"spwm_{clean_ver}_{phase_mode}" / "model.pt"
-    if alt_cand.is_file():
-        return alt_cand
-
-    if root.is_dir():
-        matches = sorted(root.glob(f"*{clean_ver}*_{phase_mode}/model.pt"))
-        if matches:
-            return matches[0]
-
-    raise FileNotFoundError(
-        f"Auto-enforced prerequisite checkpoint 'model.pt' for phase '{phase_mode}' and version '{version_name}' "
-        f"not found in '{root}'. Ensure '{phase_mode}' has been trained first (expected: {exact_cand})."
-    )
-
-
-def resolve_closed_loop_buffer(
-    version_name: str,
-    phase_mode: str = "train_m1",
-    explicit_path: Optional[Union[str, Path]] = None,
-    save_dir: Optional[Union[str, Path]] = None,
-    results_root: Union[str, Path] = "results",
-    is_resuming: bool = False,
-) -> Optional[Path]:
-    """Resolve existing closed_loop_buffer.pt from explicit path or save_dir when resuming.
-
-    Buffers must be initialized completely fresh for every new training run to eliminate
-    cross-run contamination. A buffer is loaded if and only if:
-      1. An explicit path is provided via explicit_path (e.g. CLI --closed-loop-buffer), OR
-      2. The run is explicitly resuming an interrupted checkpoint (is_resuming=True)
-         and closed_loop_buffer.pt exists in save_dir.
-    """
-    if explicit_path is not None:
-        cand = Path(explicit_path)
-        if cand.is_dir():
-            cand = cand / "closed_loop_buffer.pt"
-        if not cand.is_file():
-            raise FileNotFoundError(f"Explicit closed_loop_buffer.pt not found at: {cand}")
-        return cand
-
-    if is_resuming and save_dir is not None:
-        save_path = Path(save_dir) / "closed_loop_buffer.pt"
-        if save_path.is_file() and save_path.stat().st_size > 2500:
-            return save_path
-
-    return None
-
-
-def enforce_phase_prerequisites(
-    model: nn.Module,
-    cfg: ExperimentConfig,
-    device: Union[str, torch.device],
-    results_root: Union[str, Path] = "results",
-) -> Dict[str, Path]:
-    """Auto-enforce and strictly load prerequisite `model.pt` checkpoint for `train_m1`.
-
-    - `train_m1`: Requires and loads pre-trained representation (`train_representation` `model.pt`).
-    """
-    mode = cfg.training.mode.lower()
-    loaded: Dict[str, Path] = {}
-
-    if mode == "train_m1":
-        if cfg.training.representation_checkpoint:
-            rep_path = resolve_version_checkpoint(
-                cfg.project.name,
-                "train_representation",
-                explicit_path=cfg.training.representation_checkpoint,
-                results_root=results_root,
-            )
-            load_representation_checkpoint(model, rep_path, device=device)
-            loaded["representation"] = rep_path
-            chronicle.log_success(f"Strictly loaded representation model.pt: {rep_path}")
-        else:
-            try:
-                rep_path = resolve_version_checkpoint(
-                    cfg.project.name,
-                    "train_representation",
-                    results_root=results_root,
+def _sanitize_checkpoint_value(obj: Any, path: str = "checkpoint") -> Any:
+    """Recursively ensure checkpoint payloads contain strictly plain primitives and torch.Tensor."""
+    if isinstance(obj, torch.Tensor):
+        return obj.detach() if obj.requires_grad else obj
+    if obj is None or isinstance(obj, (bool, int, float, str)):
+        return obj
+    if isinstance(obj, np.floating):
+        return float(obj)
+    if isinstance(obj, np.integer):
+        return int(obj)
+    if isinstance(obj, np.bool_):
+        return bool(obj)
+    if isinstance(obj, dict):
+        clean_dict: Dict[Any, Any] = {}
+        for k, v in obj.items():
+            if not isinstance(k, (str, int, float, bool)):
+                raise TypeError(
+                    f"Checkpoint key of unsupported type {type(k).__name__} at '{path}'. "
+                    "Only plain primitive keys are allowed."
                 )
-                load_representation_checkpoint(model, rep_path, device=device)
-                loaded["representation"] = rep_path
-                chronicle.log_success(f"Strictly loaded representation model.pt: {rep_path}")
-            except FileNotFoundError as err:
-                raise FileNotFoundError(
-                    f"Phase 1 ('train_m1') strictly requires a pre-trained representation checkpoint. "
-                    f"No checkpoint found for project '{cfg.project.name}' at results_root='{results_root}'. "
-                    f"Pass --representation-checkpoint <path> (e.g. {GLOBAL_VERSION.representation_checkpoint()}) "
-                    f"or run Phase 0 first."
-                ) from err
-
-    return loaded
-
-
-class EMATracker:
-    """
-    Exponential Moving Average (EMA) tracker for model weights.
-
-    Maintains shadow weights tracking an exponential moving average:
-        theta_ema <- tau * theta_ema + (1 - tau) * theta
-    Provides strict loading of EMA weights into the model for Tier 2 closed-loop MPPI evaluation.
-    """
-
-    def __init__(
-        self,
-        model: nn.Module,
-        decay: float = 0.990,
-        device: Optional[Union[str, torch.device]] = None,
-    ) -> None:
-        if not (0.0 <= decay <= 1.0):
-            raise ValueError(f"EMA decay must be in [0.0, 1.0], got {decay}")
-        self.decay = float(decay)
-        self.device = torch.device(device) if device is not None else None
-        self.shadow: Dict[str, torch.Tensor] = {}
-        for k, v in model.state_dict().items():
-            t = v.clone().detach()
-            if self.device is not None:
-                t = t.to(self.device)
-            self.shadow[k] = t
-
-    @torch.no_grad()
-    def update(self, model: nn.Module) -> None:
-        """Update EMA shadow parameters with current model parameters."""
-        for k, v in model.state_dict().items():
-            if k not in self.shadow:
-                t = v.clone().detach()
-                if self.device is not None:
-                    t = t.to(self.device)
-                self.shadow[k] = t
-                continue
-            if torch.is_floating_point(v):
-                target_v = v.detach()
-                if self.device is not None and target_v.device != self.shadow[k].device:
-                    target_v = target_v.to(self.shadow[k].device)
-                self.shadow[k].mul_(self.decay).add_(target_v, alpha=1.0 - self.decay)
-            else:
-                target_v = v.detach()
-                if self.device is not None and target_v.device != self.shadow[k].device:
-                    target_v = target_v.to(self.shadow[k].device)
-                self.shadow[k].copy_(target_v)
-
-    def copy_to(self, model: nn.Module) -> None:
-        """Loads EMA weights into model with strict=True."""
-        model.load_state_dict(self.shadow, strict=True)
-
-    def state_dict(self) -> Dict[str, torch.Tensor]:
-        return {k: v.clone() for k, v in self.shadow.items()}
-
-    def load_state_dict(self, state_dict: Dict[str, torch.Tensor]) -> None:
-        for k, v in state_dict.items():
-            t = v.clone().detach()
-            if self.device is not None:
-                t = t.to(self.device)
-            self.shadow[k] = t
-
-
-class ClosedLoopBuffer:
-    """DAgger-style replay buffer for closed-loop MPPI trajectories (Layer 2 — Training).
-
-    Stores closed-loop trajectories and transition tuples collected during Tier 2
-    validation to mitigate exposure bias during Phase 1 (train_m1) training via BPTT.
-    Enforces a strict FIFO rolling window across evaluation generations to eliminate
-    distributional drift and cross-run contamination.
-    """
-
-    def __init__(self, capacity: int = 50_000, max_eval_generations: int = 3) -> None:
-        if capacity <= 0:
-            raise ValueError(f"Capacity must be positive, got {capacity}")
-        if max_eval_generations <= 0:
-            raise ValueError(f"max_eval_generations must be positive, got {max_eval_generations}")
-        self.capacity = int(capacity)
-        self.max_eval_generations = int(max_eval_generations)
-        self.trajectory_capacity = max(100, int(capacity // 50))
-        self.z: List[torch.Tensor] = []
-        self.u: List[torch.Tensor] = []
-        self.z_next: List[torch.Tensor] = []
-        self.trajectories: List[Dict[str, Any]] = []
-        self.eval_generations: List[List[Dict[str, Any]]] = []
-        self._ptr = 0
-        self._traj_ptr = 0
-
-    def clear(self) -> None:
-        """Clear all stored transitions, trajectories, and evaluation generations."""
-        self.z.clear()
-        self.u.clear()
-        self.z_next.clear()
-        self.trajectories.clear()
-        self.eval_generations.clear()
-        self._ptr = 0
-        self._traj_ptr = 0
-
-    def push(
-        self,
-        transitions: Union[
-            Sequence[Dict[str, torch.Tensor]],
-            Dict[str, Sequence[torch.Tensor]],
-            Sequence[Tuple[torch.Tensor, torch.Tensor, torch.Tensor]],
-        ],
-    ) -> None:
-        """Push transitions into the replay buffer with FIFO eviction on overflow."""
-        items: List[Tuple[torch.Tensor, torch.Tensor, torch.Tensor]] = []
-        if isinstance(transitions, dict):
-            zs = transitions["z"]
-            us = transitions["u"]
-            z_nexts = transitions["z_next"]
-            n = len(zs)
-            for i in range(n):
-                items.append((zs[i], us[i], z_nexts[i]))
-        elif isinstance(transitions, (list, tuple)):
-            for item in transitions:
-                if isinstance(item, dict):
-                    items.append((item["z"], item["u"], item["z_next"]))
-                elif isinstance(item, (tuple, list)) and len(item) == 3:
-                    items.append((item[0], item[1], item[2]))
-                else:
-                    raise ValueError(f"Unsupported transition item format: {type(item)}")
-        else:
-            raise ValueError(f"Unsupported transitions container: {type(transitions)}")
-
-        for z, u, z_next in items:
-            z_t = z.detach().cpu().view(-1)
-            u_t = u.detach().cpu().view(-1)
-            zn_t = z_next.detach().cpu().view(-1)
-
-            if len(self.z) < self.capacity:
-                self.z.append(z_t)
-                self.u.append(u_t)
-                self.z_next.append(zn_t)
-            else:
-                self.z[self._ptr] = z_t
-                self.u[self._ptr] = u_t
-                self.z_next[self._ptr] = zn_t
-                self._ptr = (self._ptr + 1) % self.capacity
-
-    def push_trajectories(self, trajectories: Sequence[Dict[str, Any]]) -> None:
-        """Push a generation of closed-loop MPPI trajectories into buffer.
-
-        Maintains a strict FIFO rolling window across Tier 2 evaluation generations.
-        When new trajectories are ingested, any generation older than
-        max_eval_generations is cleanly evicted to eliminate obsolete on-policy errors.
-        """
-        if not trajectories:
-            return
-
-        clean_gen: List[Dict[str, Any]] = []
-        for traj in trajectories:
-            actions_t = traj["actions"].detach().cpu()
-            targets_t = traj["targets"].detach().cpu()
-            if actions_t.ndim == 3 and actions_t.shape[1] == 1:
-                actions_t = actions_t.squeeze(1)
-            if targets_t.ndim == 3 and targets_t.shape[1] == 1:
-                targets_t = targets_t.squeeze(1)
-            clean_traj = {
-                "z_init": traj["z_init"].detach().cpu().view(-1),
-                "actions": actions_t,
-                "targets": targets_t,
-                "length": int(traj["length"]),
-                "trajectory_id": int(traj["trajectory_id"]),
-                "is_expert": bool(traj["is_expert"]) if "is_expert" in traj else False,
-                "elevation_plane": str(traj["elevation_plane"]) if "elevation_plane" in traj else "Unknown",
-            }
-            clean_gen.append(clean_traj)
-
-        # Cleanly discard trajectories from generation N - max_eval_generations (e.g. N-3) before ingesting new ones
-        while len(self.eval_generations) >= self.max_eval_generations:
-            self.eval_generations.pop(0)
-        self.eval_generations.append(clean_gen)
-
-        # Flatten active generations into active trajectories
-        self.trajectories = [t for gen in self.eval_generations for t in gen]
-        if len(self.trajectories) > self.trajectory_capacity:
-            self.trajectories = self.trajectories[-self.trajectory_capacity:]
-
-        # Synchronize transition-level storage with the active generations
-        self.z = []
-        self.u = []
-        self.z_next = []
-        for clean_traj in self.trajectories:
-            curr = clean_traj["z_init"]
-            actions = clean_traj["actions"]
-            targets = clean_traj["targets"]
-            for step_idx in range(clean_traj["length"]):
-                u_s = actions[step_idx].detach().cpu().view(-1)
-                z_next_s = targets[step_idx].detach().cpu().view(-1)
-                self.z.append(curr.detach().cpu().view(-1))
-                self.u.append(u_s)
-                self.z_next.append(z_next_s)
-                curr = z_next_s
-
-        if len(self.z) > self.capacity:
-            self.z = self.z[-self.capacity:]
-            self.u = self.u[-self.capacity:]
-            self.z_next = self.z_next[-self.capacity:]
-        self._ptr = 0
-        self._traj_ptr = 0
-
-    def sample(
-        self,
-        batch_size: int,
-        device: Optional[Union[str, torch.device]] = None,
-    ) -> Dict[str, torch.Tensor]:
-        """Sample a batch of transitions uniformly at random."""
-        cur_len = len(self.z)
-        if cur_len == 0:
-            raise ValueError("Cannot sample from an empty ClosedLoopBuffer.")
-        k = min(batch_size, cur_len)
-        indices = torch.randint(0, cur_len, (k,))
-        dev = torch.device(device) if device is not None else None
-        sampled_z = torch.stack([self.z[i].to(dev) for i in indices]) if dev is not None else torch.stack([self.z[i] for i in indices])
-        sampled_u = torch.stack([self.u[i].to(dev) for i in indices]) if dev is not None else torch.stack([self.u[i] for i in indices])
-        sampled_zn = torch.stack([self.z_next[i].to(dev) for i in indices]) if dev is not None else torch.stack([self.z_next[i] for i in indices])
-        return {
-            "z": sampled_z,
-            "u": sampled_u,
-            "z_next": sampled_zn,
-        }
-
-    def sample_trajectories(
-        self,
-        batch_size: int,
-        horizon: int,
-        device: Optional[Union[str, torch.device]] = None,
-    ) -> Dict[str, torch.Tensor]:
-        """Sample trajectory sub-windows for multi-step BPTT training."""
-        dev = torch.device(device) if device is not None else None
-        if not self.trajectories:
-            if len(self.z) == 0:
-                raise ValueError("Cannot sample trajectories from an empty ClosedLoopBuffer.")
-            k = min(batch_size, len(self.z))
-            indices = torch.randint(0, len(self.z), (k,))
-            sampled_z = torch.stack([self.z[i].to(dev) for i in indices]) if dev is not None else torch.stack([self.z[i] for i in indices])
-            sampled_u = torch.stack([self.u[i].to(dev) for i in indices]).unsqueeze(1) if dev is not None else torch.stack([self.u[i] for i in indices]).unsqueeze(1)
-            sampled_zn = torch.stack([self.z_next[i].to(dev) for i in indices]).unsqueeze(1) if dev is not None else torch.stack([self.z_next[i] for i in indices]).unsqueeze(1)
-            return {"z_init": sampled_z, "actions": sampled_u, "targets": sampled_zn}
-
-        k = int(batch_size)
-        indices = torch.randint(0, len(self.trajectories), (k,))
-        sampled_trajs = [self.trajectories[int(i.item())] for i in indices]
-        H = min(horizon, min(t["length"] for t in sampled_trajs))
-
-        z_inits: List[torch.Tensor] = []
-        acts_list: List[torch.Tensor] = []
-        targets_list: List[torch.Tensor] = []
-        for t in sampled_trajs:
-            L = t["length"]
-            max_start = max(0, L - H)
-            start_idx = int(torch.randint(0, max_start + 1, (1,)).item()) if max_start > 0 else 0
-            z_i = (t["z_init"] if start_idx == 0 else t["targets"][start_idx - 1]).view(-1)
-            u_i = t["actions"][start_idx : start_idx + H]
-            tgt_i = t["targets"][start_idx : start_idx + H]
-            if u_i.ndim == 3 and u_i.shape[1] == 1:
-                u_i = u_i.squeeze(1)
-            if tgt_i.ndim == 3 and tgt_i.shape[1] == 1:
-                tgt_i = tgt_i.squeeze(1)
-            z_inits.append(z_i)
-            acts_list.append(u_i)
-            targets_list.append(tgt_i)
-
-        b_z = torch.stack([z.to(dev) for z in z_inits]) if dev is not None else torch.stack(z_inits)
-        b_u = torch.stack([u.to(dev) for u in acts_list]) if dev is not None else torch.stack(acts_list)
-        b_tgt = torch.stack([tgt.to(dev) for tgt in targets_list]) if dev is not None else torch.stack(targets_list)
-        return {"z_init": b_z, "actions": b_u, "targets": b_tgt}
-
-    def __len__(self) -> int:
-        return len(self.z)
-
-    def state_dict(self) -> Dict[str, Any]:
-        return {
-            "capacity": self.capacity,
-            "max_eval_generations": self.max_eval_generations,
-            "trajectory_capacity": self.trajectory_capacity,
-            "ptr": self._ptr,
-            "traj_ptr": self._traj_ptr,
-            "z": torch.stack(self.z) if self.z else torch.empty(0),
-            "u": torch.stack(self.u) if self.u else torch.empty(0),
-            "z_next": torch.stack(self.z_next) if self.z_next else torch.empty(0),
-            "trajectories": self.trajectories,
-            "eval_generations": self.eval_generations,
-        }
-
-    def load_state_dict(self, state: Dict[str, Any]) -> None:
-        self.capacity = int(state["capacity"])
-        if "max_eval_generations" in state:
-            self.max_eval_generations = int(state["max_eval_generations"])
-        if "trajectory_capacity" in state:
-            self.trajectory_capacity = int(state["trajectory_capacity"])
-        self._ptr = int(state["ptr"])
-        if "traj_ptr" in state:
-            self._traj_ptr = int(state["traj_ptr"])
-        z_t = state["z"]
-        u_t = state["u"]
-        zn_t = state["z_next"]
-        if z_t.numel() > 0:
-            self.z = [z_t[i] for i in range(z_t.shape[0])]
-            self.u = [u_t[i] for i in range(u_t.shape[0])]
-            self.z_next = [zn_t[i] for i in range(zn_t.shape[0])]
-        else:
-            self.z = []
-            self.u = []
-            self.z_next = []
-        if "eval_generations" in state and state["eval_generations"]:
-            self.eval_generations = [list(gen) for gen in state["eval_generations"]]
-            while len(self.eval_generations) > self.max_eval_generations:
-                self.eval_generations.pop(0)
-            self.trajectories = [t for gen in self.eval_generations for t in gen]
-        elif "trajectories" in state and state["trajectories"]:
-            self.trajectories = list(state["trajectories"])
-            self.eval_generations = [self.trajectories]
-        else:
-            self.trajectories = []
-            self.eval_generations = []
-
-        # Ensure backward compatibility when extending runs from older configurations
-        # Mark unannotated legacy trajectories explicitly with verbose status; never fabricate boolean origins
-        for gen in self.eval_generations:
-            for t in gen:
-                if "is_expert" not in t:
-                    t["is_expert"] = "UNANNOTATED_LEGACY_ORIGIN"
-                if "elevation_plane" not in t:
-                    t["elevation_plane"] = "UNANNOTATED_LEGACY_ELEVATION"
-        for t in self.trajectories:
-            if "is_expert" not in t:
-                t["is_expert"] = "UNANNOTATED_LEGACY_ORIGIN"
-            if "elevation_plane" not in t:
-                t["elevation_plane"] = "UNANNOTATED_LEGACY_ELEVATION"
-
-    def save(self, path: Union[str, Path]) -> None:
-        torch.save(self.state_dict(), Path(path))
-
-    def load(self, path: Union[str, Path]) -> None:
-        path = Path(path)
-        if not path.is_file():
-            raise FileNotFoundError(f"Buffer checkpoint not found: {path}")
-        state = torch.load(path, map_location="cpu", weights_only=False)
-        self.load_state_dict(state)
+            clean_dict[k] = _sanitize_checkpoint_value(v, f"{path}.{k}")
+        return clean_dict
+    if isinstance(obj, list):
+        return [_sanitize_checkpoint_value(v, f"{path}[{i}]") for i, v in enumerate(obj)]
+    if isinstance(obj, tuple):
+        return tuple(_sanitize_checkpoint_value(v, f"{path}[{i}]") for i, v in enumerate(obj))
+    raise TypeError(
+        f"Non-serializable object of type {type(obj).__name__} at '{path}'. "
+        "Checkpoints may only contain plain Python primitives and torch.Tensor objects."
+    )
 
 
 class BaseTrainer:
@@ -685,12 +236,12 @@ class BaseTrainer:
                 for pg in self.handler.predictor_optimizer.param_groups:
                     pg["lr"] = target_lr
             if active_phase == 4 and dagger_ratio > 0.0 and self.replay_buffer is not None and len(self.replay_buffer.trajectories) > 0:
-                buf_nat = [t["trajectory_id"] for t in self.replay_buffer.trajectories if t.get("is_expert") is False]
-                buf_exp = [t["trajectory_id"] for t in self.replay_buffer.trajectories if t.get("is_expert") is True]
+                buf_nat = [t.trajectory_id for t in self.replay_buffer.trajectories if t.is_expert is False]
+                buf_exp = [t.trajectory_id for t in self.replay_buffer.trajectories if t.is_expert is True]
                 buf_untracked = [
-                    t["trajectory_id"]
+                    t.trajectory_id
                     for t in self.replay_buffer.trajectories
-                    if t.get("is_expert") not in (True, False)
+                    if t.is_expert not in (True, False)
                 ]
                 untracked_desc = (
                     f" | Unannotated Legacy Trajectories (excluded from natural/expert breakdown): {buf_untracked}"
@@ -832,49 +383,31 @@ class BaseTrainer:
                                 f"Tier 2 Evaluating latest model weights (Epoch {epoch})."
                             )
 
-                        active_curric_phase = int(train_metrics.get("curriculum_phase", self.current_curriculum_phase))
+                        active_curric_phase = int(train_metrics["curriculum_phase"])
                         sig = inspect.signature(self.tier2_evaluator.__call__)
                         if "curriculum_phase" in sig.parameters or any(
                             p.kind == inspect.Parameter.VAR_KEYWORD for p in sig.parameters.values()
                         ):
-                            tier2_metrics = self.tier2_evaluator(
+                            raw_tier2 = self.tier2_evaluator(
                                 self.model, epoch, curriculum_phase=active_curric_phase
                             )
                         else:
-                            tier2_metrics = self.tier2_evaluator(self.model, epoch)
-                        cl_trajectories = tier2_metrics.pop("trajectories", None)
-                        cl_transitions = tier2_metrics.pop("transitions", None)
-                        if all(
-                            k in tier2_metrics
-                            for k in (
-                                "mppi_grasp_error_cm",
-                                "mppi_steady_state_error_cm",
-                                "mppi_final_vel",
-                                "mppi_final_rot",
-                            )
-                        ):
-                            grasp_error_cm = float(tier2_metrics["mppi_grasp_error_cm"])
-                            settling_pos_error_cm = float(tier2_metrics["mppi_steady_state_error_cm"])
-                            mean_cart_error_cm = (
-                                float(tier2_metrics["mppi_mean_error_cm"])
-                                if "mppi_mean_error_cm" in tier2_metrics
-                                else settling_pos_error_cm
-                            )
-                            final_velocity = float(tier2_metrics["mppi_final_vel"])
-                            geodesic_rot_error = float(tier2_metrics["mppi_final_rot"])
-                            tier2_metrics["mppi_score"] = (
-                                0.5 * grasp_error_cm
-                                + 0.5 * settling_pos_error_cm
-                                + 0.25 * mean_cart_error_cm
-                                + 0.1 * final_velocity
-                                + 2.0 * geodesic_rot_error
-                            )
-                        if self.replay_buffer is not None:
-                            if cl_trajectories is not None:
-                                self.replay_buffer.push_trajectories(cl_trajectories)
-                            elif cl_transitions is not None:
-                                self.replay_buffer.push(cl_transitions)
-                            self.replay_buffer.save(self.save_dir / "closed_loop_buffer.pt")
+                            raw_tier2 = self.tier2_evaluator(self.model, epoch)
+
+                        if isinstance(raw_tier2, Tier2EvalResult):
+                            cl_trajectories = raw_tier2.trajectories
+                            cl_transitions = raw_tier2.transitions
+                            tier2_metrics = raw_tier2.to_metrics_dict()
+                            num_mppi_eval = int(raw_tier2.mppi_evaluated_trajectories)
+                            num_expert_eval = int(raw_tier2.mppi_expert_trajectories)
+                            expert_blocks = list(raw_tier2.mppi_expert_blocks)
+                            expert_ids = list(raw_tier2.mppi_expert_trajectory_ids)
+                            natural_blocks = list(raw_tier2.mppi_natural_blocks)
+                            natural_ids = list(raw_tier2.mppi_natural_trajectory_ids)
+                        else:
+                            tier2_metrics = dict(raw_tier2)
+                            cl_trajectories = tier2_metrics.pop("trajectories", None)
+                            cl_transitions = tier2_metrics.pop("transitions", None)
                             if "mppi_evaluated_trajectories" not in tier2_metrics:
                                 raise KeyError(
                                     "Tier 2 evaluator output is missing contractually required 'mppi_evaluated_trajectories'. "
@@ -886,19 +419,18 @@ class BaseTrainer:
                                     "Cannot proceed with unverified evaluation score."
                                 )
                             num_mppi_eval = int(tier2_metrics["mppi_evaluated_trajectories"])
-                            num_expert_eval = int(tier2_metrics.get("mppi_expert_trajectories", 0))
-                            expert_blocks = list(tier2_metrics.get("mppi_expert_blocks", []))
-                            expert_ids = list(tier2_metrics.get("mppi_expert_trajectory_ids", []))
-                            natural_blocks = list(tier2_metrics.get("mppi_natural_blocks", []))
-                            natural_ids = list(tier2_metrics.get("mppi_natural_trajectory_ids", []))
-                            chronicle.log_info(
-                                f"[DAgger Buffer] Training set updated with {len(self.replay_buffer.trajectories)} trajectories "
-                                f"({len(self.replay_buffer)} total transitions) | "
-                                f"Natural [{num_mppi_eval}]: IDs={natural_ids} ({natural_blocks}) | "
-                                f"Expert [{num_expert_eval}]: IDs={expert_ids} ({expert_blocks})."
-                            )
-                            val_metrics.update(tier2_metrics)
-                            score = float(tier2_metrics["mppi_score"])
+                            num_expert_eval = int(tier2_metrics["mppi_expert_trajectories"]) if "mppi_expert_trajectories" in tier2_metrics else 0
+                            expert_blocks = list(tier2_metrics["mppi_expert_blocks"]) if "mppi_expert_blocks" in tier2_metrics else []
+                            expert_ids = list(tier2_metrics["mppi_expert_trajectory_ids"]) if "mppi_expert_trajectory_ids" in tier2_metrics else []
+                            natural_blocks = list(tier2_metrics["mppi_natural_blocks"]) if "mppi_natural_blocks" in tier2_metrics else []
+                            natural_ids = list(tier2_metrics["mppi_natural_trajectory_ids"]) if "mppi_natural_trajectory_ids" in tier2_metrics else []
+
+                        if self.replay_buffer is not None:
+                            if cl_trajectories is not None:
+                                self.replay_buffer.push_trajectories(cl_trajectories)
+                            elif cl_transitions is not None:
+                                self.replay_buffer.push(cl_transitions)
+                            self.replay_buffer.save(self.save_dir / "closed_loop_buffer.pt")
                             chronicle.log_info(
                                 f"[DAgger Buffer] Training set updated with {len(self.replay_buffer.trajectories)} trajectories "
                                 f"({len(self.replay_buffer)} total transitions) | "
@@ -906,17 +438,30 @@ class BaseTrainer:
                                 f"Expert [{num_expert_eval}]: IDs={expert_ids} ({expert_blocks})."
                             )
                         val_metrics.update(tier2_metrics)
-                        score = tier2_metrics["mppi_score"]
-                        is_best = score < (self.best_score - self.tier2_min_delta)
-                        if is_best:
-                            self.best_score = score
-                            self.best_epoch = epoch
-                            epochs_without_improvement = 0
-                            tier2_checks_without_improvement = 0
-                            self.save_checkpoint(epoch, is_best=True)
+                        score = float(tier2_metrics["mppi_score"])
+                        is_full_subset = (
+                            num_mppi_eval >= len(cl_trajectories)
+                            if cl_trajectories is not None
+                            else num_expert_eval == 0
+                        )
+                        if is_full_subset:
+                            is_best = score < (self.best_score - self.tier2_min_delta)
+                            if is_best:
+                                self.best_score = score
+                                self.best_epoch = epoch
+                                epochs_without_improvement = 0
+                                tier2_checks_without_improvement = 0
+                                self.save_checkpoint(epoch, is_best=True)
+                            else:
+                                tier2_checks_without_improvement += 1
+                                epochs_without_improvement += self.tier2_frequency
                         else:
-                            tier2_checks_without_improvement += 1
-                            epochs_without_improvement += self.tier2_frequency
+                            is_best = False
+                            chronicle.log_info(
+                                f"[Tier 2 Selection] Skipping best_model.pt comparison at Epoch {epoch}: "
+                                f"partial natural subset ({num_mppi_eval}/{num_mppi_eval + num_expert_eval} trajectories; "
+                                f"{num_expert_eval} in Expert mode)."
+                            )
 
                         # Restore current training weights so optimization continues forward
                         if current_epoch_state is not None:
@@ -1012,7 +557,7 @@ class BaseTrainer:
     def store_conclusion_metrics(self) -> None:
         """Store conclusion metrics and artifacts (phase checkpoint, training logs, and evaluation artifacts)."""
         best_model_path = self.save_dir / "model.pt"
-        if not best_model_path.is_file() and self.history:
+        if (not best_model_path.is_file() or self.best_epoch is None) and self.history:
             self.save_checkpoint(self.history[-1]["epoch"], is_best=True)
 
         # Save final phase checkpoint
@@ -1055,17 +600,17 @@ class BaseTrainer:
             batch_count += 1
         return {k: v / max(1, batch_count) for k, v in val_accum.items()}
 
-    def save_checkpoint(
-        self,
-        epoch: int,
-        is_best: bool = False,
-        path: Optional[Union[str, Path]] = None,
-        phase_label: Optional[str] = None,
-    ) -> None:
-        ckpt = {
-            "epoch": epoch,
-            "best_score": self.best_score,
-            "best_epoch": self.best_epoch,
+    def state_dict(self, epoch: Optional[int] = None) -> Dict[str, Any]:
+        """Return a pure primitive/tensor checkpoint dictionary for the trainer."""
+        resolved_epoch = (
+            int(epoch)
+            if epoch is not None
+            else (int(self.history[-1]["epoch"]) if self.history else int(self.start_epoch))
+        )
+        ckpt: Dict[str, Any] = {
+            "epoch": resolved_epoch,
+            "best_score": float(self.best_score),
+            "best_epoch": int(self.best_epoch) if self.best_epoch is not None else None,
             "model_state": self.model.state_dict(),
             "optimizers_state": self.handler.get_optimizers_state(),
             "config": self.cfg.to_dict(),
@@ -1076,6 +621,19 @@ class BaseTrainer:
             ckpt["ema_state"] = self.ema_tracker.state_dict()
         if self.replay_buffer is not None:
             ckpt["replay_buffer"] = self.replay_buffer.state_dict()
+        if isinstance(self.tier2_evaluator, StatefulTier2EvaluatorProtocol):
+            ckpt["tier2_evaluator_state"] = self.tier2_evaluator.state_dict()
+        return _sanitize_checkpoint_value(ckpt, "checkpoint")
+
+    def save_checkpoint(
+        self,
+        epoch: int,
+        is_best: bool = False,
+        path: Optional[Union[str, Path]] = None,
+        phase_label: Optional[str] = None,
+    ) -> None:
+        ckpt = self.state_dict(epoch=epoch)
+        if self.replay_buffer is not None:
             buffer_dest = self.save_dir / "closed_loop_buffer.pt"
             if len(self.replay_buffer) > 0 or not buffer_dest.is_file() or buffer_dest.stat().st_size <= 2500:
                 self.replay_buffer.save(buffer_dest)
@@ -1113,7 +671,6 @@ class BaseTrainer:
                 self.curriculum.load_state_dict(ckpt["curriculum_state"])
                 self.current_curriculum_phase = self.curriculum.current_curriculum_phase
             else:
-                import re
                 m = re.search(r"checkpoint_phase_(\d+)", path.name)
                 if m:
                     loaded_phase = int(m.group(1))
@@ -1124,6 +681,11 @@ class BaseTrainer:
                     )
             if self.ema_tracker is not None and "ema_state" in ckpt:
                 self.ema_tracker.load_state_dict(ckpt["ema_state"])
+            if (
+                isinstance(self.tier2_evaluator, StatefulTier2EvaluatorProtocol)
+                and "tier2_evaluator_state" in ckpt
+            ):
+                self.tier2_evaluator.load_state_dict(ckpt["tier2_evaluator_state"])
             if self.replay_buffer is not None:
                 if "replay_buffer" in ckpt:
                     self.replay_buffer.load_state_dict(ckpt["replay_buffer"])
@@ -1162,6 +724,10 @@ class BaseTrainer:
             writer.writerows(self.history)
 
 
+_DEFAULT_ENV_CFG = EnvironmentConfig()
+_DEFAULT_TRAIN_CFG = TrainingConfig()
+
+
 class Trainer(BaseTrainer):
     """Typed Trainer constructor building an immutable ExperimentConfig when not passed explicitly."""
 
@@ -1172,26 +738,26 @@ class Trainer(BaseTrainer):
         val_loader: Optional[DataLoader] = None,
         cfg: Optional[ExperimentConfig] = None,
         loss_fn: Optional[SPWMLoss] = None,
-        mode: str = "train_m1",
-        learning_rate: float = 1e-3,
-        weight_decay: float = 1e-5,
-        grad_clip_norm: float = 1.0,
+        mode: str = _DEFAULT_TRAIN_CFG.mode,
+        learning_rate: float = _DEFAULT_TRAIN_CFG.learning_rate,
+        weight_decay: float = _DEFAULT_TRAIN_CFG.weight_decay,
+        grad_clip_norm: float = _DEFAULT_TRAIN_CFG.grad_clip_norm,
         device: Optional[Union[str, torch.device]] = None,
         save_dir: Union[str, Path] = "results/default_run",
-        probe_lr: float = 5e-4,
-        probe_weight_decay: float = 1e-4,
+        probe_lr: float = _DEFAULT_TRAIN_CFG.probe_lr,
+        probe_weight_decay: float = _DEFAULT_TRAIN_CFG.probe_weight_decay,
         start_epoch: int = 1,
         best_val_loss: float = float("inf"),
         best_epoch: Optional[int] = None,
         history: Optional[List[Dict[str, float]]] = None,
         optimizer_state: Optional[Dict[str, Any]] = None,
         rollout_horizons: Optional[Sequence[int]] = None,
-        joint_count: int = 6,
-        action_dim: int = 6,
-        phase_horizon: int = 10,
-        early_stopping_patience: int = 20,
-        metrics_storage: int = 1,
-        classic_patience: bool = False,
+        joint_count: int = _DEFAULT_ENV_CFG.joint_count,
+        action_dim: int = _DEFAULT_ENV_CFG.action_dim,
+        phase_horizon: int = _DEFAULT_TRAIN_CFG.phase_horizon,
+        early_stopping_patience: int = _DEFAULT_TRAIN_CFG.early_stopping_patience,
+        metrics_storage: int = _DEFAULT_TRAIN_CFG.metrics_storage,
+        classic_patience: bool = _DEFAULT_TRAIN_CFG.classic_patience,
         auto_enforce_checkpoints: bool = False,
         results_root: Union[str, Path] = "results",
         tier2_evaluator: Optional[Tier2EvaluatorProtocol] = None,
@@ -1269,7 +835,9 @@ class Trainer(BaseTrainer):
 __all__ = [
     "BaseTrainer",
     "ClosedLoopBuffer",
+    "EMATracker",
     "Trainer",
+    "_extract_submodel_state",
     "load_representation_checkpoint",
     "resolve_version_checkpoint",
     "resolve_closed_loop_buffer",

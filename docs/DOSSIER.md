@@ -1,6 +1,6 @@
 # Technical Dossier & Academic Readiness Audit
 **Project**: SPWM (Spiking Predictive World Model for 3D Articulated Manipulation)  
-**Active Production Baseline**: `SPWM-v0.7.3`  
+**Model**: `SPWM`  
 **Target Publication Venues**: IEEE/RSJ IROS, IEEE ICRA, CoRL, NeurIPS, RSS  
 **Date**: November 2026  
 
@@ -42,7 +42,7 @@ flowchart LR
         EventCam -->|"Spatiotemporal Spikes E_t in {0, 1}^(4 x 32 x 32)"| Obs["Observation E_t"]
     end
 
-    subgraph Agent["SPWM-v0.7.3 Architecture"]
+    subgraph Agent["SPWM Architecture"]
         Obs --> Enc["EventEncoder & SpatialSoftmax\n(K=16 Keypoints k_t)"]
         Enc --> Dyn["SpikingLatentDynamics (ALIF)\n(q_t in R^32, p_t in R^96)"]
         Action --> Pred["LatentPredictor M_1\n(Dissipative Field gamma_t, f_p, f_q)"]
@@ -412,7 +412,7 @@ This section highlights the critical missing empirical benchmarks, architectural
 ```mermaid
 flowchart TD
     subgraph RepoCurrent["Current Repository Assets"]
-        R1["SPWM-v0.7.3 SNN World Model"]
+        R1["SPWM SNN World Model"]
         R2["Unity 3D Simulation & Telemetry"]
         R3["Multi-Seed Validated (seeds 42, 101, 2024)"]
         R4["Multi-Horizon Telemetry & MPPI Closed-Loop Control"]
@@ -439,7 +439,7 @@ flowchart TD
 
 | Model Architecture | Params | Latency (ms) | Pos MSE (H=1) | Pos MSE (H=10) | Pos MSE (H=50) | Pos MSE (H=100) | Vel MSE (H=1) | Vel MSE (H=10) | Vel MSE (H=50) | Vel MSE (H=100) |
 | :--- | :---: | :---: | :---: | :---: | :---: | :---: | :---: | :---: | :---: | :---: |
-| **SPWM-v0.7.3** | **328.7k** | 1.95 | 0.10635 | 0.02117 | 0.01425 | 0.01728 | **0.00027** | **0.01118** | **0.01262** | **0.01153** |
+| **SPWM** | **328.7k** | 1.95 | 0.10635 | 0.02117 | 0.01425 | 0.01728 | **0.00027** | **0.01118** | **0.01262** | **0.01153** |
 | **Continuous RSSM** | 380.5k | 1.79 | **0.01319** | **0.00679** | **0.01394** | **0.01305** | 0.00388 | 0.03410 | 0.05901 | 0.04894 |
 | **Deep GRU** | 338.9k | 1.47 | 0.01472 | 0.57502 | 0.81406 | 0.77883 | 0.02032 | 0.22951 | 0.20108 | 0.16139 |
 | **Continuous ConvLSTM** | 296.9k | 0.95 | 0.15692 | 0.46418 | 0.36748 | 0.30935 | 0.03959 | 0.06667 | 0.18170 | 0.13567 |
@@ -450,7 +450,7 @@ flowchart TD
 > 3. **Degradation Plot**: Saved to [`results/baselines/baseline_rollout_comparison.png`](file:///Users/Mattia/Desktop/Studies/Temp/results/baselines/baseline_rollout_comparison.png).
 
 ### 6.2 Non-Spiking SNN Ablation (COMPLETED)
-- [x] **Current Repo State**: Evaluated direct apples-to-apples non-spiking continuous rate ablation (`ANNWorldModel`) vs. SNN-ALIF (`SPWM`), maintaining exact parameter parity ($328,652$ parameters), identical SpatialSoftmax keypoint frontend, symplectic/dissipative phase-space factorization ($q, p$), and identical loss formulation ($\mathcal{L}_{\text{pos}} + 1.5\,\mathcal{L}_{\text{vel}}$). Both models were pushed to their **full production regime** on $4,000$ trajectories ($80$ epochs with early stopping patience $10$ until true validation plateau: `SPWM-v0.7.3` converged at $78$ epochs, `ANN-Rate` plateaued and stopped at $42$ epochs).
+- [x] **Current Repo State**: Evaluated direct apples-to-apples non-spiking continuous rate ablation (`ANNWorldModel`) vs. SNN-ALIF (`SPWM`), maintaining exact parameter parity ($328,652$ parameters), identical SpatialSoftmax keypoint frontend, symplectic/dissipative phase-space factorization ($q, p$), and identical loss formulation ($\mathcal{L}_{\text{pos}} + 1.5\,\mathcal{L}_{\text{vel}}$). Both models were pushed to their **full production regime** on $4,000$ trajectories ($80$ epochs with early stopping patience $10$ until true validation plateau: `SPWM` converged at $78$ epochs, `ANN-Rate` plateaued and stopped at $42$ epochs).
 - [x] **Ablation Implemented**: Constructed `ANNWorldModel` in `spwm/models/ann_ablation.py` by replacing the 256 ALIF spiking cells in `MultiTimescaleMemory` with identical continuous leaky rate units:
   $$\mathbf{m}_t = \beta_{\text{mem}} \mathbf{m}_{t-1} + (1 - \beta_{\text{mem}}) \mathbf{I}_t, \quad \mathbf{r}_t = \sigma(\mathbf{m}_t)$$
   using identical projection matrices (`input_proj`, `recurrent_proj`, `q_proj`, `action_proj`, `vel_proj`, `W_vel`, `fuse_spikes`, `fuse_mems`, `norm`).
@@ -458,7 +458,7 @@ flowchart TD
 
 | Model Architecture | Memory Dynamics | Params | Latency (ms) | Best Val Loss | Pos MSE (H=1) | Pos MSE (H=10) | Pos MSE (H=50) | Pos MSE (H=100) | Vel MSE (H=1) | Vel MSE (H=10) | Vel MSE (H=50) | Vel MSE (H=100) | Drift Ratio (H=100) |
 | :--- | :---: | :---: | :---: | :---: | :---: | :---: | :---: | :---: | :---: | :---: | :---: | :---: | :---: |
-| **SPWM-v0.7.3 (SNN-ALIF)** | ALIF (Spiking, 14.6% rate) | **328.7k** | 2.61 | 0.00204 | 0.10635 | 0.02117 | 0.01425 | **0.01728** | **0.00027** | **0.01118** | **0.01262** | **0.01153** | -0.8375 |
+| **SPWM (SNN-ALIF)** | ALIF (Spiking, 14.6% rate) | **328.7k** | 2.61 | 0.00204 | 0.10635 | 0.02117 | 0.01425 | **0.01728** | **0.00027** | **0.01118** | **0.01262** | **0.01153** | -0.8375 |
 | **ANN-Rate (Continuous Leaky)** | Leaky Rate Units (Continuous) | **328.7k** | **2.10** | **0.00098** | **0.00151** | **0.00872** | **0.01282** | 0.01842 | 0.00228 | 0.02106 | 0.01996 | 0.01685 | +11.2123 |
 
 > \* *Note on Drift Ratio Formulation*: In the ablation script, Drift Ratio is computed as relative MSE change: $(\text{MSE}_{100} - \text{MSE}_1) / \text{MSE}_1$. SPWM's negative ratio reflects the initial pose alignment transient at $H=1$ ($0.10635$) settling into a stable rollout manifold ($0.01728$), whereas ANN-Rate begins with near-zero $H=1$ error ($0.00151$) that increases to $0.01842$.
@@ -484,7 +484,7 @@ flowchart TD
 
 | Model Architecture | Memory Paradigm | Params | Spike Rate | SOPs / step | FLOPs / step | E_neuro (nJ/step) | E_GPU (nJ/step) | Energy Efficiency vs. GPU | Power @ 20Hz (mW) | E_cumul (H=100, μJ) |
 | :--- | :---: | :---: | :---: | :---: | :---: | :---: | :---: | :---: | :---: | :---: |
-| **SPWM-v0.7.3 (Prod)** | ALIF Spiking (2-tier) | **328.7k** | 14.5% | 14,208 | 258,796 | **12.81** | 1035.18 | **80.8x** | **0.256** | **1.28** |
+| **SPWM (Prod)** | ALIF Spiking (2-tier) | **328.7k** | 14.5% | 14,208 | 258,796 | **12.81** | 1035.18 | **80.8x** | **0.256** | **1.28** |
 | **SNN-ALIF (Matched)** | ALIF Spiking (2-tier) | **328.7k** | 24.8% | 24,192 | 258,796 | **21.80** | 1035.18 | **47.5x** | **0.436** | **2.18** |
 | **ANN-Rate (Ablation)** | Continuous Leaky Rate | **328.7k** | — | — | 258,796 | — | 1035.18 | 1.0x (Ref) | 20.704 | 103.52 |
 | **Continuous RSSM** | GRU + Gaussian Latent | **380.5k** | — | — | 615,244 | — | 2460.98 | 1.0x (Ref) | 49.220 | 246.10 |
@@ -492,7 +492,7 @@ flowchart TD
 | **Continuous ConvLSTM** | Spatial ConvLSTM (2D) | **296.9k** | — | — | 29,001,740 | — | 116006.96 | 1.0x (Ref) | 2320.139 | 11600.70 |
 
 > **Key Empirical Takeaways**:
-> 1. **80.8x Energy Efficiency Advantage over Parameter-Matched ANN**: On identical parameter budgets ($328.7\text{k}$) and projection topologies, `SPWM-v0.7.3` consumes only **$12.81\,\text{nJ}$ per recurrent step** on Intel Loihi-2 vs. **$1035.18\,\text{nJ}$ per step** for `ANN-Rate` on Nvidia Jetson Orin GPU, an **$80.8\times$ reduction in energy consumption**.
+> 1. **80.8x Energy Efficiency Advantage over Parameter-Matched ANN**: On identical parameter budgets ($328.7\text{k}$) and projection topologies, `SPWM` consumes only **$12.81\,\text{nJ}$ per recurrent step** on Intel Loihi-2 vs. **$1035.18\,\text{nJ}$ per step** for `ANN-Rate` on Nvidia Jetson Orin GPU, an **$80.8\times$ reduction in energy consumption**.
 > 2. **Sub-Milliwatt Autonomous Predictive Dynamics**: Operating at a $20\,\text{Hz}$ robotic control loop, SPWM draws only **$0.256\,\text{mW}$** of active recurrent dynamics power (compared to $20.7\,\text{mW}$ for ANN-Rate, $49.2\,\text{mW}$ for Continuous RSSM, and $2.32\,\text{W}$ for ConvLSTM), well within ultra-low-power micro-robotic edge thermal limits.
 > 3. **Trajectory Energy Accumulation**: Over an extended $H=100$ autonomous trajectory ($5.0\,\text{s}$ at $20\,\text{Hz}$), SPWM expends a negligible **$1.28\,\mu\text{J}$** of cumulative energy, compared to $103.5\,\mu\text{J}$ for ANN-Rate, $246.1\,\mu\text{J}$ for Continuous RSSM, and $11.6\,\text{mJ}$ for ConvLSTM ($9,056\times$ higher).
 > 4. **Energy Profiling Artifacts**: Saved to [`results/energy_profiling/energy_breakdown_comparison.png`](file:///Users/Mattia/Desktop/Studies/Temp/results/energy_profiling/energy_breakdown_comparison.png), [`results/energy_profiling/energy_profiling_metrics.json`](file:///Users/Mattia/Desktop/Studies/Temp/results/energy_profiling/energy_profiling_metrics.json), and [`results/energy_profiling/energy_profiling_table.md`](file:///Users/Mattia/Desktop/Studies/Temp/results/energy_profiling/energy_profiling_table.md).

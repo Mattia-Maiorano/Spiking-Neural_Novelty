@@ -27,9 +27,10 @@ Every entry in `docs/History.md` MUST strictly adhere to this 5-item structure:
 
 ### 3. Synchronization of Topic Documentation (`./docs/`)
 If the run or change introduced modifications to contracts, models, training logic, or simulation environments, the corresponding documentation in `./docs/` MUST be kept synchronized:
-- **`documentation/MODELS.md`**: For changes to neural networks, models, encoders, dynamics, decoders, or visual pipelines.
-- **`docs/TRAINING.md`**: For changes to loss formulations, optimization curricula, or training strategies.
+- **`docs/ARCHITECTURE.md`**: For changes to neural networks, models, encoders, dynamics, decoders, or visual pipelines.
+- **`docs/TRAINING_AND_LOSSES.md`**: For changes to loss formulations, optimization curricula, or training strategies.
 - **`docs/WORLD.md`**: For changes to Unity physics, C# simulation scripts, action spaces, or robotic rigs.
+- **`docs/WORKSPACE_AND_CONTRACTS.md`**: For changes to Layer 0 contracts, directory topology, or configuration schemas.
 
 ---
 

@@ -659,7 +659,6 @@ run_video_mppi() {
     local horizon="${HORIZON:-$DEFAULT_HORIZON}"
     local traj_id="${TRAJECTORY_ID:-3622}"
     local out_dir="${OUTPUT_DIR:-$DEFAULT_OUTPUT_DIR}"
-    local output_video="${OUTPUT_VIDEO:-${out_dir}/mppi_control.mp4}"
     local json_file="${JSON_FILE:-sim/Assets/StreamingAssets/trajectory_ghost_mppi.json}"
 
     local ckpt="${CHECKPOINT_PATH:-}"
@@ -680,6 +679,9 @@ run_video_mppi() {
         fi
     fi
 
+    [[ -z "${ver}" ]] && ver="${DEFAULT_MODEL_VERSION}"
+    local output_video="${OUTPUT_VIDEO:-${out_dir}/${ver}_mppi_control.mp4}"
+
     echo "======================================================================"
     echo " Rendering Closed-Loop Latent MPPI Simulation Video (.mp4)..."
     echo " Checkpoint:     ${ckpt} (${ver})"
@@ -697,6 +699,7 @@ run_video_mppi() {
         --config "${cfg}" \
         --trajectory-id "${traj_id}" \
         --horizon "${horizon}" \
+        --model-version "${ver}_mppi" \
         --output "${json_file}"
 
     "${PYTHON_BIN}" scripts/render_simulation_video.py \

@@ -5,11 +5,11 @@ Static analysis tool to spot and prevent silent fallbacks across the codebase:
 1. 3-argument `getattr(obj, name, default)`: banned in favor of explicit typed attributes.
 2. Ternary `hasattr(...)` fallback expressions: banned in favor of strict protocol contracts.
 3. Checkpoint loading with `load_state_dict(..., strict=False)`: banned in favor of strict=True.
-4. Silent exception swallowing: `except ...: pass`, `except TypeError:`, `except AttributeError:` banned.
+4. Silent exception swallowing: `except ...: pass`, `except TypeError:`, `except AttributeError:`, or `except Exception:` without re-raise banned.
 
 Usage:
     python scripts/scan_fallbacks.py [paths...]
-    python scripts/scan_fallbacks.py spwm/
+    python scripts/scan_fallbacks.py spwm/ experiments/ scripts/
 """
 
 from __future__ import annotations
@@ -121,6 +121,23 @@ class FallbackVisitor(ast.NodeVisitor):
                     snippet=self._get_snippet(node.lineno),
                 )
             )
+        elif (
+            isinstance(node.type, ast.Name)
+            and node.type.id == "Exception"
+            and not any(isinstance(sub, ast.Raise) for stmt in node.body for sub in ast.walk(stmt))
+        ):
+            self.violations.append(
+                Violation(
+                    file_path=self.file_path,
+                    line=node.lineno,
+                    rule="NO_SILENT_EXCEPT_EXCEPTION",
+                    message=(
+                        "Forbidden silent 'except Exception:' handler without re-raise detected. "
+                        "Propagate or raise with informative diagnostic context."
+                    ),
+                    snippet=self._get_snippet(node.lineno),
+                )
+            )
 
         self.generic_visit(node)
 
@@ -161,7 +178,11 @@ def main() -> int:
     targets = sys.argv[1:]
     if not targets:
         repo_root = Path(__file__).resolve().parent.parent
-        targets = [str(repo_root / "spwm")]
+        targets = [
+            str(repo_root / "spwm"),
+            str(repo_root / "experiments"),
+            str(repo_root / "scripts"),
+        ]
 
     violations: List[Violation] = []
     for target_str in targets:
@@ -179,12 +200,10 @@ def main() -> int:
         return 0
 
     print(f"\n[!] AST Anti-Fallback Scan FAILED: {len(violations)} violation(s) found:\n")
+    cwd = Path.cwd().resolve()
     for v in violations:
-        rel = v.file_path
-        try:
-            rel = v.file_path.relative_to(Path.cwd())
-        except ValueError:
-            pass
+        resolved = v.file_path.resolve()
+        rel = resolved.relative_to(cwd) if resolved.is_relative_to(cwd) else v.file_path
         print(f"  {rel}:{v.line}: [{v.rule}]")
         print(f"    Message: {v.message}")
         if v.snippet:

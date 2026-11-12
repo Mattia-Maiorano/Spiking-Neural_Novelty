@@ -26,8 +26,9 @@ import torch
 import torch.nn as nn
 from torch.utils.data import DataLoader
 
+from spwm.contracts.config import ExperimentConfig
 from spwm.contracts.version import GLOBAL_VERSION
-from spwm.data.datasets import create_dataloaders
+from spwm.data.datasets import create_dataloaders_from_config
 from spwm.models.baselines import (
     ContinuousConvLSTM,
     ContinuousRSSM,
@@ -398,22 +399,16 @@ def main() -> None:
 
     chronicle.log_info(f"Target execution device: {device}")
 
+    cfg = ExperimentConfig.load(args.config) if args.config.is_file() else ExperimentConfig()
     eval_horizons = [1, 10, 50, 100]
     seq_len = 105
 
     chronicle.log_info(f"Creating DataLoaders: total={args.total_trajectories}, seq_len={seq_len}, batch={args.batch_size}")
-    dataloaders = create_dataloaders(
+    dataloaders = create_dataloaders_from_config(
+        cfg,
         total_trajectories=args.total_trajectories,
-        train_split=0.8,
-        val_split=0.1,
         sequence_length=seq_len,
         batch_size=args.batch_size,
-        height=32,
-        width=32,
-        joint_count=6,
-        action_dim=6,
-        in_channels=4,
-        dataset_dir="sim/ExportedTrajectories",
         cache_data=True,
         strict_dataset=True,
     )

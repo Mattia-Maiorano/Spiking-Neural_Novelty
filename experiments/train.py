@@ -17,7 +17,7 @@ import chronicle
 import torch
 
 from spwm.contracts.config import ExperimentConfig
-from spwm.data.datasets import create_dataloaders
+from spwm.data.datasets import create_dataloaders_from_config
 from spwm.evaluation.evaluator import RolloutEvaluator, get_phase_eval_horizons
 from spwm.evaluation.metrics_resume import (
     get_canonical_metrics_filename,
@@ -234,25 +234,10 @@ def _evaluate_and_save_phase_artifacts(
     fixed_predictor_eval = model.m1 if phase_mode == "train_m1" else None
     eval_seq_len = max(cfg.data.sequence_length, cfg.training.temporal_burn_in + max(eval_horizons) + 1)
 
-    eval_loaders = create_dataloaders(
-        total_trajectories=cfg.data.total_trajectories,
-        train_split=cfg.data.train_split,
-        val_split=cfg.data.val_split,
+    eval_loaders = create_dataloaders_from_config(
+        cfg,
         sequence_length=eval_seq_len,
-        batch_size=cfg.data.batch_size,
-        height=cfg.environment.height,
-        width=cfg.environment.width,
-        joint_count=cfg.environment.joint_count,
-        action_dim=cfg.environment.action_dim,
-        in_channels=cfg.model.in_channels,
-        standard_velocity_range=cfg.data.standard_velocity_range,
-        extrapolation_velocity_range=cfg.data.extrapolation_velocity_range,
-        event_threshold=cfg.environment.event_threshold,
-        dt=cfg.environment.dt,
-        num_workers=cfg.data.num_workers,
-        cache_data=cfg.data.cache_data,
-        dataset_dir=cfg.data.dataset_dir,
-        strict_dataset=cfg.data.strict_dataset,
+        weighted_sampling=False,
     )
 
     evaluator = RolloutEvaluator(
@@ -439,27 +424,7 @@ def main() -> None:
     save_dir.mkdir(parents=True, exist_ok=True)
     results_root = save_dir.parent
 
-    dataloaders = create_dataloaders(
-        total_trajectories=cfg.data.total_trajectories,
-        train_split=cfg.data.train_split,
-        val_split=cfg.data.val_split,
-        sequence_length=cfg.data.sequence_length,
-        batch_size=cfg.data.batch_size,
-        height=cfg.environment.height,
-        width=cfg.environment.width,
-        joint_count=cfg.environment.joint_count,
-        action_dim=cfg.environment.action_dim,
-        in_channels=cfg.model.in_channels,
-        standard_velocity_range=cfg.data.standard_velocity_range,
-        extrapolation_velocity_range=cfg.data.extrapolation_velocity_range,
-        event_threshold=cfg.environment.event_threshold,
-        dt=cfg.environment.dt,
-        num_workers=cfg.data.num_workers,
-        cache_data=cfg.data.cache_data,
-        dataset_dir=cfg.data.dataset_dir,
-        strict_dataset=cfg.data.strict_dataset,
-        weighted_sampling=cfg.data.weighted_sampling,
-    )
+    dataloaders = create_dataloaders_from_config(cfg)
 
     model = SPWM.from_config(cfg).to(device)
 

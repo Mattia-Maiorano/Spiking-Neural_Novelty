@@ -247,5 +247,18 @@ class Tier2EvaluatorProtocol(Protocol):
         ...
 
 
+@runtime_checkable
+class StatefulTier2EvaluatorProtocol(Tier2EvaluatorProtocol, Protocol):
+    """Contract for Tier 2 evaluators whose curriculum/scheduling state persists across resumes."""
+
+    def state_dict(self) -> Dict[str, Any]:
+        """Returns evaluator internal scheduling state for checkpoint serialization."""
+        ...
+
+    def load_state_dict(self, state: Dict[str, Any]) -> None:
+        """Restores evaluator internal scheduling state from checkpoint."""
+        ...
+
+
 # Alias for backward compatibility
 PhaseHandler = PhaseStrategy

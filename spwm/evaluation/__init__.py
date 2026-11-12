@@ -3,13 +3,18 @@ from spwm.evaluation.evaluator import (
     RolloutEvaluationResult,
     TrajectoryRollout,
 )
-from spwm.evaluation.mppi import (
+from spwm.evaluation.mppi_controller import (
     LatentMPPIController,
     MPPIPlanResult,
+    NeuralCostMPPIController,
+)
+from spwm.evaluation.mppi_scorer import (
     MPPIStructuralScorer,
+    compute_structural_score,
+)
+from spwm.models.kinematics import (
     classify_elevation,
     compute_rot_error,
-    compute_structural_score,
 )
 from spwm.evaluation.robustness import (
     MPPIPerturbationResult,
@@ -50,6 +55,7 @@ __all__ = [
     "LatentMPPIController",
     "MPPIPlanResult",
     "MPPIStructuralScorer",
+    "NeuralCostMPPIController",
     "classify_elevation",
     "compute_rot_error",
     "compute_structural_score",

@@ -3,14 +3,13 @@ from __future__ import annotations
 from typing import Dict, Optional, Tuple
 import torch
 import torch.nn as nn
-import torch.nn.functional as F
 
 from spwm.contracts.protocols import PhaseStrategy
 from spwm.contracts.states import DynamicsState
 from spwm.contracts.tensors import assert_phase_space_contract, assert_tensor_contract
 from spwm.models.kinematics import DifferentiableForwardKinematics
 from spwm.models.rollout import compute_rollout_schedule, ground_initial_state, rollout_latent, step_grounded
-from spwm.training.losses import compute_critic_mc_loss
+from spwm.training.losses import SPWMLoss
 from spwm.training.metrics import position_error, velocity_error
 from spwm.training.noise import compute_mppi_noise_alpha, sample_ar1_noise
 
@@ -19,6 +18,8 @@ class M1PhaseStrategy(PhaseStrategy):
     """Isolated strategy for Phase 1 (`train_m1`): Phasic M1 Unrolling with Active Perception Injection."""
 
     def setup(self) -> None:
+        if isinstance(self.loss_fn, nn.Identity):
+            self.loss_fn = SPWMLoss.from_config(self.cfg.loss).to(self.device)
         for p in self.model.parameters():
             p.requires_grad = False
         train_params = list(self.model.predictor.parameters()) + list(self.model.critic.parameters())
@@ -65,19 +66,9 @@ class M1PhaseStrategy(PhaseStrategy):
             active_perception_w_max=float(curriculum_w_t) if is_train else 0.60,
         )
         m1_traj, target_latents, q_dim = roll_res.trajectory, z_target[:, t_start + 1 : t_start + 1 + horizon], self.model.q_dim
-        step_weights, vel_step_weights = torch.ones_like(m1_traj[..., :1]), torch.ones_like(m1_traj[..., :1])
         flags_rollout = flags[:, t_start + 1 : t_start + 1 + horizon]
-        for b in range(B):
-            heft_idx = (flags_rollout[b] == 1).nonzero(as_tuple=False)
-            if len(heft_idx) > 0:
-                h0, h_end = int(heft_idx[0, 0].item()), int(heft_idx[-1, 0].item())
-                step_weights[b, max(0, h0 - 5) : min(horizon, h_end + 10)] = 2.0
-                vel_step_weights[b, max(0, h0) : min(horizon, h_end + 12)] = 3.0
 
-        pos_diff_sq, vel_diff_sq = (m1_traj[..., :q_dim] - target_latents[..., :q_dim]) ** 2, (m1_traj[..., q_dim:] - target_latents[..., q_dim:]) ** 2
-        loss_pos, loss_vel = (step_weights * pos_diff_sq).mean(), (vel_step_weights * vel_diff_sq).mean()
-        loss_critic = compute_critic_mc_loss(self.model.critic, self.model.physical_decoder, self.fk, m1_traj.detach(), target_latents, gamma=0.95)
-        cl_size = 0.0
+        cl_pred, cl_target, cl_size = None, None, 0.0
         if closed_loop_batch is not None:
             if "actions" in closed_loop_batch and closed_loop_batch["actions"].numel() > 0:
                 curr_z = (closed_loop_batch["z_init"] if "z_init" in closed_loop_batch else closed_loop_batch["z"]).to(events.device)
@@ -87,43 +78,34 @@ class M1PhaseStrategy(PhaseStrategy):
             elif "u" in closed_loop_batch and closed_loop_batch["u"].numel() > 0:
                 cl_pred = self.model.m1(closed_loop_batch["z"].to(events.device), closed_loop_batch["u"].to(events.device)).predicted_latent.unsqueeze(1)
                 cl_target = closed_loop_batch["z_next"].to(events.device).unsqueeze(1)
-            else:
-                cl_pred, cl_target = None, None
-
             if cl_pred is not None and cl_pred.numel() > 0:
-                cl_size, z_dim = float(cl_pred.shape[0]), self.model.latent_dim
-                cl_flat_pred, cl_flat_target = cl_pred.reshape(-1, z_dim), cl_target.reshape(-1, z_dim)
-                n_cl = cl_flat_pred.shape[0]
-                mixed_pred, mixed_target = torch.cat([m1_traj.reshape(-1, z_dim), cl_flat_pred], dim=0), torch.cat([target_latents.reshape(-1, z_dim), cl_flat_target], dim=0)
-                ones_cl = torch.ones(n_cl, 1, device=events.device, dtype=step_weights.dtype)
-                mixed_pos_w, mixed_vel_w = torch.cat([step_weights.reshape(-1, 1), ones_cl], dim=0), torch.cat([vel_step_weights.reshape(-1, 1), ones_cl], dim=0)
-                p_diff, v_diff = (mixed_pred[..., :q_dim] - mixed_target[..., :q_dim]) ** 2, (mixed_pred[..., q_dim:] - mixed_target[..., q_dim:]) ** 2
-                loss_pos, loss_vel = (mixed_pos_w * p_diff).mean(), (mixed_vel_w * v_diff).mean()
-                cl_critic_loss = compute_critic_mc_loss(self.model.critic, self.model.physical_decoder, self.fk, cl_pred.detach(), cl_target, gamma=0.95)
-                loss_critic = 0.5 * (loss_critic + cl_critic_loss)
+                cl_size = float(cl_pred.shape[0])
 
-        w_critic = float(self.cfg.loss.lambda_critic) * (5.0 if curriculum_phase >= 3 else 1.0)
-        loss_m1_latent = float(self.cfg.loss.lambda_latent) * (float(self.cfg.loss.lambda_position) * loss_pos + float(self.cfg.loss.lambda_velocity) * loss_vel)
-        loss_kin_m1, pos_err, vel_err = torch.zeros((), device=events.device, dtype=m1_traj.dtype), 0.0, 0.0
-        if flat_kin is not None and self.model.physical_decoder is not None:
-            target_kin, jc = flat_kin[:, t_start + 1 : t_start + 1 + horizon], self.cfg.environment.joint_count
-            pred_q, pred_p = self.model.physical_decoder.pos_head(m1_traj[..., :q_dim]), self.model.physical_decoder.vel_head(m1_traj[..., q_dim:])
-            loss_kin_m1 = F.mse_loss(pred_q, target_kin[..., :jc]) + 0.5 * F.mse_loss(pred_p, target_kin[..., jc : 2 * jc]) + float(self.cfg.loss.cartesian_weight) * F.mse_loss(self.fk(pred_q), self.fk(target_kin[..., :jc]), reduction="none").sum(dim=-1).mean()
+        jc = self.cfg.environment.joint_count
+        target_kin = flat_kin[:, t_start + 1 : t_start + 1 + horizon] if (flat_kin is not None and self.model.physical_decoder is not None) else None
+        losses = self.loss_fn.compute_m1_loss(
+            m1_traj=m1_traj, target_latents=target_latents, q_dim=q_dim,
+            critic=self.model.critic, physical_decoder=self.model.physical_decoder, fk=self.fk,
+            flags_rollout=flags_rollout, cl_pred=cl_pred, cl_target=cl_target,
+            target_kin=target_kin, joint_count=jc, curriculum_phase=curriculum_phase, gamma=0.95,
+        )
+        pos_err, vel_err = 0.0, 0.0
+        if target_kin is not None:
             with torch.no_grad():
                 decoded_kin = self.model.physical_decoder(m1_traj, initial_filter_state=self.model.physical_decoder.warm_up_filter(z_prefix))
                 pos_err, vel_err = position_error(decoded_kin, target_kin, joint_count=jc), velocity_error(decoded_kin, target_kin, joint_count=jc)
 
-        loss_m1_total = loss_m1_latent + 1.0 * loss_kin_m1
-        total_loss = loss_m1_total + w_critic * loss_critic
         metrics = {
-            "loss": float(loss_m1_total.item()), "loss_total": float(total_loss.item()), "loss_m1": float(loss_m1_total.item()),
-            "loss_m1_latent": float(loss_m1_latent.item()), "loss_latent": float(loss_m1_latent.item()), "loss_kin_m1": float(loss_kin_m1.item()),
-            "loss_critic": float(loss_critic.item()), "loss_position": float(loss_pos.item()), "loss_velocity": float(loss_vel.item()),
-            "pos_err": pos_err, "vel_err": vel_err, "mppi_noise_alpha": float(noise_alpha), "active_perception_w_t": float(curriculum_w_t),
+            "loss": float(losses["loss_m1"].item()), "loss_total": float(losses["total_loss"].item()),
+            "loss_m1": float(losses["loss_m1"].item()), "loss_m1_latent": float(losses["loss_m1_latent"].item()),
+            "loss_latent": float(losses["loss_m1_latent"].item()), "loss_kin_m1": float(losses["loss_kin_m1"].item()),
+            "loss_critic": float(losses["loss_critic"].item()), "loss_position": float(losses["loss_position"].item()),
+            "loss_velocity": float(losses["loss_velocity"].item()), "pos_err": pos_err, "vel_err": vel_err,
+            "mppi_noise_alpha": float(noise_alpha), "active_perception_w_t": float(curriculum_w_t),
         }
         if closed_loop_batch is not None:
             metrics["dagger_batch_size"] = cl_size
-        return total_loss, metrics
+        return losses["total_loss"], metrics
 
     def _extract_batch(self, batch: Dict[str, torch.Tensor]) -> Tuple[torch.Tensor, torch.Tensor, Optional[torch.Tensor], Optional[torch.Tensor]]:
         events = batch["events"].to(self.device)

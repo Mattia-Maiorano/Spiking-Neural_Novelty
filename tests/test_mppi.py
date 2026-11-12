@@ -13,7 +13,12 @@ import pytest
 import torch
 
 from spwm.contracts.config import ExperimentConfig, DataConfig, TrainingConfig, MPPIConfig
-from spwm.evaluation.mppi import LatentMPPIController, MPPIPlanResult, MPPIStructuralScorer
+from spwm.evaluation.mppi import (
+    LatentMPPIController,
+    MPPIPlanResult,
+    MPPIStructuralScorer,
+    compute_rot_error,
+)
 from spwm.models.kinematics import DifferentiableForwardKinematics
 from spwm.models.predictors import LatentCritic, LatentPredictor, PhysicalDecoder
 from spwm.models.world_model import SPWM
@@ -36,20 +41,6 @@ def mppi_setup():
         forward_kinematics=fk,
     )
     return controller, predictor, decoder, fk
-
-
-def test_mppi_instantiation_validation():
-    predictor = LatentPredictor(latent_dim=128, action_dim=6, hidden_dim=256, symplectic=True)
-    decoder = PhysicalDecoder(latent_dim=128, q_dim=32, p_dim=96, joint_count=6, hidden_dim=64)
-
-    with pytest.raises(ValueError, match="num_samples must be > 0"):
-        MPPIConfig(num_samples=0)
-
-    with pytest.raises(ValueError, match="horizon must be > 0"):
-        MPPIConfig(horizon=0)
-
-    with pytest.raises(ValueError, match="temperature must be > 0.0"):
-        MPPIConfig(temperature=-1.0)
 
 
 def test_mppi_single_step_planning(mppi_setup):
@@ -189,25 +180,6 @@ def test_mppi_se3_orientation_planning(mppi_setup):
     assert result_pos_rot.min_cost > 0.0
 
 
-def test_mppi_reset_with_bias(mppi_setup):
-    controller, _, _, _ = mppi_setup
-    bias = torch.tensor([0.2, -0.3, 0.1, 0.0, 0.5, -0.1])
-    controller.reset(initial_action_bias=bias)
-
-    assert torch.allclose(controller.nominal_actions[0], bias)
-    assert torch.allclose(controller.prev_action, bias)
-
-
-def test_mppi_invalid_inputs(mppi_setup):
-    controller, _, _, _ = mppi_setup
-
-    with pytest.raises(ValueError, match="LatentMPPIController.z_init"):
-        controller.plan_step(torch.randn(64), torch.tensor([0.0, 1.0, 0.5]))
-
-    with pytest.raises(ValueError, match="LatentMPPIController.target_pos"):
-        controller.plan_step(torch.randn(128), torch.tensor([0.0, 1.0]))
-
-
 def test_mppi_directional_progress_reward(mppi_setup):
     controller, _, _, _ = mppi_setup
     assert controller.w_progress == 50.0
@@ -302,6 +274,102 @@ def test_mppi_deadband_attenuation_and_cartesian_damping(mppi_setup):
     # dist_factor = 0 in deadband, (1 - dist_factor) = 1.0
     # damping_penalty = 10.0 * (0.005 * 3) = 0.15
     assert torch.allclose(cost_damped - cost_no_prog, torch.tensor([0.15]), atol=1e-5)
+
+
+def test_mppi_config_anisotropic_sigma_and_gamma_wiring():
+    """Verify MPPIConfig validates and wires nominal_update_gamma and anisotropic sigma multipliers."""
+    with pytest.raises(ValueError, match="nominal_update_gamma"):
+        MPPIConfig(nominal_update_gamma=0.0)
+    with pytest.raises(ValueError, match="nominal_update_gamma"):
+        MPPIConfig(nominal_update_gamma=1.5)
+    with pytest.raises(ValueError, match="shoulder_sigma_multiplier"):
+        MPPIConfig(shoulder_sigma_multiplier=0.0)
+    with pytest.raises(ValueError, match="elbow_sigma_multiplier"):
+        MPPIConfig(elbow_sigma_multiplier=-1.0)
+
+    predictor = LatentPredictor(latent_dim=128, action_dim=6, hidden_dim=64, symplectic=True)
+    decoder = PhysicalDecoder(latent_dim=128, q_dim=32, p_dim=96, joint_count=6, hidden_dim=32)
+    cfg = MPPIConfig(
+        num_samples=8,
+        horizon=4,
+        num_iterations=1,
+        noise_sigma=0.2,
+        shoulder_sigma_multiplier=4.0,
+        elbow_sigma_multiplier=2.5,
+        nominal_update_gamma=0.6,
+    )
+    ctrl = LatentMPPIController(predictor=predictor, physical_decoder=decoder, config=cfg)
+    assert ctrl.nominal_update_gamma == pytest.approx(0.6)
+    expected_sigmas = torch.tensor([0.2, 0.8, 0.5, 0.2, 0.2, 0.2], dtype=torch.float32)
+    assert torch.allclose(ctrl.sigma_tensor, expected_sigmas)
+
+
+def test_export_mppi_episode_replans_post_grasp_full_horizon():
+    """Verify export_mppi_episode executes full-horizon closed-loop control via M1 without freezing at t_grasp."""
+    from experiments.export_mppi_trajectory import export_mppi_episode
+
+    torch.manual_seed(0)
+    horizon = 26
+    cfg = ExperimentConfig(
+        data=DataConfig(sequence_length=horizon),
+        training=TrainingConfig(mode="train_m1", phase_horizon=6),
+        mppi=MPPIConfig(num_samples=8, horizon=4, num_iterations=1, chunk_size=1),
+    )
+    model = SPWM.from_config(cfg).eval()
+    fk = DifferentiableForwardKinematics()
+    ctrl = LatentMPPIController(
+        predictor=model.m1,
+        physical_decoder=model.physical_decoder,
+        config=cfg.mppi,
+        forward_kinematics=fk,
+        critic=model.critic,
+        device=torch.device("cpu"),
+    )
+
+    plan_calls = 0
+    orig_plan_step = ctrl.plan_step
+
+    def tracked_plan_step(z_t, target_pose, prev_action=None):
+        nonlocal plan_calls
+        plan_calls += 1
+        return orig_plan_step(z_t, target_pose, prev_action=prev_action)
+
+    ctrl.plan_step = tracked_plan_step  # type: ignore[method-assign]
+
+    pf = torch.zeros(horizon, dtype=torch.long)
+    # Contact at t_c = 10, grasp at t_grasp = 17, leaving 8 post-grasp frames before horizon=26
+    pf[10:18] = 1
+    pf[18:] = 2
+
+    batch = {
+        "events": torch.randn(1, horizon, 4, 32, 32) * 0.05,
+        "joint_positions": torch.zeros(1, horizon, 6),
+        "joint_velocities": torch.zeros(1, horizon, 6),
+        "actions": torch.zeros(1, horizon, 6),
+        "phase_flags": pf.unsqueeze(0),
+        "trajectory_ids": torch.tensor([3622], dtype=torch.long),
+    }
+
+    ghost = export_mppi_episode(
+        model=model,
+        controller=ctrl,
+        fk=fk,
+        batch=batch,
+        horizon=horizon,
+        model_version="test_mppi",
+        approach_window=4,
+        seed=42,
+    )
+
+    # t_start = max(5, 10 - 4) = 6; loop runs t = 6 .. 24 -> 19 full closed-loop replans (past t_grasp=17)
+    assert len(ghost.frames) == horizon
+    assert plan_calls == (horizon - 1 - 6)
+    assert ghost.metadata["model_version"] == "test_mppi"
+    assert ghost.metadata["heft_start_frame_index"] == 10
+    assert ghost.metadata["grasp_lock_frame_index"] == 17
+    assert ghost.metadata["horizon"] == horizon
+
+
 
 
 

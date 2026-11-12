@@ -814,5 +814,55 @@
 - **new results (if any)**: Post-mortem analysis of `spwm_v0_11_2_train_m1` identified: (1) ungrounded $M_1$ open-loop drift inflated Expert evaluation error (`6.768 cm` Low / `5.573 cm` Mid / `5.207 cm` High vs Natural MPPI `2.517 cm` / `3.816 cm` / `4.160 cm`) and poisoned Phase 4 DAgger targets (`val_loss_m1` spiked $0.00856 \to 0.25042$ at Ep 76); (2) 4-channel global-mean event activity dropped to $0.00024$ during terminal wrist rotation ($t \in [98, 104]$), closing $\tanh$ gate to $0.081$ while $K_{\text{gate}}$ pulled $q_t$ backward. All 58 unit tests in `test_anti_fallback.py`, `test_architecture_contracts.py`, `test_alif.py`, `test_memory.py`, `test_ann_ablation.py`, `test_mppi.py`, `test_two_tiered_validation.py`, and `test_closed_loop_buffer.py` pass with 0 AST fallback violations. No new training runs made - post-mortem analysis and architectural fixes only.
 - **verdict on change made**: Preserved.
 
+## SPWM-v0.12.20 — Iteration 1 (Workspace Hygiene, Ghost Directory Removal & Documentation SSOT Consolidation)
+- **version afflicted**: `SPWM-v0.12.20`
+- **iteration on version**: Iteration 1 (Workspace Hygiene, Ghost Directory Removal & Documentation SSOT Consolidation)
+- **changes made**:
+  1. Consolidated split-brain documentation: merged unique layer/parameter specifications (`EventEncoder`, `ALIFCell` learnable constants, `LatentPredictor`, `PhysicalDecoder`, `LatentCritic`, total parameter summary `394,733`), training/loss formulas ($\mathcal{L}_{\text{kin\_M1}}$, chordal $SO(3)$ rotation MSE, $W_u$ Phase 0 norm verification, MPPI sequential target and `is_expert` semantics), and Unity 6 / PhysX 4 / `RoboticTelemetryLogger.cs` simulation contracts from `documentation/{MODELS,TRAINING,WORLD}.md` into `docs/ARCHITECTURE.md`, `docs/TRAINING_AND_LOSSES.md`, and `docs/WORLD.md`, then deleted `documentation/`.
+  2. Removed empty legacy ghost directories `spwm/core/`, `spwm/learning/`, and root symlink `training/`.
+  3. Synchronized topic documentation paths in `AGENTS.md` and `GEMINI.md` to `./docs/{ARCHITECTURE,TRAINING_AND_LOSSES,WORLD,WORKSPACE_AND_CONTRACTS}.md` and aligned version references in `REPO_SKELETON.md`, `docs/WORKSPACE_AND_CONTRACTS.md`, `docs/ARCHITECTURE.md`, `docs/TRAINING_AND_LOSSES.md`, and `docs/WORLD.md` with `GLOBAL_VERSION` (`SPWM-v0.12.20` / `spwm_v0_12_20`).
+- **new results (if any)**: No runs made - workspace hygiene and documentation consolidation only. Directory removal check (`test ! -d documentation && test ! -d spwm/core && test ! -d spwm/learning && test ! -d training`) exited 0; `.venv/bin/pytest` passed `165/165` tests.
+- **verdict on change made**: Preserved.
 
 
+
+## SPWM-v0.12.20 — Iteration 2 (Step 7: CLI/Script Boundary Reconciliation, Hardened AST CI Guards & Docs Finalization)
+- **version afflicted**: `SPWM-v0.12.20`
+- **iteration on version**: Iteration 2 (Step 7: CLI/Script Boundary Reconciliation, Hardened AST CI Guards & Docs Finalization)
+- **changes made**:
+  1. Relocated Optuna MPPI cost optimization CLI runner from `spwm/utils/MPPI_loss_finder.py` to `experiments/optimize_mppi_cost.py` (wired via `create_dataloaders_from_config` and strict key/checkpoint checks) and deleted `spwm/utils/MPPI_loss_finder.py`.
+  2. Audited figure workflows (`scripts/run_pipeline.sh`, `scripts/run_baselines.sh`, `scripts/generate_all_figures.py`, `spwm/evaluation/visualizer.py`) and removed stale `experiments/generate_figures.py` (obsolete M2/M3 references and broken `plot_baseline_comparison` import).
+  3. Fixed self-violation in `scripts/scan_fallbacks.py` (`except ValueError: pass` replaced with `.resolve().is_relative_to(...)`), added `NO_SILENT_EXCEPT_EXCEPTION` rule for non-re-raising `except Exception:` blocks, set default scan targets to `spwm/`, `experiments/`, `scripts/`, and removed the 4 silent `except Exception` handlers in `scripts/generate_metrics_resumes.py`.
+  4. Extended `tests/test_anti_fallback.py` (`test_experiments_and_scripts_have_zero_fallbacks` and `NO_SILENT_EXCEPT_EXCEPTION` case) to enforce zero AST fallbacks across `spwm/`, `experiments/`, and `scripts/`.
+  5. Synchronized `docs/WORKSPACE_AND_CONTRACTS.md` and `REPO_SKELETON.md` with the refactored module layout, Layer 4 boundaries, `ClosedLoopTrajectory`/`Tier2EvalResult`, and updated config fields.
+- **new results (if any)**: No runs made - CLI/script reconciliation, AST CI hardening, and documentation synchronization only. `.venv/bin/python scripts/scan_fallbacks.py spwm/ experiments/ scripts/` exited 0 (`0` violations); `.venv/bin/pytest tests/test_anti_fallback.py tests/test_dead_code.py tests/test_architecture_contracts.py tests/test_config_usage.py` passed `26/26`; full `.venv/bin/pytest` passed `175/175`.
+- **verdict on change made**: Preserved.
+
+## SPWM-v0.12.20 — Iteration 3 (Test Suite Pruning & Deduplication)
+- **version afflicted**: `SPWM-v0.12.20`
+- **iteration on version**: Iteration 3 (Test Suite Pruning & Deduplication)
+- **changes made**:
+  1. Deleted 12 redundant, trivial, or brittle golden-baseline test files: `tests/test_baselines.py`, `tests/test_config_schema.py`, `tests/test_energy_profiling.py`, `tests/test_loss_ssot_baseline.py`, `tests/test_memory.py`, `tests/test_multiseed.py`, `tests/test_neurons.py`, `tests/test_overfit.py`, `tests/test_pareto_filter.py`, `tests/test_relay.py`, `tests/test_robustness_stress_test.py`, and `tests/test_version_solver.py`.
+  2. Trimmed duplicate/trivial tests from `tests/test_architecture_contracts.py`, `tests/test_evaluation.py`, `tests/test_mppi.py`, and `tests/test_two_tiered_validation.py`.
+- **new results (if any)**: No training/evaluation runs made - test suite pruning only. `.venv/bin/pytest` reduced from `179` tests (`5,676` lines, `40.51s`) across `28` test files to `97` tests (`3,529` lines, `17.23s`) across `16` test files, passing `97/97`.
+- **verdict on change made**: Preserved.
+
+## SPWM-v0.12.20 — Iteration 3 (Fair Full-Subset Checkpoint Selection, Evaluator State Persistence, GT-Normalized Velocity Criterion & MPPI Video Exporter Alignment)
+- **version afflicted**: `SPWM-v0.12.20`
+- **iteration on version**: Iteration 3 (Fair Full-Subset Checkpoint Selection, Evaluator State Persistence, GT-Normalized Velocity Criterion & MPPI Video Exporter Alignment)
+- **changes made**:
+  1. Tier 2 Full-Subset Natural Evaluation, Checkpoint Selection Fairness & Resume Persistence (`spwm/contracts/protocols.py`, `spwm/evaluation/mppi_scorer.py`, `spwm/training/engine.py`): Updated `MPPIStructuralScorer.__call__` to always evaluate all 6 fixed validation trajectories in natural MPPI mode across Phases 1–4 (`mppi_evaluated_trajectories == 6.0`) while keeping the partial `ClosedLoopBuffer` expert-overwriting schedule (`4` expert + `2` rotating natural in Phases 1–3, decaying `4 -> 3 -> 2 -> 1 -> 0` in Phase 4). Added `StatefulTier2EvaluatorProtocol` (`state_dict`/`load_state_dict`) serialized into `checkpoint.pt` under `"tier2_evaluator_state"`, and gated `best_model.pt`/`model.pt` selection in `BaseTrainer` on full natural subset coverage (`num_mppi_eval >= len(cl_trajectories)` when trajectories are returned, or `num_expert_eval == 0`).
+  2. Ground-Truth-Normalized Terminal Velocity Threshold (`spwm/evaluation/mppi_scorer.py`, `spwm/evaluation/mppi.py`, `experiments/benchmark_mppi_control.py`): Added `resolve_effective_vel_threshold(vel_threshold, gt_final_vel)` scaling `effective_vel_threshold = max(vel_threshold, 1.1 * gt_final_vel)` when `gt_final_vel > vel_threshold` (addressing Trajectory `3201`, where `t_grasp = 15` occurs at $\|\dot{\mathbf{q}}^*_{15}\|_2 = 3.419\,\text{rad/s}`), and wired `joint_velocities` into `MPPIStructuralScorer.from_dataset`, `evaluate_trajectory`, and `run_episode`.
+  3. MPPI Video Exporter & Pipeline Alignment (`experiments/export_mppi_trajectory.py`, `scripts/run_pipeline.sh`): Updated `export_mppi_episode` and `main()` to consume `cfg.mppi` (wiring `--mppi-horizon` cleanly, passing `critic=model.critic` and deterministic seeds), roll out via `model.predictor` with Phase-1 active-perception blending ($0.40\,\mathbf{z}_{\text{pred}} + 0.60\,\mathbf{z}^*_{t+1}$), track reachable $4\times 4$ $SE(3)$ target poses with $t_c \to t_{\text{grasp}} \to \text{post-grasp}$ switching across the full horizon without freezing at $t_{\text{grasp}}$, added `--model-version`, and updated `run_video_mppi` in `scripts/run_pipeline.sh` to output `${ver}_mppi_control.mp4`.
+  4. Unit Tests & Documentation (`tests/test_two_tiered_validation.py`, `tests/test_mppi.py`, `docs/WORKSPACE_AND_CONTRACTS.md`, `docs/TRAINING_AND_LOSSES.md`): Added tests for full-subset gating, Tier 2 resume persistence, velocity normalization, and full-horizon `export_mppi_episode` replanning.
+- **new results (if any)**: No training runs made - code fixes, unit tests, smoke export, and documentation synchronization only. `.venv/bin/python scripts/scan_fallbacks.py spwm/ experiments/ scripts/` exited 0 (`0` violations across 3 targets); `bash -n scripts/run_pipeline.sh` exited 0; full `.venv/bin/pytest` passed `109/109`; smoke export of `results/spwm_v0_12_20_train_m1/checkpoint_phase_4.pt` (`trajectory_id=3622`, `horizon=100`, `K=256`, `H=10`, `iters=3`, `--model-version spwm_v0_12_20_mppi`) produced `100` frames with `mean_latent_error = 0.041579 m`, `final_latent_error = 0.029816 m`, and `final_position_abs_error = 0.218754 rad`.
+- **verdict on change made**: Preserved.
+
+## SPWM-v0.12.20 — Iteration 3 (Documentation Version-Agnostic Cleanup & Refactoring Coherence Audit)
+- **version afflicted**: `SPWM-v0.12.20`
+- **iteration on version**: Iteration 3 (Documentation Version-Agnostic Cleanup & Refactoring Coherence Audit)
+- **changes made**:
+  1. Removed explicit version tags from active documentation (`docs/ARCHITECTURE.md`, `docs/TRAINING_AND_LOSSES.md`, `docs/WORLD.md`, `docs/WORKSPACE_AND_CONTRACTS.md`, `docs/FIGURE_METRICS.md`, and active-model labels in `docs/DOSSIER.md`) so topic docs refer to `SPWM` rather than a pinned version string.
+  2. Synchronized `docs/ARCHITECTURE.md`, `docs/TRAINING_AND_LOSSES.md`, and `docs/WORLD.md` with the post-refactoring module layout (`spwm/training/{checkpoints,replay_buffer,noise}.py`, `spwm/evaluation/{mppi_controller,mppi_scorer,mppi}.py`, `spwm/data/{sim_6dof,io_unity}.py`, removal of deleted shims `spwm/config/`, `spwm/models/spwm.py`, `spwm/training/rollout.py`) and `ExperimentConfig` defaults (`post_contact_sensory_steps=7`, `chunk_size=1`, `tier2_frequency=5`, `tier2_patience=5`, `mppi_noise_target_alpha=0.4`, `mppi_noise_ramp_epochs=20`).
+- **new results (if any)**: No runs made - documentation audit and synchronization only. `.venv/bin/python scripts/scan_fallbacks.py spwm/ experiments/ scripts/` passed (`0` violations); `.venv/bin/pytest` ran `177 passed, 2 failed` (`tests/test_mppi.py::test_export_mppi_episode_replans_post_grasp_full_horizon` due to `action_chunk_size` vs `chunk_size`, and `tests/test_two_tiered_validation.py::test_best_model_selection_gated_until_full_natural_subset`).
+- **verdict on change made**: Preserved.

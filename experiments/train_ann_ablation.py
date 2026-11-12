@@ -28,7 +28,7 @@ from torch.utils.data import DataLoader
 
 from spwm.contracts.config import ExperimentConfig
 from spwm.contracts.version import GLOBAL_VERSION
-from spwm.data.datasets import create_dataloaders
+from spwm.data.datasets import create_dataloaders_from_config
 from spwm.models.ann_ablation import ANNWorldModel
 from spwm.models.rollout import compute_rollout_schedule
 from spwm.models.world_model import SPWM
@@ -384,18 +384,11 @@ def main() -> None:
     seq_len = cfg.data.sequence_length
 
     chronicle.log_info(f"Creating DataLoaders: total={args.total_trajectories}, seq_len={seq_len}, batch={args.batch_size}")
-    dataloaders = create_dataloaders(
+    dataloaders = create_dataloaders_from_config(
+        cfg,
         total_trajectories=args.total_trajectories,
-        train_split=0.8,
-        val_split=0.1,
         sequence_length=seq_len,
         batch_size=args.batch_size,
-        height=32,
-        width=32,
-        joint_count=6,
-        action_dim=6,
-        in_channels=4,
-        dataset_dir="sim/ExportedTrajectories",
         cache_data=True,
         strict_dataset=True,
     )

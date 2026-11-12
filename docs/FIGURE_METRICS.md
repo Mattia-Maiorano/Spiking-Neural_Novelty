@@ -2,7 +2,7 @@
 
 **Publication Title**: Resolving Velocity Drift in 3D Manipulation: Phase-Space Spiking World Models with Active Perception and Latent MPC  
 **Target Venue**: 10th Conference on Robot Learning (CoRL 2026)  
-**Production Baseline**: `SPWM-v0.7.3`  
+**Model**: `SPWM`  
 **Generated**: 2026-11-06 11:37:25 UTC  
 **Pipeline Extraction Time**: 31.93 seconds  
 **AST Anti-Fallback Status**: STRICT COMPLIANCE (0 violations)  
@@ -125,7 +125,7 @@ Total Model Parameter Budget: **328,652 parameters**.
 | **`LatentPredictor (M1)`** | Conv2D / ALIF / MLP Heads | `158,944` | `48.36%` |
 | **`PhysicalDecoder`** | Conv2D / ALIF / MLP Heads | `9,356` | `2.85%` |
 | **`SensoryPredictor`** | Conv2D / ALIF / MLP Heads | `16,384` | `4.99%` |
-| **Total Architecture** | Complete SPWM-v0.7.3 Pipeline | **`328,652`** | **`100.00%`** |
+| **Total Architecture** | Complete SPWM Pipeline | **`328,652`** | **`100.00%`** |
 
 ## 3. Figure 3: Active Perception & Contact Impulse Telemetry
 
@@ -189,7 +189,7 @@ Figure 4 (`figures/fig4_stability.pdf`) provides:
 
 | Model Architecture | Memory Paradigm | Params | Vel MSE (H=1) | Vel MSE (H=10) | Vel MSE (H=50) | Vel MSE (H=100) | Pos MSE (H=100) |
 | :--- | :--- | :---: | :---: | :---: | :---: | :---: | :---: |
-| **`SPWM-v0.7.3 (Ours)`** | ALIF Spiking (Symplectic) | 328.7k | **`0.00027`** | **`0.01118`** | **`0.01262`** | **`0.01153`** | **`0.01728`** |
+| **`SPWM (Ours)`** | ALIF Spiking (Symplectic) | 328.7k | **`0.00027`** | **`0.01118`** | **`0.01262`** | **`0.01153`** | **`0.01728`** |
 | `Continuous RSSM` | Continuous GRU + Gaussian | 380.5k | `0.00388` | `0.03410` | `0.05901` | `0.04894` | `0.01305` |
 | `Deep GRU` | 2-Layer Continuous GRU | 338.9k | `0.02032` | `0.22951` | `0.20108` | `0.16139` | `0.77883` |
 | `Continuous ConvLSTM` | Spatial-Temporal ConvLSTM | 296.9k | `0.03959` | `0.06667` | `0.18170` | `0.13567` | `0.30935` |
@@ -209,7 +209,7 @@ Figure 4 (`figures/fig4_stability.pdf`) provides:
 | Evaluated Target | 3D Cartesian Position $(x, y, z)$ (m) | Cartesian Error to Ground Truth | Qualitative Drift Outcome |
 | :--- | :---: | :---: | :--- |
 | **Ground-Truth Tip** | `(-0.1387, 1.1383, 0.4991)` | `0.00 cm` (Reference) | True physical end-effector pose |
-| **SPWM-v0.7.3 (Ours)** | `(-0.1369, 1.1743, 0.5284)` | **`4.65 cm`** | **Strictly bounded inside grasp bounding box** |
+| **SPWM (Ours)** | `(-0.1369, 1.1743, 0.5284)` | **`4.65 cm`** | **Strictly bounded inside grasp bounding box** |
 | **ANN-Rate (Continuous)** | `(-0.2015, 1.0680, 0.4516)` | **`10.55 cm`** | Compounding velocity drift causes grasp miss |
 | **SPWM Precision Advantage** | — | **`5.90 cm` closer** | **`55.9%` reduction in Cartesian drift** |
 
@@ -223,7 +223,7 @@ Figure 5 (`figures/fig5_hardware_domain.pdf`) delivers:
 
 | Model Architecture | Paradigm | Params | E_neuro (nJ/step) | E_GPU (nJ/step) | Energy Ratio vs GPU | Power @ 20Hz (mW) | H=100 Energy (μJ) |
 | :--- | :--- | :---: | :---: | :---: | :---: | :---: | :---: |
-| **`SPWM-v0.7.3 (Prod)`** | Neuromorphic SNN | 328k-380k | `12.81` | `1035.18` | **`80.8x`** | **`0.256`** | `1.28 μJ` |
+| **`SPWM (Prod)`** | Neuromorphic SNN | 328k-380k | `12.81` | `1035.18` | **`80.8x`** | **`0.256`** | `1.28 μJ` |
 | `SNN-ALIF (Matched)` | Neuromorphic SNN | 328k-380k | `21.80` | `1035.18` | **`47.5x`** | `0.436` | `2.18 μJ` |
 | `ANN-Rate (Ablation)` | Edge GPU ANN | 328k-380k | — | `1035.18` | `1.0x (Ref)` | `20.704` | `103.52 μJ` |
 | `Continuous RSSM` | Edge GPU ANN | 328k-380k | — | `2460.98` | `1.0x (Ref)` | `49.220` | `246.10 μJ` |

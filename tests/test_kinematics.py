@@ -14,6 +14,8 @@ from spwm.models.kinematics import (
     CANONICAL_JOINT_AXES,
     DifferentiableForwardKinematics,
     END_EFFECTOR_TIP_OFFSET,
+    classify_elevation,
+    compute_rot_error,
 )
 
 
@@ -96,4 +98,25 @@ def test_fk_invalid_joint_count():
     fk = DifferentiableForwardKinematics()
     with pytest.raises(ValueError, match="expected joint_count"):
         fk(torch.randn(2, 5))
+
+
+def test_canonical_rot_error_and_classify_elevation():
+    """Verify canonical geodesic SO(3) rotation error and elevation binning."""
+    fk = DifferentiableForwardKinematics()
+    q_target = torch.tensor([0.1, -0.2, 0.3, 0.0, 0.1, -0.1])
+    target_mat = fk.forward_homogeneous(q_target.unsqueeze(0))[0]
+
+    # Supports both 1D [6] and 2D [1, 6] inputs with zero error on exact match
+    assert compute_rot_error(fk, q_target, target_mat) < 1e-5
+    assert compute_rot_error(fk, q_target.unsqueeze(0), target_mat) < 1e-5
+
+    # Geodesic angle is bounded in [0, pi] and positive for misaligned poses
+    q_other = torch.tensor([-0.4, 0.3, -0.2, 0.5, -0.3, 0.4])
+    err = compute_rot_error(fk, q_other, target_mat)
+    assert 0.1 < err <= 3.1415927
+
+    assert classify_elevation(1.079) == "Low"
+    assert classify_elevation(1.08) == "Mid"
+    assert classify_elevation(1.179) == "Mid"
+    assert classify_elevation(1.18) == "High"
 

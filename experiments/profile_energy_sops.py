@@ -37,7 +37,7 @@ from torch.utils.data import DataLoader
 
 from spwm.contracts.config import ExperimentConfig
 from spwm.contracts.version import GLOBAL_VERSION
-from spwm.data.datasets import create_dataloaders
+from spwm.data.datasets import create_dataloaders_from_config
 from spwm.models.ann_ablation import ANNWorldModel
 from spwm.models.baselines import ContinuousConvLSTM, ContinuousRSSM, DeepGRUPredictor
 from spwm.models.world_model import SPWM
@@ -242,20 +242,12 @@ def run_energy_profiling(
     device = torch.device(device_name if torch.backends.mps.is_available() or torch.cuda.is_available() else "cpu")
     chronicle.log_info(f"Running Neuromorphic Energy Profiling on device: {device}")
 
-    # Create test loader
-    dataloaders = create_dataloaders(
+    # Load canonical SPWM config (SSOT) and create test loader
+    spwm_cfg = ExperimentConfig.load(GLOBAL_VERSION.m1_config())
+    dataloaders = create_dataloaders_from_config(
+        spwm_cfg,
         total_trajectories=total_trajectories,
-        train_split=0.8,
-        val_split=0.1,
-        sequence_length=105,
         batch_size=batch_size,
-        height=32,
-        width=32,
-        joint_count=6,
-        action_dim=6,
-        in_channels=4,
-        dataset_dir="sim/ExportedTrajectories",
-        strict_dataset=True,
     )
     test_loader = dataloaders["test"]
 
@@ -270,7 +262,6 @@ def run_energy_profiling(
 
     # 1. SPWM Production
     chronicle.log_info(f"Profiling Model 1/6: {GLOBAL_VERSION.formatted} (Prod SNN-ALIF)...")
-    spwm_cfg = ExperimentConfig.load(GLOBAL_VERSION.m1_config())
     spwm_prod = SPWM.from_config(spwm_cfg).to(device)
     prod_ckpt = torch.load(GLOBAL_VERSION.m1_checkpoint(), map_location=device, weights_only=False)
     prod_state = prod_ckpt["model_state"] if "model_state" in prod_ckpt else prod_ckpt

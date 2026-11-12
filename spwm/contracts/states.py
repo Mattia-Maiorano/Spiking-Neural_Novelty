@@ -195,3 +195,200 @@ class RolloutResult:
         if self.decoded_kinematics is None:
             return None
         return self.decoded_kinematics[..., self.joint_count : 2 * self.joint_count]
+
+
+@dataclass(frozen=True)
+class ClosedLoopTrajectory:
+    """Typed closed-loop MPPI or expert trajectory container for DAgger replay."""
+
+    z_init: torch.Tensor
+    actions: torch.Tensor
+    targets: torch.Tensor
+    length: int
+    trajectory_id: int
+    is_expert: Union[bool, str] = False
+    elevation_plane: str = "Unknown"
+
+    def to_dict(self) -> Dict[str, Any]:
+        """Convert to a plain primitive + detached CPU tensor dictionary for safe serialization."""
+        return {
+            "z_init": self.z_init.detach().cpu().clone(),
+            "actions": self.actions.detach().cpu().clone(),
+            "targets": self.targets.detach().cpu().clone(),
+            "length": int(self.length),
+            "trajectory_id": int(self.trajectory_id),
+            "is_expert": bool(self.is_expert) if isinstance(self.is_expert, bool) else str(self.is_expert),
+            "elevation_plane": str(self.elevation_plane),
+        }
+
+    @classmethod
+    def from_dict(
+        cls,
+        data: Dict[str, Any],
+        *,
+        legacy_unannotated: bool = False,
+    ) -> "ClosedLoopTrajectory":
+        """Construct and validate a ClosedLoopTrajectory from a serialized or caller dictionary."""
+        actions_t = data["actions"].detach().cpu()
+        targets_t = data["targets"].detach().cpu()
+        if actions_t.ndim == 3 and actions_t.shape[1] == 1:
+            actions_t = actions_t.squeeze(1)
+        if targets_t.ndim == 3 and targets_t.shape[1] == 1:
+            targets_t = targets_t.squeeze(1)
+
+        if "is_expert" in data:
+            raw_expert = data["is_expert"]
+            is_expert: Union[bool, str] = bool(raw_expert) if isinstance(raw_expert, bool) else str(raw_expert)
+        else:
+            is_expert = "UNANNOTATED_LEGACY_ORIGIN" if legacy_unannotated else False
+
+        if "elevation_plane" in data:
+            elevation_plane = str(data["elevation_plane"])
+        else:
+            elevation_plane = "UNANNOTATED_LEGACY_ELEVATION" if legacy_unannotated else "Unknown"
+
+        return cls(
+            z_init=data["z_init"].detach().cpu().view(-1),
+            actions=actions_t,
+            targets=targets_t,
+            length=int(data["length"]),
+            trajectory_id=int(data["trajectory_id"]),
+            is_expert=is_expert,
+            elevation_plane=elevation_plane,
+        )
+
+    def __getitem__(self, key: str) -> Any:
+        if key == "z_init":
+            return self.z_init
+        if key == "actions":
+            return self.actions
+        if key == "targets":
+            return self.targets
+        if key == "length":
+            return self.length
+        if key == "trajectory_id":
+            return self.trajectory_id
+        if key == "is_expert":
+            return self.is_expert
+        if key == "elevation_plane":
+            return self.elevation_plane
+        raise KeyError(key)
+
+    def __contains__(self, key: object) -> bool:
+        return key in (
+            "z_init",
+            "actions",
+            "targets",
+            "length",
+            "trajectory_id",
+            "is_expert",
+            "elevation_plane",
+        )
+
+
+@dataclass(frozen=True)
+class Tier2EvalResult:
+    """Typed cross-layer result container for Tier 2 closed-loop MPPI validation."""
+
+    mppi_score: float
+    mppi_structural_score: float
+    mppi_cost: float
+    mppi_success_rate: float
+    mppi_mean_error_cm: float
+    mppi_grasp_error_cm: float
+    mppi_grasp_rot_err_rad: float
+    mppi_terminal_error_cm: float
+    mppi_steady_state_error_cm: float
+    mppi_min_error_cm: float
+    mppi_final_vel: float
+    mppi_final_rot: float
+    mppi_pos_penalty: float
+    mppi_vel_penalty: float
+    mppi_rot_penalty: float
+    mppi_evaluated_trajectories: float
+    mppi_expert_trajectories: float
+    mppi_expert_blocks: List[str]
+    mppi_expert_elevation_counts: Dict[str, int]
+    mppi_expert_trajectory_ids: List[int]
+    mppi_natural_blocks: List[str]
+    mppi_natural_trajectory_ids: List[int]
+    mppi_trials: List[Dict[str, Any]]
+    mppi_elevation_breakdown: Dict[str, Dict[str, Any]]
+    transitions: List[Dict[str, torch.Tensor]] = field(default_factory=list)
+    trajectories: List[ClosedLoopTrajectory] = field(default_factory=list)
+
+    def to_metrics_dict(self) -> Dict[str, Any]:
+        """Return loggable Tier 2 metrics dictionary (excluding raw replay payloads)."""
+        return {
+            "mppi_score": float(self.mppi_score),
+            "mppi_structural_score": float(self.mppi_structural_score),
+            "mppi_cost": float(self.mppi_cost),
+            "mppi_success_rate": float(self.mppi_success_rate),
+            "success_rate": float(self.mppi_success_rate),
+            "mppi_mean_error_cm": float(self.mppi_mean_error_cm),
+            "mean_cartesian_err_cm": float(self.mppi_mean_error_cm),
+            "mppi_grasp_error_cm": float(self.mppi_grasp_error_cm),
+            "grasp_error_cm": float(self.mppi_grasp_error_cm),
+            "mppi_grasp_rot_err_rad": float(self.mppi_grasp_rot_err_rad),
+            "grasp_rot_err_rad": float(self.mppi_grasp_rot_err_rad),
+            "mppi_terminal_error_cm": float(self.mppi_terminal_error_cm),
+            "mppi_steady_state_error_cm": float(self.mppi_steady_state_error_cm),
+            "mppi_min_error_cm": float(self.mppi_min_error_cm),
+            "mppi_final_vel": float(self.mppi_final_vel),
+            "mppi_final_rot": float(self.mppi_final_rot),
+            "mppi_rot_err_rad": float(self.mppi_final_rot),
+            "rotational_err_rad": float(self.mppi_final_rot),
+            "mppi_pos_penalty": float(self.mppi_pos_penalty),
+            "mppi_vel_penalty": float(self.mppi_vel_penalty),
+            "mppi_rot_penalty": float(self.mppi_rot_penalty),
+            "mppi_evaluated_trajectories": float(self.mppi_evaluated_trajectories),
+            "mppi_expert_trajectories": float(self.mppi_expert_trajectories),
+            "mppi_expert_blocks": list(self.mppi_expert_blocks),
+            "mppi_expert_elevation_counts": dict(self.mppi_expert_elevation_counts),
+            "mppi_expert_trajectory_ids": list(self.mppi_expert_trajectory_ids),
+            "mppi_natural_blocks": list(self.mppi_natural_blocks),
+            "mppi_natural_trajectory_ids": list(self.mppi_natural_trajectory_ids),
+            "mppi_trials": list(self.mppi_trials),
+            "mppi_elevation_breakdown": dict(self.mppi_elevation_breakdown),
+        }
+
+    def to_dict(self) -> Dict[str, Any]:
+        """Return full primitive/tensor dictionary representation including replay trajectories."""
+        payload = self.to_metrics_dict()
+        payload["transitions"] = list(self.transitions)
+        payload["trajectories"] = [t.to_dict() for t in self.trajectories]
+        return payload
+
+    def _as_view(self) -> Dict[str, Any]:
+        payload = self.to_metrics_dict()
+        payload["transitions"] = self.transitions
+        payload["trajectories"] = self.trajectories
+        return payload
+
+    def __getitem__(self, key: str) -> Any:
+        if key == "transitions":
+            return self.transitions
+        if key == "trajectories":
+            return self.trajectories
+        metrics = self.to_metrics_dict()
+        if key in metrics:
+            return metrics[key]
+        raise KeyError(key)
+
+    def __contains__(self, key: object) -> bool:
+        return key in self._as_view()
+
+    def keys(self):
+        return self._as_view().keys()
+
+    def items(self):
+        return self._as_view().items()
+
+    def values(self):
+        return self._as_view().values()
+
+    def __iter__(self):
+        return iter(self._as_view())
+
+    def __len__(self) -> int:
+        return len(self._as_view())

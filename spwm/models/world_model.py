@@ -6,11 +6,18 @@ Zero dead plasticity buffers, zero legacy M2 projector branches, zero upward imp
 """
 
 from __future__ import annotations
-from typing import Optional, Tuple
+from typing import Any, Optional, Tuple
 import torch
 import torch.nn as nn
 
-from spwm.contracts.config import ExperimentConfig
+from spwm.contracts.config import (
+    EnvironmentConfig,
+    ExperimentConfig,
+    LatentNeuronConfig,
+    MemoryConfig,
+    ModelConfig,
+    TrainingConfig,
+)
 from spwm.contracts.states import (
     SPWMSequenceOutput,
     SPWMState,
@@ -26,6 +33,13 @@ from spwm.models.predictors import (
 )
 
 
+_DEFAULT_ENV = EnvironmentConfig()
+_DEFAULT_MODEL = ModelConfig()
+_DEFAULT_NEURON = LatentNeuronConfig()
+_DEFAULT_MEMORY = MemoryConfig()
+_DEFAULT_TRAINING = TrainingConfig()
+
+
 class SPWM(nn.Module):
     """
     SPWM: Spiking Predictive World Model.
@@ -39,36 +53,36 @@ class SPWM(nn.Module):
 
     def __init__(
         self,
-        in_channels: int = C_EVENT,
-        height: int = 32,
-        width: int = 32,
-        encoder_conv_channels: Tuple[int, int] = (16, 32),
-        encoder_dim: int = 128,
-        latent_dim: int = 128,
+        in_channels: int = _DEFAULT_MODEL.in_channels,
+        height: int = _DEFAULT_ENV.height,
+        width: int = _DEFAULT_ENV.width,
+        encoder_conv_channels: Tuple[int, ...] = _DEFAULT_MODEL.encoder_conv_channels,
+        encoder_dim: int = _DEFAULT_MODEL.encoder_dim,
+        latent_dim: int = _DEFAULT_MODEL.latent_dim,
         q_dim: Optional[int] = None,
         p_dim: Optional[int] = None,
         num_keypoints: Optional[int] = None,
-        timescale_dims: Tuple[int, ...] = (128, 128),
-        betas: Tuple[float, ...] = (0.90, 0.985),
-        beta_mem: float = 0.80,
-        threshold: float = 1.0,
-        gamma: float = 0.18,
-        surrogate_name: str = "atan",
-        surrogate_alpha: float = 2.0,
-        predictor_hidden_dim: int = 256,
-        joint_count: int = J,
-        action_dim: int = J,
-        ema_decay: float = 0.9,
-        decoder_ema_alpha: float = 0.0,
-        decoder_pos_alpha: float = 0.0,
-        gate_ramp_steps: int = 5,
-        max_k_gate: float = 0.5,
-        max_correction_norm: float = 0.25,
-        activity_threshold: float = 0.001,
-        stasis_sigma: float = 0.003,
-        phase_horizon: int = 50,
-        symplectic_m1: bool = True,
-        dt: float = 0.05,
+        timescale_dims: Tuple[int, ...] = _DEFAULT_MEMORY.timescale_dims,
+        betas: Tuple[float, ...] = _DEFAULT_MEMORY.betas,
+        beta_mem: float = _DEFAULT_NEURON.beta_mem,
+        threshold: float = _DEFAULT_NEURON.threshold,
+        gamma: float = _DEFAULT_NEURON.gamma,
+        surrogate_name: str = _DEFAULT_NEURON.surrogate,
+        surrogate_alpha: float = _DEFAULT_NEURON.surrogate_alpha,
+        predictor_hidden_dim: int = _DEFAULT_MODEL.predictor_hidden_dim,
+        joint_count: int = _DEFAULT_ENV.joint_count,
+        action_dim: int = _DEFAULT_ENV.action_dim,
+        ema_decay: float = _DEFAULT_MODEL.ema_decay,
+        decoder_ema_alpha: float = _DEFAULT_MODEL.decoder_ema_alpha,
+        decoder_pos_alpha: float = _DEFAULT_MODEL.decoder_pos_alpha,
+        gate_ramp_steps: int = _DEFAULT_MODEL.gate_ramp_steps,
+        max_k_gate: float = _DEFAULT_MODEL.max_k_gate,
+        max_correction_norm: float = _DEFAULT_MODEL.max_correction_norm,
+        activity_threshold: float = _DEFAULT_MODEL.activity_threshold,
+        stasis_sigma: float = _DEFAULT_MODEL.stasis_sigma,
+        phase_horizon: int = _DEFAULT_TRAINING.phase_horizon,
+        symplectic_m1: bool = _DEFAULT_MODEL.symplectic,
+        dt: float = _DEFAULT_ENV.dt,
     ) -> None:
         super().__init__()
         resolved_q = q_dim if q_dim is not None else (latent_dim // 4)

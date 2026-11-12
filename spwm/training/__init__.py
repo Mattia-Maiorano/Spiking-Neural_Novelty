@@ -5,15 +5,22 @@ Contains losses, metrics, isolated phase strategies (M1, M2, M3),
 and the BaseTrainer / Trainer orchestration engine.
 """
 
-from spwm.training.engine import (
-    BaseTrainer,
-    ClosedLoopBuffer,
-    Trainer,
-    compute_dagger_ratio,
+from spwm.training.checkpoints import (
+    enforce_phase_prerequisites,
     load_representation_checkpoint,
     resolve_closed_loop_buffer,
+    resolve_version_checkpoint,
+)
+from spwm.training.engine import (
+    BaseTrainer,
+    Trainer,
+)
+from spwm.training.replay_buffer import (
+    ClosedLoopBuffer,
+    EMATracker,
 )
 from spwm.training.noise import (
+    compute_dagger_ratio,
     compute_mppi_noise_alpha,
     sample_ar1_noise,
 )
@@ -21,6 +28,10 @@ from spwm.training.losses import (
     PredictorLoss,
     SPWMLoss,
     _frozen,
+    compute_critic_mc_loss,
+    compute_m1_loss,
+    compute_representation_loss,
+    decompose_latent_loss,
 )
 from spwm.training.metrics import (
     active_neuron_fraction,
@@ -40,18 +51,25 @@ from spwm.training.phases import (
     PredictorPhaseHandler,
     build_phase_strategy,
 )
-from spwm.training.rollout import RolloutResult, TelemetryContainer, rollout_latent
+from spwm.models.rollout import RolloutResult, TelemetryContainer, rollout_latent
 
 __all__ = [
     "BaseTrainer",
     "ClosedLoopBuffer",
+    "EMATracker",
     "Trainer",
     "compute_dagger_ratio",
     "compute_mppi_noise_alpha",
     "sample_ar1_noise",
+    "enforce_phase_prerequisites",
     "load_representation_checkpoint",
     "resolve_closed_loop_buffer",
+    "resolve_version_checkpoint",
     "_frozen",
+    "compute_critic_mc_loss",
+    "compute_m1_loss",
+    "compute_representation_loss",
+    "decompose_latent_loss",
     "PredictorLoss",
     "SPWMLoss",
     "one_step_mse",

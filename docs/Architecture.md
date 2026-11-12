@@ -1,6 +1,6 @@
-# SPWM-v0.7.3 Master Architectural Specification
+# SPWM Master Architectural Specification
 
-This document serves as the authoritative technical reference for **SPWM-v0.7.3 (Dual-Camera Active Perception Grasping & Spiking Predictive World Model for 3D Articulated Manipulation)** following the structural upgrade to an **Anthropomorphic 6-DOF Right Humanoid Manipulator Arm**, **Continuous Soft-Fade Sensory Handover**, **Zero-Lag Kinematic Readout**, and a **Dual-Camera Neuromorphic Vision System (Static Global + Egocentric Wrist-Mounted Event Sensors, $C=4$)** resolving 3D kinematic unobservability (axial wrist roll symmetry and elbow flex depth foreshortening), alongside **Procedural Object Spawning with Inertial Variance**, **Phasic Active Perception (Blind Approach $\to$ Sensory Heft $\to$ Blind Transport)**, **Sensory Injection in M1**, and the **4-Layer Strict Contract Architecture**. It is divided into three comprehensive sections:
+This document serves as the authoritative technical reference for **SPWM (Dual-Camera Active Perception Grasping & Spiking Predictive World Model for 3D Articulated Manipulation)** following the structural upgrade to an **Anthropomorphic 6-DOF Right Humanoid Manipulator Arm**, **Continuous Soft-Fade Sensory Handover**, **Zero-Lag Kinematic Readout**, and a **Dual-Camera Neuromorphic Vision System (Static Global + Egocentric Wrist-Mounted Event Sensors, $C=4$)** resolving 3D kinematic unobservability (axial wrist roll symmetry and elbow flex depth foreshortening), alongside **Procedural Object Spawning with Inertial Variance**, **Phasic Active Perception (Blind Approach $\to$ Sensory Heft $\to$ Blind Transport)**, **Sensory Injection in M1**, and the **4-Layer Strict Contract Architecture**. It is divided into three comprehensive sections:
 1. **The Workspace**: 4-layer directory topology, Unity simulation bridge, dependency invariants, file-level responsibilities, and CI/AST enforcement guards.
 2. **Models' Architecture**: End-to-end forward pass, tensor dimensionality contracts, and the mathematical and computational roles of `EventEncoder`, `SpikingLatentDynamics`, action-conditioned `LatentPredictor` (M1 Attractor Predictor with Active Perception sensory injection), and articulated `PhysicalDecoder`.
 3. **Loss Computation & Training Flow**: Granular breakdown of the isolated `train_representation` and `train_m1` phase strategies, action-conditioned phase-space vector field learning, exact loss formulations, and strict checkpoint scoping rules.
@@ -11,7 +11,7 @@ This document serves as the authoritative technical reference for **SPWM-v0.7.3 
 
 ### 1.1 Architectural Philosophy & Context Boundaries for Small LLMs
 
-SPWM-v0.7.3 is organized into four strictly ordered horizontal layers so that any developer or small context-window LLM can modify a neural module, loss function, or training phase by loading **at most 3 files** into context simultaneously:
+SPWM is organized into four strictly ordered horizontal layers so that any developer or small context-window LLM can modify a neural module, loss function, or training phase by loading **at most 3 files** into context simultaneously:
 1. The **contract file** in [`spwm/contracts/`](file:///Users/Mattia/Desktop/Studies/Temp/spwm/contracts/__init__.py) (immutable types, tensor shape validators, and `Protocol` interfaces).
 2. The **target implementation module** (e.g., [`spwm/training/phases/m1_nominal.py`](file:///Users/Mattia/Desktop/Studies/Temp/spwm/training/phases/m1_nominal.py), strictly $<150$ lines).
 3. The **corresponding unit test module** in `tests/`.
@@ -33,7 +33,7 @@ flowchart TD
         M_PRD["predictors.py (LatentPredictor with actions u_t, PhysicalDecoder)"]
         M_ROL["rollout.py (rollout_latent with active sensory injection, ground_initial_state, compute_rollout_schedule)"]
         M_WM["world_model.py (SPWM)"]
-        D_DAT["spwm/data/ (EventCameraSimulator, datasets.py)"]
+        D_DAT["spwm/data/ (EventCameraSimulator, datasets.py, sim_6dof.py, io_unity.py)"]
         D_SIM["sim/ (Unity C# 6-DOF Rig, ProceduralObjectSpawner, NeuromorphicEventBridge)"]
     end
 
@@ -42,7 +42,7 @@ flowchart TD
         T_MET["metrics.py (position_error, velocity_error, spike_rate)"]
         T_REP["phases/representation.py (RepresentationPhaseStrategy < 150 lines)"]
         T_M1["phases/m1_nominal.py (Active-Perception M1PhaseStrategy < 150 lines)"]
-        T_ENG["engine.py (BaseTrainer, Trainer, load_representation_checkpoint)"]
+        T_ENG["engine.py, checkpoints.py, replay_buffer.py (BaseTrainer, ClosedLoopBuffer, EMATracker)"]
     end
 
     subgraph L3["Layer 3: Evaluation & Visualization (spwm/evaluation/)"]
@@ -94,21 +94,24 @@ spwm/
 │   ├── kinematics.py           # Differentiable forward kinematics (FK) mapping joint angles to 3D Cartesian coordinates
 │   ├── ann_ablation.py         # Matched continuous leaky rate ANN world model ablation (ANNWorldModel)
 │   ├── baselines.py            # Comparative non-spiking world models (ContinuousRSSM, DeepGRUPredictor, ContinuousConvLSTM)
-│   ├── spwm.py                 # Compatibility facade re-exporting SPWM from world_model
 │   └── world_model.py          # Composite SPWM world model with action conditioning
 │
 ├── data/                       # LAYER 1: Robotic trajectory parser & neuromorphic vision bridge
 │   ├── __init__.py             # Public exports for data loaders and simulators
 │   ├── event_camera.py         # EventCameraSimulator & RoboticTrajectory container with phase_flags
-│   └── datasets.py             # EventWorldDataset (Unity telemetry ingestion & 6-DOF grasp simulation)
+│   ├── sim_6dof.py             # 6-DOF industrial IK & articulated trajectory simulator
+│   ├── io_unity.py             # Unity trajectory JSON / JSON.GZ parser & exporter
+│   └── datasets.py             # EventWorldDataset, partitioning & PyTorch DataLoader factories
 │
 ├── training/                   # LAYER 2: Training orchestration, losses, isolated phases
 │   ├── __init__.py             # Public exports for Layer 2 training components
 │   ├── losses.py               # PredictorLoss, SPWMLoss, decompose_latent_loss, _frozen
 │   ├── metrics.py              # Joint position/velocity errors, spike sparsity, SOP energy
 │   ├── diagnostics.py          # inspect_gradients, collect_spike_statistics
-│   ├── rollout.py              # Re-export of unified rollout_latent and helper functions for Layer 2 consumers
-│   ├── engine.py               # BaseTrainer, Trainer, load_representation_checkpoint
+│   ├── noise.py                # AR(1) MPPI noise scheduling & LatchCurriculumState
+│   ├── checkpoints.py          # Scoped strict=True checkpoint loaders & prerequisite enforcement
+│   ├── replay_buffer.py        # ClosedLoopBuffer (DAgger FIFO) & EMATracker
+│   ├── engine.py               # BaseTrainer & Trainer orchestration
 │   └── phases/                 # Isolated < 150-line PhaseStrategy implementations
 │       ├── __init__.py         # build_phase_strategy factory & dispatcher
 │       ├── representation.py   # RepresentationPhaseStrategy (Phase 0: Grounded joint state estimation)
@@ -118,13 +121,11 @@ spwm/
 │   ├── __init__.py             # Public exports for evaluation benchmarks
 │   ├── evaluator.py            # RolloutEvaluator & RolloutEvaluationResult
 │   ├── metrics_resume.py       # Segmented training/evaluation JSON summary generator
-│   ├── mppi.py                 # LatentMPPIController & MPPIPlanResult for closed-loop downstream control
+│   ├── mppi_controller.py      # LatentMPPIController, NeuralCostMPPIController & MPPIPlanResult
+│   ├── mppi_scorer.py          # MPPIStructuralScorer & canonical Tier 2 structural scoring
+│   ├── mppi.py                 # Thin barrel re-exporting mppi_controller and mppi_scorer symbols
 │   ├── robustness.py           # Sim-to-real sensor noise & mechanical dynamics perturbation suites
 │   └── visualizer.py           # GhostVisualizerExporter & Matplotlib publication figure generators
-│
-├── config/                     # Thin compatibility facade re-exporting spwm.contracts.config
-├── core/                       # Thin compatibility facade re-exporting spwm.models
-└── learning/                   # Thin compatibility facade re-exporting spwm.training
 ```
 
 ### 1.3 Strict Dependency & Anti-Fallback Invariants (Enforced by CI)
@@ -136,9 +137,9 @@ spwm/
    - `spwm/training/` never imports from `spwm.evaluation`.
 2. **Action Tensor Rigor**: When action conditioning is active, $\mathbf{u}_t$ tensors are validated for rank $\ge 2$, trailing dimension matching `action_dim` ($D_u=6$), and finiteness without NaNs or Infs.
 3. **Repository-Wide Ban on Silent Fallbacks**:
-   - 3-argument `getattr(obj, attr, default)` calls are banned across all of `spwm/`.
-   - Ternary `hasattr(...)` fallback expressions (`x if hasattr(...) else y`) are banned across `spwm/`.
-   - Silent exception handlers (`except TypeError:`, `except AttributeError:`, `except ...: pass`) are banned across `spwm/`.
+   - 3-argument `getattr(obj, attr, default)` calls are banned across `spwm/`, `experiments/`, and `scripts/`.
+   - Ternary `hasattr(...)` fallback expressions (`x if hasattr(...) else y`) are banned across `spwm/`, `experiments/`, and `scripts/`.
+   - Silent exception handlers (`except TypeError:`, `except AttributeError:`, `except ...: pass`) are banned across `spwm/`, `experiments/`, and `scripts/`.
 4. **Ban on `strict=False` Checkpoint Loading**: All checkpoints load with `strict=True`.
 5. **Zero Dead Code**: Pruned architectures (such as `CascadedTemporalRelay`, `ConvergenceFunnelLoss`, $M_2$, $M_3$) are statically verified as absent by AST scanning.
 
@@ -191,7 +192,35 @@ All tensor shapes are verified at runtime via [`assert_tensor_contract`](file://
 
 ### 2.3 Component Deep Dive
 
-#### A. Action-Conditioned `LatentPredictor` (M1 Attractor Predictor) ([`spwm/models/predictors.py`](file:///Users/Mattia/Desktop/Studies/Temp/spwm/models/predictors.py))
+#### A. Dual-Camera Visual Fusion Event Encoder & Predictive Sensory Decoder ([`spwm/models/encoder.py`](file:///Users/Mattia/Desktop/Studies/Temp/spwm/models/encoder.py), [`spwm/models/world_model.py`](file:///Users/Mattia/Desktop/Studies/Temp/spwm/models/world_model.py))
+- **Purpose**: Ingests dual-stream event frames (`4` channels: channels `0..1` static global camera ON/OFF polarities; channels `2..3` egocentric wrist camera ON/OFF polarities), fuses multi-view representations, computes feature heatmaps, and extracts continuous 2D coordinates of spatial centers of mass (keypoints) via a differentiable spatial softmax bottleneck.
+- **Layer Configuration & Parameters (`EventEncoder`)**:
+  - **Global / Primary Convolutional Backbone (`conv`)**:
+    1. `Conv2d(in_channels=4, out_channels=16, kernel_size=3, stride=2, padding=1)` $\rightarrow$ `[B, 16, 16, 16]` (592 params)
+    2. `GroupNorm(num_groups=4, num_channels=16)` (32 params) $\rightarrow$ `SiLU()`
+    3. `Conv2d(in_channels=16, out_channels=32, kernel_size=3, stride=2, padding=1)` $\rightarrow$ `[B, 32, 8, 8]` (4,640 params)
+    4. `GroupNorm(num_groups=4, num_channels=32)` (64 params) $\rightarrow$ `SiLU()`
+    5. `Conv2d(in_channels=32, out_channels=16, kernel_size=1)` $\rightarrow$ `[B, 16, 8, 8]` (528 params)
+  - **Egocentric Wrist Branch (`wrist_stem`)**:
+    1. `Conv2d(in_channels=2, out_channels=16, kernel_size=3, stride=2, padding=1)` $\rightarrow$ `[B, 16, 16, 16]` (304 params)
+    2. `GroupNorm(num_groups=4, num_channels=16)` (32 params) $\rightarrow$ `SiLU()`
+    3. `Conv2d(in_channels=16, out_channels=32, kernel_size=3, stride=2, padding=1)` $\rightarrow$ `[B, 32, 8, 8]` (4,640 params)
+    4. `GroupNorm(num_groups=4, num_channels=32)` (64 params) $\rightarrow$ `SiLU()`
+  - **Fusion Head (`fusion_head`)**: `Conv2d(in_channels=32, out_channels=16, kernel_size=1)` $\rightarrow$ `[B, 16, 8, 8]` (528 params); $\Phi_{\text{fused}} = \text{conv}(x) + \text{fusion\_head}(\text{wrist\_stem}(x_{2:4}))$.
+  - **Spatial Softmax Bottleneck (`SpatialSoftmax`)**: Grid $8 \times 8$ over normalized coordinates $X, Y \in [-1, 1]$ with temperature $\tau = 1.0$:
+    $$A_{c, i, j} = \frac{\exp(F_{c, i, j} / \tau)}{\sum_{u, v} \exp(F_{c, u, v} / \tau)}, \quad \mu_{c}^x = \sum_{i, j} A_{c, i, j} \cdot X_{i, j}, \quad \mu_{c}^y = \sum_{i, j} A_{c, i, j} \cdot Y_{i, j}$$
+    Concatenated into `[B, 2 * num_keypoints] = [B, 32]`.
+  - **Projection MLP (`proj`)**: `Linear(32, 128)` (4,224 params) $\rightarrow$ `LayerNorm(128)` (256 params) $\rightarrow$ `SiLU()`, outputting sensory embedding $s_t \in \mathbb{R}^{128}$ (`encoder_dim = 128`).
+- **Predictive Sensory Decoder (`sensory_predictor`)**: Single linear projection `Linear(in_features=128, out_features=128, bias=False)` (16,384 params) mapping prior latent state $z_{t-1} \in \mathbb{R}^{128}$ to $\hat{s}_t \in \mathbb{R}^{128}$, yielding predictive coding residual $\epsilon_t = s_t - \hat{s}_t \in \mathbb{R}^{128}$.
+
+#### B. Action-Conditioned `LatentPredictor` (M1 Attractor Predictor) ([`spwm/models/predictors.py`](file:///Users/Mattia/Desktop/Studies/Temp/spwm/models/predictors.py))
+- **Layer Configuration & Parameters**:
+  - Concatenation: $[z_t, u_t] \in \mathbb{R}^{134}$.
+  - Shared Two-Layer MLP Backbone: `Linear(134, 256)` (34,560 params) $\rightarrow$ `LayerNorm(256)` (512 params) $\rightarrow$ `SiLU()` $\rightarrow$ `Linear(256, 256)` (65,792 params) $\rightarrow$ `LayerNorm(256)` (512 params) $\rightarrow$ `SiLU()`.
+  - Three Linear Prediction Heads:
+    - **Force Head (`force_head`)**: `Linear(256, 96)` $\rightarrow \mathbf{f}_p \in \mathbb{R}^{96}$ (24,672 params).
+    - **Dissipation Head (`dissipation_head`)**: `Linear(256, 96)` $\rightarrow \gamma_t = \sigma(\text{Linear}(\mathbf{h}_t)) \in (0, 1)^{96}$ (24,672 params, bias initialized to `-2.0`).
+    - **Restorative Coordinate Head (`restorative_q_head`)**: `Linear(256, 32)` $\rightarrow \mathbf{f}_q \in \mathbb{R}^{32}$ (8,224 params, weights and bias zero-initialized).
 - **Dissipative and Attractor Phase-Space Integration**:
   Unlike conservative toy physics which required strict symplectic volume preservation, the 6-DOF manipulator operates under joint friction, gravity torques, and variable grasped payload mass.
   $M_1$ accepts the motor command $\mathbf{u}_t \in \mathbb{R}^6$ alongside $\mathbf{z}_t$, learning a parameterizable dissipative field $\gamma_t = \sigma(\text{Linear}(\mathbf{h}_t))$ and force vectors $(\mathbf{f}_p, \mathbf{f}_q)$:
@@ -209,28 +238,67 @@ All tensor shapes are verified at runtime via [`assert_tensor_contract`](file://
   - Closed-loop path-integral control evaluates $K=256$ candidate action trajectories over horizon $H=20$ directly in latent space using $M_1$.
   - Uses an **anisotropic exploration covariance matrix** $\boldsymbol{\Sigma} = [0.24, 0.44, 0.38, 0.24, 0.24, 0.24]$ (+60% on `Shoulder_Lift`, +45% on `Elbow_Flex`) and softened temperature $\lambda = 0.15$, preventing greedy collapse into local minima under heavy payload inertia.
 
-#### B. Event-Gated `SpikingLatentDynamics` ([`spwm/models/dynamics.py`](file:///Users/Mattia/Desktop/Studies/Temp/spwm/models/dynamics.py))
-- **Continuous Kinematic Integration via Velocity Projection**:
-  Momentum $p_{t+1} \in \mathbb{R}^{D_p}$ is mapped to coordinate velocity space $\mathbb{R}^{D_q}$ via linear projection `vel_proj`: $\mathbf{v}_p = \text{vel}(\mathbf{p}_{t+1})$.
-- **Soft Position Coupling ($K_{\text{max}} = 0.35$)**:
-  Sensory keypoint corrections are adaptively gated:
-  $$K_{\text{gate}} = \text{ramp}(g_{\text{steps}}) \cdot (1 - e^{-\text{scale} \cdot \text{act}}) \cdot K_{\text{max}}$$
-  $$\mathbf{q}_{t+1} = \mathbf{q}_t + \Delta t \cdot \mathbf{v}_p + K_{\text{gate}} \cdot \text{bounded\_corr}$$
-  With $K_{\text{max}} = 0.35$, single-frame sensory corrections cannot jerk coordinate trajectories away from physical inertia.
+#### C. Event-Gated `SpikingLatentDynamics` & ALIF Memory ([`spwm/models/dynamics.py`](file:///Users/Mattia/Desktop/Studies/Temp/spwm/models/dynamics.py), `memory.py`, `neurons.py`)
+- **Population Partitioning & Learnable Time Constants (`ALIFCell`, `MultiTimescaleMemory`)**:
+  - 2 timescale tiers (`timescale_dims = (128, 128)`), total memory dimension $N_{\text{mem}} = 256$.
+  - Learnable per-neuron `nn.Parameter` membrane decay initialized at $\beta_{\text{mem}} = 0.80$, clamped in forward pass to $[0.50, 0.98]$ (256 params).
+  - Learnable per-neuron `nn.Parameter` adaptation decay initialized at $\beta_{\text{adapt}} = (0.90, 0.985)$ (Fast tier: $\beta_1 = 0.90$; Slow tier: $\beta_2 = 0.985$), clamped in forward pass to $[0.80, 0.995]$ (256 params).
+  - Baseline threshold $V_{\text{th0}} = 1.0$, adaptation coupling $\gamma = 0.18$, Arctangent surrogate gradient (`atan`, $\alpha = 2.0$):
+    $$S(x) = \Theta(x), \quad \frac{\partial S}{\partial x} = \frac{\alpha / 2}{1 + \left(\frac{\pi}{2} \alpha x\right)^2}$$
+  - Neuron dynamics at step $t$:
+    $$V_j(t) = \beta_{\text{mem}} V_j(t-1) + I_j(t) - z_j(t-1) V_{\text{th0}}, \quad A_j(t) = \beta_{\text{adapt}} A_j(t-1) + z_j(t-1)$$
+    $$V_{\text{th}, j}(t) = V_{\text{th0}} + \gamma A_j(t), \quad z_j(t) = \text{SurrogateSpike}(V_j(t) - V_{\text{th}, j}(t))$$
+- **Input Current Integration**:
+  $$I_t = W_{\text{in}} \epsilon_t + W_{\text{rec}} p_{t-1} + W_q q_{t-1} + W_u u_t$$
+  - `input_proj`: `Linear(128, 256, bias=True)` (33,024 params)
+  - `recurrent_proj`: `Linear(96, 256, bias=False)` (24,576 params)
+  - `q_proj`: `Linear(32, 256, bias=False)` (8,192 params)
+  - `action_proj`: `Linear(6, 256, bias=False)` (1,536 params, zero-initialized at `0.0`; during Phase 0 training, backpropagated gradients grow $\|W_u\|_2 \approx 1.365$, ratio $\approx 1.02$ vs $\|W_{\text{in}}\|_2$, ensuring immediate awareness of motor torque in closed-loop control).
+- **Continuous Kinematic Integration via Velocity Slicing & Stasis Zero-Velocity Damping**:
+  Momentum $p_t \in \mathbb{R}^{96}$ is mapped to coordinate velocity via direct slicing of the first 32 dimensions: $\mathbf{v}_p = \text{vel}(\mathbf{p}_t) = \mathbf{p}_t[..., :32]$ (aligned with Phase 0 $\mathcal{L}_{\text{derivative}}$ without projection layers).
+  - Dual-camera channel-wise maximum event activity: $a_t = \max\left(\text{mean}(|E_{t, \text{global}}|), \text{mean}(|E_{t, \text{wrist}}|)\right)$, keeping the gate open during localized wrist rotation even when the proximal arm decelerates.
+  - Stasis Zero-Velocity Damping Gate (suppressing post-motion drift from slow $\beta_2 = 0.985$ potentials when $a_t \to 0$):
+    $$v_{p, \text{eff}} = \tanh\left(\frac{a_t}{\sigma_{\text{stasis}}}\right) \cdot \mathbf{v}_p, \quad \sigma_{\text{stasis}} = 0.003$$
+- **Anti-Evanescence & Anti-Pullback Position Coupling ($K_{\text{max}} = 0.35$)**:
+  Sensory keypoint corrections are adaptively gated with $a_{\text{eff}} = \max(0, a_t - \theta_{\text{act}})$ ($\theta_{\text{act}} = 0.001$) and $w_{\text{gate}} \in \mathbb{R}^{32}$ initialized to `50.0`:
+  $$K_{\text{gate}} = \left(1 - \exp\left(-\text{softplus}(w_{\text{gate}}) \cdot a_{\text{eff}}\right)\right) \cdot \tanh^2\left(\frac{a_{\text{eff}}}{\sigma_{\text{stasis}}}\right) \cdot K_{\text{max}}$$
+  $$\mathbf{q}_t = \mathbf{q}_{t-1} + \Delta t \cdot v_{p, \text{eff}} + K_{\text{gate}} \odot \text{clip}\left(\mathbf{k}_t^{\text{sensory}} - \mathbf{q}_{t-1}, \|\cdot\|_2 \le \delta_{\text{max}}\right)$$
+  During autonomous rollout without sensory keypoints, $\mathbf{q}_t = \mathbf{q}_{t-1} + \Delta t \cdot v_{p, \text{eff}}$.
 - **Normalized Continuous Momentum Subspace**:
-  Momentum $p_{t+1}$ remains clean, continuous, and strictly normalized by `LayerNorm(p_dim)`:
-  $$\mathbf{p}_{t+1} = \text{LayerNorm}(\text{fuse\_spikes}(\mathbf{s}_t) + \text{fuse\_mems}(\mathbf{m}_t))$$
-  Raw finite-difference momentum injection ($\mathbf{v}_p + \Delta\mathbf{q}/\Delta t$) has been reverted, ensuring $|p| \le 3.5$ and protecting ALIF membrane potentials from current shocks.
+  Momentum $\mathbf{p}_t$ combines discrete spikes and analog membrane potentials $m_{\text{analog}} = \tanh(V_t) \in \mathbb{R}^{256}$, normalized by `LayerNorm(96)`:
+  $$\mathbf{p}_t = \text{LayerNorm}(\text{fuse\_spikes}(\mathbf{z}_t) + \text{fuse\_mems}(m_{\text{analog}}))$$
+  (`fuse_spikes`: `Linear(256, 96, bias=True)`, 24,672 params; `fuse_mems`: `Linear(256, 96, bias=False)`, 24,576 params; `norm`: `LayerNorm(96)`, 192 params; spike EMA $\lambda_{\text{ema}} = 0.90$). Raw finite-difference momentum injection has been reverted, ensuring $|p| \le 3.5$ and protecting ALIF membrane potentials from current shocks.
 
-#### C. Articulated `PhysicalDecoder` with Dual Low-Pass EMA Filtering ([`spwm/models/predictors.py`](file:///Users/Mattia/Desktop/Studies/Temp/spwm/models/predictors.py))
-- Reads out articulated joint angles $\mathbf{q}^* \in \mathbb{R}^6$ from coordinate subspace $\mathbf{q}$ and joint angular velocities $\mathbf{p}^* \in \mathbb{R}^6$ from momentum subspace $\mathbf{p}$ via 2-layer MLP projection heads with LayerNorm and SiLU.
+#### D. Articulated `PhysicalDecoder` with Dual Low-Pass EMA Filtering ([`spwm/models/predictors.py`](file:///Users/Mattia/Desktop/Studies/Temp/spwm/models/predictors.py))
+- Reads out articulated joint angles $\hat{\mathbf{q}}^* \in \mathbb{R}^6$ from coordinate subspace $\mathbf{q}_t \in \mathbb{R}^{32}$ and joint angular velocities $\hat{\mathbf{p}}^* \in \mathbb{R}^6$ from momentum subspace $\mathbf{p}_t \in \mathbb{R}^{96}$:
+  - **Position Head (`pos_head`)**: `Linear(32, 64)` (2,112 params) $\rightarrow$ `LayerNorm(64)` (128 params) $\rightarrow$ `SiLU()` $\rightarrow$ `Linear(64, 6)` (390 params; 2,630 total).
+  - **Velocity Head (`vel_head`)**: `Linear(96, 64)` (6,208 params) $\rightarrow$ `LayerNorm(64)` (128 params) $\rightarrow$ `SiLU()` $\rightarrow$ `Linear(64, 6)` (390 params; 6,726 total).
 - **Dual Low-Pass Smoothing**:
-  - **Position Filtering**: Controlled by `decoder_pos_alpha` ($\alpha_{\text{pos}} = 0.0$ default in v0.7.2 Iteration 4; can be set $> 0.0$ if discrete single-step joint jump damping is needed).
-  - **Velocity Filtering**: Controlled by `decoder_ema_alpha` ($\alpha_{\text{vel}} = 0.0$ default in v0.7.2 Iteration 4; $r_t = p_t$, avoiding low-pass phase lag while preserving continuous momentum readout).
+  - **Position Filtering**: Controlled by `decoder_pos_alpha` ($\alpha_{\text{pos}} = 0.0$ default; can be set $> 0.0$ if discrete single-step joint jump damping is needed).
+  - **Velocity Filtering**: Controlled by `decoder_ema_alpha` ($\alpha_{\text{vel}} = 0.0$ default; $r_t = p_t$, avoiding low-pass phase lag while preserving continuous momentum readout).
 
-#### D. Terminal Value Critic Network `LatentCritic` ([`spwm/models/predictors.py`](file:///Users/Mattia/Desktop/Studies/Temp/spwm/models/predictors.py))
-- **Architecture**: 3-layer MLP (`Linear(latent_dim, 256) -> SiLU -> Linear(256, 128) -> SiLU -> Linear(128, 1)`) attached as `model.critic` alongside `m1` and `physical_decoder` on both `SPWM` and `ANNWorldModel`.
+#### E. Terminal Value Critic Network `LatentCritic` ([`spwm/models/predictors.py`](file:///Users/Mattia/Desktop/Studies/Temp/spwm/models/predictors.py))
+- **Architecture**: 3-layer MLP (`Linear(128, 256)` [33,024 params] $\rightarrow$ `SiLU()` $\rightarrow$ `Linear(256, 128)` [32,896 params] $\rightarrow$ `SiLU()` $\rightarrow$ `Linear(128, 1)` [129 params]; **66,049 total parameters**) attached as `model.critic` alongside `m1` and `physical_decoder` on both `SPWM` and `ANNWorldModel`.
 - **Role**: Maps latent phase-space state $\mathbf{z}_t \in \mathbb{R}^{D}$ to scalar expected discounted cost-to-go $V(\mathbf{z}_t) \in \mathbb{R}^{B \times 1}$, providing terminal value bootstrapping for finite-horizon MPPI trajectories (TD-MPC style).
+
+### 2.4 Parameter Count Summary
+
+| Module | Submodule / Layer | Parameter Count |
+|---|---|---|
+| **EventEncoder** | Convolutional Trunk (`conv`) | 5,856 |
+| | Egocentric Wrist Stem (`wrist_stem`) | 5,072 |
+| | Cross-View Fusion Head (`fusion_head`) | 528 |
+| | Linear Projection (`proj`) | 4,480 |
+| **sensory_predictor** | Linear Projection | 16,384 |
+| **SpikingLatentDynamics** | Input & Recurrent Projections | 67,328 |
+| | Momentum Fusion (`fuse_spikes`, `fuse_mems`, `norm`) | 49,440 |
+| | Velocity Projections & Gate Parameter | 11,296 |
+| **LatentPredictor (M1)** | Backbone MLP | 101,376 |
+| | Output Heads (`force`, `dissipation`, `restorative_q`) | 57,568 |
+| **PhysicalDecoder** | Position Head (`pos_head`) | 2,630 |
+| | Velocity Head (`vel_head`) | 6,726 |
+| **LatentCritic** | Value MLP (`net`) | 66,049 |
+| **Total SPWM Parameters** | | **394,733** |
 
 ---
 
@@ -273,7 +341,7 @@ $$\mathcal{L}_{\text{total}} = \lambda_{\text{latent}} \mathcal{L}_{M_1}$$
 
 ### 3.3 Scoped `strict=True` Checkpoint Protocol
 
-All checkpoint operations in [`spwm/training/engine.py`](file:///Users/Mattia/Desktop/Studies/Temp/spwm/training/engine.py) enforce `strict=True`:
+All checkpoint operations in [`spwm/training/checkpoints.py`](file:///Users/Mattia/Desktop/Studies/Temp/spwm/training/checkpoints.py) and [`spwm/training/engine.py`](file:///Users/Mattia/Desktop/Studies/Temp/spwm/training/engine.py) enforce `strict=True`:
 1. **`load_representation_checkpoint(model, ckpt_path)`**: Loads `encoder`, `sensory_predictor`, `dynamics`, and `physical_decoder` sub-dictionaries from Phase 0 with `strict=True`.
 2. **`BaseTrainer.load_checkpoint(ckpt_path)`**: Loads full model weights with `strict=True`, raising `RuntimeError` immediately upon any unexpected or missing key.
 
@@ -325,7 +393,7 @@ To rigorously isolate whether SPWM's predictive stability is driven by **spiking
   where $\mathbf{r}_t \in (0, 1)^{256}$ provides smooth rate activation analogous to the average firing rate $s_t \in [0, 1]$.
 - **Membrane Potential Analog**: $\mathbf{m}_{\text{analog}} = \tanh(\mathbf{m}_t)$ matches `torch.tanh(new_mem_state.concatenated_mems)` in `SpikingLatentDynamics`.
 - **Projection Parity**: Preserves identical projection matrices (`input_proj`: Linear(128, 256), `recurrent_proj`: Linear(96, 256, bias=False), `q_proj`: Linear(32, 256, bias=False), `action_proj`: Linear(6, 256, bias=False), `vel_proj`: Linear(96, 32, bias=False), `W_vel`: Linear(256, 32, bias=False), `fuse_spikes`: Linear(256, 96), `fuse_mems`: Linear(256, 96, bias=False), `norm`: LayerNorm(96)).
-- **Exact Parameter Budget**: Exactly **394,701 parameters** (100.0% matched to `SPWM-v0.10.0` including `LatentCritic`).
+- **Exact Parameter Budget**: Exactly **394,701 parameters** (100.0% matched to `SPWM` including `LatentCritic`).
 - **Contract Conformance**: Conforms strictly to Layer 0 [`WorldModelProtocol`](file:///Users/Mattia/Desktop/Studies/Temp/spwm/contracts/protocols.py).
 
 ---
@@ -365,7 +433,7 @@ The forward kinematics module supports arbitrary batch shapes: $[B, 6]$, $[B, H,
 
 ## 8. Latent Model Predictive Path Integral Controller (`LatentMPPIController`)
 
-To demonstrate downstream closed-loop control without relying on an external physics engine, a Model Predictive Path Integral (MPPI) controller is implemented in [`spwm/evaluation/mppi.py`](file:///Users/Mattia/Desktop/Studies/Temp/spwm/evaluation/mppi.py):
+To demonstrate downstream closed-loop control without relying on an external physics engine, a Model Predictive Path Integral (MPPI) controller is implemented in [`spwm/evaluation/mppi_controller.py`](file:///Users/Mattia/Desktop/Studies/Temp/spwm/evaluation/mppi_controller.py) (re-exported via [`spwm/evaluation/mppi.py`](file:///Users/Mattia/Desktop/Studies/Temp/spwm/evaluation/mppi.py)):
 
 ### 8.1 Controller Formulation & Mental Simulation
 - **Candidate Trajectories**: $K = 256$ candidate action sequences sampled per control cycle.
@@ -389,16 +457,14 @@ where:
 - **Directional Progress Reward**: $- W_{\text{progress}} \sum_{t=1}^H (\Delta \mathbf{p}_t \cdot \hat{\mathbf{d}}_{\text{target}, t-1}) d_t$ ($W_{\text{progress}} = 50.0$) rewards forward motion projected onto the unit vector $\hat{\mathbf{d}}_{\text{target}, t-1} = \frac{\mathbf{p}_{\text{target}} - \mathbf{p}_{t-1}}{\|\mathbf{p}_{\text{target}} - \mathbf{p}_{t-1}\|_2 + 10^{-6}}$, scaled by deadband attenuation $d_t = \operatorname{clamp}((\|\mathbf{x}_{\text{ee}}(t) - \mathbf{x}_{\text{target}}\|_2 - 0.03)/0.10, 0, 1)$.
 - **Cartesian Velocity Damping**: $W_{\text{damping}} \sum_{t=1}^H \|\Delta \mathbf{p}_t\|_2 (1 - d_t)$ ($W_{\text{damping}} = 10.0$) activates braking torque within the $3\,\text{cm}$ arrival deadband.
 - **Terminal Value Bootstrapping**: $\gamma^H V(\mathbf{z}_{k, H})$ ($\gamma = 0.95$) estimates the discounted cost-to-go beyond the finite planning horizon $H$ using `LatentCritic`.
-- **Action Chunking Execution**: `plan_step` returns an `action_chunk` of shape `[chunk_size, action_dim]` (`chunk_size = 4` default) by slicing `curr_nominal[:self.chunk_size]`, and `MPPIStructuralScorer.evaluate_trajectory` executes the entire chunk open-loop across `chunk_size` steps before replanning, filtering out single-step hesitation jitter.
+- **Action Chunking Execution**: `plan_step` returns an `action_chunk` of shape `[chunk_size, action_dim]` (`chunk_size = 1` default in `MPPIConfig`) by slicing `curr_nominal[:self.chunk_size]`, and `MPPIStructuralScorer.evaluate_trajectory` executes the entire chunk open-loop across `chunk_size` steps before replanning, filtering out single-step hesitation jitter.
 - **Offline Latent Unrolling**: `MPPIStructuralScorer.evaluate_trajectory` grounds the initial latent state $\mathbf{z}_{\text{start}}$ up to $t_{\text{start}}$ using sensory frames and actions. For steps $t \ge t_{\text{start}}$, the latent state is unrolled autoregressively via $M_1(\mathbf{z}_t, \mathbf{u}_t)$ without sensory frame injection.
 - **Reachable Decoder Manifold Projection**: Target poses $\mathbf{T}_{\text{grasp}}$ and $\mathbf{T}_{\text{final}}$ are projected onto the decoder manifold by passing grounded latent states $\mathbf{z}_{\text{gt}}(t_c)$ and $\mathbf{z}_{\text{gt}}(t_{\text{grasp}})$ through `PhysicalDecoder` before computing forward kinematics: $\mathbf{T}_{\text{target}} = \text{FK}(\text{PhysicalDecoder}(\mathbf{z}_{\text{gt}})_{1:6})$.
 
 - **Controller Parameters**:
-  - Class defaults in [`LatentMPPIController`](file:///Users/Mattia/Desktop/Studies/Temp/spwm/evaluation/mppi.py): $H = 30, H_{\text{term}} = 4, \beta = 0.75, w_{\text{pos}} = 0.0, w_{\text{rot}} = 0.0, w_{\text{term\_pos}} = 5.0, w_{\text{term\_rot}} = 2.0, w_{\text{vel}} = 0.08, w_{\text{act}} = 0.005, w_{\text{altitude}} = 2.0$, sampling noise $\boldsymbol{\Sigma} = [0.24, 0.44, 0.38, 0.24, 0.24, 0.24]$, temperature $\lambda = 0.15$.
-  - Benchmark profile in [`benchmark_mppi_control.py`](file:///Users/Mattia/Desktop/Studies/Temp/experiments/benchmark_mppi_control.py): matches controller defaults with full SE(3) target pose extracted via `DifferentiableForwardKinematics.forward_homogeneous`.
-  - Typed schema in [`MPPIConfig`](file:///Users/Mattia/Desktop/Studies/Temp/spwm/contracts/config.py): $K = 256, H = 10, N_{\text{iter}} = 3, \beta = 0.75, \lambda = 0.15, \text{chunk\_size} = 4, \gamma = 0.95, W_{\text{pos}} = 20.0, W_{\text{rot}} = 50.0, W_{\text{jerk}} = 0.005, W_{\text{damping}} = 10.0, W_{\text{progress}} = 50.0, \text{noise\_sigma} = 0.28$.
-  - Injected directly into [`LatentMPPIController(config=mppi_cfg)`](file:///Users/Mattia/Desktop/Studies/Temp/spwm/evaluation/mppi.py) via strict object injection.
-  - Benchmark profile in [`benchmark_mppi_control.py`](file:///Users/Mattia/Desktop/Studies/Temp/experiments/benchmark_mppi_control.py): uses anisotropic noise sigmas $[0.1226, 0.5894, 0.2172, 0.1226, 0.1226, 0.1226]$, $\beta = 0.3778$, $\lambda = 0.0410$, with full SE(3) target pose extracted via `DifferentiableForwardKinematics.forward_homogeneous`.
+  - Typed schema in [`MPPIConfig`](file:///Users/Mattia/Desktop/Studies/Temp/spwm/contracts/config.py): $K = 256, H = 10, N_{\text{iter}} = 3, \beta = 0.75, \lambda = 0.15, \text{chunk\_size} = 1, \gamma = 0.95, W_{\text{pos}} = 20.0, W_{\text{rot}} = 50.0, W_{\text{jerk}} = 0.005, W_{\text{damping}} = 10.0, W_{\text{progress}} = 50.0, \text{noise\_sigma} = 0.28$ (with `shoulder_sigma_multiplier = 3.5`, `elbow_sigma_multiplier = 2.0`).
+  - Injected directly into [`LatentMPPIController(config=mppi_cfg)`](file:///Users/Mattia/Desktop/Studies/Temp/spwm/evaluation/mppi_controller.py) via strict object injection.
+  - Benchmark profile in [`benchmark_mppi_control.py`](file:///Users/Mattia/Desktop/Studies/Temp/experiments/benchmark_mppi_control.py): routes CLI arguments cleanly through `MPPIConfig` overrides with full SE(3) target pose extracted via `DifferentiableForwardKinematics.forward_homogeneous`.
 
 Candidate weights $w_k$ are computed via Boltzmann temperature scaling:
 $$\beta = \min_{j} \mathcal{C}_j, \quad w_k = \frac{\exp\left(-\frac{1}{\lambda} (\mathcal{C}_k - \beta)\right)}{\sum_{j=1}^K \exp\left(-\frac{1}{\lambda} (\mathcal{C}_j - \beta)\right)}$$

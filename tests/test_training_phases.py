@@ -249,3 +249,104 @@ def test_enforce_phase_prerequisites_and_model_pt(tmp_path: Path) -> None:
         results_root=tmp_path,
     )
     assert loaded["representation"] == rep_ckpt
+
+
+def _assert_only_primitives_and_tensors(obj, path="root"):
+    if isinstance(obj, torch.Tensor):
+        return
+    if obj is None or type(obj) in (bool, int, float, str):
+        return
+    if type(obj) is dict:
+        for k, v in obj.items():
+            assert type(k) in (bool, int, float, str), f"Non-primitive key {type(k)} at {path}"
+            _assert_only_primitives_and_tensors(v, f"{path}.{k}")
+        return
+    if type(obj) in (list, tuple):
+        for idx, item in enumerate(obj):
+            _assert_only_primitives_and_tensors(item, f"{path}[{idx}]")
+        return
+    raise AssertionError(f"Non-primitive object {type(obj).__name__} found at {path}")
+
+
+def test_trainer_checkpoint_roundtrip_strict_and_primitives_only(tmp_path: Path) -> None:
+    """Verify BaseTrainer.save_checkpoint()/load_checkpoint() strict round-trip and zero pickled class instances."""
+    import spwm.training as training_pkg
+    import spwm.training.checkpoints as ckpts_mod
+    import spwm.training.engine as engine_mod
+    import spwm.training.replay_buffer as buf_mod
+
+    # Backward-compatible re-exports in engine.py and spwm.training.__init__.py
+    for sym in (
+        "ClosedLoopBuffer",
+        "EMATracker",
+    ):
+        assert getattr(engine_mod, sym) is getattr(buf_mod, sym)
+        assert getattr(training_pkg, sym) is getattr(buf_mod, sym)
+    for sym in (
+        "load_representation_checkpoint",
+        "resolve_version_checkpoint",
+        "resolve_closed_loop_buffer",
+        "enforce_phase_prerequisites",
+    ):
+        assert getattr(engine_mod, sym) is getattr(ckpts_mod, sym)
+        assert getattr(training_pkg, sym) is getattr(ckpts_mod, sym)
+
+    cfg = _make_small_config("train_m1")
+    model_src = SPWM.from_config(cfg)
+    trainer_src = BaseTrainer(model_src, cfg, device="cpu", save_dir=tmp_path)
+    assert trainer_src.ema_tracker is not None
+    assert trainer_src.replay_buffer is not None
+
+    trainer_src.replay_buffer.push_trajectories(
+        [
+            {
+                "z_init": torch.randn(cfg.model.latent_dim),
+                "actions": torch.randn(5, cfg.environment.action_dim),
+                "targets": torch.randn(5, cfg.model.latent_dim),
+                "length": 5,
+                "trajectory_id": 11,
+                "is_expert": True,
+                "elevation_plane": "High",
+            }
+        ]
+    )
+    trainer_src.best_score = 0.1234
+    trainer_src.best_epoch = 3
+    trainer_src.history = [{"epoch": 3, "train_loss": 0.2, "val_loss": 0.1234}]
+    trainer_src.curriculum.current_curriculum_phase = 2
+
+    sd = trainer_src.state_dict(epoch=3)
+    _assert_only_primitives_and_tensors(sd, "trainer.state_dict")
+
+    ckpt_path = tmp_path / "roundtrip_ckpt.pt"
+    trainer_src.save_checkpoint(epoch=3, is_best=True, path=ckpt_path)
+
+    # Must deserialize safely with weights_only=True (zero class instances pickled)
+    raw_loaded = torch.load(ckpt_path, map_location="cpu", weights_only=True)
+    _assert_only_primitives_and_tensors(raw_loaded, "roundtrip_ckpt.pt")
+
+    model_dst = SPWM.from_config(cfg)
+    with torch.no_grad():
+        for p in model_dst.parameters():
+            p.zero_()
+    trainer_dst = BaseTrainer(model_dst, cfg, device="cpu", save_dir=tmp_path)
+    trainer_dst.load_checkpoint(ckpt_path)
+
+    for p_s, p_d in zip(model_src.parameters(), model_dst.parameters()):
+        assert torch.allclose(p_s, p_d)
+    assert trainer_dst.start_epoch == 4
+    assert trainer_dst.best_score == pytest.approx(0.1234)
+    assert trainer_dst.best_epoch == 3
+    assert trainer_dst.history == [{"epoch": 3, "train_loss": 0.2, "val_loss": 0.1234}]
+    assert trainer_dst.current_curriculum_phase == 2
+    assert trainer_dst.replay_buffer is not None
+    assert len(trainer_dst.replay_buffer.trajectories) == 1
+    assert trainer_dst.replay_buffer.trajectories[0]["trajectory_id"] == 11
+    assert trainer_dst.ema_tracker is not None
+    for k, v in trainer_src.ema_tracker.state_dict().items():
+        assert torch.allclose(v, trainer_dst.ema_tracker.state_dict()[k])
+
+    # Non-primitive object in trainer state must fail loudly instead of pickling class instances
+    trainer_src.history = [{"epoch": 3, "bad_obj": cfg}]  # type: ignore[list-item]
+    with pytest.raises(TypeError, match="Non-serializable object"):
+        trainer_src.state_dict(epoch=3)

@@ -327,8 +327,11 @@ class MPPIConfig:
     action_min: float = -1.0                                      #: Lower bound for motor actions.
     action_max: float = 1.0                                       #: Upper bound for motor actions.
     noise_sigma: Union[float, Tuple[float, ...]] = 0.28           #: Gaussian noise standard deviation for action perturbations.
+    shoulder_sigma_multiplier: float = 3.5                        #: Anisotropic covariance multiplier on Shoulder_Lift (joint 1) for scalar noise_sigma.
+    elbow_sigma_multiplier: float = 2.0                           #: Anisotropic covariance multiplier on Elbow_Flex (joint 2) for scalar noise_sigma.
     noise_beta: float = 0.75                                      #: AR(1) temporal correlation smoothing coefficient beta in [0, 1).
     temperature: float = 0.15                                     #: MPPI temperature lambda for exponential cost-to-go weighting.
+    nominal_update_gamma: float = 0.75                            #: EMA step size gamma in (0, 1] for updating nominal action sequence.
     num_iterations: int = 3                                       #: Number of refinement iterations per planning step.
     chunk_size: int = 1                                           #: Number of consecutive actions executed open-loop before replanning.
     gamma_discount: float = 0.95                                  #: Discount factor gamma for terminal critic bootstrapping.
@@ -349,6 +352,12 @@ class MPPIConfig:
             raise ValueError(f"action_dim must be > 0, got {self.action_dim}")
         if self.temperature <= 0.0:
             raise ValueError(f"temperature must be > 0.0, got {self.temperature}")
+        if self.shoulder_sigma_multiplier <= 0.0:
+            raise ValueError(f"shoulder_sigma_multiplier must be > 0.0, got {self.shoulder_sigma_multiplier}")
+        if self.elbow_sigma_multiplier <= 0.0:
+            raise ValueError(f"elbow_sigma_multiplier must be > 0.0, got {self.elbow_sigma_multiplier}")
+        if not (0.0 < self.nominal_update_gamma <= 1.0):
+            raise ValueError(f"nominal_update_gamma must be in (0.0, 1.0], got {self.nominal_update_gamma}")
         if not (0.0 <= self.noise_beta < 1.0):
             raise ValueError(f"noise_beta must be in [0.0, 1.0), got {self.noise_beta}")
         if self.chunk_size <= 0:

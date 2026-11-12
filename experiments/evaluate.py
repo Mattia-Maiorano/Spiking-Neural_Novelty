@@ -13,7 +13,7 @@ import chronicle
 import torch
 
 from spwm.contracts.config import ExperimentConfig
-from spwm.data.datasets import create_dataloaders
+from spwm.data.datasets import create_dataloaders_from_config
 from spwm.evaluation.evaluator import RolloutEvaluator, get_phase_eval_horizons
 from spwm.evaluation.visualizer import (
     plot_latent_rollout_degradation,
@@ -67,20 +67,9 @@ def main() -> None:
     fixed_predictor = model.m1
     eval_seq_len = max(cfg.data.sequence_length, cfg.training.temporal_burn_in + max(eval_horizons) + 1)
 
-    dataloaders = create_dataloaders(
-        total_trajectories=cfg.data.total_trajectories,
-        train_split=cfg.data.train_split,
-        val_split=cfg.data.val_split,
+    dataloaders = create_dataloaders_from_config(
+        cfg,
         sequence_length=eval_seq_len,
-        batch_size=cfg.data.batch_size,
-        height=cfg.environment.height,
-        width=cfg.environment.width,
-        joint_count=cfg.environment.joint_count,
-        action_dim=cfg.environment.action_dim,
-        in_channels=cfg.model.in_channels,
-        event_threshold=cfg.environment.event_threshold,
-        dt=cfg.environment.dt,
-        dataset_dir=cfg.data.dataset_dir,
     )
 
     evaluator = RolloutEvaluator(

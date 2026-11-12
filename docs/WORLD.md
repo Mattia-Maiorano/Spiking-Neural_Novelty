@@ -1,6 +1,6 @@
 # Simulation Environment & Event Camera Specification (`WORLD.md`)
 
-This document provides the authoritative mathematical and computational specification of the simulation environment and dual-camera neuromorphic sensor pipeline utilized to train and benchmark **SPWM-v0.7.3 (Dual-Camera 6-DOF Active Perception Grasping & Spiking Predictive World Model for 3D Articulated Manipulation)**.
+This document provides the authoritative mathematical and computational specification of the simulation environment and dual-camera neuromorphic sensor pipeline utilized to train and benchmark **SPWM (Dual-Camera 6-DOF Active Perception Grasping & Spiking Predictive World Model for 3D Articulated Manipulation)**.
 
 All code implementations reside in Layer 1 of the architecture ([`spwm/data/`](file:///Users/Mattia/Desktop/Studies/Temp/spwm/data/__init__.py)) and Unity C# physics assets ([`sim/Assets/Scripts/`](file:///Users/Mattia/Desktop/Studies/Temp/sim/Assets/Scripts/ArticulatedRobotRig.cs)), governed strictly by Layer 0 contracts ([`spwm/contracts/config.py`](file:///Users/Mattia/Desktop/Studies/Temp/spwm/contracts/config.py)).
 
@@ -8,7 +8,13 @@ All code implementations reside in Layer 1 of the architecture ([`spwm/data/`](f
 
 ## 1. Overview & 3D Unity Robotics Environment
 
-The simulation environment provides a **PhysX 4 Featherstone ArticulationBody continuous 3D robotics simulation** implemented in Unity C# with Python streaming interop. The system models a 6-DOF articulated robotic manipulator arm driven by continuous motor action vectors $\mathbf{u}_t \in \mathbb{R}^{D_u}$ ($D_u = J = 6$), manipulating procedurally spawned rigid payloads of varying shape and mass, observed by a differential neuromorphic vision sensor ([`EventCameraSimulator`](file:///Users/Mattia/Desktop/Studies/Temp/spwm/data/event_camera.py) / [`NeuromorphicEventBridge`](file:///Users/Mattia/Desktop/Studies/Temp/sim/Assets/Scripts/NeuromorphicEventBridge.cs)).
+The simulation environment provides a **Unity 6 / PhysX 4 Featherstone `ArticulationBody` continuous 3D robotics simulation** implemented in Unity C# with Python streaming interop. The system models a 6-DOF articulated robotic manipulator arm driven by continuous motor action vectors $\mathbf{u}_t \in \mathbb{R}^{D_u}$ ($D_u = J = 6$), manipulating procedurally spawned rigid payloads of varying shape and mass, observed by a differential neuromorphic vision sensor ([`EventCameraSimulator`](file:///Users/Mattia/Desktop/Studies/Temp/spwm/data/event_camera.py) / [`NeuromorphicEventBridge`](file:///Users/Mattia/Desktop/Studies/Temp/sim/Assets/Scripts/NeuromorphicEventBridge.cs)).
+
+### Physics Timestep & Solver Configuration
+- **Macro Timestep**: $\Delta t = 0.05\,\text{s}$ ($20\,\text{Hz}$).
+- **PhysX Physics Sub-Steps**: `physicsSubSteps = 5`, yielding fixed delta time $\Delta t_{\text{fixed}} = \frac{\Delta t}{5} = 0.01\,\text{s}$ ($100\,\text{Hz}$).
+- **Solver Iterations**: `12` position iterations, `4` velocity iterations.
+- **Gravity Vector**: $\vec{g} = [0, -9.81, 0]^T\,\text{m/s}^2$.
 
 ```mermaid
 flowchart LR
@@ -54,33 +60,58 @@ The core robotic rig ([`ArticulatedRobotRig`](file:///Users/Mattia/Desktop/Studi
   - Angular damping: $0.25\,\text{s}^{-1}$
   - Ground static/dynamic friction: $\mu_s = 0.90, \mu_k = 0.80$
   - Gravity: $\mathbf{g} = [0, -9.81, 0]^T\,\text{m/s}^2$
+  - Maximum Joint Angle Normalization: $\theta_{\text{max}} = \pi \approx 3.14159\,\text{rad}$
+
+### 1.2 Kinematic Segment Table & `ArticulationBody` Parameters
+
+| Index | Segment Name | Parent | Local Anchor $(x, y, z)$ [m] | Dimensions $(w, h, d)$ [m] | Mass [kg] | Joint Friction | Angular Damping | Motion Limits [deg] | Drive Stiffness $K_p$ | Drive Damping $K_d$ | Max Force [N] | Joint Axis Euler $(x, y, z)$ | Rotation Axis Vector |
+|---|---|---|---|---|---|---|---|---|---|---|---|---|---|
+| — | **Base_Root** | -1 (Ground) | $(0.0, 1.25, 0.0)$ | $(0.088, 0.05, 0.088)$ | 20.0 | 0.05 | 0.25 | Fixed | — | — | — | — | Fixed Base |
+| 0 | **Shoulder_Pan** | 0 | $(0.0, 0.05, 0.0)$ | $(0.082, 0.05, 0.082)$ | 2.5 | 0.06 | 0.25 | $[-120^\circ, +120^\circ]$ | 300 | 75 | 600 | $(0, 0, 90)$ | $(0, 1, 0)$ |
+| 1 | **Shoulder_Lift** | 1 | $(0.0, 0.05, 0.0)$ | $(0.072, 0.28, 0.072)$ | 2.2 | 0.06 | 0.25 | $[-90^\circ, +185^\circ]$ | 320 | 80 | 600 | $(0, 0, 0)$ | $(1, 0, 0)$ |
+| 2 | **Elbow_Flex** | 2 | $(0.0, 0.28, 0.0)$ | $(0.060, 0.25, 0.060)$ | 1.6 | 0.06 | 0.25 | $[-155^\circ, +15^\circ]$ | 260 | 65 | 500 | $(0, 56, -16)$ | $(0.5375, -0.2756, -0.7969)$ |
+| 3 | **Wrist_Pitch** | 3 | $(0.0, 0.25, 0.0)$ | $(0.050, 0.04, 0.050)$ | 0.6 | 0.05 | 0.25 | $[-95^\circ, +95^\circ]$ | 200 | 50 | 350 | $(0, 56, -16)$ | $(0.5375, -0.2756, -0.7969)$ |
+| 4 | **Wrist_Yaw** | 4 | $(0.0, 0.04, 0.0)$ | $(0.046, 0.04, 0.046)$ | 0.5 | 0.05 | 0.25 | $[-75^\circ, +75^\circ]$ | 180 | 45 | 300 | $(0, 90, 0)$ | $(0, 0, -1)$ |
+| 5 | **Wrist_Roll** | 5 | $(0.0, 0.04, 0.0)$ | $(0.044, 0.06, 0.044)$ | 0.5 | 0.04 | 0.25 | $[-180^\circ, +180^\circ]$ | 150 | 40 | 250 | $(0, 0, 90)$ | $(0, 1, 0)$ |
 
 ---
 
 ## 2. Action Conditioning & Active Perception Grasping ([`ActionConditionedController`](file:///Users/Mattia/Desktop/Studies/Temp/sim/Assets/Scripts/ActionConditionedController.cs))
 
-### 2.1 State Representation & Motor Actions
-
-At discrete time index $t \in \{0, 1, \dots, T-1\}$ with physics step $\Delta t = \text{dt} = 0.05\,\text{s}$:
+### 2.1 State Representation, PD Mechanics & Phasic Workflow
+At discrete time index $t \in \{0, 1, \dots, T-1\}$ ($T = 105$, total duration $5.25\,\text{s}$ at $\Delta t = 0.05\,\text{s}$):
 - **Joint Positions (Generalized Coordinates)**: $\mathbf{q}_t^* \in [-1.0, 1.0]^J$ ($J=6$)
 - **Joint Angular Velocities (Generalized Momenta)**: $\mathbf{p}_t^* \in \mathbb{R}^J$ ($J=6$)
-- **Applied Motor Action Vector**: $\mathbf{u}_t \in [-1.0, 1.0]^{D_u}$ ($D_u = \text{action\_dim} = 6$)
-- **Execution Phase Flags** (`phase_flag`): Discrete tag identifying sensory-motor regime:
-  - `0 = BlindApproach`: Neutral setup followed by smooth minimum-jerk trajectory toward grasp coordinates.
-  - `1 = SensoryHeft`: Activated $N$ steps prior to contact (`pre_contact_sensory_steps = 7`) for sensory grounding, ramping to 100% injection 3-4 steps ahead, followed by collision-triggered rigid attachment, held for `post_contact_sensory_steps = 3` post-contact, and upward micro-movement (+12 cm lift with wrist twist, no acceleration/gain boost) generating informative event transients and velocity responses proportional to payload mass and inertia.
-  - `2 = BlindTransport`: Smooth trajectory interpolation to the 6D target pose with wrist orientation variations to stress rotational inertia predictions.
+- **Applied Motor Action Vector**: $\mathbf{u}_t \in [-1.0, 1.0]^{D_u}$ ($D_u = \text{action\_dim} = 6$), mapped to drive targets via $\theta_{\text{target}} = u_t \cdot \theta_{\text{max}}$:
+  $$\tau_{\text{motor}} = K_p (\theta_{\text{target}} - \theta_{\text{current}}) + K_d (\dot{\theta}_{\text{target}} - \dot{\theta}_{\text{current}})$$
+  with default $K_p = 0.35$, $K_d = 0.08$, and maximum motor torque $240\,\text{N}\cdot\text{m}$.
+- **Phasic Workflow Stages & Execution Phase Flags** (`phase_flag`):
+  - **Phase 0 (`t ∈ [0, 6]`, `phase_flag = 0` / `BlindApproach`)**: Neutral resting posture with closed-loop hold steps.
+  - **Phase 1 (`t ∈ [7, t_contact]`, `phase_flag = 0` / `BlindApproach`)**: Smooth quintic polynomial trajectory toward grasp contact point; approach duration randomized across $14\text{--}58$ steps ($t_{\text{contact}} \sim \text{step } 21\text{--}65$) with random stiffness/damping multipliers $K_p, K_d \in [0.65, 1.45]$.
+  - **Phase 1.5 (`t ∈ [t_contact, t_contact + 12]`, `phase_flag = 1` / `SensoryHeft`)**:
+    - Pre-contact sensory grounding starts `pre_contact_sensory_steps = 7` steps before contact, ramping over 4 steps, and continues for `post_contact_sensory_steps = 7` post-contact.
+    - **Transition & `FixedJoint` Grasp Attachment**: At $t = \text{approachEnd} = \text{setupHoldSteps} + \text{curApproachSteps}$, `ActionConditionedController` deterministically invokes `_spawner.EnsureRigidGrasp(_rig)` to enforce the `FixedJoint` constraint (snapping the payload into palm/fingers if not yet touching), while `PayloadGraspConstraint.OnCollisionEnter` triggers early physical attachment upon prior contact.
+    - Executes an immediate upward lift of $\Delta y = +0.10\text{--}0.12\,\text{m}$ combined with wrist twist $\Delta \theta = [0.08, -0.05, -0.20]\,\text{rad}$, inducing gravitational-torque event bursts proportional to payload mass and inertia.
+  - **Phase 2 (`t ∈ [t_contact + 13, 105]`, `phase_flag = 2` / `BlindTransport`)**: Curved 3D transport to target elevation and flat-to-upright wrist reorientation.
 
 ### 2.2 Procedural Object Spawner & Rigid Grasp Attachment
 
-[`ProceduralObjectSpawner`](file:///Users/Mattia/Desktop/Studies/Temp/sim/Assets/Scripts/ProceduralObjectSpawner.cs) instantiates physical payloads in front of the torso/head across three anthropomorphic workspace elevation planes:
-- **Elevation Planes**: `Low` ($1.04\,\text{m}$, tabletop level below shoulder), `Mid` ($1.14\,\text{m}$, natural manipulation level), and `High` ($1.26\,\text{m}$, upper chest/reach level) at forward reach distances $[0.42, 0.52]\,\text{m}$.
-- **Primitive Shapes**: Sphere, Elongated Cylinder, Box.
-- **Mass Distribution**: Randomly sampled mass in $[1.20, 4.50]\,\text{kg}$ creating substantial variance in gravitational torques and inertial resistance.
+[`ProceduralObjectSpawner`](file:///Users/Mattia/Desktop/Studies/Temp/sim/Assets/Scripts/ProceduralObjectSpawner.cs) (and Python parity helper `unity_episode_meta.py`) instantiates payloads deterministically using Knuth's subtractive generator (`DotNetRandom`) across three workspace elevation planes:
+- **Elevation Planes**:
+  - **Low Plane**: $y \approx 1.04\,\text{m}$ (tabletop level, $-0.31\,\text{m}$ below shoulder).
+  - **Mid Plane**: $y \approx 1.14\,\text{m}$ (mid manipulation level, $-0.21\,\text{m}$ below shoulder).
+  - **High Plane**: $y \approx 1.26\,\text{m}$ (upper chest reach level, $-0.09\,\text{m}$ below shoulder), at forward reach $[0.42, 0.52]\,\text{m}$.
+- **Primitive Shapes**:
+  - **Sphere** (`Shape = 0`): Radius $r \in [0.04, 0.065]\,\text{m}$.
+  - **Elongated Cylinder** (`Shape = 1`): Radius $r \in [0.035, 0.05]\,\text{m}$, Length $L \in [0.12, 0.22]\,\text{m}$.
+  - **Box** (`Shape = 2`): Extents $(w, h, d) \in [0.06, 0.12]\,\text{m}$.
+- **Mass Distribution ($m \in [1.20, 4.50]\,\text{kg}$)**:
+  - **Light**: $[1.20, 2.30]\,\text{kg}$ | **Normal**: $(2.30, 3.40]\,\text{kg}$ | **Heavy**: $(3.40, 4.50]\,\text{kg}$.
 - **Attachment**: A `FixedJoint` constraint attaches the object into the humanoid right palm and curved fingers upon contact, eliminating finger slip friction and directly transferring the payload's mass and inertia tensor into the Featherstone kinematic chain.
 
 ### 2.3 Numerical Physics Integration
 
-Dynamics follow second-order dissipative equations integrated via PhysX 4 Featherstone solver (or Python reference kinematics simulation [`simulate_articulated_trajectory`](file:///Users/Mattia/Desktop/Studies/Temp/spwm/data/datasets.py)):
+Dynamics follow second-order dissipative equations integrated via PhysX 4 Featherstone solver (or Python reference kinematics simulation [`simulate_articulated_trajectory`](file:///Users/Mattia/Desktop/Studies/Temp/spwm/data/sim_6dof.py)):
 $$\mathbf{p}_{t+1} = \mathbf{p}_t + \Delta t \left[ K_{\text{stiff}}(\mathbf{u}_t - \mathbf{q}_t) - \mathbf{\tau}_{\text{gravity}}(\mathbf{q}_t, m_{\text{payload}}) - \mu_c \tanh(5 \mathbf{p}_t) - \gamma \mathbf{p}_t \right]$$
 $$\mathbf{q}_{t+1} = \text{clip}\left(\mathbf{q}_t + \Delta t \cdot \mathbf{p}_{t+1}, -1.0, 1.0\right)$$
 where $\gamma = \text{viscous\_damping} = 0.25$, $K_{\text{stiff}} = 6.5$.
@@ -94,9 +125,9 @@ The neuromorphic visual pipeline captures dynamic scene motion without emitting 
 ### 3.1 Dual Pipeline Execution: GPU Compute Shader & Continuous Projection
 
 1. **Unity GPU Compute Shader ([`EventCameraLogDiff.compute`](file:///Users/Mattia/Desktop/Studies/Temp/sim/Assets/Shaders/EventCameraLogDiff.compute))**:
-   - Renders high-speed camera frames into a `RenderTexture`.
-   - Computes logarithmic luminance $L(u, v; t) = \ln(\text{luminance}(I(u, v; t)) + \epsilon)$.
-   - Emits asynchronous ON/OFF polarity spikes into a structured compute buffer at native physics FPS.
+   - Renders both $32 \times 32$ cameras into `RenderTexture` (`RenderTextureFormat.ARGB32`).
+   - Computes ITU-R BT.709 luminance $I(u, v; t) = 0.2126 \cdot R + 0.7152 \cdot G + 0.0722 \cdot B$ and logarithmic luminance $L(u, v; t) = \ln(\max(I(u, v; t), 0) + 10^{-3})$.
+   - Emits asynchronous ON/OFF polarity spikes ($\theta = 0.08$) into a structured compute buffer at native physics FPS, updating $L_{\text{ref}} \leftarrow L(u, v; t)$ on spike.
 2. **Layer 1 Python Simulator ([`EventCameraSimulator`](file:///Users/Mattia/Desktop/Studies/Temp/spwm/data/event_camera.py))**:
    - Supports direct ingestion of Unity pre-rendered event tensors or high-FPS grayscale luminance sequences.
    - For standalone testing and synthetic benchmarking, generates forward-kinematic projected articulated link intensities across normalized coordinates $(u, v) \in [-1, 1]^2$.
@@ -171,7 +202,7 @@ Defined in [`spwm/contracts/config.py`](file:///Users/Mattia/Desktop/Studies/Tem
 | `cache_data` | `bool` | `True` | Whether to pre-render and cache event tensors in memory |
 | `strict_dataset` | `bool` | `True` | Whether to strictly require real exported Unity trajectories (fail if missing) |
 | `pre_contact_sensory_steps` | `int` | `7` | Number of approach steps before physical contact where Phase 1.5 sensory grounding begins |
-| `post_contact_sensory_steps` | `int` | `3` | Number of steps after contact where sensory grounding injection is maintained before release |
+| `post_contact_sensory_steps` | `int` | `7` | Number of steps after contact where sensory grounding injection is maintained before release |
 
 ---
 
@@ -190,4 +221,12 @@ Each item returned by [`EventWorldDataset`](file:///Users/Mattia/Desktop/Studies
 | `"trajectory_ids"` | `[B]` | `torch.int64` | Globally unique trajectory index |
 
 These kinematic tensors serve as ground-truth supervision targets for representation learning ([`RepresentationPhaseStrategy`](file:///Users/Mattia/Desktop/Studies/Temp/spwm/training/phases/representation.py)), joint angle/velocity probing, and action-conditioned multi-horizon physical rollout evaluation ([`RolloutEvaluator`](file:///Users/Mattia/Desktop/Studies/Temp/spwm/evaluation/evaluator.py)).
+
+---
+
+## 7. Telemetry Logging Contract (`RoboticTelemetryLogger.cs`)
+
+Trajectories exported by Unity into compressed JSON archives (`trajectory_XXXXX.json.gz`) follow this schema:
+- **Top-Level Metadata**: `trajectory_id` (int), `archetype` (`"ManipulatorArm"`), `payload_shape` (`"Sphere" | "ElongatedCylinder" | "Box"`), `payload_mass` (`[1.20, 4.50]` kg), `sequence_length` (`105`), `joint_count` (`6`), `action_dim` (`6`), `sensor_channels` (`4`), `sensor_height` (`32`), `sensor_width` (`32`), `dt` (`0.05`), `event_threshold` (`0.08`).
+- **Timestep Record (`steps[t]`)**: `step` ($t \in [0, 104]$), `timestamp` ($t \cdot \Delta t$), `phase_flag` ($\in \{0, 1, 2\}$), `joint_positions` ($[q_0^*, \dots, q_5^*]$ rad), `joint_velocities` ($[p_0^*, \dots, p_5^*]$ rad/s), `actions` ($[u_0, \dots, u_5] \in [-1, 1]^6$), `grayscale_frame` ($32 \times 32 = 1024$ floats, Global), `wrist_grayscale_frame` ($32 \times 32 = 1024$ floats, Wrist), and `dense_events` ($4 \times 32 \times 32 = 4096$ binary floats, optional/regenerable via `EventCameraSimulator`).
 

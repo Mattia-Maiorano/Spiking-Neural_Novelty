@@ -17,7 +17,7 @@ import numpy as np
 
 from spwm.contracts.config import ExperimentConfig
 from spwm.contracts.version import GLOBAL_VERSION
-from spwm.data.datasets import create_dataloaders
+from spwm.data.datasets import create_dataloaders_from_config
 from spwm.evaluation.evaluator import RolloutEvaluator
 from spwm.models.world_model import SPWM
 from spwm.utils.reproducibility import set_seed
@@ -47,21 +47,8 @@ def main() -> int:
     model.eval()
 
     # Load test loader
-    dataloaders = create_dataloaders(
-        total_trajectories=cfg.data.total_trajectories,
-        train_split=cfg.data.train_split,
-        val_split=cfg.data.val_split,
-        sequence_length=cfg.data.sequence_length,
-        batch_size=cfg.data.batch_size,
-        height=cfg.environment.height,
-        width=cfg.environment.width,
-        joint_count=cfg.environment.joint_count,
-        action_dim=cfg.environment.action_dim,
-        in_channels=cfg.model.in_channels,
-        event_threshold=cfg.environment.event_threshold,
-        dt=cfg.environment.dt,
-        dataset_dir=cfg.data.dataset_dir,
-        strict_dataset=cfg.data.strict_dataset,
+    dataloaders = create_dataloaders_from_config(
+        cfg,
         cache_data=False,
     )
     test_loader = dataloaders["test"]

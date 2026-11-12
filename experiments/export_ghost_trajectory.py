@@ -23,7 +23,7 @@ import torch
 
 from spwm.contracts.config import ExperimentConfig
 from spwm.contracts.version import GLOBAL_VERSION
-from spwm.data.datasets import create_dataloaders
+from spwm.data.datasets import create_dataloaders_from_config
 from spwm.data.unity_episode_meta import episode_meta, weight_class
 from spwm.evaluation.evaluator import RolloutEvaluator
 from spwm.evaluation.visualizer import DEFAULT_UNITY_PROJECT_DIR, GhostTrajectory, GhostVisualizerExporter
@@ -137,21 +137,9 @@ def main() -> None:
         )
 
     seq_len = max(cfg.data.sequence_length, cfg.training.temporal_burn_in + args.horizon + 1)
-    dataloaders = create_dataloaders(
-        total_trajectories=cfg.data.total_trajectories,
-        train_split=cfg.data.train_split,
-        val_split=cfg.data.val_split,
+    dataloaders = create_dataloaders_from_config(
+        cfg,
         sequence_length=seq_len,
-        batch_size=cfg.data.batch_size,
-        height=cfg.environment.height,
-        width=cfg.environment.width,
-        joint_count=cfg.environment.joint_count,
-        action_dim=cfg.environment.action_dim,
-        in_channels=cfg.model.in_channels,
-        event_threshold=cfg.environment.event_threshold,
-        dt=cfg.environment.dt,
-        dataset_dir=cfg.data.dataset_dir,
-        strict_dataset=cfg.data.strict_dataset,
         cache_data=False,
     )
 

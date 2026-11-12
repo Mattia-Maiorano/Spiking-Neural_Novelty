@@ -1,12 +1,12 @@
 """TDD Anti-Fallback Verification Tests.
 
 Verifies:
-1. Complete absence of silent fallbacks across `spwm/` via AST static inspection.
+1. Complete absence of silent fallbacks across `spwm/`, `experiments/`, and `scripts/` via AST static inspection.
 2. AST Anti-Fallback Scanner correctly spots and catches all forbidden fallback variants:
    - 3-argument `getattr(obj, name, default)`
    - Ternary `hasattr(...)` fallback expressions
    - `load_state_dict(..., strict=False)`
-   - Silent exception handlers (`except ...: pass`, `except TypeError:`, `except AttributeError:`)
+   - Silent exception handlers (`except ...: pass`, `except TypeError:`, `except AttributeError:`, `except Exception:` without re-raise)
 3. Runtime configuration and contract enforcement: unknown parameters raise `ValueError` immediately.
 4. Checkpoints load strictly with `strict=True`.
 """
@@ -36,6 +36,17 @@ def test_spwm_package_has_zero_fallbacks():
         pytest.fail(f"AST Anti-Fallback violations detected in spwm/:\n{msg}")
 
 
+@pytest.mark.parametrize("target_dir_name", ["experiments", "scripts"])
+def test_experiments_and_scripts_have_zero_fallbacks(target_dir_name: str):
+    """CLI runners in experiments/ and utility scripts in scripts/ must be free of AST fallbacks."""
+    repo_root = Path(__file__).resolve().parent.parent
+    target_dir = repo_root / target_dir_name
+    violations = scan_directory(target_dir)
+    if violations:
+        msg = "\n".join(f"{v.file_path}:{v.line} [{v.rule}] {v.message}" for v in violations)
+        pytest.fail(f"AST Anti-Fallback violations detected in {target_dir_name}/:\n{msg}")
+
+
 @pytest.mark.parametrize(
     "code_snippet,expected_rule",
     [
@@ -46,6 +57,7 @@ def test_spwm_package_has_zero_fallbacks():
         ("try:\n    do_work()\nexcept TypeError:\n    val = fallback", "NO_SILENT_EXCEPT_TYPEERROR"),
         ("try:\n    do_work()\nexcept AttributeError:\n    val = fallback", "NO_SILENT_EXCEPT_ATTRIBUTEERROR"),
         ("try:\n    do_work()\nexcept Exception:\n    pass", "NO_EXCEPT_PASS"),
+        ("try:\n    do_work()\nexcept Exception as exc:\n    val = fallback", "NO_SILENT_EXCEPT_EXCEPTION"),
     ],
 )
 def test_ast_scanner_catches_all_fallback_variants(code_snippet: str, expected_rule: str):

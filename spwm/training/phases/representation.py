@@ -3,11 +3,11 @@ from __future__ import annotations
 from typing import Dict, Optional, Tuple
 import torch
 import torch.nn as nn
-import torch.nn.functional as F
 
 from spwm.contracts.protocols import PhaseStrategy
 from spwm.contracts.tensors import assert_tensor_contract
 from spwm.models.kinematics import DifferentiableForwardKinematics
+from spwm.training.losses import SPWMLoss
 from spwm.training.metrics import position_error, velocity_error
 
 
@@ -15,6 +15,8 @@ class RepresentationPhaseStrategy(PhaseStrategy):
     """Isolated strategy for Phase 0 (`train_representation`): Grounded Articulated Joint State Estimator."""
 
     def setup(self) -> None:
+        if isinstance(self.loss_fn, nn.Identity):
+            self.loss_fn = SPWMLoss.from_config(self.cfg.loss).to(self.device)
         for p in self.model.parameters():
             p.requires_grad = False
         train_mods = (
@@ -54,47 +56,30 @@ class RepresentationPhaseStrategy(PhaseStrategy):
         latents, error_neurons = self.model.forward_representation(events, actions=actions)
         q_dim = self.model.q_dim
         q, p = latents[..., :q_dim], latents[..., q_dim:]
-        joint_pos_true, joint_vel_true = flat_kin[..., :joint_count], flat_kin[..., joint_count : 2 * joint_count]
-
-        # 1. L_kinematic: Supervised loss decoding complex joint angles q*, angular velocities p*, and Cartesian EE pose
         pos_pred = self.model.physical_decoder.decode_pos(q)
         vel_pred = self.model.physical_decoder.decode_vel(p)
-        loss_pos_kin = F.mse_loss(pos_pred, joint_pos_true, reduction="none").sum(dim=-1).mean()
-        vel_scale = max(1e-3, float(self.cfg.loss.velocity_loss_scale))
-        loss_vel_kin = F.mse_loss(vel_pred, joint_vel_true, reduction="none").sum(dim=-1).mean() / (vel_scale ** 2)
-        T_pred = self.fk.forward_homogeneous(pos_pred)
-        T_true = self.fk.forward_homogeneous(joint_pos_true)
-        loss_ee_pos = F.mse_loss(T_pred[..., :3, 3], T_true[..., :3, 3], reduction="none").sum(dim=-1).mean()
-        loss_ee_rot = F.mse_loss(T_pred[..., :3, :3], T_true[..., :3, :3], reduction="none").sum(dim=(-2, -1)).mean()
-        loss_cartesian = loss_ee_pos + 0.1 * loss_ee_rot
-        l_kinematic = loss_pos_kin + loss_vel_kin + float(self.cfg.loss.cartesian_weight) * loss_cartesian
 
-        # 2. L_derivative: Strict phase-space factorization constraint
-        dt = float(self.cfg.environment.dt)
-        delta_q, p_t = q[:, 1:] - q[:, :-1], p[:, :-1]
-        p_mapped = p_t[..., :q_dim] if p_t.shape[-1] != q_dim else p_t
-        l_derivative = F.mse_loss(delta_q, dt * p_mapped, reduction="none").sum(dim=-1).mean()
-
-        # 3. L_smoothness & 4. L_sensory
-        l_smoothness = F.smooth_l1_loss(p[:, 1:], p[:, :-1], beta=0.1, reduction="none").sum(dim=-1).mean()
-        l_sensory = F.mse_loss(error_neurons, torch.zeros_like(error_neurons), reduction="none").sum(dim=-1).mean()
-
-        total_loss = (
-            float(self.cfg.loss.lambda_kinematic) * l_kinematic
-            + float(self.cfg.loss.lambda_derivative) * l_derivative
-            + float(self.cfg.loss.lambda_smoothness) * l_smoothness
-            + float(self.cfg.loss.lambda_sensory) * l_sensory
+        losses = self.loss_fn.compute_representation_loss(
+            q=q, p=p, pos_pred=pos_pred, vel_pred=vel_pred,
+            error_neurons=error_neurons, flat_kin=flat_kin, fk=self.fk,
+            joint_count=joint_count, dt=float(self.cfg.environment.dt),
         )
+        total_loss = losses["total_loss"]
         decoded_all = torch.cat([pos_pred, vel_pred], dim=-1)
         pos_err = position_error(decoded_all, flat_kin[..., : 2 * joint_count], joint_count=joint_count)
         vel_err = velocity_error(decoded_all, flat_kin[..., : 2 * joint_count], joint_count=joint_count)
 
         metrics = {
-            "loss": float(total_loss.item()), "loss_kinematic": float(l_kinematic.item()),
-            "loss_position": float(loss_pos_kin.item()), "loss_velocity": float(loss_vel_kin.item()),
-            "loss_cartesian": float(loss_cartesian.item()), "loss_derivative": float(l_derivative.item()),
-            "loss_smoothness": float(l_smoothness.item()), "loss_sensory": float(l_sensory.item()),
-            "pos_err": pos_err, "vel_err": vel_err,
+            "loss": float(total_loss.item()),
+            "loss_kinematic": float(losses["loss_kinematic"].item()),
+            "loss_position": float(losses["loss_position"].item()),
+            "loss_velocity": float(losses["loss_velocity"].item()),
+            "loss_cartesian": float(losses["loss_cartesian"].item()),
+            "loss_derivative": float(losses["loss_derivative"].item()),
+            "loss_smoothness": float(losses["loss_smoothness"].item()),
+            "loss_sensory": float(losses["loss_sensory"].item()),
+            "pos_err": pos_err,
+            "vel_err": vel_err,
         }
         return total_loss, metrics
 

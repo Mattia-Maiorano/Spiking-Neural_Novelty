@@ -12,7 +12,8 @@ import sys
 import torch
 import numpy as np
 
-from spwm.data.datasets import create_dataloaders
+from spwm.contracts.config import ExperimentConfig
+from spwm.data.datasets import create_dataloaders_from_config
 
 
 def main():
@@ -22,12 +23,12 @@ def main():
 
     # 1. Carica dataloaders e un batch reale dal train_loader
     print("\n[1] Loading dataset...")
-    dataloaders = create_dataloaders(
+    cfg = ExperimentConfig()
+    dataloaders = create_dataloaders_from_config(
+        cfg,
         total_trajectories=100,
         sequence_length=150,
         batch_size=16,
-        joint_count=6,
-        action_dim=6,
         num_workers=0,
         cache_data=True,
     )

@@ -218,10 +218,49 @@ class DifferentiableForwardKinematics(nn.Module):
         return T.view(*out_shape)
 
 
+def compute_rot_error(
+    fk: DifferentiableForwardKinematics,
+    q: torch.Tensor,
+    target_pose_mat: torch.Tensor,
+) -> float:
+    """Computes the canonical SO(3) geodesic rotational error in radians.
+
+    Canonical formulation:
+        theta_error = arccos(clamp((Tr(R_ee^T @ R_target) - 1) / 2, -1, 1))
+    where R_ee is the 3x3 end-effector orientation from `fk.forward_homogeneous(q)`
+    and R_target = target_pose_mat[:3, :3].
+
+    Replaces legacy cosine dot-product approximations `(1 - z·z_tgt) + (1 - y·y_tgt)`
+    so all downstream MPPI control, benchmarking, and Tier 2 scoring share one
+    geodesic radian metric.
+    """
+    t_input = q.unsqueeze(0) if q.dim() == 1 else q
+    T_ee = fk.forward_homogeneous(t_input)[0]
+    R_ee = T_ee[:3, :3]
+    target_rot = target_pose_mat[:3, :3]
+    r_rel = torch.matmul(R_ee.transpose(-1, -2), target_rot)
+    trace_r = torch.diagonal(r_rel, dim1=-2, dim2=-1).sum(-1)
+    cos_theta = torch.clamp((trace_r - 1.0) * 0.5, -1.0, 1.0)
+    theta_err = torch.acos(cos_theta)
+    return float(theta_err.item())
+
+
+def classify_elevation(y: float) -> str:
+    """Classifies vertical Cartesian elevation (meters) into Low, Mid, or High plane."""
+    if y < 1.08:
+        return "Low"
+    elif y < 1.18:
+        return "Mid"
+    else:
+        return "High"
+
+
 __all__ = [
     "CANONICAL_ANCHORS",
     "CANONICAL_JOINT_AXES",
     "DifferentiableForwardKinematics",
     "END_EFFECTOR_TIP_OFFSET",
+    "classify_elevation",
+    "compute_rot_error",
 ]
 

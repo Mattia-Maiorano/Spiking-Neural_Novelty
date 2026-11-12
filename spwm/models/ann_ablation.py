@@ -115,6 +115,12 @@ class ContinuousRateMemory(nn.Module):
 
         self.total_dim = sum(self.timescale_dims)
         self.register_buffer("betas", torch.tensor([float(b) for b in betas], dtype=torch.float32))
+        self.beta_mems = nn.ParameterList(
+            [nn.Parameter(torch.full((dim,), float(b), dtype=torch.float32)) for dim, b in zip(self.timescale_dims, betas)]
+        )
+        self.beta_gains = nn.ParameterList(
+            [nn.Parameter(torch.ones((dim,), dtype=torch.float32)) for dim in self.timescale_dims]
+        )
 
     def init_state(
         self,
@@ -148,8 +154,9 @@ class ContinuousRateMemory(nn.Module):
         new_rates: List[torch.Tensor] = []
 
         for i, (inp, prev_m) in enumerate(zip(inputs, state.m_mem)):
-            beta_i = self.betas[i]
-            m_t = beta_i * prev_m + (1.0 - beta_i) * inp
+            beta_i = torch.clamp(self.beta_mems[i], min=0.01, max=0.999)
+            gain_i = self.beta_gains[i]
+            m_t = beta_i * prev_m + (1.0 - beta_i) * (gain_i * inp)
             r_t = torch.sigmoid(m_t)
             new_mems.append(m_t)
             new_rates.append(r_t)
@@ -181,6 +188,7 @@ class ContinuousRateDynamics(nn.Module):
         max_correction_norm: float = 0.0,
         action_dim: int = J,
         activity_threshold: float = 0.001,
+        stasis_sigma: float = 0.003,
     ) -> None:
         super().__init__()
         assert_phase_space_contract(latent_dim=latent_dim, q_dim=q_dim, p_dim=p_dim)
@@ -197,6 +205,7 @@ class ContinuousRateDynamics(nn.Module):
         self.max_k_gate = float(max_k_gate)
         self.max_correction_norm = float(max_correction_norm)
         self.activity_threshold = float(activity_threshold)
+        self.stasis_sigma = float(stasis_sigma)
 
         if len(betas) != len(self.timescale_dims):
             raise ValueError(
@@ -216,12 +225,6 @@ class ContinuousRateDynamics(nn.Module):
         self.action_proj = nn.Linear(self.action_dim, self.total_memory_dim, bias=False)
         nn.init.zeros_(self.action_proj.weight)
 
-        self.vel_proj = nn.Linear(self.p_dim, self.q_dim, bias=False)
-        with torch.no_grad():
-            self.vel_proj.weight.zero_()
-            min_dim = min(self.q_dim, self.p_dim)
-            self.vel_proj.weight[:min_dim, :min_dim] = torch.eye(min_dim)
-
         self.W_vel = nn.Linear(self.total_memory_dim, self.q_dim, bias=False)
         nn.init.normal_(self.W_vel.weight, mean=0.0, std=0.01)
 
@@ -233,7 +236,7 @@ class ContinuousRateDynamics(nn.Module):
 
     def vel(self, p: torch.Tensor) -> torch.Tensor:
         """Velocity mapping from momentum subspace p in R^{p_dim} to coordinate velocity in R^{q_dim}."""
-        return self.vel_proj(p)
+        return p[..., : self.q_dim]
 
     def compute_k_gate(
         self,
@@ -251,6 +254,8 @@ class ContinuousRateDynamics(nn.Module):
         scale = F.softplus(self.gate_scale)
         eff_max = self.max_k_gate if max_k_gate is None else float(max_k_gate)
         k_gate = (1.0 - torch.exp(-scale * act_eff)) * eff_max
+        if self.stasis_sigma > 0.0:
+            k_gate = k_gate * (torch.tanh(act_eff / self.stasis_sigma) ** 2)
         return torch.clamp(k_gate, min=0.0, max=eff_max)
 
     def init_state(self, batch_size: int, device: Optional[torch.device] = None) -> DynamicsState:
@@ -297,12 +302,22 @@ class ContinuousRateDynamics(nn.Module):
         ema_rates = self.ema_decay * state.ema_spikes + (1.0 - self.ema_decay) * rates
 
         v_p = self.vel(p_next)
+        if self.stasis_sigma > 0.0:
+            if event_activity is not None:
+                act_stasis = event_activity.view(B, -1).mean(dim=-1, keepdim=True)
+            else:
+                act_stasis = rates.mean(dim=-1, keepdim=True)
+            act_stasis = torch.clamp(act_stasis, min=0.0)
+            v_p_eff = torch.tanh(act_stasis / self.stasis_sigma) * v_p
+        else:
+            v_p_eff = v_p
+
         if sensory_keypoints is not None and in_sensory_phase:
             assert_tensor_contract(sensory_keypoints, (B, self.q_dim), "ContinuousRateDynamics.sensory_keypoints")
             raw_corr = sensory_keypoints - q_prev
             if unconstrained:
                 g_steps = torch.zeros(B, 1, device=device, dtype=q_prev.dtype)
-                k_gate = self.compute_k_gate(event_activity, rates, max_k_gate=1.0)
+                k_gate = self.compute_k_gate(event_activity, rates, max_k_gate=self.max_k_gate)
                 bounded_corr = raw_corr
             else:
                 prev_g = state.grounded_steps if state.grounded_steps is not None else torch.zeros(B, 1, device=device, dtype=q_prev.dtype)
@@ -321,10 +336,10 @@ class ContinuousRateDynamics(nn.Module):
                 else:
                     bounded_corr = raw_corr
 
-            q_next = q_prev + self.dt * v_p + k_gate * bounded_corr
+            q_next = q_prev + self.dt * v_p_eff + k_gate * bounded_corr
         else:
             g_steps = torch.zeros(B, 1, device=device, dtype=q_prev.dtype)
-            q_next = q_prev + self.dt * v_p
+            q_next = q_prev + self.dt * v_p_eff
 
         z_next = torch.cat([q_next, p_next], dim=1)
         new_state = DynamicsState(memory_state=new_mem_state, z_prev=z_next, ema_spikes=ema_rates, grounded_steps=g_steps)  # type: ignore[arg-type]
@@ -427,6 +442,7 @@ class ANNWorldModel(nn.Module):
         max_k_gate: float = 0.35,
         max_correction_norm: float = 0.5,
         activity_threshold: float = 0.001,
+        stasis_sigma: float = 0.003,
         phase_horizon: int = 50,
         symplectic_m1: bool = True,
         dt: float = 0.05,
@@ -487,6 +503,7 @@ class ANNWorldModel(nn.Module):
             max_k_gate=max_k_gate,
             max_correction_norm=max_correction_norm,
             activity_threshold=activity_threshold,
+            stasis_sigma=stasis_sigma,
         )
 
         # 4. Action-Conditioned Latent Attractor Predictor (M1)
@@ -545,6 +562,7 @@ class ANNWorldModel(nn.Module):
             max_k_gate=cfg.model.max_k_gate,
             max_correction_norm=cfg.model.max_correction_norm,
             activity_threshold=cfg.model.activity_threshold,
+            stasis_sigma=cfg.model.stasis_sigma,
             phase_horizon=cfg.training.phase_horizon,
             symplectic_m1=cfg.model.symplectic,
             dt=cfg.environment.dt,
@@ -583,7 +601,12 @@ class ANNWorldModel(nn.Module):
         z_prev = state.dynamics_state.z_prev
         predicted_x = self.sensory_predictor(z_prev)
         epsilon_t = sensory_x - predicted_x
-        event_activity = event_frame.abs().mean(dim=(1, 2, 3), keepdim=True)
+        if event_frame.shape[1] >= 4:
+            act_global = event_frame[:, :2].abs().mean(dim=(1, 2, 3), keepdim=True)
+            act_wrist = event_frame[:, 2:].abs().mean(dim=(1, 2, 3), keepdim=True)
+            event_activity = torch.maximum(act_global, act_wrist)
+        else:
+            event_activity = event_frame.abs().mean(dim=(1, 2, 3), keepdim=True)
 
         z_t, new_dyn_state = self.dynamics.step(
             sensory_input=epsilon_t,
@@ -650,7 +673,12 @@ class ANNWorldModel(nn.Module):
             z_prev = state.dynamics_state.z_prev
             predicted_x = self.sensory_predictor(z_prev)
             epsilon_t = sensory_x - predicted_x
-            event_activity = event_frame.abs().mean(dim=(1, 2, 3), keepdim=True)
+            if event_frame.shape[1] >= 4:
+                act_global = event_frame[:, :2].abs().mean(dim=(1, 2, 3), keepdim=True)
+                act_wrist = event_frame[:, 2:].abs().mean(dim=(1, 2, 3), keepdim=True)
+                event_activity = torch.maximum(act_global, act_wrist)
+            else:
+                event_activity = event_frame.abs().mean(dim=(1, 2, 3), keepdim=True)
             u_t = actions[:, t] if actions is not None else None
 
             z_t, new_dyn_state = self.dynamics.step(

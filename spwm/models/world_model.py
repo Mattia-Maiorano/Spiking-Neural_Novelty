@@ -65,6 +65,7 @@ class SPWM(nn.Module):
         max_k_gate: float = 0.5,
         max_correction_norm: float = 0.25,
         activity_threshold: float = 0.001,
+        stasis_sigma: float = 0.003,
         phase_horizon: int = 50,
         symplectic_m1: bool = True,
         dt: float = 0.05,
@@ -130,6 +131,7 @@ class SPWM(nn.Module):
             max_k_gate=max_k_gate,
             max_correction_norm=max_correction_norm,
             activity_threshold=activity_threshold,
+            stasis_sigma=stasis_sigma,
         )
 
         # 4. Action-Conditioned Latent Attractor Predictor (M1)
@@ -193,6 +195,7 @@ class SPWM(nn.Module):
             max_k_gate=cfg.model.max_k_gate,
             max_correction_norm=cfg.model.max_correction_norm,
             activity_threshold=cfg.model.activity_threshold,
+            stasis_sigma=cfg.model.stasis_sigma,
             phase_horizon=cfg.training.phase_horizon,
             symplectic_m1=cfg.model.symplectic,
             dt=cfg.environment.dt,
@@ -236,7 +239,12 @@ class SPWM(nn.Module):
         z_prev = state.dynamics_state.z_prev
         predicted_x = self.sensory_predictor(z_prev)
         epsilon_t = sensory_x - predicted_x
-        event_activity = event_frame.abs().mean(dim=(1, 2, 3), keepdim=True)
+        if event_frame.shape[1] >= 4:
+            act_global = event_frame[:, :2].abs().mean(dim=(1, 2, 3), keepdim=True)
+            act_wrist = event_frame[:, 2:].abs().mean(dim=(1, 2, 3), keepdim=True)
+            event_activity = torch.maximum(act_global, act_wrist)
+        else:
+            event_activity = event_frame.abs().mean(dim=(1, 2, 3), keepdim=True)
 
         z_t, new_dyn_state = self.dynamics.step(
             sensory_input=epsilon_t,
@@ -309,7 +317,12 @@ class SPWM(nn.Module):
             z_prev = state.dynamics_state.z_prev
             predicted_x = self.sensory_predictor(z_prev)
             epsilon_t = sensory_x - predicted_x
-            event_activity = event_frame.abs().mean(dim=(1, 2, 3), keepdim=True)
+            if event_frame.shape[1] >= 4:
+                act_global = event_frame[:, :2].abs().mean(dim=(1, 2, 3), keepdim=True)
+                act_wrist = event_frame[:, 2:].abs().mean(dim=(1, 2, 3), keepdim=True)
+                event_activity = torch.maximum(act_global, act_wrist)
+            else:
+                event_activity = event_frame.abs().mean(dim=(1, 2, 3), keepdim=True)
             u_t = actions[:, t] if actions is not None else None
 
             z_t, new_dyn_state = self.dynamics.step(

@@ -161,24 +161,24 @@ class ALIFCell(nn.Module):
         self.surrogate_alpha = float(surrogate_alpha)
         self.surrogate = get_surrogate(self.surrogate_name, alpha=self.surrogate_alpha)
 
-        self.register_buffer("beta_mem", torch.full((size,), float(beta_mem), dtype=torch.float32))
+        self.beta_mem = nn.Parameter(torch.full((size,), float(beta_mem), dtype=torch.float32))
 
         if isinstance(beta_adapt, (int, float)):
-            self.register_buffer("beta_adapt", torch.full((size,), float(beta_adapt), dtype=torch.float32))
+            self.beta_adapt = nn.Parameter(torch.full((size,), float(beta_adapt), dtype=torch.float32))
         else:
             adapt_seq = list(beta_adapt) if not isinstance(beta_adapt, torch.Tensor) else beta_adapt.flatten().tolist()
             if len(adapt_seq) == 2 and size != 2:
                 n_reactive = size // 2
                 n_deep = size - n_reactive
                 adapt_vals = [float(adapt_seq[0])] * n_reactive + [float(adapt_seq[1])] * n_deep
-                self.register_buffer("beta_adapt", torch.tensor(adapt_vals, dtype=torch.float32))
+                self.beta_adapt = nn.Parameter(torch.tensor(adapt_vals, dtype=torch.float32))
             else:
                 adapt_tensor = torch.as_tensor(beta_adapt, dtype=torch.float32)
                 if adapt_tensor.numel() == 1:
                     adapt_tensor = adapt_tensor.repeat(size)
                 elif adapt_tensor.numel() != size:
                     raise ValueError(f"beta_adapt size {adapt_tensor.numel()} does not match cell size {size}")
-                self.register_buffer("beta_adapt", adapt_tensor)
+                self.beta_adapt = nn.Parameter(adapt_tensor.clone())
 
     def init_state(self, batch_size: int, device: Optional[torch.device] = None) -> ALIFState:
         v_mem = torch.zeros(batch_size, self.size, device=device, dtype=torch.float32)
@@ -198,8 +198,10 @@ class ALIFCell(nn.Module):
         if state is None:
             state = self.init_state(B, device=device)
 
-        v_mem = self.beta_mem * state.v_mem + synaptic_input - state.spikes * self.v_th0
-        a_adapt = self.beta_adapt * state.a_adapt + state.spikes
+        beta_mem = torch.clamp(self.beta_mem, min=0.50, max=0.98)
+        beta_adapt = torch.clamp(self.beta_adapt, min=0.80, max=0.995)
+        v_mem = beta_mem * state.v_mem + synaptic_input - state.spikes * self.v_th0
+        a_adapt = beta_adapt * state.a_adapt + state.spikes
         v_th_t = self.v_th0 + self.gamma * a_adapt
         spikes = self.surrogate(v_mem - v_th_t)
 

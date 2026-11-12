@@ -29,7 +29,12 @@ def step_grounded(
     """Execute a single grounded sensory-driven step using frozen encoder and dynamics with action conditioning."""
     sx, skp = model.encoder.encode_step(event_frame)
     eps = sx - model.sensory_predictor(dyn_state.z_prev)
-    event_act = event_frame.abs().mean(dim=(1, 2, 3), keepdim=True)
+    if event_frame.shape[1] >= 4:
+        act_global = event_frame[:, :2].abs().mean(dim=(1, 2, 3), keepdim=True)
+        act_wrist = event_frame[:, 2:].abs().mean(dim=(1, 2, 3), keepdim=True)
+        event_act = torch.maximum(act_global, act_wrist)
+    else:
+        event_act = event_frame.abs().mean(dim=(1, 2, 3), keepdim=True)
     return model.dynamics.step(
         eps,
         state=dyn_state,

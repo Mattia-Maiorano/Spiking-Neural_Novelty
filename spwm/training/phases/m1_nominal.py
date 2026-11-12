@@ -40,8 +40,7 @@ class M1PhaseStrategy(PhaseStrategy):
         self, events: torch.Tensor, actions: torch.Tensor, flat_kin: Optional[torch.Tensor] = None,
         phase_flags: Optional[torch.Tensor] = None, epoch: Optional[int] = None,
         is_train: bool = True, closed_loop_batch: Optional[Dict[str, torch.Tensor]] = None,
-        curriculum_alpha: Optional[float] = None, curriculum_w_t: float = 0.60,
-        curriculum_phase: int = 1,
+        curriculum_alpha: Optional[float] = None, curriculum_w_t: float = 0.60, curriculum_phase: int = 1,
     ) -> Tuple[torch.Tensor, Dict[str, float]]:
         B, T = events.shape[0], events.shape[1]
         assert_tensor_contract(events, (B, T, self.model.in_channels, self.model.height, self.model.width), "M1.events")
@@ -95,39 +94,27 @@ class M1PhaseStrategy(PhaseStrategy):
                 cl_size, z_dim = float(cl_pred.shape[0]), self.model.latent_dim
                 cl_flat_pred, cl_flat_target = cl_pred.reshape(-1, z_dim), cl_target.reshape(-1, z_dim)
                 n_cl = cl_flat_pred.shape[0]
-                mixed_pred = torch.cat([m1_traj.reshape(-1, z_dim), cl_flat_pred], dim=0)
-                mixed_target = torch.cat([target_latents.reshape(-1, z_dim), cl_flat_target], dim=0)
-                mixed_pos_w = torch.cat([step_weights.reshape(-1, 1), torch.ones(n_cl, 1, device=events.device, dtype=step_weights.dtype)], dim=0)
-                mixed_vel_w = torch.cat([vel_step_weights.reshape(-1, 1), torch.ones(n_cl, 1, device=events.device, dtype=vel_step_weights.dtype)], dim=0)
+                mixed_pred, mixed_target = torch.cat([m1_traj.reshape(-1, z_dim), cl_flat_pred], dim=0), torch.cat([target_latents.reshape(-1, z_dim), cl_flat_target], dim=0)
+                ones_cl = torch.ones(n_cl, 1, device=events.device, dtype=step_weights.dtype)
+                mixed_pos_w, mixed_vel_w = torch.cat([step_weights.reshape(-1, 1), ones_cl], dim=0), torch.cat([vel_step_weights.reshape(-1, 1), ones_cl], dim=0)
                 p_diff, v_diff = (mixed_pred[..., :q_dim] - mixed_target[..., :q_dim]) ** 2, (mixed_pred[..., q_dim:] - mixed_target[..., q_dim:]) ** 2
                 loss_pos, loss_vel = (mixed_pos_w * p_diff).mean(), (mixed_vel_w * v_diff).mean()
                 cl_critic_loss = compute_critic_mc_loss(self.model.critic, self.model.physical_decoder, self.fk, cl_pred.detach(), cl_target, gamma=0.95)
                 loss_critic = 0.5 * (loss_critic + cl_critic_loss)
 
         w_critic = float(self.cfg.loss.lambda_critic) * (5.0 if curriculum_phase >= 3 else 1.0)
-        loss_m1_latent = float(self.cfg.loss.lambda_latent) * (
-            float(self.cfg.loss.lambda_position) * loss_pos + float(self.cfg.loss.lambda_velocity) * loss_vel
-        )
-        loss_kin_m1 = torch.zeros((), device=events.device, dtype=m1_traj.dtype)
-        pos_err, vel_err = 0.0, 0.0
+        loss_m1_latent = float(self.cfg.loss.lambda_latent) * (float(self.cfg.loss.lambda_position) * loss_pos + float(self.cfg.loss.lambda_velocity) * loss_vel)
+        loss_kin_m1, pos_err, vel_err = torch.zeros((), device=events.device, dtype=m1_traj.dtype), 0.0, 0.0
         if flat_kin is not None and self.model.physical_decoder is not None:
-            target_kin = flat_kin[:, t_start + 1 : t_start + 1 + horizon]
-            jc = self.cfg.environment.joint_count
-            target_q_joints = target_kin[..., :jc]
-            target_p_joints = target_kin[..., jc : 2 * jc]
-            q_hat = m1_traj[..., :q_dim]
-            p_hat = m1_traj[..., q_dim:]
-            pred_q_joints = self.model.physical_decoder.pos_head(q_hat)
-            pred_p_joints = self.model.physical_decoder.vel_head(p_hat)
-            loss_kin_m1 = F.mse_loss(pred_q_joints, target_q_joints) + 0.5 * F.mse_loss(pred_p_joints, target_p_joints)
-
+            target_kin, jc = flat_kin[:, t_start + 1 : t_start + 1 + horizon], self.cfg.environment.joint_count
+            pred_q, pred_p = self.model.physical_decoder.pos_head(m1_traj[..., :q_dim]), self.model.physical_decoder.vel_head(m1_traj[..., q_dim:])
+            loss_kin_m1 = F.mse_loss(pred_q, target_kin[..., :jc]) + 0.5 * F.mse_loss(pred_p, target_kin[..., jc : 2 * jc]) + float(self.cfg.loss.cartesian_weight) * F.mse_loss(self.fk(pred_q), self.fk(target_kin[..., :jc]), reduction="none").sum(dim=-1).mean()
             with torch.no_grad():
                 decoded_kin = self.model.physical_decoder(m1_traj, initial_filter_state=self.model.physical_decoder.warm_up_filter(z_prefix))
                 pos_err, vel_err = position_error(decoded_kin, target_kin, joint_count=jc), velocity_error(decoded_kin, target_kin, joint_count=jc)
 
         loss_m1_total = loss_m1_latent + 1.0 * loss_kin_m1
         total_loss = loss_m1_total + w_critic * loss_critic
-
         metrics = {
             "loss": float(loss_m1_total.item()), "loss_total": float(total_loss.item()), "loss_m1": float(loss_m1_total.item()),
             "loss_m1_latent": float(loss_m1_latent.item()), "loss_latent": float(loss_m1_latent.item()), "loss_kin_m1": float(loss_kin_m1.item()),
@@ -141,16 +128,13 @@ class M1PhaseStrategy(PhaseStrategy):
     def _extract_batch(self, batch: Dict[str, torch.Tensor]) -> Tuple[torch.Tensor, torch.Tensor, Optional[torch.Tensor], Optional[torch.Tensor]]:
         events = batch["events"].to(self.device)
         actions = batch["actions"].to(self.device) if batch.get("actions") is not None else torch.zeros(events.shape[0], events.shape[1], self.model.action_dim, device=self.device, dtype=events.dtype)
-        flat_kin = batch["flat_kinematics"].to(self.device) if batch.get("flat_kinematics") is not None else None
-        phase_flags = batch["phase_flags"].to(self.device) if batch.get("phase_flags") is not None else None
-        return events, actions, flat_kin, phase_flags
+        return events, actions, (batch["flat_kinematics"].to(self.device) if batch.get("flat_kinematics") is not None else None), (batch["phase_flags"].to(self.device) if batch.get("phase_flags") is not None else None)
 
     def train_step(self, batch: Dict[str, torch.Tensor], epoch: int) -> Dict[str, float]:
         self.model.eval(); self.model.m1.train(); self.model.critic.train()
         assert self.predictor_optimizer is not None
         self.predictor_optimizer.zero_grad()
-        cl_b = batch.get("closed_loop")
-        c_a = float(batch["curriculum_alpha"]) if "curriculum_alpha" in batch else None
+        cl_b, c_a = batch.get("closed_loop"), (float(batch["curriculum_alpha"]) if "curriculum_alpha" in batch else None)
         c_wt, c_p = (float(batch["curriculum_w_t"]) if "curriculum_w_t" in batch else 0.60), (int(batch["curriculum_phase"]) if "curriculum_phase" in batch else 1)
         total_loss, m = self._compute_m1_objectives(*self._extract_batch(batch), epoch=epoch, is_train=True, closed_loop_batch=cl_b, curriculum_alpha=c_a, curriculum_w_t=c_wt, curriculum_phase=c_p)
         total_loss.backward()
@@ -161,5 +145,4 @@ class M1PhaseStrategy(PhaseStrategy):
     @torch.no_grad()
     def validate_step(self, batch: Dict[str, torch.Tensor]) -> Dict[str, float]:
         self.model.eval()
-        _, m = self._compute_m1_objectives(*self._extract_batch(batch), epoch=None, is_train=False)
-        return {f"val_{k}": v for k, v in m.items()}
+        return {f"val_{k}": v for k, v in self._compute_m1_objectives(*self._extract_batch(batch), epoch=None, is_train=False)[1].items()}

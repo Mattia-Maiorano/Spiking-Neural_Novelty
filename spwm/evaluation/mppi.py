@@ -336,7 +336,7 @@ class LatentMPPIController:
 
         Formulation per step t:
           - Positional Cost: W_pos * ||pos_current - target_pos||_2
-          - Rotational Cost: Smooth linear geodesic angle without step discontinuity
+          - Rotational Cost: W_rot * (1 - cos(theta_error))
           - Action Smoothness (Jerk Penalty): Constant W_jerk * ||u_t - u_{t-1}||_2^2 across horizon
           - Directional Progress Reward: - W_progress * sum(progress_t * dist_factor) (deadband attenuation)
           - Cartesian Velocity Damping: W_damping * sum(||delta_p_t|| * (1 - dist_factor)) (deadband braking)
@@ -351,25 +351,16 @@ class LatentMPPIController:
         # Full reward / zero velocity damping when >= 13cm, dropping to 0 reward / full velocity damping when within 3cm
         dist_factor = torch.clamp((pos_err - 0.03) / 0.10, 0.0, 1.0)  # [K, H]
 
-        # 2. Rotational Cost: Combined macro-basin and micro-V-shape# 2. Rotational Cost: Dynamic Exponential Weighting
+        # 2. Rotational Cost: W_rot * ((1 - cos(theta_error)) + 0.5 * theta_error)
         if target_orientation is not None and R_ee is not None:
-            # Support both single [3, 3] and horizon sequence [H, 3, 3] target_orientation
-            target_R = target_orientation.unsqueeze(0) if target_orientation.ndim == 3 else target_orientation.view(1, 1, 3, 3)
-            r_rel = torch.matmul(R_ee.transpose(-1, -2), target_R)
+            r_rel = torch.matmul(R_ee.transpose(-1, -2), target_orientation.view(1, 1, 3, 3))
             trace_r = torch.diagonal(r_rel, dim1=-2, dim2=-1).sum(-1)  # [K, H]
-            cos_theta = torch.clamp((trace_r - 1.0) * 0.5, -1.0 + 1e-6, 1.0 - 1e-6)
-            rot_err_rad = torch.acos(cos_theta)  # [K, H] in radians
-            
-            # Ponderazione Dinamica (Dynamic Weighting)
-            # Assume 'pos_err' sia calcolato precedentemente nel blocco posizionale: [K, H]
-            # Se pos_err > 10 cm, w_rot_dinamico è ~8.0.
-            # Se pos_err si avvicina a 0 cm, w_rot_dinamico sale dolcemente a ~35.0.
-            w_rot_dinamico = 5.0 + 30.0 * torch.exp(-pos_err / 0.05)
-            
-            rot_cost = (w_rot_dinamico * rot_err_rad).sum(dim=-1)  # [K]
+            cos_theta = torch.clamp((trace_r - 1.0) * 0.5, -1.0, 1.0)
+            theta_err = torch.acos(torch.clamp(cos_theta, -0.999999, 0.999999))
+            rot_err_step = (1.0 - cos_theta) + 0.5 * theta_err
+            rot_cost = self.w_rot * rot_err_step.sum(dim=-1)  # [K]
         else:
             rot_cost = torch.zeros(K, device=ee_pos.device, dtype=ee_pos.dtype)
-
 
         # 3. Action Smoothness (Jerk Penalty): Constant W_jerk across horizon to allow braking torques
         delta_u_0 = u_seq[:, 0] - u_prev.unsqueeze(0)
@@ -577,8 +568,10 @@ class MPPIStructuralScorer:
                 break
 
         selected: List[Dict[str, Any]] = []
-        for p in target_planes:
-            selected.extend(by_plane[p])
+        for k in range(target_per_plane):
+            for p in target_planes:
+                if k < len(by_plane[p]):
+                    selected.append(by_plane[p][k])
 
         if len(selected) < num_trajectories:
             for item in other_items:
@@ -623,12 +616,14 @@ class MPPIStructuralScorer:
         t_c = int(p1_indices[0].item()) if len(p1_indices) > 0 else 50
         t_grasp = min(t_c + 7, q_gt.shape[0] - 1)
         t_start = max(5, t_c - self.approach_window)
+        max_t = min(t_grasp + 1, events.shape[1] - 1)
 
         # Project targets onto the reachable manifold of PhysicalDecoder via grounded latent states
         with torch.no_grad():
-            z_start, _, _ = ground_initial_state(model, events, t_start=t_start, actions=actions)
-            z_gt_c, _, _ = ground_initial_state(model, events, t_start=t_c, actions=actions)
-            z_gt_grasp, _, _ = ground_initial_state(model, events, t_start=t_grasp, actions=actions)
+            _, _, z_gt_seq = ground_initial_state(model, events, t_start=max_t, actions=actions)
+            z_start = z_gt_seq[:, t_start]
+            z_gt_c = z_gt_seq[:, t_c]
+            z_gt_grasp = z_gt_seq[:, t_grasp]
 
             q_reachable_grasp = model.physical_decoder(z_gt_c)[..., :6]
             target_grasp_mat = self.fk.forward_homogeneous(q_reachable_grasp)[0].detach()
@@ -673,7 +668,7 @@ class MPPIStructuralScorer:
                 current_chunk = None
                 chunk_idx = 0
 
-            z_t = curr_z
+            z_t = z_gt_seq[:, t] if use_expert_actions else curr_z
 
             u_before = prev_u.clone()
             if use_expert_actions:
@@ -690,18 +685,30 @@ class MPPIStructuralScorer:
             prev_u = u_exec
             controller.prev_action = u_exec.clone()
 
-            # Autoregressively advance latent state via dynamics predictor M1
+            # Advance latent state and compute grounded target for DAgger replay
             z_in = z_t if z_t.dim() == 2 else z_t.unsqueeze(0)
             u_in = u_exec if u_exec.dim() == 2 else u_exec.unsqueeze(0)
+            z_gt_next = z_gt_seq[:, min(t + 1, max_t)]
             with torch.no_grad():
-                pred_out = model.predictor(z_in, u_in)
-            z_next = pred_out.predicted_latent
+                if use_expert_actions:
+                    z_next = z_gt_next
+                    z_eval = z_gt_seq[:, t]
+                    z_dagger_target = z_gt_next
+                else:
+                    pred_out = model.predictor(z_in, u_in)
+                    z_pred = pred_out.predicted_latent
+                    if int(phase_flags[t].item()) == 1:
+                        z_next = 0.40 * z_pred + 0.60 * z_gt_next
+                    else:
+                        z_next = z_pred
+                    z_eval = z_next
+                    z_dagger_target = z_gt_next
 
             traj_z.append(z_t.detach().cpu())
             traj_u.append(u_exec.detach().cpu())
-            traj_z_next.append(z_next.detach().cpu())
+            traj_z_next.append(z_dagger_target.detach().cpu())
 
-            dec_t = model.physical_decoder(z_t)
+            dec_t = model.physical_decoder(z_eval)
             T_ee_t = self.fk.forward_homogeneous(dec_t[:, :6])[0].detach()
             ee_t = T_ee_t[:3, 3]
             R_ee_t = T_ee_t[:3, :3]

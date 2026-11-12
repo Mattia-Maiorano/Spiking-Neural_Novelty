@@ -38,12 +38,14 @@ $$\mathcal{L}_{\text{representation}} = \lambda_{\text{kinematic}} \mathcal{L}_{
 > I gradienti retropropagati attraverso la dinamica ricorrente durante Phase 0 riescono quindi ad attivare e far convergere $W_u$ a un ordine di grandezza del tutto comparabile a $W_{\text{in}}$ nei run completi, consentendo la corretta iniezione dell'azione motoria $u_t$ nella corrente ALIF $I_t$.
 
 #### 1. Kinematic Decoding Loss ($\mathcal{L}_{\text{kinematic}}$)
-Decodes continuous joint positions $\hat{q}^*$ and joint velocities $\hat{p}^*$ from latent partitions $q_t \in \mathbb{R}^{32}$ and $p_t \in \mathbb{R}^{96}$:
+Decodes continuous joint positions $\hat{q}^*$ and joint velocities $\hat{p}^*$ from latent partitions $q_t \in \mathbb{R}^{32}$ and $p_t \in \mathbb{R}^{96}$, and computes differentiable forward kinematics Cartesian end-effector translation:
 $$\hat{q}^*_t = \text{pos\_head}(q_t), \quad \hat{p}^*_t = \text{vel\_head}(p_t)$$
 $$\mathcal{L}_{\text{pos}} = \frac{1}{B \cdot T} \sum_{b=1}^B \sum_{t=1}^T \sum_{j=1}^J (\hat{q}^*_{b,t,j} - q^*_{b,t,j})^2$$
 $$\mathcal{L}_{\text{vel}} = \frac{1}{\sigma_v^2 \cdot B \cdot T} \sum_{b=1}^B \sum_{t=1}^T \sum_{j=1}^J (\hat{p}^*_{b,t,j} - p^*_{b,t,j})^2$$
-$$\mathcal{L}_{\text{kinematic}} = \mathcal{L}_{\text{pos}} + \mathcal{L}_{\text{vel}}$$
-where $\sigma_v = 1.0$ (configurable via `loss.velocity_loss_scale`) and $J = 6$.
+$$\mathbf{p}_{\text{ee, pred}} = T_{\text{FK}}(\hat{q}^*_t)_{:3, 3}, \quad \mathbf{p}_{\text{ee, true}} = T_{\text{FK}}(q^*_t)_{:3, 3}, \quad R_{\text{pred}} = T_{\text{FK}}(\hat{q}^*_t)_{:3, :3}, \quad R_{\text{true}} = T_{\text{FK}}(q^*_t)_{:3, :3}$$
+$$\mathcal{L}_{\text{cartesian}} = \frac{1}{B \cdot T} \sum_{b=1}^B \sum_{t=1}^T \left(\|\mathbf{p}_{\text{ee, pred}} - \mathbf{p}_{\text{ee, true}}\|_2^2 + 0.1 \cdot \|R_{\text{pred}} - R_{\text{true}}\|_F^2\right)$$
+$$\mathcal{L}_{\text{kinematic}} = \mathcal{L}_{\text{pos}} + \mathcal{L}_{\text{vel}} + \lambda_{\text{cart}} \cdot \mathcal{L}_{\text{cartesian}}$$
+where $\sigma_v = 1.0$ (configurable via `loss.velocity_loss_scale`), $\lambda_{\text{cart}} = 25.0$ (configurable via `loss.cartesian_weight`), and $J = 6$. $\mathcal{L}_{\text{cartesian}}$ weights joint errors geometrically by their kinematic distal lever arm (e.g. $0.39\,\text{m}$ distal lever on J2 Elbow_Flex along axis $\vec{a} = [0.5375, -0.2756, -0.7969]^T$).
 
 #### 2. Derivative Consistency Loss ($\mathcal{L}_{\text{derivative}}$)
 Enforces Hamiltonian/symplectic phase-space factorization where coordinate displacement matches integrated momentum:
@@ -94,7 +96,7 @@ LatentCritic learns the expected discounted Cartesian and geodesic rotational tr
 #### Kinematic Supervision for M1 ($\mathcal{L}_{\text{kin\_M1}}$)
 During the M1 training phase, predicted latents $(\hat{q}_t, \hat{p}_t)$ are passed through the frozen physical decoder heads ($\text{pos\_head}$ and $\text{vel\_head}$) to enforce joint-space kinematic consistency:
 $$\hat{q}^*_t = \text{pos\_head}(\hat{q}_t), \quad \hat{p}^*_t = \text{vel\_head}(\hat{p}_t)$$
-$$\mathcal{L}_{\text{kin\_M1}} = \frac{1}{B \cdot H \cdot J} \sum_{b,t,j} (\hat{q}^*_{b,t,j} - q^*_{b,t,j})^2 + \frac{0.5}{B \cdot H \cdot J} \sum_{b,t,j} (\hat{p}^*_{b,t,j} - p^*_{b,t,j})^2$$
+$$\mathcal{L}_{\text{kin\_M1}} = \frac{1}{B \cdot H \cdot J} \sum_{b,t,j} (\hat{q}^*_{b,t,j} - q^*_{b,t,j})^2 + \frac{0.5}{B \cdot H \cdot J} \sum_{b,t,j} (\hat{p}^*_{b,t,j} - p^*_{b,t,j})^2 + \frac{\lambda_{\text{cart}}}{B \cdot H} \sum_{b,t} \|\text{FK}(\hat{q}^*_{b,t}) - \text{FK}(q^*_{b,t})\|_2^2$$
 
 #### Total M1 Loss
 The latent attractor loss $\mathcal{L}_{M1,\text{latent}} = \lambda_{\text{position}} \mathcal{L}_{\text{pos}} + \lambda_{\text{velocity}} \mathcal{L}_{\text{vel}}$ is augmented with kinematic supervision, and critic loss is kept decoupled:

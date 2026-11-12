@@ -91,8 +91,8 @@ Maintains continuous state assimilation by combining prediction error $\epsilon_
 
 #### Population Partitioning & Parameters
 - **Timescale Tiers**: 2 tiers (`timescale_dims = (128, 128)`), total memory dimension $N_{\text{mem}} = 256$.
-- **Membrane Decay Constant**: $\beta_{\text{mem}} = 0.80$.
-- **Adaptation Decay Constants**: $\beta_{\text{adapt}} = (0.90, 0.985)$ (Fast tier: $\beta_1 = 0.90$; Slow tier: $\beta_2 = 0.985$).
+- **Membrane Decay Constant**: Learnable per-neuron `nn.Parameter` initialized at $\beta_{\text{mem}} = 0.80$, clamped in forward pass to $[0.50, 0.98]$ (256 params).
+- **Adaptation Decay Constants**: Learnable per-neuron `nn.Parameter` initialized at $\beta_{\text{adapt}} = (0.90, 0.985)$ (Fast tier: $\beta_1 = 0.90$; Slow tier: $\beta_2 = 0.985$), clamped in forward pass to $[0.80, 0.995]$ (256 params).
 - **Baseline Threshold**: $V_{\text{th0}} = 1.0$.
 - **Threshold Adaptation Coupling**: $\gamma = 0.18$.
 - **Surrogate Gradient Function**: Arctangent (`atan`) with $\alpha = 2.0$:
@@ -125,16 +125,19 @@ $$p_t = \text{LayerNorm}(W_{\text{spk}} z_t + W_{\text{mem}} m_{\text{analog}})$
 - Exponential Moving Average of spikes:
   $$\bar{z}_t = \lambda_{\text{ema}} \bar{z}_{t-1} + (1 - \lambda_{\text{ema}}) z_t, \quad \lambda_{\text{ema}} = 0.90$$
 
-#### Coordinate Subspace & Anti-Evanescence Gating
+#### Coordinate Subspace, Stasis Zero-Velocity Damping & Anti-Evanescence Gating
 Generalized coordinate update maps momentum to coordinate velocity via a direct slice of the first 32 dimensions $v_p = \text{vel}(p_t) = p_t[0:32]$ (strictly aligned with Phase 0 and $\mathcal{L}_{\text{derivative}}$ without parameter projection layers):
-- Event Activity: $a_t = \text{mean}(|E_t|)$.
-- Dynamic Blending Factor $K_{\text{gate}}$:
+- Event Activity: Dual-camera channel-wise maximum $a_t = \max\left(\text{mean}(|E_{t, \text{global}}|), \text{mean}(|E_{t, \text{wrist}}|)\right)$, ensuring localized wrist rotation events keep the velocity gate open even when the proximal arm decelerates on the static workspace camera.
+- Stasis Zero-Velocity Damping Gate on $v_p$:
+  To eliminate post-motion stasis drift caused by slow-decaying ALIF recurrent potentials ($\beta_2 = 0.985$) when the manipulator comes to rest ($a_t \to 0$):
+  $$v_{p, \text{eff}} = \tanh\left(\frac{a_t}{\sigma_{\text{stasis}}}\right) \cdot v_p, \quad \sigma_{\text{stasis}} = 0.003$$
+- Dynamic Blending Factor $K_{\text{gate}}$ (Anti-Evanescence & Anti-Pullback Gate):
   $$a_{\text{eff}} = \max(0, a_t - \theta_{\text{act}}), \quad \theta_{\text{act}} = 0.001$$
-  $$K_{\text{gate}} = \left(1 - \exp\left(-\text{softplus}(w_{\text{gate}}) \cdot a_{\text{eff}}\right)\right) \cdot K_{\text{max}}$$
+  $$K_{\text{gate}} = \left(1 - \exp\left(-\text{softplus}(w_{\text{gate}}) \cdot a_{\text{eff}}\right)\right) \cdot \tanh^2\left(\frac{a_{\text{eff}}}{\sigma_{\text{stasis}}}\right) \cdot K_{\text{max}}$$
   where $w_{\text{gate}} \in \mathbb{R}^{32}$ initialized to 50.0.
 - Step Update:
-  $$q_t = q_{t-1} + \Delta t \cdot v_p + K_{\text{gate}} \odot \text{clip}\left(k_t^{\text{sensory}} - q_{t-1}, \|\cdot\|_2 \le \delta_{\text{max}}\right)$$
-  During autonomous rollout without sensory keypoints, $q_t = q_{t-1} + \Delta t \cdot v_p$.
+  $$q_t = q_{t-1} + \Delta t \cdot v_{p, \text{eff}} + K_{\text{gate}} \odot \text{clip}\left(k_t^{\text{sensory}} - q_{t-1}, \|\cdot\|_2 \le \delta_{\text{max}}\right)$$
+  During autonomous rollout without sensory keypoints, $q_t = q_{t-1} + \Delta t \cdot v_{p, \text{eff}}$.
 - Reconstructed Latent State:
   $$z_t = [q_t, p_t] \in \mathbb{R}^{128}$$
 
@@ -205,7 +208,7 @@ Estimates the discounted cost-to-go $V(z) \in \mathbb{R}$ directly from latent s
 ### 2.7 Differentiable Forward Kinematics (`spwm/models/kinematics.py`)
 
 #### Purpose
-Computes exact 3D Cartesian coordinates $(x, y, z)$ and $4 \times 4$ homogeneous transformation matrices $T_{0:6}$ of the manipulator arm links and end-effector tip from joint angles $q^* \in \mathbb{R}^6$.
+Computes exact 3D Cartesian coordinates $(x, y, z)$ and $4 \times 4$ homogeneous transformation matrices $T_{0:6}$ of the manipulator arm links and end-effector tip from joint angles $q^* \in \mathbb{R}^6$. Utilized directly in Phase 0 training (`spwm/training/phases/representation.py`) through $\mathcal{L}_{\text{cartesian}}$ to provide lever-arm-aware geometric gradients to J1 (Shoulder Lift) and J2 (Elbow Flex).
 
 #### Robot Arm Kinematic Constants
 - Shoulder Mount Height: $1.25\,\text{m}$

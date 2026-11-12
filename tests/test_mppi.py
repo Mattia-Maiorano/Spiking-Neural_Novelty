@@ -63,7 +63,7 @@ def test_mppi_single_step_planning(mppi_setup):
 
     assert isinstance(result, MPPIPlanResult)
     assert result.action.shape == (6,)
-    assert result.action_chunk.shape == (4, 6)
+    assert result.action_chunk.shape == (controller.chunk_size, 6)
     assert torch.allclose(result.action, result.action_chunk[0])
     assert torch.all(result.action_chunk >= -1.0) and torch.all(result.action_chunk <= 1.0)
     assert result.nominal_action_sequence.shape == (10, 6)

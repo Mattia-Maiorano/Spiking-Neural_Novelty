@@ -41,6 +41,7 @@ class SpikingLatentDynamics(nn.Module):
         max_correction_norm: float = 0.0,
         action_dim: int = J,
         activity_threshold: float = 0.001,
+        stasis_sigma: float = 0.003,
     ) -> None:
         super().__init__()
         assert_phase_space_contract(latent_dim=latent_dim, q_dim=q_dim, p_dim=p_dim)
@@ -57,6 +58,7 @@ class SpikingLatentDynamics(nn.Module):
         self.max_k_gate = float(max_k_gate)
         self.max_correction_norm = float(max_correction_norm)
         self.activity_threshold = float(activity_threshold)
+        self.stasis_sigma = float(stasis_sigma)
 
         if len(betas) != len(self.timescale_dims):
             raise ValueError(
@@ -115,6 +117,8 @@ class SpikingLatentDynamics(nn.Module):
         scale = F.softplus(self.gate_scale)
         eff_max = self.max_k_gate if max_k_gate is None else float(max_k_gate)
         k_gate = (1.0 - torch.exp(-scale * act_eff)) * eff_max
+        if self.stasis_sigma > 0.0:
+            k_gate = k_gate * (torch.tanh(act_eff / self.stasis_sigma) ** 2)
         return torch.clamp(k_gate, min=0.0, max=eff_max)
 
     def init_state(self, batch_size: int, device: Optional[torch.device] = None) -> DynamicsState:
@@ -161,12 +165,22 @@ class SpikingLatentDynamics(nn.Module):
         ema_spikes = self.ema_decay * state.ema_spikes + (1.0 - self.ema_decay) * spikes
 
         v_p = p_next[:, : self.q_dim]
+        if self.stasis_sigma > 0.0:
+            if event_activity is not None:
+                act_stasis = event_activity.view(B, -1).mean(dim=-1, keepdim=True)
+            else:
+                act_stasis = spikes.mean(dim=-1, keepdim=True)
+            act_stasis = torch.clamp(act_stasis, min=0.0)
+            v_p_eff = torch.tanh(act_stasis / self.stasis_sigma) * v_p
+        else:
+            v_p_eff = v_p
+
         if sensory_keypoints is not None and in_sensory_phase:
             assert_tensor_contract(sensory_keypoints, (B, self.q_dim), "SpikingLatentDynamics.sensory_keypoints")
             raw_corr = sensory_keypoints - q_prev
             if unconstrained:
                 g_steps = torch.zeros(B, 1, device=device, dtype=q_prev.dtype)
-                k_gate = self.compute_k_gate(event_activity, spikes, max_k_gate=1.0)
+                k_gate = self.compute_k_gate(event_activity, spikes, max_k_gate=self.max_k_gate)
                 bounded_corr = raw_corr
             else:
                 prev_g = state.grounded_steps if state.grounded_steps is not None else torch.zeros(B, 1, device=device, dtype=q_prev.dtype)
@@ -185,10 +199,10 @@ class SpikingLatentDynamics(nn.Module):
                 else:
                     bounded_corr = raw_corr
 
-            q_next = q_prev + self.dt * v_p + k_gate * bounded_corr
+            q_next = q_prev + self.dt * v_p_eff + k_gate * bounded_corr
         else:
             g_steps = torch.zeros(B, 1, device=device, dtype=q_prev.dtype)
-            q_next = q_prev + self.dt * v_p
+            q_next = q_prev + self.dt * v_p_eff
 
         z_next = torch.cat([q_next, p_next], dim=1)
         new_state = DynamicsState(memory_state=new_mem_state, z_prev=z_next, ema_spikes=ema_spikes, grounded_steps=g_steps)

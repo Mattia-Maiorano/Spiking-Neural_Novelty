@@ -855,13 +855,19 @@ class BaseTrainer:
                         ):
                             grasp_error_cm = float(tier2_metrics["mppi_grasp_error_cm"])
                             settling_pos_error_cm = float(tier2_metrics["mppi_steady_state_error_cm"])
+                            mean_cart_error_cm = (
+                                float(tier2_metrics["mppi_mean_error_cm"])
+                                if "mppi_mean_error_cm" in tier2_metrics
+                                else settling_pos_error_cm
+                            )
                             final_velocity = float(tier2_metrics["mppi_final_vel"])
                             geodesic_rot_error = float(tier2_metrics["mppi_final_rot"])
                             tier2_metrics["mppi_score"] = (
-                                grasp_error_cm
-                                + settling_pos_error_cm
+                                0.5 * grasp_error_cm
+                                + 0.5 * settling_pos_error_cm
+                                + 0.25 * mean_cart_error_cm
                                 + 0.1 * final_velocity
-                                + 0.2 * geodesic_rot_error
+                                + 2.0 * geodesic_rot_error
                             )
                         if self.replay_buffer is not None:
                             if cl_trajectories is not None:

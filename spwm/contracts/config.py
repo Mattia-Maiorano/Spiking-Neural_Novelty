@@ -146,6 +146,7 @@ class ModelConfig:
     max_k_gate: float = 0.35                          #: Maximum sensory injection gate weight to maintain inertial damping.
     max_correction_norm: float = 0.50                 #: Maximum Euclidean norm of single-step sensory correction in coordinate space.
     activity_threshold: float = 0.001                 #: Minimum event activity threshold below which sensory correction is suppressed (Anti-Evanescence gate).
+    stasis_sigma: float = 0.003                       #: Event activity scaling for zero-velocity damping gate on coordinate advancement v_p.
     in_channels: int = C_EVENT                        #: Dual-camera event input polarity channels (4 = 2 static global + 2 egocentric wrist).
     symplectic: bool = True                           #: Whether to use dissipative phase-space integration for M1.
 
@@ -158,6 +159,8 @@ class ModelConfig:
         )
         if self.activity_threshold < 0.0:
             raise ValueError(f"activity_threshold must be non-negative, got {self.activity_threshold}")
+        if self.stasis_sigma < 0.0:
+            raise ValueError(f"stasis_sigma must be non-negative, got {self.stasis_sigma}")
         if self.in_channels not in (2, C_EVENT):
             raise ValueError(
                 f"in_channels must be 2 (monocular) or {C_EVENT} (dual-camera global+wrist), got {self.in_channels}"
@@ -298,6 +301,7 @@ class LossConfig:
     lambda_derivative: float = 1.0  #: Weight of strict phase-space derivative constraint (q_{t+1}-q_t - dt*p_t) MSE.
     lambda_smoothness: float = 0.1  #: Weight of ALIF momentum smoothness loss in Phase 0.
     lambda_critic: float = 0.2      #: Weight of terminal cost-to-go LatentCritic MC MSE loss in Phase 1 (train_m1).
+    cartesian_weight: float = 25.0  #: Weight of 3D Cartesian end-effector position MSE loss in Phase 0 (lambda_cart).
     velocity_loss_scale: float = 1.0 #: Normalization scale for angular velocities (rad/s) in kinematic loss (L_vel / s^2).
 
 
@@ -427,6 +431,7 @@ class ExperimentConfig:
         mppi_noise_ramp_epochs: Optional[int] = None,
         mppi_noise_target_alpha: Optional[float] = None,
         max_eval_generations: Optional[int] = None,
+        cartesian_weight: Optional[float] = None,
     ) -> "ExperimentConfig":
         """
         Creates a new validated, frozen ExperimentConfig with explicit overrides.
@@ -493,7 +498,13 @@ class ExperimentConfig:
             train_updates["max_eval_generations"] = max_eval_generations
 
         training = dataclasses.replace(self.training, **train_updates) if train_updates else self.training
-        return dataclasses.replace(self, project=proj, data=data, training=training)
+
+        loss_updates: Dict[str, Any] = {}
+        if cartesian_weight is not None:
+            loss_updates["cartesian_weight"] = cartesian_weight
+        loss = dataclasses.replace(self.loss, **loss_updates) if loss_updates else self.loss
+
+        return dataclasses.replace(self, project=proj, data=data, training=training, loss=loss)
 
     @classmethod
     def from_dict(cls, data: Dict[str, Any]) -> "ExperimentConfig":

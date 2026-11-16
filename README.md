@@ -1,11 +1,11 @@
-# SPWM: Action-Conditioned Spiking Predictive World Model (v0.7.3)
+# SPWM: Action-Conditioned Spiking Predictive World Model (v0.12.3)
 
 [![Python 3.11+](https://img.shields.io/badge/python-3.11+-blue.svg)](https://www.python.org/downloads/)
 [![PyTorch](https://img.shields.io/badge/PyTorch-2.0+-ee4c2c.svg)](https://pytorch.org/)
 [![Unity 2022.3 LTS](https://img.shields.io/badge/Unity-2022.3%20LTS-black.svg)](https://unity.com/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 
-> **SPWM-v0.7.3** is an action-conditioned neuromorphic predictive world model engineered under a **4-Layer Strict Contract Architecture**. It bridges **Unity 3D articulated robotics simulation** (Featherstone multi-body kinematics, anthropomorphic 6-DOF right humanoid arm $J=6$, procedural object spawning with variable mass/inertia $1.20 - 4.50\,\text{kg}$) with continuous motor action conditioning ($\mathbf{u}_t \in \mathbb{R}^6$), dual-camera neuromorphic event sensing ($C_{\text{event}}=4$: static global + egocentric wrist-mounted), resolution-adaptive `SpatialSoftmax` keypoint bottleneck ($K=16$), canonical phase-space decomposition $\mathbf{z}_t = (\mathbf{q}_t, \mathbf{p}_t) \in \mathbb{R}^{32 + 96}$, a dual-timescale Adaptive Leaky Integrate-and-Fire (`ALIFCell`) memory core, continuous soft-fade sensory handover ($w_{\text{max}} = 0.40$), and downstream closed-loop **Latent MPPI Control**.
+> **SPWM-v0.12.3** is an action-conditioned neuromorphic predictive world model engineered under a **4-Layer Strict Contract Architecture**. It bridges **Unity 3D articulated robotics simulation** (Featherstone multi-body kinematics, anthropomorphic 6-DOF right humanoid arm $J=6$, procedural object spawning with variable mass/inertia $1.20 - 4.50\,\text{kg}$) with continuous motor action conditioning ($\mathbf{u}_t \in \mathbb{R}^6$), dual-camera neuromorphic event sensing ($C_{\text{event}}=4$: static global + egocentric wrist-mounted), resolution-adaptive `SpatialSoftmax` keypoint bottleneck ($K=16$), canonical phase-space decomposition $\mathbf{z}_t = (\mathbf{q}_t, \mathbf{p}_t) \in \mathbb{R}^{32 + 96}$, a dual-timescale Adaptive Leaky Integrate-and-Fire (`ALIFCell`) memory core with firing-rate homeostasis, SE(3) + temporal kinematic consistency, continuous soft-fade sensory handover ($w_{\text{max}} = 0.40$), and downstream deploy-ready **Latent MPPI Control** (`392,141` parameters).
 
 ---
 
@@ -73,11 +73,11 @@ source .venv/bin/activate
 pip install --upgrade pip
 pip install -e ".[dev]"
 
-# Execute the full unit & architectural contract test suite (112 tests)
-pytest -v
+# Execute the full unit & architectural contract test suite (99 tests)
+.venv/bin/pytest -q
 
 # Run AST anti-fallback scan
-python scripts/scan_fallbacks.py spwm/
+.venv/bin/python scripts/scan_fallbacks.py spwm/ experiments/ scripts/
 ```
 
 ---
@@ -85,30 +85,30 @@ python scripts/scan_fallbacks.py spwm/
 ## 4. Two-Phase Representation / Action-Conditioned Predictor Pipeline
 
 ### Phase 0 (`train_representation`): Grounded Articulated State Estimator ($t \in [0, T_{\text{obs}}]$)
-Pre-trains `encoder`, `dynamics`, `sensory_predictor`, and `physical_decoder` purely as a grounded joint state estimator over sensory streams (no autoregressive rollouts; predictor inactive):
+Pre-trains `encoder`, `dynamics`, `sensory_predictor`, and `physical_decoder` purely as a grounded joint state estimator over sensory streams with ALIF firing-rate homeostasis ($\lambda_{\text{spike\_balance}} = 0.25$, target $0.12$), Cartesian + SE(3) rotation supervision ($\lambda_{\text{cart}} = 40.0$, $\lambda_{\text{rot}} = 0.5$), and decoded temporal smoothness ($\lambda_{\text{kin\_smooth}} = 0.5$):
 
-$$\mathcal{L}_{\text{Phase0}} = \lambda_{\text{kinematic}} \mathcal{L}_{\text{kinematic}} + \lambda_{\text{derivative}} \mathcal{L}_{\text{derivative}} + \lambda_{\text{smoothness}} \mathcal{L}_{\text{smoothness}} + \lambda_{\text{sensory}} \mathcal{L}_{\text{sensory}}$$
+$$\mathcal{L}_{\text{Phase0}} = \lambda_{\text{kinematic}} \mathcal{L}_{\text{kinematic}} + \lambda_{\text{derivative}} \mathcal{L}_{\text{derivative}} + \lambda_{\text{smoothness}} \mathcal{L}_{\text{smoothness}} + \lambda_{\text{sensory}} \mathcal{L}_{\text{sensory}} + \lambda_{\text{cart}} \mathcal{L}_{\text{cart}} + \lambda_{\text{rot}} \mathcal{L}_{\text{rot}} + \lambda_{\text{kin\_smooth}} \mathcal{L}_{\text{kin\_smooth}} + \lambda_{\text{spike\_balance}} \mathcal{L}_{\text{spike\_balance}}$$
 
 ```bash
-python experiments/train.py \
+.venv/bin/python experiments/train.py \
     --mode train_representation \
-    --epochs 100 \
-    --output-dir results/spwm_v0_7_3_train_representation
+    --epochs 160 \
+    --output-dir results/spwm_v0_12_3_train_representation
 ```
 
 ### Phase 1 (`train_m1`): Action-Conditioned Latent Attractor Predictor ($t \in [0, H-1]$)
-Freezes all Phase 0 representation modules (`requires_grad = False`), detaches latent trajectory targets $\mathbf{z}^*_{\text{target}} = \text{stop\_grad}(\mathbf{z}^*)$, and trains only the Latent Predictor $M_1$ autoregressively conditioned on motor actions $\mathbf{u}_{0:H}$ with smooth soft-fade sensory injection during heft:
+Freezes all Phase 0 representation modules (`requires_grad = False`), detaches latent trajectory targets $\mathbf{z}^*_{\text{target}} = \text{stop\_grad}(\mathbf{z}^*)$, and trains the Latent Predictor $M_1$ + `LatentCritic` across a 4-phase Latch curriculum (open-loop $\to$ AR(1) matched noise $\beta=0.90, \sigma=0.08$ $\to$ DAgger $\to$ MPPI closed-loop):
 
 $$\hat{\mathbf{z}}_{t+1} = M_1(\hat{\mathbf{z}}_t, \mathbf{u}_t)$$
-$$\mathcal{L}_{M_1} = \lambda_{\text{position}} \text{MSE}(\hat{\mathbf{q}}, \mathbf{q}^*_{\text{target}}) + \lambda_{\text{velocity}} \text{MSE}(\hat{\mathbf{p}}, \mathbf{p}^*_{\text{target}})$$
+$$\mathcal{L}_{M_1} = \lambda_{\text{position}} \text{MSE}(\hat{\mathbf{q}}, \mathbf{q}^*_{\text{target}}) + \lambda_{\text{velocity}} \text{MSE}(\hat{\mathbf{p}}, \mathbf{p}^*_{\text{target}}) + \mathcal{L}_{\text{SE(3)}} + \mathcal{L}_{\text{kin\_smooth}}$$
 
 ```bash
-python experiments/train.py \
+.venv/bin/python experiments/train.py \
     --mode train_m1 \
-    --representation-checkpoint results/spwm_v0_7_3_train_representation/model.pt \
-    --epochs 100 \
+    --representation-checkpoint results/spwm_v0_12_3_train_representation/model.pt \
+    --epochs 240 \
     --phase-horizon 50 \
-    --output-dir results/spwm_v0_7_3_train_m1
+    --output-dir results/spwm_v0_12_3_train_m1
 ```
 
 ---
@@ -117,37 +117,38 @@ python experiments/train.py \
 
 ```bash
 # Evaluate a trained checkpoint across horizons H in {1, 5, 10, 25, 50, 100}
-python experiments/evaluate.py \
-    --checkpoint results/spwm_v0_7_3_train_m1/model.pt \
-    --config results/spwm_v0_7_3_train_m1/config.yaml
+.venv/bin/python experiments/evaluate.py \
+    --checkpoint results/spwm_v0_12_3_train_m1/model.pt \
+    --config results/spwm_v0_12_3_train_m1/config.yaml
 
-# Benchmark downstream closed-loop Latent MPPI control (80.0% grasp success, 2.17 cm min distance)
-python experiments/benchmark_mppi_control.py \
-    --checkpoint results/spwm_v0_7_3_train_m1/model.pt \
-    --config results/spwm_v0_7_3_train_m1/config.yaml
+# Benchmark downstream closed-loop Latent MPPI control (50 unseen episodes)
+.venv/bin/python experiments/benchmark_mppi_control.py \
+    --checkpoint results/spwm_v0_12_3_train_m1/model.pt \
+    --config results/spwm_v0_12_3_train_m1/config.yaml \
+    --output-dir results/mppi_benchmark_v0_12_3
 
 # Benchmark comparative non-spiking world models (RSSM, Deep GRU, ConvLSTM)
-python experiments/train_baselines.py
+.venv/bin/python experiments/train_baselines.py
 
 # Benchmark continuous leaky rate ablation (ANNWorldModel)
-python experiments/train_ann_ablation.py
+.venv/bin/python experiments/train_ann_ablation.py
 
-# Run neuromorphic Synaptic Operations (SOPs) and energy profiling (80.8x advantage vs GPU)
-python experiments/profile_energy_sops.py
+# Run neuromorphic Synaptic Operations (SOPs) and energy profiling
+.venv/bin/python experiments/profile_energy_sops.py
 
 # Run statistical multi-seed validation (seeds 42, 101, 2024)
-python experiments/train_multiseed.py
+.venv/bin/python experiments/train_multiseed.py
 
 # Run zero-shot sim-to-real sensor & mechanical robustness stress tests
-python experiments/benchmark_robustness_stress_test.py
+.venv/bin/python experiments/benchmark_robustness_stress_test.py
 ```
 
-### Execution Confirmation & Validation Criteria
+### Execution Confirmation & Validation Criteria (`SPWM-v0.12.3`)
 
-- **Action-Conditioned Velocity Stabilization**: Discrete spike thresholding and symplectic factorization bound velocity drift over 100 autoregressive steps ($H=100$), achieving $0.01153\,\text{rad}^2/\text{s}^2$ velocity MSE ($4.2\times$ lower than Continuous RSSM and $14\times$ lower than Deep GRU).
-- **6-DOF Kinematic Reconstruction**: High accuracy decoding of continuous articulated joint angles $\mathbf{q}^*$ and angular rates $\mathbf{p}^*$ across all $J=6$ manipulator joints.
-- **Closed-Loop MPPI Control**: Direct mental simulation in latent space achieves an 80.0% grasp success rate ($2.17\,\text{cm}$ minimum placement distance, $6.72\,\text{cm}$ final terminal error) under a $38.9\,\text{ms}$ step latency budget.
-- **Neuromorphic Energy Efficiency**: Achieves $12.81\,\text{nJ/step}$ on Intel Loihi-2 at a $14.6\%$ spike rate, yielding an **80.8x energy reduction** relative to dense GPU execution on Nvidia Jetson Orin.
+- **Action-Conditioned Long-Horizon Rollout Stability**: `rollout_mae = 0.05500 rad` (`rollout_score = 0.38069`, `drift_ratio = 2.69x`), with `H=1, 10, 50, 100` joint position errors of `0.02187 / 0.02801 / 0.08352 / 0.11864 rad` (`position_mse = 0.003501` at $H=100$).
+- **ALIF Homeostasis & Temporal Smoothness**: Phase 0 ALIF mean spike rate `0.1684` (silent neurons reduced from `44.9%` to `19.1%`); grounded acceleration ratio reduced from `7.79x` to `3.88x` (`kin_fwd_mae = 0.1079`). Closed-loop MPPI ghost rollout (`traj 3622`) achieves `mean_ddq = 0.00409 rad/step^2` (`-66%` vs `v0.12.20`), `mean_dddq = 0.00487`, `flips = 62` (`-51%`).
+- **Deploy-Ready Closed-Loop MPPI Control**: Receding-horizon warm-start, AR(1)-matched noise ($\beta=0.90, \sigma=0.08$), slew-rate clamping (`max_action_delta=0.10 rad/step`), joint acceleration & limit costs achieve **28.0% grasp success** on the 50-episode benchmark (vs `8.0%` `v0.12.20` baseline), **`1.923 ± 1.330 cm`** minimum placement accuracy, **`2.660 cm`** terminal error, and **`22.54 ms`** step latency.
+- **Documentation**: See [**docs/History.md**](file:///Users/Mattia/Desktop/Studies/Temp/docs/History.md) for the full chronological record through `SPWM-v0.12.3`.
 
 ---
 

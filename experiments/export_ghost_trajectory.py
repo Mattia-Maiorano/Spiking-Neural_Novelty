@@ -160,6 +160,8 @@ def main() -> None:
         dt=cfg.environment.dt,
         horizon=args.horizon,
         joint_names=joint_names,
+        pre_contact_sensory_steps=cfg.data.pre_contact_sensory_steps,
+        post_contact_sensory_steps=cfg.data.post_contact_sensory_steps,
     )
 
     target_dir = Path(args.output_dir) if args.output_dir is not None else (Path(args.unity_project) / "Assets" / "StreamingAssets")

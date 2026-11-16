@@ -279,3 +279,19 @@ Comparison of tracking errors with continuous sensory handover ($w_{\text{max}} 
 ---
 
 *All figures, metrics, and models were generated with zero AST fallbacks and are reproducible via `scripts/generate_all_figures.py` and `scripts/export_figure_metrics.py`.*
+
+---
+
+## 7. SPWM-v0.12.3 Updated Figure Metrics & Closed-Loop Results (`figures_v0_12_3/`)
+
+Updated publication assets for `SPWM-v0.12.3` (`392,141` parameters) are generated in `figures_v0_12_3/` without overwriting the `v0.7.3` `figures/` directory:
+
+- **Figure 1 (`figures_v0_12_3/fig1_teaser.pdf`, `fig1_mppi_setup.pdf`, `fig1_joint_error_horizon.pdf`, `fig1_phase_space.pdf`, `fig1_phase_space_2d.pdf`)**:
+  - **Panel (a) MPPI Planning (`traj 0`)**: $t_{\text{plan}}=34$, $t_{\text{contact}}=54$, target `[-0.1715, 1.0123, 0.4148] m`, best terminal distance **`2.25 cm`**.
+  - **Panel (b) Decoded Joint-Space Error ($N=400$ test trajectories, $H=1..100$)**:
+    - `SPWM-v0.12.3`: $h=1: 0.0219$, $h=5: 0.0166$, $h=10: 0.0564$, $h=25: 0.0881$, $h=50: 0.1250$, $h=100: 0.1336\text{ rad}$ (**mean `0.1184 rad`**).
+    - `SPWM-v0.12.20` (prior baseline): $h=1: 0.0350$, $h=5: 0.0308$, $h=10: 0.0943$, $h=25: 0.1531$, $h=50: 0.1760$, $h=100: 0.1853\text{ rad}$ (**mean `0.1579 rad`**) — **`-25.0%` mean error reduction**.
+- **Figure 3 (`figures_v0_12_3/fig3_telemetry.pdf`)**: Synchronized 4-tier active perception telemetry regenerated from `results/spwm_v0_12_3_train_m1/model.pt`.
+- **Figure 4 (`figures_v0_12_3/fig4_stability.pdf`)**: Multi-horizon velocity MSE (`results/spwm_v0_12_3_train_m1/comparative_metrics_v0_12_3.json`): `SPWM-v0.12.3` `H=1: 0.00034`, `H=10: 0.01601`, `H=50: 0.02357`, `H=100: 0.03643`; `position_mse` `H=100: 0.003501` (`0.11864 rad` MAE); Panel (b) `H=100` 3D scene comparison against `SPWM-v0.12.20`.
+- **Closed-Loop MPPI & Training Curves (`figures_v0_12_3/mppi_benchmark_results.png`, `training_curves.png`, `mppi_training_curves.png`, `latent_rollout_degradation.png`, `physical_rollout_degradation.png`, `relay_rollout.png`)**:
+  - 50-episode MPPI benchmark (`results/mppi_benchmark_v0_12_3/mppi_benchmark_metrics.json`): **`28.0%`** grasp success (Low `31.8%`, Mid `16.7%`, High `40.0%`; Light `0.0%`, Medium `35.3%`, Heavy `50.0%`), **`1.923 ± 1.330 cm`** placement accuracy, **`2.660 cm`** terminal error, **`22.54 ms`** step latency.

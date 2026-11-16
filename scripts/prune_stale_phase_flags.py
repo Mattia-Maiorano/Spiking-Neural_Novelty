@@ -52,9 +52,14 @@ def sanitize_trajectory_file(
     if old_start == -1:
         # No phase 1 found; compute from default
         t_contact = max(2, int(round(0.38 * T)))
-    else:
-        # Original contact was at old_start + 5
+    elif old_p1_count == 17:
+        # Legacy v0.7.0 contact was at old_start + 5
         t_contact = old_start + 5
+    elif old_p1_count in (10, 14):
+        # Already sanitized with pre_contact_sensory_steps = 7
+        t_contact = old_start + 7
+    else:
+        t_contact = old_start
 
     t_inj_start = max(1, t_contact - pre_contact_sensory_steps)
     t_inj_end = min(T - 1, t_contact + post_contact_sensory_steps)

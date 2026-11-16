@@ -90,9 +90,39 @@ class LatentMPPIController:
         self.w_term_rot = 0.0
         self.w_altitude = 0.0
         self.w_progress = float(config.w_progress)
+        self.w_critic = float(config.w_critic)
+        self.w_joint_accel = float(config.w_joint_accel)
+        self.w_joint_limit = float(config.w_joint_limit)
+        self.max_action_delta = float(config.max_action_delta) if config.max_action_delta is not None else None
 
         dev = device if device is not None else next(predictor.parameters()).device
         self.device = dev
+
+        # Physical joint bounds in radians matching sim/Assets/Scripts/ArticulatedRobotRig.cs
+        self.joint_lower_rad = torch.tensor(
+            [
+                math.radians(-120.0),
+                math.radians(-90.0),
+                math.radians(-155.0),
+                math.radians(-95.0),
+                math.radians(-75.0),
+                math.radians(-180.0),
+            ],
+            device=dev,
+            dtype=torch.float32,
+        )
+        self.joint_upper_rad = torch.tensor(
+            [
+                math.radians(120.0),
+                math.radians(185.0),
+                math.radians(15.0),
+                math.radians(95.0),
+                math.radians(75.0),
+                math.radians(180.0),
+            ],
+            device=dev,
+            dtype=torch.float32,
+        )
 
         # Covariance Sigma: boost variance on Shoulder_Lift (idx 1) and Elbow_Flex (idx 2)
         noise_sigma = config.noise_sigma
@@ -119,6 +149,7 @@ class LatentMPPIController:
         self.sigma_tensor = sigmas
         self.nominal_actions = torch.zeros(self.horizon, self.action_dim, device=self.device)
         self.prev_action = torch.zeros(self.action_dim, device=self.device)
+        self.q_prev: Optional[torch.Tensor] = None
         self.generator: Optional[torch.Generator] = None
         if seed is not None:
             self.set_seed(seed)
@@ -129,10 +160,28 @@ class LatentMPPIController:
             self.generator = torch.Generator(device=self.device)
         self.generator.manual_seed(seed)
 
+    def _clamp_action_slew(self, u_seq: torch.Tensor, u_prev: torch.Tensor) -> torch.Tensor:
+        """Enforces per-step action slew-rate bounds along the horizon for smooth motor commands."""
+        d = self.max_action_delta
+        if d is None:
+            return u_seq
+        squeeze_batch = u_seq.dim() == 2
+        seq = u_seq.unsqueeze(0) if squeeze_batch else u_seq
+        ref = u_prev.view(1, -1)
+        clamped_steps: List[torch.Tensor] = []
+        for tau in range(seq.shape[1]):
+            step = torch.clamp(seq[:, tau], ref - d, ref + d)
+            step = torch.clamp(step, self.action_min, self.action_max)
+            clamped_steps.append(step)
+            ref = step
+        out = torch.stack(clamped_steps, dim=1)
+        return out.squeeze(0) if squeeze_batch else out
+
     def reset(self, initial_action_bias: Optional[torch.Tensor] = None, seed: Optional[int] = None) -> None:
         """Resets nominal action sequence and previous action buffer, optionally re-seeding RNG."""
         if seed is not None:
             self.set_seed(seed)
+        self.q_prev = None
         if initial_action_bias is not None:
             if initial_action_bias.shape != (self.action_dim,):
                 raise ValueError(
@@ -176,22 +225,48 @@ class LatentMPPIController:
 
         target_orientation: Optional[torch.Tensor] = None
         if target_pos.shape == (4, 4) or (target_pos.dim() == 3 and target_pos.shape[-2:] == (4, 4)):
-            # Full 4x4 SE(3) transformation matrix passed as target
-            t_mat = target_pos[0] if target_pos.dim() == 3 else target_pos
-            target_coords = t_mat[:3, 3].to(device=self.device, dtype=torch.float32)
-            target_orientation = t_mat[:3, :3].to(device=self.device, dtype=torch.float32)
-        else:
-            if target_pos.dim() == 2:
-                target_pos_3d = target_pos[0]
+            # Full 4x4 SE(3) transformation matrix or time-indexed [H, 4, 4] sequence passed as target
+            if target_pos.dim() == 3 and target_pos.shape[0] > 1:
+                t_seq = target_pos.to(device=self.device, dtype=torch.float32)
+                if t_seq.shape[0] >= self.horizon:
+                    t_seq = t_seq[: self.horizon]
+                else:
+                    pad_count = self.horizon - t_seq.shape[0]
+                    t_seq = torch.cat([t_seq, t_seq[-1:].expand(pad_count, 4, 4)], dim=0)
+                target_coords = t_seq[:, :3, 3]
+                target_orientation = t_seq[:, :3, :3]
             else:
-                target_pos_3d = target_pos
-            assert_tensor_contract(target_pos_3d, (3,), "LatentMPPIController.target_pos")
-            target_coords = target_pos_3d.to(device=self.device, dtype=torch.float32)
+                t_mat = target_pos[0] if target_pos.dim() == 3 else target_pos
+                target_coords = t_mat[:3, 3].to(device=self.device, dtype=torch.float32)
+                target_orientation = t_mat[:3, :3].to(device=self.device, dtype=torch.float32)
+        else:
+            if target_pos.dim() == 2 and target_pos.shape[0] > 1 and target_pos.shape[1] == 3:
+                t_pos_seq = target_pos.to(device=self.device, dtype=torch.float32)
+                if t_pos_seq.shape[0] >= self.horizon:
+                    target_coords = t_pos_seq[: self.horizon]
+                else:
+                    pad_count = self.horizon - t_pos_seq.shape[0]
+                    target_coords = torch.cat([t_pos_seq, t_pos_seq[-1:].expand(pad_count, 3)], dim=0)
+            else:
+                if target_pos.dim() == 2:
+                    target_pos_3d = target_pos[0]
+                else:
+                    target_pos_3d = target_pos
+                assert_tensor_contract(target_pos_3d, (3,), "LatentMPPIController.target_pos")
+                target_coords = target_pos_3d.to(device=self.device, dtype=torch.float32)
 
             if target_rot is not None:
-                t_rot = target_rot[0] if target_rot.dim() == 3 else target_rot
-                assert_tensor_contract(t_rot, (3, 3), "LatentMPPIController.target_rot")
-                target_orientation = t_rot.to(device=self.device, dtype=torch.float32)
+                if target_rot.dim() == 3 and target_rot.shape[0] > 1:
+                    t_rot_seq = target_rot.to(device=self.device, dtype=torch.float32)
+                    if t_rot_seq.shape[0] >= self.horizon:
+                        target_orientation = t_rot_seq[: self.horizon]
+                    else:
+                        pad_count = self.horizon - t_rot_seq.shape[0]
+                        target_orientation = torch.cat([t_rot_seq, t_rot_seq[-1:].expand(pad_count, 3, 3)], dim=0)
+                else:
+                    t_rot = target_rot[0] if target_rot.dim() == 3 else target_rot
+                    assert_tensor_contract(t_rot, (3, 3), "LatentMPPIController.target_rot")
+                    target_orientation = t_rot.to(device=self.device, dtype=torch.float32)
 
         u_prev = prev_action.to(self.device) if prev_action is not None else self.prev_action
 
@@ -231,6 +306,7 @@ class LatentMPPIController:
 
             candidates = curr_nominal.unsqueeze(0) + noise
             candidates = torch.clamp(candidates, self.action_min, self.action_max)
+            candidates = self._clamp_action_slew(candidates, u_prev)
 
             # 2. Mental Simulation: Autoregressively unroll M1 predictor over K trajectories
             z_batch = z_init.unsqueeze(0).repeat(K, 1)  # [K, latent_dim]
@@ -268,6 +344,9 @@ class LatentMPPIController:
                 target_orientation=target_orientation,
                 z_trajectories=z_trajectories,
                 p_init=p_init,
+                q_hat=q_hat,
+                q_init=q_init[0],
+                q_prev=self.q_prev,
             )
 
             min_idx = torch.argmin(total_costs)
@@ -293,12 +372,21 @@ class LatentMPPIController:
             curr_nominal = (1.0 - gamma) * curr_nominal + gamma * new_nominal
             curr_nominal = torch.clamp(curr_nominal, self.action_min, self.action_max)
 
+        # Enforce slew-rate limit on final smoothed nominal sequence as well
+        curr_nominal = self._clamp_action_slew(curr_nominal, u_prev)
+
         # Selected action chunk and immediate action to execute, strictly clamped against EMA drift
         action_chunk = torch.clamp(curr_nominal[: self.chunk_size].clone(), self.action_min, self.action_max)
         action_to_execute = action_chunk[0].clone()
 
-        self.nominal_actions = curr_nominal.clone()
+        # Receding-horizon shift: advance nominal trajectory by executed chunk size for next step's warm start
+        shift = min(self.chunk_size, self.horizon)
+        self.nominal_actions = torch.cat(
+            [curr_nominal[shift:], curr_nominal[-1:].expand(shift, -1)],
+            dim=0,
+        ).clone()
         self.prev_action = action_to_execute.clone()
+        self.q_prev = q_init[0].detach().clone()
 
         latency = (time.perf_counter() - start_time) * 1000.0
 
@@ -328,6 +416,11 @@ class LatentMPPIController:
         w_progress: Optional[float] = None,
         w_jerk: Optional[float] = None,
         w_damping: Optional[float] = None,
+        q_hat: Optional[torch.Tensor] = None,
+        q_init: Optional[torch.Tensor] = None,
+        q_prev: Optional[torch.Tensor] = None,
+        w_joint_accel: Optional[float] = None,
+        w_joint_limit: Optional[float] = None,
     ) -> torch.Tensor:
         """Evaluates the physics-grounded, lifting-aware MPPI trajectory cost over K candidates.
 
@@ -340,8 +433,14 @@ class LatentMPPIController:
           - Terminal Critic Bootstrapping: (gamma ** H) * V(z_H)
         """
         K, H, _ = ee_pos.shape
+        is_trajectory_target = target_coords.dim() == 2 and target_coords.shape[0] == H
+        if is_trajectory_target:
+            target_pos_b = target_coords.unsqueeze(0)  # [1, H, 3]
+        else:
+            target_pos_b = target_coords.view(1, 1, 3)  # [1, 1, 3]
+
         # 1. Positional Cost: W_pos * ||pos_current - target_pos||_2
-        pos_err = torch.norm(ee_pos - target_coords.view(1, 1, 3), p=2, dim=-1)  # [K, H]
+        pos_err = torch.norm(ee_pos - target_pos_b, p=2, dim=-1)  # [K, H]
         pos_cost = self.w_pos * pos_err.sum(dim=-1)  # [K]
 
         # Distance-based damping factor (Deadband):
@@ -350,7 +449,11 @@ class LatentMPPIController:
 
         # 2. Rotational Cost: W_rot * ((1 - cos(theta_error)) + 0.5 * theta_error)
         if target_orientation is not None and R_ee is not None:
-            r_rel = torch.matmul(R_ee.transpose(-1, -2), target_orientation.view(1, 1, 3, 3))
+            if target_orientation.dim() == 3 and target_orientation.shape[0] == H:
+                target_rot_b = target_orientation.unsqueeze(0)  # [1, H, 3, 3]
+            else:
+                target_rot_b = target_orientation.view(1, 1, 3, 3)
+            r_rel = torch.matmul(R_ee.transpose(-1, -2), target_rot_b)
             trace_r = torch.diagonal(r_rel, dim1=-2, dim2=-1).sum(-1)  # [K, H]
             cos_theta = torch.clamp((trace_r - 1.0) * 0.5, -1.0, 1.0)
             theta_err = torch.acos(torch.clamp(cos_theta, -0.999999, 0.999999))
@@ -374,7 +477,7 @@ class LatentMPPIController:
         # 4. Directional Progress Reward (Attractor toward target) with Progress Attenuation (Deadband)
         curr_w_progress = self.w_progress if w_progress is None else float(w_progress)
         if curr_w_progress != 0.0:
-            dir_vec = target_coords.view(1, 1, 3) - p_traj[:, :-1, :]  # [K, H, 3]
+            dir_vec = target_pos_b - p_traj[:, :-1, :]  # [K, H, 3]
             dir_target = dir_vec / (torch.norm(dir_vec, dim=-1, keepdim=True) + 1e-6)
 
             step_progress = torch.sum(delta_p * dir_target, dim=-1)  # [K, H]
@@ -384,9 +487,16 @@ class LatentMPPIController:
             c_progress = torch.zeros(K, device=ee_pos.device, dtype=ee_pos.dtype)
 
         # 5. Cartesian Velocity Damping: Activates inside deadband (when dist_factor -> 0)
+        # When tracking a time-indexed trajectory, damp velocity error relative to reference step displacement
         curr_w_damping = self.w_damping if w_damping is None else float(w_damping)
         if curr_w_damping != 0.0:
-            cart_vel = torch.norm(delta_p, dim=-1)  # [K, H]
+            if is_trajectory_target:
+                ref_0 = p_init.view(1, 3) if p_init is not None else target_coords[0:1, :]
+                ref_traj = torch.cat([ref_0, target_coords], dim=0)  # [H + 1, 3]
+                delta_p_ref = (ref_traj[1:, :] - ref_traj[:-1, :]).unsqueeze(0)  # [1, H, 3]
+                cart_vel = torch.norm(delta_p - delta_p_ref, dim=-1)  # [K, H]
+            else:
+                cart_vel = torch.norm(delta_p, dim=-1)  # [K, H]
             damping_penalty = curr_w_damping * cart_vel * (1.0 - dist_factor)  # [K, H]
             c_damping = damping_penalty.sum(dim=-1)  # [K]
         else:
@@ -395,11 +505,48 @@ class LatentMPPIController:
         total_cost = pos_cost + rot_cost + jerk_cost + c_progress + c_damping
 
         # 5. Terminal Value Bootstrapping (TD-MPC Critic)
-        if self.critic is not None and z_trajectories is not None:
+        if self.critic is not None and z_trajectories is not None and self.w_critic != 0.0:
             terminal_z = z_trajectories[:, -1, :]  # [K, latent_dim]
             raw_terminal_costs = self.critic(terminal_z).squeeze(-1)  # [K]
-            scaled_terminal_costs = self.w_pos * raw_terminal_costs
+            scaled_terminal_costs = self.w_critic * self.w_pos * raw_terminal_costs
             total_cost = total_cost + (self.gamma_discount ** H) * scaled_terminal_costs
+
+        # 6. Joint-Space Acceleration Smoothness & Physical Joint Limit Barrier
+        if q_hat is not None:
+            curr_w_joint_accel = self.w_joint_accel if w_joint_accel is None else float(w_joint_accel)
+            if curr_w_joint_accel > 0.0:
+                q_seq: Optional[torch.Tensor] = None
+                if q_prev is not None and q_init is not None:
+                    q_seq = torch.cat(
+                        [
+                            q_prev.view(1, 1, -1).to(device=q_hat.device, dtype=q_hat.dtype).expand(K, 1, -1),
+                            q_init.view(1, 1, -1).to(device=q_hat.device, dtype=q_hat.dtype).expand(K, 1, -1),
+                            q_hat,
+                        ],
+                        dim=1,
+                    )
+                elif q_init is not None and H >= 2:
+                    q_seq = torch.cat(
+                        [
+                            q_init.view(1, 1, -1).to(device=q_hat.device, dtype=q_hat.dtype).expand(K, 1, -1),
+                            q_hat,
+                        ],
+                        dim=1,
+                    )
+                elif H >= 3:
+                    q_seq = q_hat
+                if q_seq is not None and q_seq.shape[1] >= 3:
+                    dq_hat = q_seq[:, 1:] - q_seq[:, :-1]
+                    ddq_hat = dq_hat[:, 1:] - dq_hat[:, :-1]
+                    total_cost = total_cost + curr_w_joint_accel * torch.sum(ddq_hat ** 2, dim=(1, 2))
+
+            curr_w_joint_limit = self.w_joint_limit if w_joint_limit is None else float(w_joint_limit)
+            if curr_w_joint_limit > 0.0:
+                j_dim = min(q_hat.shape[-1], self.joint_lower_rad.shape[0])
+                lower = self.joint_lower_rad[:j_dim].view(1, 1, j_dim).to(device=q_hat.device, dtype=q_hat.dtype)
+                upper = self.joint_upper_rad[:j_dim].view(1, 1, j_dim).to(device=q_hat.device, dtype=q_hat.dtype)
+                limit_excess = torch.relu(q_hat[..., :j_dim] - upper) + torch.relu(lower - q_hat[..., :j_dim])
+                total_cost = total_cost + curr_w_joint_limit * torch.sum(limit_excess ** 2, dim=(1, 2))
 
         return total_cost
 
@@ -562,9 +709,14 @@ class NeuralCostMPPIController(LatentMPPIController):
             )
             curr_nominal = torch.clamp(curr_nominal, self.action_min, self.action_max)
 
+        curr_nominal = self._clamp_action_slew(curr_nominal, u_prev)
         action_chunk = torch.clamp(curr_nominal[: self.chunk_size].clone(), self.action_min, self.action_max)
         action_to_execute = action_chunk[0].clone()
-        self.nominal_actions = curr_nominal.clone()
+        shift = min(self.chunk_size, self.horizon)
+        self.nominal_actions = torch.cat(
+            [curr_nominal[shift:], curr_nominal[-1:].expand(shift, -1)],
+            dim=0,
+        ).clone()
         self.prev_action = action_to_execute.clone()
 
         return MPPIPlanResult(

@@ -169,8 +169,15 @@ def parse_unity_trajectory_file(
             p1_indices = np.where(phase_flags == 1)[0]
             if len(p1_indices) > 0 and len(p1_indices) != expected_p1_len:
                 t_old_start = int(p1_indices[0])
-                # In legacy exports, t_old_start was t_contact - 5 (duration was 17)
-                t_contact = t_old_start + 5 if len(p1_indices) == 17 else int(p1_indices[0])
+                # Recover physical contact index t_contact from known phase-1 window formats:
+                #   - 17 steps: legacy v0.7.0 export (5 pre-contact + 12 post-contact)
+                #   - 10 or 14 steps: sanitized window (7 pre-contact + 3 or 7 post-contact)
+                if len(p1_indices) == 17:
+                    t_contact = t_old_start + 5
+                elif len(p1_indices) in (10, 14):
+                    t_contact = t_old_start + 7
+                else:
+                    t_contact = t_old_start
                 t_inj_start = max(1, t_contact - pre_s)
                 t_inj_end = min(len(steps) - 1, t_contact + post_s)
                 phase_flags = np.zeros(len(steps), dtype=np.int64)

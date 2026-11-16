@@ -74,13 +74,17 @@ def test_mppi_critic_terminal_bootstrapping():
             p.zero_()
         critic.net[-1].bias.fill_(10.0)
 
-    cfg = MPPIConfig(chunk_size=4, gamma_discount=0.95, num_samples=8, horizon=5)
+    cfg = MPPIConfig(chunk_size=4, gamma_discount=0.95, num_samples=8, horizon=5, w_critic=1.0)
     ctrl_no_critic = LatentMPPIController(
         predictor=predictor, physical_decoder=decoder, config=cfg, forward_kinematics=fk,
         critic=None,
     )
     ctrl_with_critic = LatentMPPIController(
         predictor=predictor, physical_decoder=decoder, config=cfg, forward_kinematics=fk,
+        critic=critic,
+    )
+    ctrl_disabled_critic = LatentMPPIController(
+        predictor=predictor, physical_decoder=decoder, config=MPPIConfig(chunk_size=4, gamma_discount=0.95, num_samples=8, horizon=5, w_critic=0.0), forward_kinematics=fk,
         critic=critic,
     )
 
@@ -96,8 +100,12 @@ def test_mppi_critic_terminal_bootstrapping():
     cost_with_critic = ctrl_with_critic.compute_trajectory_cost(
         ee_pos, target_pos, u_seq, u_prev, z_trajectories=z_trajectories
     )
+    cost_disabled_critic = ctrl_disabled_critic.compute_trajectory_cost(
+        ee_pos, target_pos, u_seq, u_prev, z_trajectories=z_trajectories
+    )
     expected_terminal_add = (0.95 ** 5) * ctrl_with_critic.w_pos * 10.0
     assert torch.allclose(cost_with_critic - cost_no_critic, torch.full((8,), expected_terminal_add), atol=1e-5)
+    assert torch.allclose(cost_disabled_critic, cost_no_critic, atol=1e-5)
 
 
 def test_mppi_structural_scorer_action_chunking_execution():
@@ -183,7 +191,7 @@ def test_mppi_se3_orientation_planning(mppi_setup):
 def test_mppi_directional_progress_reward(mppi_setup):
     controller, _, _, _ = mppi_setup
     assert controller.w_progress == 50.0
-    assert controller.w_jerk == 0.005
+    assert controller.w_jerk == 8.0
 
     target_pos = torch.tensor([1.0, 0.0, 0.0])
     p_init = torch.tensor([0.0, 0.0, 0.0])
@@ -229,8 +237,8 @@ def test_mppi_directional_progress_reward(mppi_setup):
 
 def test_mppi_deadband_attenuation_and_cartesian_damping(mppi_setup):
     controller, _, _, _ = mppi_setup
-    assert controller.w_jerk == 0.005
-    assert controller.w_damping == 10.0
+    assert controller.w_jerk == 8.0
+    assert controller.w_damping == 25.0
 
     target_pos = torch.tensor([0.0, 0.0, 0.0])
     p_init = torch.tensor([0.02, 0.0, 0.0])  # Within 2cm of target
@@ -268,12 +276,12 @@ def test_mppi_deadband_attenuation_and_cartesian_damping(mppi_setup):
         u_prev=u_prev_zero,
         p_init=p_init,
         w_progress=0.0,
-        w_damping=10.0,
+        w_damping=25.0,
     )
     # delta_p = [[-0.005, 0, 0], [-0.005, 0, 0], [-0.005, 0, 0]], norm = 0.005 per step
     # dist_factor = 0 in deadband, (1 - dist_factor) = 1.0
-    # damping_penalty = 10.0 * (0.005 * 3) = 0.15
-    assert torch.allclose(cost_damped - cost_no_prog, torch.tensor([0.15]), atol=1e-5)
+    # damping_penalty = 25.0 * (0.005 * 3) = 0.375
+    assert torch.allclose(cost_damped - cost_no_prog, torch.tensor([0.375]), atol=1e-5)
 
 
 def test_mppi_config_anisotropic_sigma_and_gamma_wiring():
@@ -367,7 +375,97 @@ def test_export_mppi_episode_replans_post_grasp_full_horizon():
     assert ghost.metadata["model_version"] == "test_mppi"
     assert ghost.metadata["heft_start_frame_index"] == 10
     assert ghost.metadata["grasp_lock_frame_index"] == 17
+    assert ghost.metadata["sensory_release_frame_index"] == 17
     assert ghost.metadata["horizon"] == horizon
+
+
+def test_mppi_joint_smoothness_limits_and_slew_rate():
+    """Verify joint-space acceleration penalty, physical joint limits barrier, receding shift, and slew clamp."""
+    with pytest.raises(ValueError, match="w_joint_accel"):
+        MPPIConfig(w_joint_accel=-1.0)
+    with pytest.raises(ValueError, match="w_joint_limit"):
+        MPPIConfig(w_joint_limit=-0.5)
+    with pytest.raises(ValueError, match="max_action_delta"):
+        MPPIConfig(max_action_delta=0.0)
+
+    predictor = LatentPredictor(latent_dim=128, action_dim=6, hidden_dim=64, symplectic=True)
+    decoder = PhysicalDecoder(latent_dim=128, q_dim=32, p_dim=96, joint_count=6, hidden_dim=32)
+    fk = DifferentiableForwardKinematics()
+    cfg = MPPIConfig(
+        num_samples=16,
+        horizon=6,
+        num_iterations=2,
+        max_action_delta=0.05,
+        w_joint_accel=40.0,
+        w_joint_limit=50.0,
+    )
+    ctrl = LatentMPPIController(predictor=predictor, physical_decoder=decoder, config=cfg, forward_kinematics=fk)
+    ctrl.reset()
+
+    ee_pos = torch.zeros(2, 4, 3)
+    target_pos = torch.zeros(3)
+    u_seq = torch.zeros(2, 4, 6)
+    u_prev = torch.zeros(6)
+    q_prev = torch.zeros(6)
+    q_init = torch.tensor([0.1, 0.0, -0.2, 0.0, 0.0, 0.0])
+
+    # Candidate 0: smooth constant velocity (ddq == 0); Candidate 1: oscillatory zig-zag
+    q_hat = torch.tensor(
+        [
+            [
+                [0.2, 0.0, -0.2, 0.0, 0.0, 0.0],
+                [0.3, 0.0, -0.2, 0.0, 0.0, 0.0],
+                [0.4, 0.0, -0.2, 0.0, 0.0, 0.0],
+                [0.5, 0.0, -0.2, 0.0, 0.0, 0.0],
+            ],
+            [
+                [0.3, 0.0, -0.2, 0.0, 0.0, 0.0],
+                [0.0, 0.0, -0.2, 0.0, 0.0, 0.0],
+                [0.3, 0.0, -0.2, 0.0, 0.0, 0.0],
+                [0.0, 0.0, -0.2, 0.0, 0.0, 0.0],
+            ],
+        ]
+    )
+    costs = ctrl.compute_trajectory_cost(
+        ee_pos=ee_pos,
+        target_coords=target_pos,
+        u_seq=u_seq,
+        u_prev=u_prev,
+        q_hat=q_hat,
+        q_init=q_init,
+        q_prev=q_prev,
+        w_jerk=0.0,
+        w_progress=0.0,
+        w_damping=0.0,
+        w_joint_accel=40.0,
+        w_joint_limit=0.0,
+    )
+    assert costs[1] > costs[0]
+
+    # Joint limit barrier: candidate 1 violates Elbow_Flex upper bound (+15 deg = 0.2618 rad)
+    q_lim = torch.zeros(2, 4, 6)
+    q_lim[1, :, 2] = 0.8
+    lim_costs = ctrl.compute_trajectory_cost(
+        ee_pos=ee_pos,
+        target_coords=target_pos,
+        u_seq=u_seq,
+        u_prev=u_prev,
+        q_hat=q_lim,
+        w_jerk=0.0,
+        w_progress=0.0,
+        w_damping=0.0,
+        w_joint_accel=0.0,
+        w_joint_limit=50.0,
+    )
+    assert lim_costs[0].item() == pytest.approx(0.0, abs=1e-6)
+    assert lim_costs[1].item() > 10.0
+
+    # Slew-rate limit & receding-horizon shift check on plan_step
+    z_t = torch.randn(128)
+    res = ctrl.plan_step(z_t, torch.tensor([-0.18, 1.15, 0.46]), prev_action=torch.zeros(6))
+    assert torch.max(torch.abs(res.action)).item() <= 0.05 + 1e-6
+    assert torch.allclose(ctrl.nominal_actions[:-1], res.nominal_action_sequence[1:])
+    assert torch.allclose(ctrl.nominal_actions[-1], res.nominal_action_sequence[-1])
 
 
 

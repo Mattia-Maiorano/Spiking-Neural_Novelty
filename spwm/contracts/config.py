@@ -241,7 +241,9 @@ class TrainingConfig:
     ema_decay: float = 0.990                          #: Decay factor tau for Exponential Moving Average (EMA) of model weights.
     mppi_noise_warmup_epochs: int = 10                #: Initial training epochs with zero AR(1) action noise before curriculum ramp.
     mppi_noise_ramp_epochs: int = 20                  #: Number of epochs over which AR(1) action noise linearly ramps to target alpha.
-    mppi_noise_target_alpha: float = 0.4              #: Maximum target intensity alpha for AR(1) action noise injection.
+    mppi_noise_target_alpha: float = 0.25             #: Maximum target intensity alpha for AR(1) action noise injection.
+    phase1_loss_threshold: float = 0.10               #: Latent M1 loss threshold to latch from Curriculum Phase 1 -> Phase 2.
+    phase2_loss_threshold: float = 0.095              #: Latent M1 loss threshold to latch from Curriculum Phase 2 -> Phase 3.
     max_eval_generations: int = 3                     #: Rolling window of Tier 2 evaluation generations to preserve in ClosedLoopBuffer.
 
     def __post_init__(self) -> None:
@@ -277,6 +279,10 @@ class TrainingConfig:
             raise ValueError(f"mppi_noise_ramp_epochs must be >= 0, got {self.mppi_noise_ramp_epochs}")
         if self.mppi_noise_target_alpha < 0.0:
             raise ValueError(f"mppi_noise_target_alpha must be non-negative, got {self.mppi_noise_target_alpha}")
+        if self.phase1_loss_threshold <= 0.0 or self.phase2_loss_threshold <= 0.0:
+            raise ValueError(
+                f"phase1_loss_threshold and phase2_loss_threshold must be > 0, got {self.phase1_loss_threshold}, {self.phase2_loss_threshold}"
+            )
         if self.max_eval_generations <= 0:
             raise ValueError(f"max_eval_generations must be > 0, got {self.max_eval_generations}")
 
@@ -301,8 +307,25 @@ class LossConfig:
     lambda_derivative: float = 1.0  #: Weight of strict phase-space derivative constraint (q_{t+1}-q_t - dt*p_t) MSE.
     lambda_smoothness: float = 0.1  #: Weight of ALIF momentum smoothness loss in Phase 0.
     lambda_critic: float = 0.2      #: Weight of terminal cost-to-go LatentCritic MC MSE loss in Phase 1 (train_m1).
-    cartesian_weight: float = 25.0  #: Weight of 3D Cartesian end-effector position MSE loss in Phase 0 (lambda_cart).
+    cartesian_weight: float = 40.0  #: Weight of 3D Cartesian SE(3) end-effector pose MSE loss in Phase 0 & Phase 1 (lambda_cart).
+    ee_rot_weight: float = 0.5      #: Weight of SO(3) end-effector orientation matrix MSE inside loss_cartesian.
+    lambda_kinematic_smooth: float = 0.5 #: Weight of decoded physical joint temporal velocity/acceleration consistency loss.
+    lambda_spike_balance: float = 0.25   #: Weight of ALIF population firing-rate homeostasis loss in Phase 0.
+    target_spike_rate: float = 0.12      #: Target biophysical per-neuron spike rate in Phase 0 homeostasis.
     velocity_loss_scale: float = 1.0 #: Normalization scale for angular velocities (rad/s) in kinematic loss (L_vel / s^2).
+
+    def __post_init__(self) -> None:
+        if self.cartesian_weight < 0.0 or self.ee_rot_weight < 0.0:
+            raise ValueError(
+                f"cartesian_weight and ee_rot_weight must be non-negative, got {self.cartesian_weight}, {self.ee_rot_weight}"
+            )
+        if self.lambda_kinematic_smooth < 0.0 or self.lambda_spike_balance < 0.0:
+            raise ValueError(
+                "lambda_kinematic_smooth and lambda_spike_balance must be non-negative, "
+                f"got {self.lambda_kinematic_smooth}, {self.lambda_spike_balance}"
+            )
+        if not (0.0 <= self.target_spike_rate <= 1.0):
+            raise ValueError(f"target_spike_rate must be in [0.0, 1.0], got {self.target_spike_rate}")
 
 
 @dataclass(frozen=True)
@@ -326,22 +349,25 @@ class MPPIConfig:
     action_dim: int = J                                           #: Dimensionality of the continuous motor action space D_u=6.
     action_min: float = -1.0                                      #: Lower bound for motor actions.
     action_max: float = 1.0                                       #: Upper bound for motor actions.
-    noise_sigma: Union[float, Tuple[float, ...]] = 0.28           #: Gaussian noise standard deviation for action perturbations.
-    shoulder_sigma_multiplier: float = 3.5                        #: Anisotropic covariance multiplier on Shoulder_Lift (joint 1) for scalar noise_sigma.
-    elbow_sigma_multiplier: float = 2.0                           #: Anisotropic covariance multiplier on Elbow_Flex (joint 2) for scalar noise_sigma.
-    noise_beta: float = 0.75                                      #: AR(1) temporal correlation smoothing coefficient beta in [0, 1).
-    temperature: float = 0.15                                     #: MPPI temperature lambda for exponential cost-to-go weighting.
-    nominal_update_gamma: float = 0.75                            #: EMA step size gamma in (0, 1] for updating nominal action sequence.
+    noise_sigma: Union[float, Tuple[float, ...]] = 0.08           #: Gaussian noise standard deviation for action perturbations.
+    shoulder_sigma_multiplier: float = 1.6                        #: Anisotropic covariance multiplier on Shoulder_Lift (joint 1) for scalar noise_sigma.
+    elbow_sigma_multiplier: float = 1.4                           #: Anisotropic covariance multiplier on Elbow_Flex (joint 2) for scalar noise_sigma.
+    noise_beta: float = 0.90                                      #: AR(1) temporal correlation smoothing coefficient beta in [0, 1).
+    temperature: float = 0.20                                     #: MPPI temperature lambda for exponential cost-to-go weighting.
+    nominal_update_gamma: float = 0.60                            #: EMA step size gamma in (0, 1] for updating nominal action sequence.
     num_iterations: int = 3                                       #: Number of refinement iterations per planning step.
     chunk_size: int = 1                                           #: Number of consecutive actions executed open-loop before replanning.
     gamma_discount: float = 0.95                                  #: Discount factor gamma for terminal critic bootstrapping.
     terminal_steps: Optional[int] = None                          #: Sliced window of terminal steps for trajectory cost evaluation.
     w_progress: float = 50.0                                      #: Directional progress reward weight towards target coordinates.
-    w_jerk: float = 0.005                                         #: Action smoothness (jerk) penalty weight across horizon.
-    w_damping: float = 10.0                                       #: Cartesian velocity damping penalty weight inside deadband (braking).
-    w_rot: float = 50.0                                           #: Rotational orientation error penalty weight (1 - cos(theta)).
+    w_jerk: float = 8.0                                           #: Action smoothness (rate-of-change) penalty weight across horizon.
+    w_damping: float = 25.0                                       #: Cartesian velocity damping penalty weight inside deadband (braking).
+    w_rot: float = 70.0                                           #: Rotational orientation error penalty weight (1 - cos(theta)).
     w_pos: float = 20.0                                           #: Positional Cartesian Euclidean distance error penalty weight.
     w_critic: float = 0.0                                         #: Terminal critic bootstrapping weight (forced 0.0 until goal-conditioned).
+    w_joint_accel: float = 40.0                                   #: Decoded joint-space finite-difference acceleration penalty weight.
+    w_joint_limit: float = 50.0                                   #: Soft quadratic barrier weight enforcing Unity rig joint angle limits.
+    max_action_delta: Optional[float] = 0.10                      #: Optional L_inf per-step action slew-rate limit for hardware smoothness.
 
     def __post_init__(self) -> None:
         if self.num_samples <= 0:
@@ -364,6 +390,12 @@ class MPPIConfig:
             raise ValueError(f"chunk_size must be > 0, got {self.chunk_size}")
         if self.num_iterations <= 0:
             raise ValueError(f"num_iterations must be > 0, got {self.num_iterations}")
+        if self.w_joint_accel < 0.0:
+            raise ValueError(f"w_joint_accel must be >= 0.0, got {self.w_joint_accel}")
+        if self.w_joint_limit < 0.0:
+            raise ValueError(f"w_joint_limit must be >= 0.0, got {self.w_joint_limit}")
+        if self.max_action_delta is not None and self.max_action_delta <= 0.0:
+            raise ValueError(f"max_action_delta must be > 0.0 when specified, got {self.max_action_delta}")
 
 
 @dataclass(frozen=True)
@@ -441,6 +473,10 @@ class ExperimentConfig:
         mppi_noise_target_alpha: Optional[float] = None,
         max_eval_generations: Optional[int] = None,
         cartesian_weight: Optional[float] = None,
+        ee_rot_weight: Optional[float] = None,
+        lambda_kinematic_smooth: Optional[float] = None,
+        lambda_spike_balance: Optional[float] = None,
+        target_spike_rate: Optional[float] = None,
     ) -> "ExperimentConfig":
         """
         Creates a new validated, frozen ExperimentConfig with explicit overrides.
@@ -511,6 +547,14 @@ class ExperimentConfig:
         loss_updates: Dict[str, Any] = {}
         if cartesian_weight is not None:
             loss_updates["cartesian_weight"] = cartesian_weight
+        if ee_rot_weight is not None:
+            loss_updates["ee_rot_weight"] = ee_rot_weight
+        if lambda_kinematic_smooth is not None:
+            loss_updates["lambda_kinematic_smooth"] = lambda_kinematic_smooth
+        if lambda_spike_balance is not None:
+            loss_updates["lambda_spike_balance"] = lambda_spike_balance
+        if target_spike_rate is not None:
+            loss_updates["target_spike_rate"] = target_spike_rate
         loss = dataclasses.replace(self.loss, **loss_updates) if loss_updates else self.loss
 
         return dataclasses.replace(self, project=proj, data=data, training=training, loss=loss)

@@ -14,7 +14,7 @@
 | **2. Neural Architecture & Mathematical Specs** | Fully Specified in Layer 1 PyTorch Implementations | **100%** | None (Exact tensor contracts, ALIF equations, continuous handover, and differentiable forward kinematics verified). |
 | **3. Training Protocol & Optimization Guarantees** | Fully Decoupled Two-Phase Curriculum | **100%** | None (Multi-seed validation across seeds 42, 101, 2024 verified with strict Phase 0 -> Phase 1 pipeline). |
 | **4. Empirical Evaluation & Benchmarks** | Multi-Horizon Telemetry Logged ($H \in \{1..100\}$) | **100%** | None (Comparative baselines RSSM, Deep GRU, ConvLSTM and parameter-matched non-spiking ANN ablation fully benchmarked). |
-| **5. Architectural Evolutionary History** | Fully Documented in `History.md` (v1 $\to$ v0.7.3) | **100%** | None (Extensive negative ablations and post-mortems fully cataloged). |
+| **5. Architectural Evolutionary History** | Fully Documented in `History.md` (v1 $\to$ v0.12.3) | **100%** | None (Extensive negative ablations, post-mortems, and `v0.12.3` deploy-ready smoothness upgrade cataloged). |
 | **6. Publication Gap Analysis** | Gaps Formally Completed & Benchmarked | **100%** | None (All 6 critical gaps completed: comparative baselines, ANN ablation, SOP profiling, multi-seed rigor, latent MPPI control, and zero-shot sim-to-real stress tests). |
 
 ---
@@ -620,4 +620,22 @@ flowchart LR
 3. **Neuromorphic SOP & Energy Profiling [COMPLETED]**: Computed active Synaptic Operations (SOPs) on Loihi-2 vs GPU FLOPs on Jetson Orin, proving an 80.8x energy efficiency advantage (`results/energy_profiling/`).
 4. **Multi-Seed Statistical Verification [COMPLETED]**: Executed the full two-phase pipeline across seeds 42, 101, and 2024, confirming negative drift and low variance across extended horizons (`results/multiseed/`).
 5. **Benchmark Latent MPC Closed-Loop Controller [COMPLETED]**: Implemented differentiable forward kinematics and a Model Predictive Path Integral (MPPI) controller operating directly on SPWM's latent space ($M_1$), achieving 80.0% grasp success rate, 2.17 cm accuracy, and 38.9 ms step latency across 1.20 - 4.50 kg payloads (`results/mppi_benchmark/`).
+
+---
+
+## 8. SPWM-v0.12.3 Deploy-Ready Smoothness & SE(3) Upgrade Addendum
+
+To prepare SPWM for physical robot arm deployment (suppressing high-frequency joint jitter, enforcing slew-rate limits, and improving end-effector orientation accuracy), `SPWM-v0.12.3` (`392,141` parameters) introduced coordinated upgrades across Phase 0, Phase 1, and the Latent MPPI controller:
+
+- **Phase 0 Representation (`160` epochs, best `val_loss=1.28173 @ Epoch 159`)**:
+  - Added ALIF firing-rate homeostasis ($\lambda_{\text{spike\_balance}} = 0.25$, target $0.12$), reducing silent neurons from `44.92%` (`v0.12.20`) to `19.14%` and hyperactive neurons from `5.86%` to `2.34%` at `mean_spike_rate = 0.1684`.
+  - Added SE(3) end-effector rotation supervision (`ee_rot_weight = 0.5`, `cartesian_weight = 40.0`), decoded temporal kinematic smoothness (`lambda_kinematic_smooth = 0.5`), and cosine LR decay (`1.0x -> 0.20x`).
+  - On 50-episode grounded evaluation vs `v0.12.20`: acceleration ratio dropped `7.79x -> 3.88x`, `kin_fwd_mae` improved `0.1829 -> 0.1079`, direction flips dropped `205.3 -> 156.4`, and rotation error improved `0.049 -> 0.043 rad` (`p90: 0.100 -> 0.082`).
+- **Phase 1 Predictor $M_1$ (`240` epochs across 4-Phase Latch Curriculum, best `mppi_score = 2.86639 @ Epoch 200`)**:
+  - Matched AR(1) training noise ($\beta = 0.90$, $\sigma = 0.08$, shoulder $1.6\times$, elbow $1.4\times$) to `MPPIConfig`, added SE(3) + temporal smoothness to `compute_m1_loss`, and tightened Latch thresholds (`0.10` / `0.095`).
+  - `rollout_mae = 0.05500 rad` (vs `0.08184` in `v0.12.20`), `rollout_score = 0.38069`, `drift_ratio = 2.69x` (vs `2.84x`), `H=100` position MSE `0.003501` (`0.11864 rad` MAE), Tier 2 Ep 240 `succ = 100.0%`, `rot = 0.0104 rad`.
+- **Deploy-Ready Latent MPPI Controller (`50`-episode benchmark, `results/mppi_benchmark_v0_12_3/`)**:
+  - Receding-horizon `nominal_actions` warm-start, `max_action_delta = 0.10 rad/step` slew-rate clamping, `w_joint_accel = 40.0`, `w_joint_limit = 50.0`, `w_jerk = 8.0`, `w_damping = 25.0`, `w_rot = 70.0`, `w_critic = 0.0`.
+  - **Grasp Success Rate**: **`28.0%`** (vs `8.0%` `v0.12.20` baseline, `22.0%` smooth controller, `12.0%` Ep 180), **`1.923 ± 1.330 cm`** minimum placement accuracy, **`2.660 cm`** terminal error, **`22.54 ms`** step latency.
+  - **Closed-Loop Ghost Rollout (`traj 3622`)**: `mean_ddq = 0.00409 rad/step^2` (`-66%` vs `0.01208` in `v0.12.20`), `mean_dddq = 0.00487` (`-71%` vs `0.01682`), `flips = 62` (`-51%` vs `127`).
 6. **Sim-to-Real Gap Analysis & Robustness Stress Test [COMPLETED]**: Formally evaluated visual sensor domain gaps (threshold shifts, thermal Poisson flip noise, refractory dropout) and physical dynamics perturbations (out-of-distribution 4.80 kg payload mass, loose/stiff actuator friction drift) across 400 test trajectories and 50 closed-loop MPPI episodes with zero retraining (`results/robustness_benchmark/`).

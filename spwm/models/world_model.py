@@ -296,20 +296,15 @@ class SPWM(nn.Module):
         )
         return output, new_state
 
-    def forward_representation(
+    def forward_representation_with_spikes(
         self,
         event_sequence: torch.Tensor,
         initial_state: Optional[SPWMState] = None,
         actions: Optional[torch.Tensor] = None,
-        *args: Any,
-        **kwargs: Any,
-    ) -> Tuple[torch.Tensor, torch.Tensor]:
+    ) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
         """
-        Sensory-driven state estimation without predictor rollouts (Phase 0).
-        Computes z_t = (q_t, p_t) directly from sensory input streams and optional actions.
-        Returns:
-            latent_states: [B, T, latent_dim]
-            error_neurons: [B, T, encoder_dim]
+        Sensory-driven state estimation without predictor rollouts (Phase 0),
+        additionally returning concatenated per-timestep dynamics spikes [B, T, N_neurons].
         """
         assert_tensor_contract(
             event_sequence,
@@ -324,6 +319,7 @@ class SPWM(nn.Module):
 
         latent_steps = []
         error_neuron_steps = []
+        spike_steps = []
 
         for t in range(T):
             event_frame = event_sequence[:, t]
@@ -350,9 +346,33 @@ class SPWM(nn.Module):
             state = SPWMState(encoder_states=None, dynamics_state=new_dyn_state, action=state.action)
             latent_steps.append(z_t)
             error_neuron_steps.append(epsilon_t)
+            spike_steps.append(torch.cat(list(new_dyn_state.memory_state.spikes), dim=-1))
 
         latents = torch.stack(latent_steps, dim=1)
         error_neurons = torch.stack(error_neuron_steps, dim=1)
+        spikes = torch.stack(spike_steps, dim=1)
+        return latents, error_neurons, spikes
+
+    def forward_representation(
+        self,
+        event_sequence: torch.Tensor,
+        initial_state: Optional[SPWMState] = None,
+        actions: Optional[torch.Tensor] = None,
+        *args: Any,
+        **kwargs: Any,
+    ) -> Tuple[torch.Tensor, torch.Tensor]:
+        """
+        Sensory-driven state estimation without predictor rollouts (Phase 0).
+        Computes z_t = (q_t, p_t) directly from sensory input streams and optional actions.
+        Returns:
+            latent_states: [B, T, latent_dim]
+            error_neurons: [B, T, encoder_dim]
+        """
+        latents, error_neurons, _ = self.forward_representation_with_spikes(
+            event_sequence=event_sequence,
+            initial_state=initial_state,
+            actions=actions,
+        )
         return latents, error_neurons
 
     def forward(

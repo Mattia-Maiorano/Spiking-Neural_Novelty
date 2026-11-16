@@ -92,6 +92,35 @@ def compute_critic_mc_loss(
     return F.mse_loss(predicted_v, v_target.detach())
 
 
+def _decoded_kinematic_temporal_loss(
+    pos_pred: torch.Tensor,
+    vel_pred: torch.Tensor,
+    pos_true: torch.Tensor,
+    dt: float,
+    reduce_joint_sum: bool = True,
+) -> torch.Tensor:
+    """Temporal velocity/acceleration consistency and kinematic integration coherence on decoded trajectories."""
+    dt_safe = max(1e-4, float(dt))
+    total = torch.zeros((), device=pos_pred.device, dtype=pos_pred.dtype)
+    if pos_pred.shape[1] < 2:
+        return total
+
+    dq_pred = (pos_pred[:, 1:] - pos_pred[:, :-1]) / dt_safe
+    dq_true = (pos_true[:, 1:] - pos_true[:, :-1]) / dt_safe
+    vel_mid = 0.5 * (vel_pred[:, 1:] + vel_pred[:, :-1])
+
+    def _err(a: torch.Tensor, b: torch.Tensor) -> torch.Tensor:
+        sq = F.mse_loss(a, b, reduction="none")
+        return sq.sum(dim=-1).mean() if reduce_joint_sum else sq.mean()
+
+    total = _err(dq_pred, dq_true) + 0.25 * _err(dq_pred, vel_mid)
+    if pos_pred.shape[1] >= 3:
+        ddq_pred = (pos_pred[:, 2:] - 2.0 * pos_pred[:, 1:-1] + pos_pred[:, :-2]) / dt_safe
+        ddq_true = (pos_true[:, 2:] - 2.0 * pos_true[:, 1:-1] + pos_true[:, :-2]) / dt_safe
+        total = total + 0.5 * _err(ddq_pred, ddq_true)
+    return total
+
+
 def compute_representation_loss(
     q: torch.Tensor,
     p: torch.Tensor,
@@ -106,10 +135,15 @@ def compute_representation_loss(
     lambda_derivative: float = 1.0,
     lambda_smoothness: float = 0.1,
     lambda_sensory: float = 1.0,
-    cartesian_weight: float = 25.0,
+    cartesian_weight: float = 40.0,
+    ee_rot_weight: float = 0.5,
+    lambda_kinematic_smooth: float = 0.5,
+    lambda_spike_balance: float = 0.25,
+    target_spike_rate: float = 0.12,
     velocity_loss_scale: float = 1.0,
+    spikes: Optional[torch.Tensor] = None,
 ) -> Dict[str, torch.Tensor]:
-    """Computes Phase 0 representation losses: kinematic (joint + Cartesian EE), derivative, smoothness, sensory."""
+    """Computes Phase 0 representation losses: kinematic (SE(3) EE pose + decoded smoothness), derivative, ALIF homeostasis, sensory."""
     joint_pos_true = flat_kin[..., :joint_count]
     joint_vel_true = flat_kin[..., joint_count : 2 * joint_count]
 
@@ -120,7 +154,7 @@ def compute_representation_loss(
     T_true = fk.forward_homogeneous(joint_pos_true)
     loss_ee_pos = F.mse_loss(T_pred[..., :3, 3], T_true[..., :3, 3], reduction="none").sum(dim=-1).mean()
     loss_ee_rot = F.mse_loss(T_pred[..., :3, :3], T_true[..., :3, :3], reduction="none").sum(dim=(-2, -1)).mean()
-    loss_cartesian = loss_ee_pos + 0.1 * loss_ee_rot
+    loss_cartesian = loss_ee_pos + float(ee_rot_weight) * loss_ee_rot
     l_kinematic = loss_pos_kin + loss_vel_kin + float(cartesian_weight) * loss_cartesian
 
     q_dim = q.shape[-1]
@@ -129,12 +163,27 @@ def compute_representation_loss(
     l_derivative = F.mse_loss(delta_q, float(dt) * p_mapped, reduction="none").sum(dim=-1).mean()
 
     l_smoothness = F.smooth_l1_loss(p[:, 1:], p[:, :-1], beta=0.1, reduction="none").sum(dim=-1).mean()
+    l_kin_smooth = _decoded_kinematic_temporal_loss(
+        pos_pred=pos_pred, vel_pred=vel_pred, pos_true=joint_pos_true, dt=dt, reduce_joint_sum=True
+    )
     l_sensory = F.mse_loss(error_neurons, torch.zeros_like(error_neurons), reduction="none").sum(dim=-1).mean()
+
+    l_spike_balance = torch.zeros((), device=pos_pred.device, dtype=pos_pred.dtype)
+    if spikes is not None and spikes.numel() > 0:
+        per_neuron_rate = spikes.mean(dim=(0, 1))
+        rate_err = F.mse_loss(
+            per_neuron_rate, torch.full_like(per_neuron_rate, float(target_spike_rate)), reduction="sum"
+        )
+        dead_hinge = F.relu(0.02 - per_neuron_rate).pow(2).sum()
+        hyper_hinge = F.relu(per_neuron_rate - 0.45).pow(2).sum()
+        l_spike_balance = rate_err + 4.0 * dead_hinge + 2.0 * hyper_hinge
 
     total_loss = (
         float(lambda_kinematic) * l_kinematic
         + float(lambda_derivative) * l_derivative
         + float(lambda_smoothness) * l_smoothness
+        + float(lambda_kinematic_smooth) * l_kin_smooth
+        + float(lambda_spike_balance) * l_spike_balance
         + float(lambda_sensory) * l_sensory
     )
     return {
@@ -145,6 +194,8 @@ def compute_representation_loss(
         "loss_cartesian": loss_cartesian,
         "loss_derivative": l_derivative,
         "loss_smoothness": l_smoothness,
+        "loss_kinematic_smooth": l_kin_smooth,
+        "loss_spike_balance": l_spike_balance,
         "loss_sensory": l_sensory,
     }
 
@@ -161,13 +212,16 @@ def compute_m1_loss(
     cl_target: Optional[torch.Tensor] = None,
     target_kin: Optional[torch.Tensor] = None,
     joint_count: int = J,
+    dt: float = 0.05,
     curriculum_phase: int = 1,
     gamma: float = 0.95,
     lambda_latent: float = 1.0,
     lambda_position: float = 1.0,
     lambda_velocity: float = 1.5,
     lambda_critic: float = 0.2,
-    cartesian_weight: float = 25.0,
+    cartesian_weight: float = 40.0,
+    ee_rot_weight: float = 0.5,
+    lambda_kinematic_smooth: float = 0.5,
 ) -> Dict[str, torch.Tensor]:
     """Computes Phase 1 (M1) latent rollout, closed-loop mixed BPTT, kinematic, and critic losses."""
     B, horizon, z_dim = m1_traj.shape
@@ -215,11 +269,20 @@ def compute_m1_loss(
     if target_kin is not None and physical_decoder is not None:
         pred_q = physical_decoder.pos_head(m1_traj[..., :q_dim])
         pred_p = physical_decoder.vel_head(m1_traj[..., q_dim:])
+        tgt_q = target_kin[..., :joint_count]
+        tgt_p = target_kin[..., joint_count : 2 * joint_count]
+        T_pred = fk.forward_homogeneous(pred_q)
+        T_true = fk.forward_homogeneous(tgt_q)
+        loss_ee_pos = F.mse_loss(T_pred[..., :3, 3], T_true[..., :3, 3], reduction="none").sum(dim=-1).mean()
+        loss_ee_rot = F.mse_loss(T_pred[..., :3, :3], T_true[..., :3, :3], reduction="none").sum(dim=(-2, -1)).mean()
+        loss_kin_smooth = _decoded_kinematic_temporal_loss(
+            pos_pred=pred_q, vel_pred=pred_p, pos_true=tgt_q, dt=dt, reduce_joint_sum=False
+        )
         loss_kin_m1 = (
-            F.mse_loss(pred_q, target_kin[..., :joint_count])
-            + 0.5 * F.mse_loss(pred_p, target_kin[..., joint_count : 2 * joint_count])
-            + float(cartesian_weight)
-            * F.mse_loss(fk(pred_q), fk(target_kin[..., :joint_count]), reduction="none").sum(dim=-1).mean()
+            F.mse_loss(pred_q, tgt_q)
+            + 0.5 * F.mse_loss(pred_p, tgt_p)
+            + float(cartesian_weight) * (loss_ee_pos + float(ee_rot_weight) * loss_ee_rot)
+            + float(lambda_kinematic_smooth) * loss_kin_smooth
         )
 
     loss_m1_total = loss_m1_latent + 1.0 * loss_kin_m1
@@ -366,7 +429,11 @@ class SPWMLoss(nn.Module):
         lambda_derivative: float = 1.0,
         lambda_smoothness: float = 0.1,
         lambda_critic: float = 0.2,
-        cartesian_weight: float = 25.0,
+        cartesian_weight: float = 40.0,
+        ee_rot_weight: float = 0.5,
+        lambda_kinematic_smooth: float = 0.5,
+        lambda_spike_balance: float = 0.25,
+        target_spike_rate: float = 0.12,
         velocity_loss_scale: float = 1.0,
         **kwargs: Any,
     ) -> None:
@@ -382,6 +449,10 @@ class SPWMLoss(nn.Module):
         self.lambda_smoothness = float(lambda_smoothness)
         self.lambda_critic = float(lambda_critic)
         self.cartesian_weight = float(cartesian_weight)
+        self.ee_rot_weight = float(ee_rot_weight)
+        self.lambda_kinematic_smooth = float(lambda_kinematic_smooth)
+        self.lambda_spike_balance = float(lambda_spike_balance)
+        self.target_spike_rate = float(target_spike_rate)
         self.velocity_loss_scale = float(velocity_loss_scale)
 
         self.predictor_loss = PredictorLoss(
@@ -406,6 +477,10 @@ class SPWMLoss(nn.Module):
             lambda_smoothness=cfg.lambda_smoothness,
             lambda_critic=cfg.lambda_critic,
             cartesian_weight=cfg.cartesian_weight,
+            ee_rot_weight=cfg.ee_rot_weight,
+            lambda_kinematic_smooth=cfg.lambda_kinematic_smooth,
+            lambda_spike_balance=cfg.lambda_spike_balance,
+            target_spike_rate=cfg.target_spike_rate,
             velocity_loss_scale=cfg.velocity_loss_scale,
             **kwargs,
         )
@@ -421,6 +496,7 @@ class SPWMLoss(nn.Module):
         fk: nn.Module,
         joint_count: int = J,
         dt: float = 0.05,
+        spikes: Optional[torch.Tensor] = None,
     ) -> Dict[str, torch.Tensor]:
         return compute_representation_loss(
             q=q,
@@ -437,7 +513,12 @@ class SPWMLoss(nn.Module):
             lambda_smoothness=self.lambda_smoothness,
             lambda_sensory=self.lambda_sensory,
             cartesian_weight=self.cartesian_weight,
+            ee_rot_weight=self.ee_rot_weight,
+            lambda_kinematic_smooth=self.lambda_kinematic_smooth,
+            lambda_spike_balance=self.lambda_spike_balance,
+            target_spike_rate=self.target_spike_rate,
             velocity_loss_scale=self.velocity_loss_scale,
+            spikes=spikes,
         )
 
     def compute_m1_loss(
@@ -453,6 +534,7 @@ class SPWMLoss(nn.Module):
         cl_target: Optional[torch.Tensor] = None,
         target_kin: Optional[torch.Tensor] = None,
         joint_count: int = J,
+        dt: float = 0.05,
         curriculum_phase: int = 1,
         gamma: float = 0.95,
     ) -> Dict[str, torch.Tensor]:
@@ -468,6 +550,7 @@ class SPWMLoss(nn.Module):
             cl_target=cl_target,
             target_kin=target_kin,
             joint_count=joint_count,
+            dt=dt,
             curriculum_phase=curriculum_phase,
             gamma=gamma,
             lambda_latent=self.lambda_latent,
@@ -475,6 +558,8 @@ class SPWMLoss(nn.Module):
             lambda_velocity=self.lambda_velocity,
             lambda_critic=self.lambda_critic,
             cartesian_weight=self.cartesian_weight,
+            ee_rot_weight=self.ee_rot_weight,
+            lambda_kinematic_smooth=self.lambda_kinematic_smooth,
         )
 
     def forward(self, *args: Any, **kwargs: Any) -> Dict[str, torch.Tensor]:

@@ -526,14 +526,19 @@ def render_figure_1(
     scene_trajectory_id: int = 0,
     eval_batch_size: int = 32,
     mppi_seed: int = 0,
+    baseline_config: Path | None = None,
+    baseline_is_spwm: bool = False,
+    baseline_label: str = "ANN-Rate (continuous, param.-matched)",
 ) -> None:
     """Renders Figure 1 and its standalone panels."""
     set_paper_style()
 
     print("[Fig 1] Loading models...")
     cfg = ExperimentConfig.load(config_path)
+    base_cfg = ExperimentConfig.load(baseline_config) if baseline_config is not None else cfg
     spwm = load_world_model(SPWM.from_config(cfg), spwm_ckpt)
-    ann = load_world_model(ANNWorldModel.from_config(cfg), ann_ckpt)
+    base_cls = SPWM if baseline_is_spwm else ANNWorldModel
+    ann = load_world_model(base_cls.from_config(base_cfg), ann_ckpt)
     fk = DifferentiableForwardKinematics()
 
     # Panel (a): one genuine closed-loop MPPI planning step
@@ -555,8 +560,8 @@ def render_figure_1(
         print(f"[Fig 1]   {name}: N={err.shape[0]}  mean err (rad) h=1:{m[0]:.4f} h=5:{m[4]:.4f} h=10:{m[9]:.4f} "
               f"h=25:{m[24]:.4f} h=50:{m[49]:.4f} h=100:{m[99]:.4f}  mean over h:{m.mean():.4f}")
     styles = {
-        "spwm": {"color": PALETTE["spwm"], "linestyle": "-", "label": "SPWM (spiking ALIF)"},
-        "ann": {"color": PALETTE["ann_rate"], "linestyle": "--", "label": "ANN-Rate (continuous, param.-matched)"},
+        "spwm": {"color": PALETTE["spwm"], "linestyle": "-", "label": f"{GLOBAL_VERSION.formatted} (spiking ALIF)"},
+        "ann": {"color": PALETTE["ann_rate"], "linestyle": "--", "label": baseline_label},
     }
 
     # Composite teaser
@@ -614,6 +619,9 @@ def main() -> None:
     parser.add_argument("--scene-trajectory", type=int, default=0, help="Trajectory id used for panel (a) and phase-space views")
     parser.add_argument("--eval-batch-size", type=int, default=32)
     parser.add_argument("--mppi-seed", type=int, default=0)
+    parser.add_argument("--baseline-config", type=Path, default=None)
+    parser.add_argument("--baseline-is-spwm", action="store_true")
+    parser.add_argument("--baseline-label", type=str, default="ANN-Rate (continuous, param.-matched)")
     args = parser.parse_args()
 
     render_figure_1(
@@ -625,6 +633,9 @@ def main() -> None:
         scene_trajectory_id=args.scene_trajectory,
         eval_batch_size=args.eval_batch_size,
         mppi_seed=args.mppi_seed,
+        baseline_config=args.baseline_config,
+        baseline_is_spwm=args.baseline_is_spwm,
+        baseline_label=args.baseline_label,
     )
 
 

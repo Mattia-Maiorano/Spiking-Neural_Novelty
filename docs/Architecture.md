@@ -322,12 +322,13 @@ In [`RepresentationPhaseStrategy`](file:///Users/Mattia/Desktop/Studies/Temp/spw
    where:
    $$\mathcal{L}_{\text{pos\_kin}} = \frac{1}{BT}\sum_{b=0}^{B-1}\sum_{t=0}^{T-1} \|\text{decode\_pos}(\mathbf{q}_{b, t}) - \mathbf{q}_{b, t}^*\|_2^2, \quad \mathcal{L}_{\text{vel\_kin}} = \frac{1}{BT s_v^2}\sum_{b=0}^{B-1}\sum_{t=0}^{T-1} \|\text{decode\_vel}(\mathbf{p}_{b, t}) - \mathbf{p}_{b, t}^*\|_2^2$$
    $$\mathcal{L}_{\text{cartesian}} = \frac{1}{BT}\sum_{b=0}^{B-1}\sum_{t=0}^{T-1} \|\mathbf{p}_{\text{ee}}(\text{decode\_pos}(\mathbf{q}_{b, t})) - \mathbf{p}_{\text{ee}}(\mathbf{q}_{b, t}^*)\|_2^2$$
-   with $s_v = \text{velocity\_loss\_scale} = 1.0\,\text{rad/s}$ and $\lambda_{\text{cart}} = \text{cartesian\_weight} = 25.0$ (configurable in `LossConfig`, default 25.0). $\mathcal{L}_{\text{cartesian}}$ uses [`DifferentiableForwardKinematics`](file:///Users/Mattia/Desktop/Studies/Temp/spwm/models/kinematics.py) to weight joint errors geometrically according to distal lever arms (e.g. $0.39\,\text{m}$ distal lever arm on J2 Elbow_Flex along inclined axis $\vec{a} = [0.5375, -0.2756, -0.7969]^T$).
+   with $s_v = \text{velocity\_loss\_scale} = 1.0\,\text{rad/s}$, $\lambda_{\text{cart}} = \text{cartesian\_weight} = 40.0$, and `ee_rot_weight = 0.5` (configurable in `LossConfig`). $\mathcal{L}_{\text{cartesian}}$ uses [`DifferentiableForwardKinematics`](file:///Users/Mattia/Desktop/Studies/Temp/spwm/models/kinematics.py) to weight joint errors geometrically according to distal lever arms (e.g. $0.39\,\text{m}$ distal lever arm on J2 Elbow_Flex along inclined axis $\vec{a} = [0.5375, -0.2756, -0.7969]^T$) and supervise $SO(3)$ orientation.
 2. **Phase-Space Derivative Constraint**:
    $$\mathcal{L}_{\text{derivative}} = \frac{1}{B(T-1)}\sum_{b=0}^{B-1}\sum_{t=0}^{T-2} \|(\mathbf{q}_{b, t+1} - \mathbf{q}_{b, t}) - \Delta t \cdot \mathbf{p}_{b, t}[..., :q\_dim]\|_2^2$$
 3. **ALIF Momentum Smoothness**:
    $$\mathcal{L}_{\text{smoothness}} = \frac{1}{B(T-1)}\sum_{b=0}^{B-1}\sum_{t=0}^{T-2} \text{Smooth}_{L1}(\mathbf{p}_{b, t+1} - \mathbf{p}_{b, t}, \beta=0.1)$$
-4. **Sensory Prediction Reconstruction**:
+4. **Decoded Kinematic Temporal Consistency & ALIF Homeostasis**: `lambda_kinematic_smooth = 0.5` enforces first- and second-order decoded joint trajectory consistency against ground truth and discrete velocity integration; `lambda_spike_balance = 0.25` stabilizes ALIF firing rates toward `target_spike_rate = 0.12`.
+5. **Sensory Prediction Reconstruction**:
    $$\mathcal{L}_{\text{sensory}} = \frac{1}{BT}\sum_{b=0}^{B-1}\sum_{t=0}^{T-1} \|\boldsymbol{\epsilon}_{b, t}\|_2^2$$
 
 $$\mathcal{L}_{\text{Phase 0}} = \lambda_{\text{kinematic}}\mathcal{L}_{\text{kinematic}} + \lambda_{\text{derivative}}\mathcal{L}_{\text{derivative}} + \lambda_{\text{smoothness}}\mathcal{L}_{\text{smoothness}} + \lambda_{\text{sensory}}\mathcal{L}_{\text{sensory}}$$

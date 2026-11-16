@@ -130,16 +130,18 @@ def sample_ar1_noise(
     horizon: int,
     action_dim: int,
     device: torch.device,
-    beta: float = 0.75,
-    base_sigma: float = 0.28,
+    beta: float = 0.90,
+    base_sigma: float = 0.08,
+    shoulder_multiplier: float = 1.6,
+    elbow_multiplier: float = 1.4,
     generator: Optional[torch.Generator] = None,
 ) -> torch.Tensor:
     """Samples temporally correlated Gaussian noise following an AR(1) process matching LatentMPPIController."""
     sigmas = torch.full((action_dim,), float(base_sigma), device=device, dtype=torch.float32)
     if action_dim >= 3:
-        # Match LatentMPPIController anisotropic covariance boost: Shoulder_Lift (idx 1) +250%, Elbow_Flex (idx 2) +100%
-        sigmas[1] = base_sigma * 3.5
-        sigmas[2] = base_sigma * 2.0
+        # Match LatentMPPIController smooth anisotropic profile: Shoulder_Lift (idx 1), Elbow_Flex (idx 2)
+        sigmas[1] = base_sigma * float(shoulder_multiplier)
+        sigmas[2] = base_sigma * float(elbow_multiplier)
 
     decay = math.sqrt(max(0.0, 1.0 - beta ** 2))
     eta = torch.randn(batch_size, horizon, action_dim, generator=generator, device=device) * sigmas.view(1, 1, action_dim)

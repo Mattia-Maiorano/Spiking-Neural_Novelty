@@ -153,6 +153,14 @@ class WorldModelProtocol(Protocol):
     ) -> Tuple[torch.Tensor, torch.Tensor]:
         ...
 
+    def forward_representation_with_spikes(
+        self,
+        event_sequence: torch.Tensor,
+        initial_state: Optional[SPWMState] = None,
+        actions: Optional[torch.Tensor] = None,
+    ) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
+        ...
+
     def __call__(
         self,
         event_sequence: torch.Tensor,

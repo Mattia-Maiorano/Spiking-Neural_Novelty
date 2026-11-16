@@ -350,3 +350,57 @@ def test_trainer_checkpoint_roundtrip_strict_and_primitives_only(tmp_path: Path)
     trainer_src.history = [{"epoch": 3, "bad_obj": cfg}]  # type: ignore[list-item]
     with pytest.raises(TypeError, match="Non-serializable object"):
         trainer_src.state_dict(epoch=3)
+
+
+def test_phase0_homeostasis_se3_rot_and_m1_smooth_loss_contracts() -> None:
+    """Verify v0.12.3 Phase 0 spike homeostasis + temporal kinematic smoothness + SE(3) losses and AR(1) noise scaling."""
+    from spwm.models.kinematics import DifferentiableForwardKinematics
+    from spwm.training.losses import compute_m1_loss, compute_representation_loss
+    from spwm.training.noise import sample_ar1_noise
+
+    cfg = _make_small_config("train_representation")
+    model = SPWM.from_config(cfg)
+    B, T, J_cnt = 2, 8, 6
+    events = torch.rand(B, T, 4, 16, 16)
+    actions = torch.zeros(B, T, 6)
+    latents, err, spikes = model.forward_representation_with_spikes(events, actions=actions)
+    assert latents.shape == (B, T, cfg.model.latent_dim)
+    assert err.shape == (B, T, cfg.model.encoder_dim)
+    assert spikes.shape == (B, T, sum(cfg.memory.timescale_dims))
+
+    q_dim = model.q_dim
+    q, p = latents[..., :q_dim], latents[..., q_dim:]
+    pos_pred = model.physical_decoder.decode_pos(q)
+    vel_pred = model.physical_decoder.decode_vel(p)
+    flat_kin = torch.zeros(B, T, 2 * J_cnt)
+    fk = DifferentiableForwardKinematics()
+
+    out = compute_representation_loss(
+        q=q, p=p, pos_pred=pos_pred, vel_pred=vel_pred, error_neurons=err,
+        flat_kin=flat_kin, fk=fk, joint_count=J_cnt, dt=0.05, spikes=spikes,
+    )
+    assert out["loss_kinematic_smooth"].item() >= 0.0
+    assert out["loss_spike_balance"].item() >= 0.0
+    assert torch.isfinite(out["total_loss"])
+    out["total_loss"].backward()
+    assert any(
+        param.grad is not None and param.grad.abs().sum() > 0 for param in model.dynamics.parameters()
+    )
+
+    m1_traj = torch.randn(B, T, cfg.model.latent_dim, requires_grad=True)
+    target_latents = torch.zeros(B, T, cfg.model.latent_dim)
+    out_m1_smooth = compute_m1_loss(
+        m1_traj=m1_traj, target_latents=target_latents, q_dim=q_dim,
+        critic=model.critic, physical_decoder=model.physical_decoder, fk=fk,
+        target_kin=flat_kin, joint_count=J_cnt, dt=0.05, ee_rot_weight=0.5, lambda_kinematic_smooth=0.5,
+    )
+    out_m1_nosmooth = compute_m1_loss(
+        m1_traj=m1_traj.detach(), target_latents=target_latents, q_dim=q_dim,
+        critic=model.critic, physical_decoder=model.physical_decoder, fk=fk,
+        target_kin=flat_kin, joint_count=J_cnt, dt=0.05, ee_rot_weight=0.0, lambda_kinematic_smooth=0.0,
+    )
+    assert out_m1_smooth["loss_kin_m1"].item() >= out_m1_nosmooth["loss_kin_m1"].item()
+
+    noise = sample_ar1_noise(4, 16, 6, torch.device("cpu"), beta=0.90, base_sigma=0.08, shoulder_multiplier=1.6, elbow_multiplier=1.4)
+    assert noise.shape == (4, 16, 6)
+    assert torch.isfinite(noise).all()

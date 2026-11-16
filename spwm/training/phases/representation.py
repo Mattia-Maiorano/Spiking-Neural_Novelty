@@ -1,5 +1,6 @@
 """Phase 0 Training Strategy: Grounded Articulated State Estimation (`train_representation`)."""
 from __future__ import annotations
+import math
 from typing import Dict, Optional, Tuple
 import torch
 import torch.nn as nn
@@ -41,6 +42,7 @@ class RepresentationPhaseStrategy(PhaseStrategy):
             {"params": list(self.model.sensory_predictor.parameters()), "lr": lr, "weight_decay": wd},
             {"params": list(self.model.physical_decoder.parameters()), "lr": p_lr, "weight_decay": p_wd},
         ])
+        self._base_lrs = [float(pg["lr"]) for pg in self.predictor_optimizer.param_groups]
 
     def verify_gradient_isolation(self) -> None:
         authorized = ("encoder", "dynamics", "sensory_predictor", "physical_decoder")
@@ -53,7 +55,7 @@ class RepresentationPhaseStrategy(PhaseStrategy):
     ) -> Tuple[torch.Tensor, Dict[str, float]]:
         joint_count = self.model.joint_count
         assert_tensor_contract(flat_kin, (None, None, 2 * joint_count), "RepresentationPhaseStrategy.flat_kin")
-        latents, error_neurons = self.model.forward_representation(events, actions=actions)
+        latents, error_neurons, spikes = self.model.forward_representation_with_spikes(events, actions=actions)
         q_dim = self.model.q_dim
         q, p = latents[..., :q_dim], latents[..., q_dim:]
         pos_pred = self.model.physical_decoder.decode_pos(q)
@@ -62,7 +64,7 @@ class RepresentationPhaseStrategy(PhaseStrategy):
         losses = self.loss_fn.compute_representation_loss(
             q=q, p=p, pos_pred=pos_pred, vel_pred=vel_pred,
             error_neurons=error_neurons, flat_kin=flat_kin, fk=self.fk,
-            joint_count=joint_count, dt=float(self.cfg.environment.dt),
+            joint_count=joint_count, dt=float(self.cfg.environment.dt), spikes=spikes,
         )
         total_loss = losses["total_loss"]
         decoded_all = torch.cat([pos_pred, vel_pred], dim=-1)
@@ -94,6 +96,11 @@ class RepresentationPhaseStrategy(PhaseStrategy):
         for mod in train_mods:
             mod.train()
         assert self.predictor_optimizer is not None
+        total_ep = max(1, int(self.cfg.training.epochs))
+        progress = min(1.0, max(0.0, float(epoch - 1)) / float(max(1, total_ep - 1))) if total_ep > 1 else 0.0
+        lr_scale = 0.20 + 0.80 * 0.5 * (1.0 + math.cos(math.pi * progress))
+        for pg, base_lr in zip(self.predictor_optimizer.param_groups, self._base_lrs):
+            pg["lr"] = base_lr * lr_scale
         self.predictor_optimizer.zero_grad()
 
         events = batch["events"].to(self.device)

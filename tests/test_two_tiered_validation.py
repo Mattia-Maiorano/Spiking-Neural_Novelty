@@ -472,13 +472,14 @@ def test_teacher_forced_blending_metric_isolation_and_round_robin():
     scorer.evaluate_trajectory = spy_eval_traj  # type: ignore[method-assign]
 
     # Phase 1 (eval_idx=0): all 6 evaluated naturally, while ClosedLoopBuffer receives 2 natural {0, 1} + 4 expert {2, 3, 4, 5}
+    expected_ids = [int(b["trajectory_id"]) for b in scorer.fixed_batches]
     call_records.clear()
     m_p1 = scorer(model, epoch=5, curriculum_phase=1)
     assert m_p1["mppi_evaluated_trajectories"] == 6.0
     assert m_p1["mppi_expert_trajectories"] == 4.0
     assert len(m_p1["trajectories"]) == 6
     assert sum(1 for t in m_p1["trajectories"] if t.is_expert) == 4
-    assert [t.trajectory_id for t in m_p1["trajectories"] if not t.is_expert] == [3200, 3202]
+    assert [t.trajectory_id for t in m_p1["trajectories"] if not t.is_expert] == [expected_ids[0], expected_ids[1]]
     # Strict metric isolation: scores must reflect natural trajectories only (0.5*8 + 0.5*6 + 0.25*5 + 0.1*2 + 2.0*0.775 = 10.0),
     # NOT polluted by -999.0 from expert trajectories.
     assert m_p1["mppi_structural_score"] == 10.0
@@ -493,14 +494,14 @@ def test_teacher_forced_blending_metric_isolation_and_round_robin():
     m_p2 = scorer(model, epoch=10, curriculum_phase=2)
     assert m_p2["mppi_evaluated_trajectories"] == 6.0
     assert m_p2["mppi_expert_trajectories"] == 4.0
-    assert [t.trajectory_id for t in m_p2["trajectories"] if not t.is_expert] == [3202, 3204]
+    assert [t.trajectory_id for t in m_p2["trajectories"] if not t.is_expert] == [expected_ids[1], expected_ids[2]]
 
     # Phase 3 (eval_idx=2): 6 natural evals, ClosedLoopBuffer natural {2, 3} + 4 expert
     call_records.clear()
     m_p3 = scorer(model, epoch=15, curriculum_phase=3)
     assert m_p3["mppi_evaluated_trajectories"] == 6.0
     assert m_p3["mppi_expert_trajectories"] == 4.0
-    assert [t.trajectory_id for t in m_p3["trajectories"] if not t.is_expert] == [3204, 3201]
+    assert [t.trajectory_id for t in m_p3["trajectories"] if not t.is_expert] == [expected_ids[2], expected_ids[3]]
 
     # Phase 4 Freeze Check: while natural success_rate == 0.0, buffer expert decay is FROZEN at 4
     call_records.clear()

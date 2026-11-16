@@ -433,8 +433,15 @@ def main() -> None:
 
     tier2_evaluator = None
     if not args.no_tier2 and mode == "train_m1":
+        from dataclasses import replace
         from spwm.evaluation.mppi import MPPIStructuralScorer
 
+        tier2_mppi_cfg = replace(
+            cfg.mppi,
+            num_samples=cfg.training.tier2_num_samples,
+            horizon=cfg.training.tier2_horizon,
+            num_iterations=cfg.training.tier2_iterations,
+        )
         tier2_evaluator = MPPIStructuralScorer.from_dataset(
             val_dataset=dataloaders["val"].dataset,
             device=device,
@@ -444,6 +451,7 @@ def main() -> None:
             num_samples=cfg.training.tier2_num_samples,
             horizon=cfg.training.tier2_horizon,
             num_iterations=cfg.training.tier2_iterations,
+            config=tier2_mppi_cfg,
         )
         chronicle.log_info(
             f"Tier 2 Closed-Loop MPPI Scorer configured on {len(tier2_evaluator.fixed_batches)} fixed validation trajectories "

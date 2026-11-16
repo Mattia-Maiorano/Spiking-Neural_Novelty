@@ -195,6 +195,8 @@ class BaseTrainer:
             tier2_frequency=self.tier2_frequency,
             noise_ramp_epochs=self.cfg.training.mppi_noise_ramp_epochs,
             target_alpha=self.cfg.training.mppi_noise_target_alpha,
+            phase1_loss_threshold=self.cfg.training.phase1_loss_threshold,
+            phase2_loss_threshold=self.cfg.training.phase2_loss_threshold,
         )
         self.current_curriculum_phase: int = 1
 

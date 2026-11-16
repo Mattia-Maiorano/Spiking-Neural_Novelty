@@ -68,6 +68,8 @@ def compute_h100_spatial_states(
     ann_ckpt: Path,
     trajectories_dir: Path,
     trajectory_id: int = 0,
+    baseline_config: Optional[Path] = None,
+    baseline_is_spwm: bool = False,
 ) -> Tuple[np.ndarray, np.ndarray, np.ndarray, float, float]:
     """Computes real Cartesian spatial states at horizon H=100 using Differentiable Forward Kinematics."""
     cfg = ExperimentConfig.load(config_path)
@@ -77,7 +79,9 @@ def compute_h100_spatial_states(
     spwm.load_state_dict(sd_sp, strict=True)
     spwm.eval()
 
-    ann = ANNWorldModel.from_config(cfg)
+    base_cfg = ExperimentConfig.load(baseline_config) if baseline_config is not None else cfg
+    base_cls = SPWM if baseline_is_spwm else ANNWorldModel
+    ann = base_cls.from_config(base_cfg)
     raw_ann = torch.load(ann_ckpt, map_location="cpu", weights_only=False)
     sd_ann = raw_ann["model_state"] if "model_state" in raw_ann else raw_ann["model_state_dict"]["model_state"]
     ann.load_state_dict(sd_ann, strict=True)
@@ -156,6 +160,9 @@ def render_figure_4(
     spwm_ckpt: Path = GLOBAL_VERSION.m1_checkpoint(),
     ann_ckpt: Path = Path("results/ann_ablation/ann_rate_m1/model.pt"),
     trajectories_dir: Path = Path("sim/ExportedTrajectories"),
+    baseline_config: Optional[Path] = None,
+    baseline_is_spwm: bool = False,
+    baseline_label: str = "Continuous Rate",
 ) -> None:
     """Renders Figure 4: Multi-Horizon Stability & Drift Ablation."""
     set_paper_style()
@@ -250,6 +257,8 @@ def render_figure_4(
         ann_ckpt=ann_ckpt,
         trajectories_dir=trajectories_dir,
         trajectory_id=0,
+        baseline_config=baseline_config,
+        baseline_is_spwm=baseline_is_spwm,
     )
 
     # Table Surface Definition
@@ -283,7 +292,7 @@ def render_figure_4(
     ann_xy = (float(ann_pos[0]), float(ann_pos[2]))
     ann_elev = float(ann_pos[1])
     draw_3d_box_on_surface(ax_scene, ann_xy, surface_z=ann_elev - box_size / 2.0, size=box_size, color=PALETTE["ann_rate"], alpha=0.85, edge_color="#991B1B", z_offset=0.0)
-    ax_scene.scatter([ann_xy[0]], [ann_xy[1]], [ann_elev], color=PALETTE["ann_rate"], s=85, marker="X", label=f"Continuous Rate ($\Delta = {ann_dist_cm:.1f}\\,\\mathrm{{cm}}$, Divergent)")
+    ax_scene.scatter([ann_xy[0]], [ann_xy[1]], [ann_elev], color=PALETTE["ann_rate"], s=85, marker="X", label=f"{baseline_label} ($\Delta = {ann_dist_cm:.1f}\\,\\mathrm{{cm}}$)")
 
     # Displacement indicator lines
     gt_center = np.array([gt_xy[0], gt_xy[1], gt_elev])
@@ -319,6 +328,9 @@ def main() -> None:
     parser.add_argument("--spwm-ckpt", type=Path, default=GLOBAL_VERSION.m1_checkpoint())
     parser.add_argument("--ann-ckpt", type=Path, default=Path("results/ann_ablation/ann_rate_m1/model.pt"))
     parser.add_argument("--data-dir", type=Path, default=Path("sim/ExportedTrajectories"))
+    parser.add_argument("--baseline-config", type=Path, default=None)
+    parser.add_argument("--baseline-is-spwm", action="store_true")
+    parser.add_argument("--baseline-label", type=str, default="Continuous Rate")
     args = parser.parse_args()
 
     render_figure_4(
@@ -329,6 +341,9 @@ def main() -> None:
         spwm_ckpt=args.spwm_ckpt,
         ann_ckpt=args.ann_ckpt,
         trajectories_dir=args.data_dir,
+        baseline_config=args.baseline_config,
+        baseline_is_spwm=args.baseline_is_spwm,
+        baseline_label=args.baseline_label,
     )
 
 

@@ -57,7 +57,7 @@ class M1PhaseStrategy(PhaseStrategy):
         rollout_actions, tc = actions[:, t_start : t_start + horizon], self.cfg.training
         noise_alpha = (float(curriculum_alpha) if curriculum_alpha is not None else (compute_mppi_noise_alpha(epoch, tc.mppi_noise_warmup_epochs, tc.mppi_noise_ramp_epochs, tc.mppi_noise_target_alpha) if epoch is not None else 0.0)) if is_train else 0.0
         if is_train and noise_alpha > 0.0:
-            rollout_actions = torch.clamp(rollout_actions + noise_alpha * sample_ar1_noise(B, horizon, self.model.action_dim, events.device), -1.0, 1.0)
+            rollout_actions = torch.clamp(rollout_actions + noise_alpha * sample_ar1_noise(B, horizon, self.model.action_dim, events.device, beta=self.cfg.mppi.noise_beta, base_sigma=self.cfg.mppi.noise_sigma, shoulder_multiplier=self.cfg.mppi.shoulder_sigma_multiplier, elbow_multiplier=self.cfg.mppi.elbow_sigma_multiplier), -1.0, 1.0)
 
         roll_res = rollout_latent(
             model=self.model, z_init=curr_z, horizon=horizon, actions=rollout_actions,
@@ -87,7 +87,7 @@ class M1PhaseStrategy(PhaseStrategy):
             m1_traj=m1_traj, target_latents=target_latents, q_dim=q_dim,
             critic=self.model.critic, physical_decoder=self.model.physical_decoder, fk=self.fk,
             flags_rollout=flags_rollout, cl_pred=cl_pred, cl_target=cl_target,
-            target_kin=target_kin, joint_count=jc, curriculum_phase=curriculum_phase, gamma=0.95,
+            target_kin=target_kin, joint_count=jc, dt=float(self.cfg.environment.dt), curriculum_phase=curriculum_phase, gamma=0.95,
         )
         pos_err, vel_err = 0.0, 0.0
         if target_kin is not None:

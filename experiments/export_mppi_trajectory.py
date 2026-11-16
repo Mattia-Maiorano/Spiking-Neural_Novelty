@@ -63,6 +63,9 @@ def export_mppi_episode(
     dt: float = 0.05,
     precision: int = 6,
     approach_window: int = 20,
+    pre_contact_sensory_steps: int = 7,
+    post_contact_sensory_steps: int = 7,
+    gate_ramp_steps: int = 4,
     seed: Optional[int] = None,
 ) -> GhostTrajectory:
     device = controller.device
@@ -85,17 +88,19 @@ def export_mppi_episode(
     max_t = horizon - 1
 
     p1_indices = (pf == 1).nonzero()
-    t_c = int(p1_indices[0].item()) if len(p1_indices) > 0 else 50
-    t_grasp = min(t_c + 7, q_gt_full.shape[0] - 1)
+    t_inj_start = int(p1_indices[0].item()) if len(p1_indices) > 0 else 38
+    t_c = min(t_inj_start + pre_contact_sensory_steps, q_gt_full.shape[0] - 1)
+    t_grasp = int(p1_indices[-1].item()) if len(p1_indices) > 0 else min(t_c + post_contact_sensory_steps, q_gt_full.shape[0] - 1)
     t_c_idx = min(t_c, max_t)
     t_grasp_idx = min(t_grasp, max_t)
-    t_start = min(max(5, t_c - approach_window), max_t - 1)
+    t_start = min(max(5, t_inj_start - approach_window), max_t - 1)
 
     # Precompute grounded latent sequence and reachable 4x4 SE(3) target poses across the full horizon
     with torch.no_grad():
         _, _, z_gt_seq = ground_initial_state(model, events, t_start=max_t, actions=actions)
         q_reachable_seq = model.physical_decoder(z_gt_seq.squeeze(0))[..., :6]
         target_pose_seq = fk.forward_homogeneous(q_reachable_seq).detach()
+        gt_ee_seq = fk.forward_homogeneous(q_gt)[..., :3, 3].detach()
 
     z_start = z_gt_seq[:, t_start]
     dec_start = model.physical_decoder(z_start)
@@ -107,42 +112,42 @@ def export_mppi_episode(
     predicted_p_list: List[np.ndarray] = []
     ee_errors_cm: List[float] = []
 
-    target_pos_c = target_pose_seq[t_c_idx, :3, 3]
-
     # Before t_start, state is tracking ground truth
     for t in range(t_start):
         predicted_q_list.append(q_gt[t].detach().cpu().numpy())
         predicted_p_list.append(p_gt[t].detach().cpu().numpy())
-        ee_pos = fk.forward_homogeneous(q_gt[t : t + 1])[0, :3, 3].detach()
-        err_cm = float((torch.norm(ee_pos - target_pos_c) * 100.0).item())
+        ee_pos = gt_ee_seq[t]
+        err_cm = float((torch.norm(ee_pos - gt_ee_seq[t]) * 100.0).item())
         ee_errors_cm.append(err_cm)
 
     # Emit grounded initial state at t_start
     predicted_q_list.append(dec_start[0, :6].detach().cpu().numpy())
     predicted_p_list.append(dec_start[0, 6:12].detach().cpu().numpy())
     ee_start = fk.forward_homogeneous(dec_start[:, :6])[0, :3, 3].detach()
-    ee_errors_cm.append(float((torch.norm(ee_start - target_pos_c) * 100.0).item()))
+    ee_errors_cm.append(float((torch.norm(ee_start - gt_ee_seq[t_start]) * 100.0).item()))
 
-    # From t_start to horizon - 1: full-horizon closed-loop execution via M1 + Phase-1 active-perception blending
+    # From t_start to horizon - 1: full-horizon closed-loop execution via M1 + smooth Phase-1 active-perception blending
     curr_z = z_start.clone()
     current_chunk: Optional[torch.Tensor] = None
     chunk_idx = 0
+    grounded_step_count = 0
+    fade_step_count = 0
+    prev_flag = int(pf[t_start].item())
+    w_max = 0.60
+    ramp_len = max(1, int(gate_ramp_steps))
 
     for t in range(t_start, max_t):
-        if t <= t_c_idx:
-            target_pose_mat = target_pose_seq[t_c_idx]
-        elif t <= t_grasp_idx:
-            target_pose_mat = target_pose_seq[t_grasp_idx]
-        else:
-            target_pose_mat = target_pose_seq[min(t + 1, max_t)]
+        # Provide the time-indexed [H, 4, 4] reference pose trajectory across the MPPI planning horizon
+        h_slice_end = min(t + 1 + controller.horizon, max_t + 1)
+        target_pose_window = target_pose_seq[t + 1 : h_slice_end]
 
-        # Invalidate action chunk at contact and post-grasp phase transitions
-        if t == t_c_idx + 1 or t == t_grasp_idx + 1:
+        # Invalidate action chunk at sensory injection, physical contact, and post-grasp phase transitions
+        if t in (t_inj_start, t_c_idx + 1, t_grasp_idx + 1):
             current_chunk = None
             chunk_idx = 0
 
         if current_chunk is None or chunk_idx >= controller.chunk_size:
-            res = controller.plan_step(curr_z, target_pose_mat, prev_action=prev_u)
+            res = controller.plan_step(curr_z, target_pose_window, prev_action=prev_u)
             current_chunk = res.action_chunk
             chunk_idx = 0
 
@@ -154,11 +159,31 @@ def export_mppi_episode(
         z_in = curr_z if curr_z.dim() == 2 else curr_z.unsqueeze(0)
         u_in = u_exec if u_exec.dim() == 2 else u_exec.unsqueeze(0)
         z_gt_next = z_gt_seq[:, t + 1]
+        flag_step = int(pf[t + 1].item())
+
+        if flag_step == 1:
+            grounded_step_count += 1
+            fade_step_count = 0
+            ramp = min(1.0, float(grounded_step_count) / float(ramp_len))
+            w_t = ramp * w_max
+        elif flag_step == 2:
+            if prev_flag == 1:
+                fade_step_count = 1
+            elif fade_step_count > 0:
+                fade_step_count += 1
+            grounded_step_count = 0
+            w_t = (w_max * 0.50) if fade_step_count == 1 else 0.0
+        else:
+            grounded_step_count = 0
+            fade_step_count = 0
+            w_t = 0.0
+        prev_flag = flag_step
+
         with torch.no_grad():
             pred_out = model.predictor(z_in, u_in)
             z_pred = pred_out.predicted_latent
-            if int(pf[t].item()) == 1:
-                z_next = 0.40 * z_pred + 0.60 * z_gt_next
+            if w_t > 0.0:
+                z_next = (1.0 - w_t) * z_pred + w_t * z_gt_next
             else:
                 z_next = z_pred
 
@@ -167,7 +192,7 @@ def export_mppi_episode(
         predicted_p_list.append(dec_next[0, 6:12].detach().cpu().numpy())
 
         ee_next = fk.forward_homogeneous(dec_next[:, :6])[0, :3, 3].detach()
-        err_cm = float((torch.norm(ee_next - target_pose_mat[:3, 3]) * 100.0).item())
+        err_cm = float((torch.norm(ee_next - gt_ee_seq[t + 1]) * 100.0).item())
         ee_errors_cm.append(err_cm)
 
         curr_z = z_next
@@ -238,9 +263,9 @@ def export_mppi_episode(
         "exported_at": datetime.now(timezone.utc).isoformat(timespec="seconds"),
         "summary": summary,
         "has_sensory_injection": True,
-        "heft_start_frame_index": t_c,
-        "grasp_lock_frame_index": t_grasp,
-        "sensory_release_frame_index": min(t_grasp + 3, horizon - 1),
+        "heft_start_frame_index": t_inj_start,
+        "grasp_lock_frame_index": t_c_idx,
+        "sensory_release_frame_index": t_grasp_idx,
     }
 
     return GhostTrajectory(metadata=metadata, frames=frames)
@@ -319,6 +344,9 @@ def main() -> None:
         horizon=args.horizon,
         model_version=resolved_version,
         dt=cfg.environment.dt,
+        pre_contact_sensory_steps=cfg.data.pre_contact_sensory_steps,
+        post_contact_sensory_steps=cfg.data.post_contact_sensory_steps,
+        gate_ramp_steps=cfg.model.gate_ramp_steps,
         seed=cfg.project.seed + args.trajectory_id,
     )
 

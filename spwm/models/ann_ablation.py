@@ -644,15 +644,13 @@ class ANNWorldModel(nn.Module):
         )
         return output, new_state
 
-    def forward_representation(
+    def forward_representation_with_spikes(
         self,
         event_sequence: torch.Tensor,
         initial_state: Optional[SPWMState] = None,
         actions: Optional[torch.Tensor] = None,
-        *args: Any,
-        **kwargs: Any,
-    ) -> Tuple[torch.Tensor, torch.Tensor]:
-        """Sensory-driven state estimation without predictor rollouts."""
+    ) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
+        """Sensory-driven state estimation without predictor rollouts, returning continuous rates [B, T, N]."""
         assert_tensor_contract(
             event_sequence,
             (None, None, self.in_channels, self.height, self.width),
@@ -666,6 +664,7 @@ class ANNWorldModel(nn.Module):
 
         latent_steps = []
         error_neuron_steps = []
+        rate_steps = []
 
         for t in range(T):
             event_frame = event_sequence[:, t]
@@ -692,9 +691,27 @@ class ANNWorldModel(nn.Module):
             state = SPWMState(encoder_states=None, dynamics_state=new_dyn_state, action=state.action)
             latent_steps.append(z_t)
             error_neuron_steps.append(epsilon_t)
+            rate_steps.append(torch.cat(list(new_dyn_state.memory_state.spikes), dim=-1))
 
         latents = torch.stack(latent_steps, dim=1)
         error_neurons = torch.stack(error_neuron_steps, dim=1)
+        rates = torch.stack(rate_steps, dim=1)
+        return latents, error_neurons, rates
+
+    def forward_representation(
+        self,
+        event_sequence: torch.Tensor,
+        initial_state: Optional[SPWMState] = None,
+        actions: Optional[torch.Tensor] = None,
+        *args: Any,
+        **kwargs: Any,
+    ) -> Tuple[torch.Tensor, torch.Tensor]:
+        """Sensory-driven state estimation without predictor rollouts."""
+        latents, error_neurons, _ = self.forward_representation_with_spikes(
+            event_sequence=event_sequence,
+            initial_state=initial_state,
+            actions=actions,
+        )
         return latents, error_neurons
 
     def __call__(

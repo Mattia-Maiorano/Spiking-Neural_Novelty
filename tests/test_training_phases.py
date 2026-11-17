@@ -353,7 +353,7 @@ def test_trainer_checkpoint_roundtrip_strict_and_primitives_only(tmp_path: Path)
 
 
 def test_phase0_homeostasis_se3_rot_and_m1_smooth_loss_contracts() -> None:
-    """Verify v0.12.3 Phase 0 spike homeostasis + temporal kinematic smoothness + SE(3) losses and AR(1) noise scaling."""
+    """Verify v0.12.4 Phase 0 spike homeostasis + temporal kinematic smoothness + SE(3) losses and AR(1) noise scaling."""
     from spwm.models.kinematics import DifferentiableForwardKinematics
     from spwm.training.losses import compute_m1_loss, compute_representation_loss
     from spwm.training.noise import sample_ar1_noise

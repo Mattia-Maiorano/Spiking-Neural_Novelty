@@ -360,12 +360,12 @@ class MPPIConfig:
     gamma_discount: float = 0.95                                  #: Discount factor gamma for terminal critic bootstrapping.
     terminal_steps: Optional[int] = None                          #: Sliced window of terminal steps for trajectory cost evaluation.
     w_progress: float = 50.0                                      #: Directional progress reward weight towards target coordinates.
-    w_jerk: float = 8.0                                           #: Action smoothness (rate-of-change) penalty weight across horizon.
-    w_damping: float = 25.0                                       #: Cartesian velocity damping penalty weight inside deadband (braking).
-    w_rot: float = 70.0                                           #: Rotational orientation error penalty weight (1 - cos(theta)).
-    w_pos: float = 20.0                                           #: Positional Cartesian Euclidean distance error penalty weight.
+    w_jerk: float = 4.0                                           #: Action smoothness (rate-of-change) penalty weight across horizon.
+    w_damping: float = 12.0                                       #: Cartesian velocity damping penalty weight inside deadband (braking).
+    w_rot: float = 100.0                                          #: Rotational orientation error penalty weight (1 - cos(theta)).
+    w_pos: float = 80.0                                           #: Positional Cartesian Euclidean distance error penalty weight.
     w_critic: float = 0.0                                         #: Terminal critic bootstrapping weight (forced 0.0 until goal-conditioned).
-    w_joint_accel: float = 40.0                                   #: Decoded joint-space finite-difference acceleration penalty weight.
+    w_joint_accel: float = 15.0                                   #: Decoded joint-space finite-difference acceleration penalty weight.
     w_joint_limit: float = 50.0                                   #: Soft quadratic barrier weight enforcing Unity rig joint angle limits.
     max_action_delta: Optional[float] = 0.10                      #: Optional L_inf per-step action slew-rate limit for hardware smoothness.
 

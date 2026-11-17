@@ -1,10 +1,10 @@
-[2026-11-16T22:45:36.781Z][INFO] Command-line: /Applications/Unity/Hub/Editor/6000.5.7f1/Unity.app/Contents/Helpers/PackageManager/Server/UnityPackageManager server -s 31172 --ipc-path /tmp/Unity-Upm-31172.sock -l 2 --log-file /Users/Mattia/Desktop/Studies/Temp/sim/Logs/upm.log
-[2026-11-16T22:45:36.793Z][INFO] IPC server started (IPC path=/tmp/Unity-Upm-31172.sock).
-[2026-11-16T22:45:36.793Z][INFO] Hint: To connect to this UPM instance, launch Unity with the command-line parameter -upmIpcPath Upm-31172.
-[2026-11-16T22:45:37.761Z][INFO] project:list-packages <-- Request received
+[2026-11-17T05:42:07.322Z][INFO] Command-line: /Applications/Unity/Hub/Editor/6000.5.7f1/Unity.app/Contents/Helpers/PackageManager/Server/UnityPackageManager server -s 64362 --ipc-path /tmp/Unity-Upm-64362.sock -l 2 --log-file /Users/Mattia/Desktop/Studies/Temp/sim/Logs/upm.log
+[2026-11-17T05:42:07.347Z][INFO] IPC server started (IPC path=/tmp/Unity-Upm-64362.sock).
+[2026-11-17T05:42:07.347Z][INFO] Hint: To connect to this UPM instance, launch Unity with the command-line parameter -upmIpcPath Upm-64362.
+[2026-11-17T05:42:11.005Z][INFO] project:list-packages <-- Request received
 params: {}
-[2026-11-16T22:45:37.826Z][INFO] project:list-packages --> 200 (64 ms)
-[2026-11-16T22:45:38.905Z][INFO] project:list-packages <-- Request received
+[2026-11-17T05:42:11.104Z][INFO] project:list-packages --> 200 (99 ms)
+[2026-11-17T05:42:12.606Z][INFO] project:list-packages <-- Request received
 params: {}
-[2026-11-16T22:45:38.935Z][INFO] project:list-packages --> 200 (30 ms)
-[2026-11-16T22:45:44.510Z][INFO] Received shutdown request (SIGTERM), shutting down Unity Package Manager
+[2026-11-17T05:42:12.637Z][INFO] project:list-packages --> 200 (30 ms)
+[2026-11-17T05:42:19.293Z][INFO] Received shutdown request (SIGTERM), shutting down Unity Package Manager

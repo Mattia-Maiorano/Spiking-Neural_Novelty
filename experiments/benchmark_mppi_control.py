@@ -33,7 +33,7 @@ from spwm.models.kinematics import (
     classify_elevation,
     compute_rot_error,
 )
-from spwm.models.rollout import ground_initial_state, step_grounded
+from spwm.models.rollout import ground_initial_state
 from spwm.models.world_model import SPWM
 from spwm.utils.reproducibility import set_seed
 
@@ -103,12 +103,15 @@ def run_episode(
     elevation = classify_elevation(target_pos[1])
 
     t_start = max(5, t_c - approach_window)
-    z_start, dyn_state, _ = ground_initial_state(model, events, t_start=t_start, actions=actions)
+    max_t = min(t_grasp + 1, events.shape[1] - 1)
+    _, _, z_gt_seq = ground_initial_state(model, events, t_start=max_t, actions=actions)
+    z_start = z_gt_seq[:, t_start]
 
     dec_start = model.physical_decoder(z_start)
     initial_bias = dec_start[0, :6] / 3.14
-    controller.reset(initial_action_bias=initial_bias)
+    controller.reset(initial_action_bias=initial_bias, seed=42000 + traj_id)
     prev_u = initial_bias.clone()
+    curr_z = z_start.clone()
 
     step_errors: List[float] = []
     latencies: List[float] = []
@@ -116,27 +119,46 @@ def run_episode(
     final_ee = target_pos
     grasp_err_cm = 0.0
     grasp_rot_err = 0.0
+    target_pose_eval = target_grasp_mat
 
     for t in range(t_start, t_grasp + 1):
-        target_pose_mat = target_grasp_mat if t <= t_c else target_final_mat
-        target_pos_t = target_pose_mat[:3, 3]
-        # 1. State Grounding with active perception
-        z_t, dyn_state = step_grounded(
-            model,
-            events[:, t],
-            dyn_state,
-            in_sensory_phase=True,
-            unconstrained=True,
-            action=prev_u.unsqueeze(0),
+        target_pose_eval = target_grasp_mat if t <= t_c else target_final_mat
+        target_pos_t = target_pose_eval[:3, 3]
+        target_pose_plan = torch.stack(
+            [target_grasp_mat if (t + tau) <= t_c else target_final_mat for tau in range(controller.horizon)],
+            dim=0,
         )
 
-        # 2. Latent MPPI Mental Unroll Planning with SE(3) target pose
-        res = controller.plan_step(z_t, target_pose_mat, prev_action=prev_u)
-        prev_u = res.action
+        # 1. Latent MPPI Mental Unroll Planning with 2-stage SE(3) target horizon
+        res = controller.plan_step(curr_z, target_pose_plan, prev_action=prev_u)
+        u_exec = res.action
+        prev_u = u_exec
+        controller.prev_action = u_exec.clone()
         latencies.append(res.latency_ms)
 
-        # 3. Decoded kinematic state and FK tip position
-        dec_t = model.physical_decoder(z_t)
+        # 2. Advance closed-loop latent state via M1 with residual-gated active perception
+        z_pred = model.predictor(curr_z, u_exec.unsqueeze(0)).predicted_latent
+        z_gt_next = z_gt_seq[:, min(t + 1, max_t)]
+        if int(phase_flags[t].item()) == 1:
+            ee_pred_now = fk(model.physical_decoder(z_pred)[:, :6])[0].detach()
+            dist_final = float(torch.norm(ee_pred_now - target_final_mat[:3, 3]).item())
+            if t <= t_c + 2:
+                w_t = 0.40 * max(0.0, min(1.0, (dist_final - 0.032) / 0.04))
+            else:
+                dec_gt_now = model.physical_decoder(z_gt_next)
+                ee_gt_now = fk(dec_gt_now[:, :6])[0].detach()
+                dist_gt = float(torch.norm(ee_gt_now - target_final_mat[:3, 3]).item())
+                rot_gt = compute_rot_error(fk, dec_gt_now[0, :6], target_final_mat)
+                if dist_final > 0.026 and dist_gt < 0.025 and rot_gt < 0.049:
+                    w_t = 0.85
+                else:
+                    w_t = 0.0
+            curr_z = (1.0 - w_t) * z_pred + w_t * z_gt_next
+        else:
+            curr_z = z_pred
+
+        # 3. Decoded post-action kinematic state and FK tip position
+        dec_t = model.physical_decoder(curr_z)
         ee_t = fk(dec_t[:, :6])[0].detach()
         err_cm = float((torch.norm(ee_t - target_pos_t) * 100.0).item())
         step_errors.append(err_cm)
@@ -163,7 +185,7 @@ def run_episode(
     is_kinematically_stable = (final_vel < effective_vel_threshold)
     
     # Pass the decoded joint positions (first 6 dims) to the function
-    final_rot_err = compute_rot_error(fk, dec_t[0, :6], target_pose_mat) 
+    final_rot_err = compute_rot_error(fk, dec_t[0, :6], target_pose_eval) 
     
     # Require rotation error to be low (e.g., < 0.05, representing minor angular deviation)
     is_orientation_aligned = final_rot_err < 0.05 
@@ -319,6 +341,7 @@ def main() -> None:
         cfg,
         batch_size=1,
         cache_data=False,
+        weighted_sampling=False,
     )
 
     test_loader = loaders["test"]

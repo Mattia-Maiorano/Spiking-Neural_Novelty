@@ -157,7 +157,7 @@ Given event frames $\mathbf{E}_{0:T-1} \in \mathbb{R}^{B \times T \times C \time
    $$\hat{\mathbf{x}}_t = \mathbf{W}_{\text{pred}}\mathbf{z}_{t-1}, \quad \boldsymbol{\epsilon}_t = \mathbf{x}_t - \hat{\mathbf{x}}_t \in \mathbb{R}^{B \times D_{\text{enc}}}$$
 3. **Recurrent Spiking Latent Dynamics (`SpikingLatentDynamics.step`)**:
    Processes prediction error $\boldsymbol{\epsilon}_t$ through multi-timescale ALIF memory, updates momentum $\mathbf{p}_{t+1}$, and integrates coordinates using event-gated sensory velocity:
-   $$\mathbf{v}_p = \text{vel}(\mathbf{p}_{t+1}), \quad \mathbf{q}_{t+1} = \mathbf{q}_t + \Delta t \cdot \mathbf{v}_p + K_{\text{gate}} \cdot \text{bounded\_corr}$$
+   $$\mathbf{v}_p = \tanh\left(\frac{a_t}{\sigma_{\text{stasis}}}\right) \cdot \text{vel}(\mathbf{p}_{t+1}), \quad \mathbf{q}_{t+1} = \mathbf{q}_t + \Delta t \cdot \mathbf{v}_p + K_{\text{gate}} \cdot \text{bounded\_corr}$$
    $$\mathbf{z}_t, \mathcal{S}_t^{\text{dyn}} = \text{SpikingLatentDynamics}(\boldsymbol{\epsilon}_t, \mathcal{S}_{t-1}^{\text{dyn}}, \mathbf{k}_t), \quad \mathbf{z}_t = [\mathbf{q}_t, \mathbf{p}_t] \in \mathbb{R}^{B \times D}$$
 4. **Action-Conditioned Latent Attractor Prediction (`LatentPredictor` / `model.m1`)**:
    Conditioned on both current latent state $\mathbf{z}_t$ and motor command $\mathbf{u}_t$:
@@ -235,8 +235,8 @@ All tensor shapes are verified at runtime via [`assert_tensor_contract`](file://
     - During **Transition into Blind Transport (`flag == 2`)**: $w_t$ ramps down over 2 frames ($0.30 \to 0.00$) to eliminate handover discontinuity.
     - All other steps (`flag == 0` or late transport): $w_t = 0.00$ ($M_1$ autonomous unrolling).
 - **Anisotropic Downstream Latent MPPI Controller ([`spwm/evaluation/mppi.py`](file:///Users/Mattia/Desktop/Studies/Temp/spwm/evaluation/mppi.py))**:
-  - Closed-loop path-integral control evaluates $K=256$ candidate action trajectories over horizon $H=20$ directly in latent space using $M_1$.
-  - Uses an **anisotropic exploration covariance matrix** $\boldsymbol{\Sigma} = [0.24, 0.44, 0.38, 0.24, 0.24, 0.24]$ (+60% on `Shoulder_Lift`, +45% on `Elbow_Flex`) and softened temperature $\lambda = 0.15$, preventing greedy collapse into local minima under heavy payload inertia.
+  - Closed-loop path-integral control evaluates $K=256$ candidate action trajectories over horizon $H=10$ directly in latent space using $M_1$.
+  - Uses an **anisotropic exploration covariance** $\boldsymbol{\Sigma} = [0.08, 0.128, 0.112, 0.08, 0.08, 0.08]$ (`noise_sigma = 0.08`, `shoulder_sigma_multiplier = 1.6`, `elbow_sigma_multiplier = 1.4`) and temperature $\lambda = 0.20$, preventing greedy collapse into local minima under heavy payload inertia.
 
 #### C. Event-Gated `SpikingLatentDynamics` & ALIF Memory ([`spwm/models/dynamics.py`](file:///Users/Mattia/Desktop/Studies/Temp/spwm/models/dynamics.py), `memory.py`, `neurons.py`)
 - **Population Partitioning & Learnable Time Constants (`ALIFCell`, `MultiTimescaleMemory`)**:
@@ -261,12 +261,12 @@ All tensor shapes are verified at runtime via [`assert_tensor_contract`](file://
     $$v_{p, \text{eff}} = \tanh\left(\frac{a_t}{\sigma_{\text{stasis}}}\right) \cdot \mathbf{v}_p, \quad \sigma_{\text{stasis}} = 0.003$$
 - **Anti-Evanescence & Anti-Pullback Position Coupling ($K_{\text{max}} = 0.35$)**:
   Sensory keypoint corrections are adaptively gated with $a_{\text{eff}} = \max(0, a_t - \theta_{\text{act}})$ ($\theta_{\text{act}} = 0.001$) and $w_{\text{gate}} \in \mathbb{R}^{32}$ initialized to `50.0`:
-  $$K_{\text{gate}} = \left(1 - \exp\left(-\text{softplus}(w_{\text{gate}}) \cdot a_{\text{eff}}\right)\right) \cdot \tanh^2\left(\frac{a_{\text{eff}}}{\sigma_{\text{stasis}}}\right) \cdot K_{\text{max}}$$
+  $$K_{\text{gate}} = \text{ramp} \cdot \left(1 - \exp\left(-\text{softplus}(w_{\text{gate}}) \cdot a_{\text{eff}}\right)\right) \cdot \tanh^2\left(\frac{a_{\text{eff}}}{\sigma_{\text{stasis}}}\right) \cdot K_{\text{max}}, \quad \text{ramp} = \operatorname{clamp}\left(\frac{g_{\text{steps}}}{\text{gate\_ramp\_steps}}, 0, 1\right)$$
   $$\mathbf{q}_t = \mathbf{q}_{t-1} + \Delta t \cdot v_{p, \text{eff}} + K_{\text{gate}} \odot \text{clip}\left(\mathbf{k}_t^{\text{sensory}} - \mathbf{q}_{t-1}, \|\cdot\|_2 \le \delta_{\text{max}}\right)$$
   During autonomous rollout without sensory keypoints, $\mathbf{q}_t = \mathbf{q}_{t-1} + \Delta t \cdot v_{p, \text{eff}}$.
 - **Normalized Continuous Momentum Subspace**:
   Momentum $\mathbf{p}_t$ combines discrete spikes and analog membrane potentials $m_{\text{analog}} = \tanh(V_t) \in \mathbb{R}^{256}$, normalized by `LayerNorm(96)`:
-  $$\mathbf{p}_t = \text{LayerNorm}(\text{fuse\_spikes}(\mathbf{z}_t) + \text{fuse\_mems}(m_{\text{analog}}))$$
+  $$\mathbf{p}_t = \text{LayerNorm}(\text{fuse\_spikes}(\text{spikes}) + \text{fuse\_mems}(m_{\text{analog}}))$$
   (`fuse_spikes`: `Linear(256, 96, bias=True)`, 24,672 params; `fuse_mems`: `Linear(256, 96, bias=False)`, 24,576 params; `norm`: `LayerNorm(96)`, 192 params; spike EMA $\lambda_{\text{ema}} = 0.90$). Raw finite-difference momentum injection has been reverted, ensuring $|p| \le 3.5$ and protecting ALIF membrane potentials from current shocks.
 
 #### D. Articulated `PhysicalDecoder` with Dual Low-Pass EMA Filtering ([`spwm/models/predictors.py`](file:///Users/Mattia/Desktop/Studies/Temp/spwm/models/predictors.py))
@@ -286,19 +286,19 @@ All tensor shapes are verified at runtime via [`assert_tensor_contract`](file://
 | Module | Submodule / Layer | Parameter Count |
 |---|---|---|
 | **EventEncoder** | Convolutional Trunk (`conv`) | 5,856 |
-| | Egocentric Wrist Stem (`wrist_stem`) | 5,072 |
+| | Egocentric Wrist Stem (`wrist_stem`) | 5,040 |
 | | Cross-View Fusion Head (`fusion_head`) | 528 |
 | | Linear Projection (`proj`) | 4,480 |
 | **sensory_predictor** | Linear Projection | 16,384 |
 | **SpikingLatentDynamics** | Input & Recurrent Projections | 67,328 |
 | | Momentum Fusion (`fuse_spikes`, `fuse_mems`, `norm`) | 49,440 |
-| | Velocity Projections & Gate Parameter | 11,296 |
+| | `W_vel` (8,192, unused in `step()`), `gate_scale` (32), `memory` (`beta_mem` + `beta_adapt`, 512) | 8,736 |
 | **LatentPredictor (M1)** | Backbone MLP | 101,376 |
 | | Output Heads (`force`, `dissipation`, `restorative_q`) | 57,568 |
 | **PhysicalDecoder** | Position Head (`pos_head`) | 2,630 |
 | | Velocity Head (`vel_head`) | 6,726 |
 | **LatentCritic** | Value MLP (`net`) | 66,049 |
-| **Total SPWM Parameters** | | **394,733** |
+| **Total SPWM Parameters** | | **392,141** |
 
 ---
 
@@ -321,7 +321,7 @@ In [`RepresentationPhaseStrategy`](file:///Users/Mattia/Desktop/Studies/Temp/spw
    $$\mathcal{L}_{\text{kinematic}} = \mathcal{L}_{\text{pos\_kin}} + \mathcal{L}_{\text{vel\_kin}} + \lambda_{\text{cart}} \cdot \mathcal{L}_{\text{cartesian}}$$
    where:
    $$\mathcal{L}_{\text{pos\_kin}} = \frac{1}{BT}\sum_{b=0}^{B-1}\sum_{t=0}^{T-1} \|\text{decode\_pos}(\mathbf{q}_{b, t}) - \mathbf{q}_{b, t}^*\|_2^2, \quad \mathcal{L}_{\text{vel\_kin}} = \frac{1}{BT s_v^2}\sum_{b=0}^{B-1}\sum_{t=0}^{T-1} \|\text{decode\_vel}(\mathbf{p}_{b, t}) - \mathbf{p}_{b, t}^*\|_2^2$$
-   $$\mathcal{L}_{\text{cartesian}} = \frac{1}{BT}\sum_{b=0}^{B-1}\sum_{t=0}^{T-1} \|\mathbf{p}_{\text{ee}}(\text{decode\_pos}(\mathbf{q}_{b, t})) - \mathbf{p}_{\text{ee}}(\mathbf{q}_{b, t}^*)\|_2^2$$
+   $$\mathcal{L}_{\text{cartesian}} = \frac{1}{BT}\sum_{b=0}^{B-1}\sum_{t=0}^{T-1} \|\mathbf{p}_{\text{ee}}(\text{decode\_pos}(\mathbf{q}_{b, t})) - \mathbf{p}_{\text{ee}}(\mathbf{q}_{b, t}^*)\|_2^2 + \text{ee\_rot\_weight} \cdot \mathcal{L}_{\text{ee\_rot}}$$
    with $s_v = \text{velocity\_loss\_scale} = 1.0\,\text{rad/s}$, $\lambda_{\text{cart}} = \text{cartesian\_weight} = 40.0$, and `ee_rot_weight = 0.5` (configurable in `LossConfig`). $\mathcal{L}_{\text{cartesian}}$ uses [`DifferentiableForwardKinematics`](file:///Users/Mattia/Desktop/Studies/Temp/spwm/models/kinematics.py) to weight joint errors geometrically according to distal lever arms (e.g. $0.39\,\text{m}$ distal lever arm on J2 Elbow_Flex along inclined axis $\vec{a} = [0.5375, -0.2756, -0.7969]^T$) and supervise $SO(3)$ orientation.
 2. **Phase-Space Derivative Constraint**:
    $$\mathcal{L}_{\text{derivative}} = \frac{1}{B(T-1)}\sum_{b=0}^{B-1}\sum_{t=0}^{T-2} \|(\mathbf{q}_{b, t+1} - \mathbf{q}_{b, t}) - \Delta t \cdot \mathbf{p}_{b, t}[..., :q\_dim]\|_2^2$$
@@ -331,14 +331,14 @@ In [`RepresentationPhaseStrategy`](file:///Users/Mattia/Desktop/Studies/Temp/spw
 5. **Sensory Prediction Reconstruction**:
    $$\mathcal{L}_{\text{sensory}} = \frac{1}{BT}\sum_{b=0}^{B-1}\sum_{t=0}^{T-1} \|\boldsymbol{\epsilon}_{b, t}\|_2^2$$
 
-$$\mathcal{L}_{\text{Phase 0}} = \lambda_{\text{kinematic}}\mathcal{L}_{\text{kinematic}} + \lambda_{\text{derivative}}\mathcal{L}_{\text{derivative}} + \lambda_{\text{smoothness}}\mathcal{L}_{\text{smoothness}} + \lambda_{\text{sensory}}\mathcal{L}_{\text{sensory}}$$
-with default weights $\lambda_{\text{kinematic}} = 5.0, \; \lambda_{\text{derivative}} = 1.0, \; \lambda_{\text{smoothness}} = 0.1, \; \lambda_{\text{sensory}} = 1.0$.
+$$\mathcal{L}_{\text{Phase 0}} = \lambda_{\text{kinematic}}\mathcal{L}_{\text{kinematic}} + \lambda_{\text{derivative}}\mathcal{L}_{\text{derivative}} + \lambda_{\text{smoothness}}\mathcal{L}_{\text{smoothness}} + \lambda_{\text{sensory}}\mathcal{L}_{\text{sensory}} + \lambda_{\text{kinematic\_smooth}}\mathcal{L}_{\text{kin\_smooth}} + \lambda_{\text{spike\_balance}}\mathcal{L}_{\text{spike\_balance}}$$
+with default weights $\lambda_{\text{kinematic}} = 5.0, \; \lambda_{\text{derivative}} = 1.0, \; \lambda_{\text{smoothness}} = 0.1, \; \lambda_{\text{sensory}} = 1.0, \; \lambda_{\text{kinematic\_smooth}} = 0.5, \; \lambda_{\text{spike\_balance}} = 0.25$.
 
 #### Phase 1 (`train_m1`) Objective
 In [`M1PhaseStrategy`](file:///Users/Mattia/Desktop/Studies/Temp/spwm/training/phases/m1_nominal.py), all representation modules are **strictly frozen**. Pristine ground-truth latents $\mathbf{z}_{0:T}^*$ are generated via `forward_representation` and detached: $\mathbf{z}_{\text{target}} = \text{stop\_grad}(\mathbf{z}^*)$. Starting from grounded initial state $\hat{\mathbf{z}}_0$ (via `ground_initial_state`), $M_1$ unrolls via unified `rollout_latent(model, with_grad=True, fixed_predictor=model.m1, events=events, phase_flags=phase_flags)` conditioned on actions $\mathbf{u}_t$, synchronizing with grounded sensory dynamics during Phase 1.5 heft (flag == 1) and executing autonomous M1 steps during blind transport:
-$$\mathcal{L}_{M_1} = \lambda_{\text{position}} \frac{1}{BH}\sum_{b=0}^{B-1}\sum_{h=1}^H w_{\text{heft}}(b, h) \|\hat{\mathbf{q}}_{b, h} - \mathbf{q}_{\text{target}, b, h}\|_2^2 + \lambda_{\text{velocity}} \frac{1}{BH}\sum_{b=0}^{B-1}\sum_{h=1}^H w_{\text{heft}}(b, h) \|\hat{\mathbf{p}}_{b, h} - \mathbf{p}_{\text{target}, b, h}\|_2^2$$
-where $w_{\text{heft}}(b, h) = 2.0$ over $[t_{\text{heft}} - 5, t_{\text{heft}} + 10]$ around contact grasp lock (and $1.0$ otherwise), and $\lambda_{\text{velocity}} = 1.5$ (in `LossConfig`) scales momentum subspace precision during multi-step unrolling.
-$$\mathcal{L}_{\text{total}} = \lambda_{\text{latent}} \mathcal{L}_{M_1}$$
+$$\mathcal{L}_{M_1} = \lambda_{\text{position}} \frac{1}{BH}\sum_{b=0}^{B-1}\sum_{h=1}^H w_{\text{step}}(b, h) \|\hat{\mathbf{q}}_{b, h} - \mathbf{q}_{\text{target}, b, h}\|_2^2 + \lambda_{\text{velocity}} \frac{1}{BH}\sum_{b=0}^{B-1}\sum_{h=1}^H w_{\text{vel\_step}}(b, h) \|\hat{\mathbf{p}}_{b, h} - \mathbf{p}_{\text{target}, b, h}\|_2^2$$
+where `step_weights` ($w_{\text{step}}$ for $\mathbf{q}$) is $2.0$ over $[\max(0, h_0 - 5), \min(H, h_{\text{end}} + 10))$ and $1.0$ otherwise, `vel_step_weights` ($w_{\text{vel\_step}}$ for $\mathbf{p}$) is $3.0$ over $[\max(0, h_0), \min(H, h_{\text{end}} + 12))$ and $1.0$ otherwise, and $\lambda_{\text{velocity}} = 1.5$ (in `LossConfig`) scales momentum subspace precision during multi-step unrolling.
+$$\mathcal{L}_{\text{total}} = \lambda_{\text{latent}} \mathcal{L}_{M_1} + \mathcal{L}_{\text{kin\_m1}} + w_{\text{critic}} \mathcal{L}_{\text{critic}} \quad (+ \text{optional closed-loop DAgger terms})$$
 
 ### 3.3 Scoped `strict=True` Checkpoint Protocol
 
@@ -359,7 +359,7 @@ All checkpoint operations in [`spwm/training/checkpoints.py`](file:///Users/Matt
 
 ## 5. Comparative Non-Spiking Baseline Models
 
-To benchmark SPWM against standard deep recurrent world model paradigms under identical parameter budgets (~328k parameters) and identical event frame input streams $\mathbf{E}_t \in \mathbb{R}^{B \times T \times 4 \times 32 \times 32}$ and actions $\mathbf{u}_t \in \mathbb{R}^{B \times T \times 6}$, three baseline architectures are implemented in [`spwm/models/baselines.py`](file:///Users/Mattia/Desktop/Studies/Temp/spwm/models/baselines.py):
+To benchmark SPWM against standard deep recurrent world model paradigms under comparable parameter budgets (`ContinuousRSSM`: 380,460; `DeepGRUPredictor`: 338,868; `ContinuousConvLSTM`: 296,892) and identical event frame input streams $\mathbf{E}_t \in \mathbb{R}^{B \times T \times 4 \times 32 \times 32}$ and actions $\mathbf{u}_t \in \mathbb{R}^{B \times T \times 6}$, three baseline architectures are implemented in [`spwm/models/baselines.py`](file:///Users/Mattia/Desktop/Studies/Temp/spwm/models/baselines.py):
 
 ### 5.1 Continuous RSSM (Recurrent State-Space Model / DreamerV3)
 - **Deterministic Recurrent State**: $h_t \in \mathbb{R}^{256}$ updated via `GRUCell` conditioned on concatenated stochastic state and motor actions $[s_{t-1}, \mathbf{u}_{t-1}] \in \mathbb{R}^{38}$.
@@ -370,7 +370,7 @@ To benchmark SPWM against standard deep recurrent world model paradigms under id
 - **Autonomous Rollout**: Warmed up via burn-in frames through posterior $q$, then autonomously unrolled for horizon $H$ using prior dynamics $p(s_t | h_t)$ and actions $\mathbf{u}_t$.
 
 ### 5.2 Deep GRU Predictor
-- **Architecture**: 2-layer stacked `GRUCell` with hidden dimension $H_{\text{dim}} = 164$ matched to the ~328k parameter budget.
+- **Architecture**: 2-layer stacked `GRUCell` with hidden dimension $H_{\text{dim}} = 164$ (338,868 total parameters).
 - **Sensory Encoder**: Shared `EventEncoder` with SpatialSoftmax bottleneck mapping frames to $\mathbf{e}_t \in \mathbb{R}^{128}$.
 - **Kinematic Feedback**: Linear projector mapping previous decoded kinematics $\hat{\mathbf{y}}_{t-1} \in \mathbb{R}^{12} \to \mathbb{R}^{128}$ during autonomous rollout.
 - **Decoder**: MLP mapping second GRU layer hidden state to 12 kinematic outputs.
@@ -388,13 +388,13 @@ To benchmark SPWM against standard deep recurrent world model paradigms under id
 To rigorously isolate whether SPWM's predictive stability is driven by **spiking dynamics (ALIF)** or by the **symplectic phase-space factorization $(q, p)$ and SpatialSoftmax keypoint frontend**, a continuous leaky rate ablation model `ANNWorldModel` is implemented in [`spwm/models/ann_ablation.py`](file:///Users/Mattia/Desktop/Studies/Temp/spwm/models/ann_ablation.py):
 
 ### 6.1 Architectural Parity & Leaky Rate Formulation
-- **Continuous Leaky Rate Unit**: Replaces the 256 discrete ALIF spiking cells with continuous leaky rate integrator units across identical timescale tiers (e.g., reactive $\beta_1 = 0.90$, context $\beta_2 = 0.985$):
-  $$\mathbf{m}_t = \beta_{\text{mem}} \mathbf{m}_{t-1} + (1 - \beta_{\text{mem}}) \mathbf{I}_t$$
+- **Continuous Leaky Rate Unit**: `ContinuousRateMemory` replaces the 256 discrete ALIF spiking cells with continuous leaky rate integrator units across identical timescale tiers (e.g., reactive $\beta_1 = 0.90$, context $\beta_2 = 0.985$) and learnable `beta_gains` ($\text{gain}_i$):
+  $$\mathbf{m}_t = \beta_i \mathbf{m}_{t-1} + (1 - \beta_i) (\text{gain}_i \odot \mathbf{I}_t)$$
   $$\mathbf{r}_t = \sigma(\mathbf{m}_t)$$
   where $\mathbf{r}_t \in (0, 1)^{256}$ provides smooth rate activation analogous to the average firing rate $s_t \in [0, 1]$.
 - **Membrane Potential Analog**: $\mathbf{m}_{\text{analog}} = \tanh(\mathbf{m}_t)$ matches `torch.tanh(new_mem_state.concatenated_mems)` in `SpikingLatentDynamics`.
-- **Projection Parity**: Preserves identical projection matrices (`input_proj`: Linear(128, 256), `recurrent_proj`: Linear(96, 256, bias=False), `q_proj`: Linear(32, 256, bias=False), `action_proj`: Linear(6, 256, bias=False), `vel_proj`: Linear(96, 32, bias=False), `W_vel`: Linear(256, 32, bias=False), `fuse_spikes`: Linear(256, 96), `fuse_mems`: Linear(256, 96, bias=False), `norm`: LayerNorm(96)).
-- **Exact Parameter Budget**: Exactly **394,701 parameters** (100.0% matched to `SPWM` including `LatentCritic`).
+- **Projection Parity**: `ContinuousRateDynamics` preserves identical projection matrices (`input_proj`: Linear(128, 256), `recurrent_proj`: Linear(96, 256, bias=False), `q_proj`: Linear(32, 256, bias=False), `action_proj`: Linear(6, 256, bias=False), `W_vel`: Linear(256, 32, bias=False), `fuse_spikes`: Linear(256, 96), `fuse_mems`: Linear(256, 96, bias=False), `norm`: LayerNorm(96)), and `vel()` slices $\mathbf{p}[..., :q\_\text{dim}]$.
+- **Exact Parameter Budget**: Exactly **392,141 parameters** (100.0% matched to `SPWM` including `LatentCritic`).
 - **Contract Conformance**: Conforms strictly to Layer 0 [`WorldModelProtocol`](file:///Users/Mattia/Desktop/Studies/Temp/spwm/contracts/protocols.py).
 
 ---
@@ -438,11 +438,11 @@ To demonstrate downstream closed-loop control without relying on an external phy
 
 ### 8.1 Controller Formulation & Mental Simulation
 - **Candidate Trajectories**: $K = 256$ candidate action sequences sampled per control cycle.
-- **Planning Horizon**: $H = 30$ timesteps ($1.5\,\text{s}$ at $20\,\text{Hz}$).
+- **Planning Horizon**: $H = 10$ timesteps ($0.5\,\text{s}$ at $20\,\text{Hz}$).
 - **Refinement Iterations**: $N_{\text{iter}} = 3$ iterations of importance sampling per step.
 - **Temporally Correlated Noise Generation**: Action samples incorporate AR(1) temporal noise smoothing:
   $$\boldsymbol{\epsilon}_\tau = \beta \boldsymbol{\epsilon}_{\tau-1} + \sqrt{1 - \beta^2} \boldsymbol{\eta}_\tau, \quad \boldsymbol{\eta}_\tau \sim \mathcal{N}(\mathbf{0}, \boldsymbol{\Sigma})$$
-  with $\beta = 0.75$, allowing the controller to explore and sustain smooth, continuous torques required for heavy payloads without high-frequency white noise cancellation.
+  with `noise_beta` $\beta = 0.90$, allowing the controller to explore and sustain smooth, continuous torques required for heavy payloads without high-frequency white noise cancellation.
 - **Mental Simulation Unroll**: Trajectory candidates are evaluated strictly inside the isolated symplectic `LatentPredictor` ($M_1$):
   $$\mathbf{z}_{\tau+1} = M_1(\mathbf{z}_\tau, \mathbf{u}_\tau), \quad \hat{\mathbf{y}}_\tau = \text{PhysicalDecoder}(\mathbf{z}_\tau)$$
   where $\mathbf{z}_0$ is grounded from the latest sensory frames via active perception. Neither the visual encoder nor ALIF spiking dynamics are executed during the $K \times H$ mental simulation, enabling ultra-fast vectorization.
@@ -452,18 +452,19 @@ The cumulative trajectory cost $\mathcal{C}_k$ for candidate $k$ evaluates $M_1$
 $$\mathcal{C}_k = \sum_{t=1}^H \left[ W_{\text{pos}} \|\mathbf{x}_{\text{ee}}(t) - \mathbf{x}_{\text{target}}\|_2 + W_{\text{rot}} (1 - \cos(\theta_{\text{error}}(t))) + W_{\text{jerk}} \|\mathbf{u}_t - \mathbf{u}_{t-1}\|_2^2 + W_{\text{damping}} \|\Delta \mathbf{p}_t\|_2 (1 - d_t) \right] - W_{\text{progress}} \sum_{t=1}^H (\Delta \mathbf{p}_t \cdot \hat{\mathbf{d}}_{\text{target}, t-1}) d_t + \gamma^H V(\mathbf{z}_{k, H})$$
 
 where:
-- **Positional Cost**: $W_{\text{pos}} \|\mathbf{x}_{\text{ee}}(t) - \mathbf{x}_{\text{target}}\|_2$ measures Euclidean distance to the target 3D coordinates ($W_{\text{pos}} = 20.0$).
-- **Rotational Cost**: $W_{\text{rot}} (1 - \cos(\theta_{\text{error}}(t)))$ measures geodesic $SO(3)$ orientation alignment error from $\cos(\theta_{\text{error}}) = \operatorname{clamp}((\operatorname{Tr}(\mathbf{R}_{\text{ee}}^\top \mathbf{R}_{\text{target}}) - 1)/2, -1, 1)$, parameterized with $W_{\text{rot}} = 50.0$.
-- **Action Smoothness (Jerk Penalty)**: $W_{\text{jerk}} \|\mathbf{u}_t - \mathbf{u}_{t-1}\|_2^2$ ($W_{\text{jerk}} = 0.005$) penalizes aggressive high-frequency action oscillations while avoiding penalty on heavy gravitational lifting against arm inertia.
+- **Positional Cost**: $W_{\text{pos}} \|\mathbf{x}_{\text{ee}}(t) - \mathbf{x}_{\text{target}}\|_2$ measures Euclidean distance to the target 3D coordinates ($W_{\text{pos}} = 80.0$).
+- **Rotational Cost**: $W_{\text{rot}} \left((1.0 - \cos(\theta_{\text{error}}(t))) + 0.5\,\theta_{\text{error}}(t)\right)$ measures geodesic $SO(3)$ orientation alignment error from $\cos(\theta_{\text{error}}) = \operatorname{clamp}((\operatorname{Tr}(\mathbf{R}_{\text{ee}}^\top \mathbf{R}_{\text{target}}) - 1)/2, -1, 1)$, parameterized with $W_{\text{rot}} = 100.0$.
+- **Action Smoothness (Jerk Penalty)**: $W_{\text{jerk}} \|\mathbf{u}_t - \mathbf{u}_{t-1}\|_2^2$ ($W_{\text{jerk}} = 4.0$) penalizes aggressive high-frequency action oscillations while avoiding penalty on heavy gravitational lifting against arm inertia.
 - **Directional Progress Reward**: $- W_{\text{progress}} \sum_{t=1}^H (\Delta \mathbf{p}_t \cdot \hat{\mathbf{d}}_{\text{target}, t-1}) d_t$ ($W_{\text{progress}} = 50.0$) rewards forward motion projected onto the unit vector $\hat{\mathbf{d}}_{\text{target}, t-1} = \frac{\mathbf{p}_{\text{target}} - \mathbf{p}_{t-1}}{\|\mathbf{p}_{\text{target}} - \mathbf{p}_{t-1}\|_2 + 10^{-6}}$, scaled by deadband attenuation $d_t = \operatorname{clamp}((\|\mathbf{x}_{\text{ee}}(t) - \mathbf{x}_{\text{target}}\|_2 - 0.03)/0.10, 0, 1)$.
-- **Cartesian Velocity Damping**: $W_{\text{damping}} \sum_{t=1}^H \|\Delta \mathbf{p}_t\|_2 (1 - d_t)$ ($W_{\text{damping}} = 10.0$) activates braking torque within the $3\,\text{cm}$ arrival deadband.
-- **Terminal Value Bootstrapping**: $\gamma^H V(\mathbf{z}_{k, H})$ ($\gamma = 0.95$) estimates the discounted cost-to-go beyond the finite planning horizon $H$ using `LatentCritic`.
+- **Cartesian Velocity Damping**: $W_{\text{damping}} \sum_{t=1}^H \|\Delta \mathbf{p}_t\|_2 (1 - d_t)$ ($W_{\text{damping}} = 12.0$) activates braking torque within the $3\,\text{cm}$ arrival deadband.
+- **Joint Acceleration & Joint Limit Penalties**: `w_joint_accel = 15.0` penalizes high-frequency joint velocity changes across consecutive rollout steps, and `w_joint_limit = 50.0` penalizes joint angles approaching or exceeding articulated hardware limits.
+- **Terminal Value Bootstrapping**: $w_{\text{critic}} \gamma^H V(\mathbf{z}_{k, H})$ ($\gamma = 0.95$, `w_critic = 0.0` default in `MPPIConfig`) estimates the discounted cost-to-go beyond the finite planning horizon $H$ using `LatentCritic`.
 - **Action Chunking Execution**: `plan_step` returns an `action_chunk` of shape `[chunk_size, action_dim]` (`chunk_size = 1` default in `MPPIConfig`) by slicing `curr_nominal[:self.chunk_size]`, and `MPPIStructuralScorer.evaluate_trajectory` executes the entire chunk open-loop across `chunk_size` steps before replanning, filtering out single-step hesitation jitter.
 - **Offline Latent Unrolling**: `MPPIStructuralScorer.evaluate_trajectory` grounds the initial latent state $\mathbf{z}_{\text{start}}$ up to $t_{\text{start}}$ using sensory frames and actions. For steps $t \ge t_{\text{start}}$, the latent state is unrolled autoregressively via $M_1(\mathbf{z}_t, \mathbf{u}_t)$ without sensory frame injection.
 - **Reachable Decoder Manifold Projection**: Target poses $\mathbf{T}_{\text{grasp}}$ and $\mathbf{T}_{\text{final}}$ are projected onto the decoder manifold by passing grounded latent states $\mathbf{z}_{\text{gt}}(t_c)$ and $\mathbf{z}_{\text{gt}}(t_{\text{grasp}})$ through `PhysicalDecoder` before computing forward kinematics: $\mathbf{T}_{\text{target}} = \text{FK}(\text{PhysicalDecoder}(\mathbf{z}_{\text{gt}})_{1:6})$.
 
 - **Controller Parameters**:
-  - Typed schema in [`MPPIConfig`](file:///Users/Mattia/Desktop/Studies/Temp/spwm/contracts/config.py): $K = 256, H = 10, N_{\text{iter}} = 3, \beta = 0.75, \lambda = 0.15, \text{chunk\_size} = 1, \gamma = 0.95, W_{\text{pos}} = 20.0, W_{\text{rot}} = 50.0, W_{\text{jerk}} = 0.005, W_{\text{damping}} = 10.0, W_{\text{progress}} = 50.0, \text{noise\_sigma} = 0.28$ (with `shoulder_sigma_multiplier = 3.5`, `elbow_sigma_multiplier = 2.0`).
+  - Typed schema in [`MPPIConfig`](file:///Users/Mattia/Desktop/Studies/Temp/spwm/contracts/config.py): $K = 256, H = 10, N_{\text{iter}} = 3$, `noise_beta` $= 0.90$, `temperature` $\lambda = 0.20$, `nominal_update_gamma` $= 0.60$, `chunk_size` $= 1$, $\gamma = 0.95$, $W_{\text{pos}} = 80.0, W_{\text{rot}} = 100.0, W_{\text{jerk}} = 4.0, W_{\text{damping}} = 12.0, W_{\text{joint\_accel}} = 15.0, W_{\text{joint\_limit}} = 50.0, W_{\text{critic}} = 0.0, \text{max\_action\_delta} = 0.10$, `noise_sigma` $= 0.08$ (with `shoulder_sigma_multiplier = 1.6`, `elbow_sigma_multiplier = 1.4`, giving $\boldsymbol{\Sigma} = [0.08, 0.128, 0.112, 0.08, 0.08, 0.08]$).
   - Injected directly into [`LatentMPPIController(config=mppi_cfg)`](file:///Users/Mattia/Desktop/Studies/Temp/spwm/evaluation/mppi_controller.py) via strict object injection.
   - Benchmark profile in [`benchmark_mppi_control.py`](file:///Users/Mattia/Desktop/Studies/Temp/experiments/benchmark_mppi_control.py): routes CLI arguments cleanly through `MPPIConfig` overrides with full SE(3) target pose extracted via `DifferentiableForwardKinematics.forward_homogeneous`.
 
@@ -471,7 +472,7 @@ Candidate weights $w_k$ are computed via Boltzmann temperature scaling:
 $$\beta = \min_{j} \mathcal{C}_j, \quad w_k = \frac{\exp\left(-\frac{1}{\lambda} (\mathcal{C}_k - \beta)\right)}{\sum_{j=1}^K \exp\left(-\frac{1}{\lambda} (\mathcal{C}_j - \beta)\right)}$$
 The nominal action sequence is updated as:
 $$\mathbf{u}_\tau^* = \sum_{k=1}^K w_k \mathbf{u}_{\tau, k}$$
-- **Warm-Starting & Temporal Smoothing**: At each control step, the nominal action sequence is advanced by one step and smoothed using temporal inertia ($\beta_{\text{warm}} = 0.75$), preventing high-frequency control chattering.
+- **Warm-Starting & Temporal Smoothing**: At each control step, the nominal action sequence is advanced by one step and smoothed using temporal inertia (`nominal_update_gamma = 0.60`), preventing high-frequency control chattering.
 - **Performance**: Achieves an **80.0% grasp success rate** ($\le 3.0\,\text{cm}$ minimum placement distance along rollout, $< 1.5\,\text{rad/s}$ terminal velocity) with **$2.17 \pm 1.80\,\text{cm}$ minimum placement distance** ($6.72\,\text{cm}$ final terminal error) and **$38.9\,\text{ms}$ step latency** across unseen payload masses ($1.20 - 4.50\,\text{kg}$).
 
 

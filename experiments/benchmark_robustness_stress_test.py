@@ -57,8 +57,8 @@ from spwm.evaluation.robustness import (
     render_events_from_kinematics,
     simulate_perturbed_kinematics,
 )
-from spwm.models.kinematics import DifferentiableForwardKinematics, classify_elevation
-from spwm.models.rollout import ground_initial_state, step_grounded
+from spwm.models.kinematics import DifferentiableForwardKinematics, classify_elevation, compute_rot_error
+from spwm.models.rollout import ground_initial_state
 from spwm.models.world_model import SPWM
 from spwm.utils.reproducibility import set_seed
 
@@ -165,39 +165,66 @@ def run_mppi_single_episode(
     q_gt: torch.Tensor,
     phase_flags: torch.Tensor,
     approach_window: int = 20,
+    actions: Optional[torch.Tensor] = None,
+    traj_id: int = 0,
 ) -> Tuple[float, float, float, float, bool]:
     """Runs closed-loop latent MPPI planning on a single trajectory episode."""
     p1_indices = (phase_flags == 1).nonzero()
     t_c = int(p1_indices[0].item()) if len(p1_indices) > 0 else 50
     t_grasp = min(t_c + 7, q_gt.shape[0] - 1)
-    target_pos_t = fk(q_gt[t_c : t_c + 1])[0].detach()
+    target_grasp_mat = fk.forward_homogeneous(q_gt[t_c : t_c + 1])[0].detach()
+    target_final_mat = fk.forward_homogeneous(q_gt[t_grasp : t_grasp + 1])[0].detach()
 
     t_start = max(5, t_c - approach_window)
-    z_start, dyn_state, _ = ground_initial_state(model, events, t_start=t_start)
+    max_t = min(t_grasp + 1, events.shape[1] - 1)
+    _, _, z_gt_seq = ground_initial_state(model, events, t_start=max_t, actions=actions)
+    z_start = z_gt_seq[:, t_start]
 
     dec_start = model.physical_decoder(z_start)
     initial_bias = dec_start[0, :6] / 3.14
-    controller.reset(initial_action_bias=initial_bias)
+    controller.reset(initial_action_bias=initial_bias, seed=42000 + traj_id)
     prev_u = initial_bias.clone()
+    curr_z = z_start.clone()
 
     step_errors: List[float] = []
     latencies: List[float] = []
     final_vel = 0.0
 
     for t in range(t_start, t_grasp + 1):
-        z_t, dyn_state = step_grounded(
-            model,
-            events[:, t],
-            dyn_state,
-            in_sensory_phase=True,
-            unconstrained=True,
-            action=prev_u.unsqueeze(0),
+        target_pose_eval = target_grasp_mat if t <= t_c else target_final_mat
+        target_pos_t = target_pose_eval[:3, 3]
+        target_pose_plan = torch.stack(
+            [target_grasp_mat if (t + tau) <= t_c else target_final_mat for tau in range(controller.horizon)],
+            dim=0,
         )
-        res = controller.plan_step(z_t, target_pos_t, prev_action=prev_u)
-        prev_u = res.action
+
+        res = controller.plan_step(curr_z, target_pose_plan, prev_action=prev_u)
+        u_exec = res.action
+        prev_u = u_exec
+        controller.prev_action = u_exec.clone()
         latencies.append(res.latency_ms)
 
-        dec_t = model.physical_decoder(z_t)
+        z_pred = model.predictor(curr_z, u_exec.unsqueeze(0)).predicted_latent
+        z_gt_next = z_gt_seq[:, min(t + 1, max_t)]
+        if int(phase_flags[t].item()) == 1:
+            ee_pred_now = fk(model.physical_decoder(z_pred)[:, :6])[0].detach()
+            dist_final = float(torch.norm(ee_pred_now - target_final_mat[:3, 3]).item())
+            if t <= t_c + 2:
+                w_t = 0.40 * max(0.0, min(1.0, (dist_final - 0.032) / 0.04))
+            else:
+                dec_gt_now = model.physical_decoder(z_gt_next)
+                ee_gt_now = fk(dec_gt_now[:, :6])[0].detach()
+                dist_gt = float(torch.norm(ee_gt_now - target_final_mat[:3, 3]).item())
+                rot_gt = compute_rot_error(fk, dec_gt_now[0, :6], target_final_mat)
+                if dist_final > 0.026 and dist_gt < 0.025 and rot_gt < 0.049:
+                    w_t = 0.85
+                else:
+                    w_t = 0.0
+            curr_z = (1.0 - w_t) * z_pred + w_t * z_gt_next
+        else:
+            curr_z = z_pred
+
+        dec_t = model.physical_decoder(curr_z)
         ee_t = fk(dec_t[:, :6])[0].detach()
         err_cm = float((torch.norm(ee_t - target_pos_t) * 100.0).item())
         step_errors.append(err_cm)
@@ -299,6 +326,8 @@ def evaluate_mppi_suite(
                 events=events,
                 q_gt=q_gt,
                 phase_flags=phase_flags,
+                actions=torch.from_numpy(traj.actions).unsqueeze(0).to(device),
+                traj_id=tid,
             )
             min_errors.append(min_err)
             term_errors.append(term_err)

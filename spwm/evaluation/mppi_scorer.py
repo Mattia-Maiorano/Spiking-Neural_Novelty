@@ -293,7 +293,14 @@ class MPPIStructuralScorer:
                 u_exec = actions[0, t].clone()
             else:
                 if current_chunk is None or chunk_idx >= controller.chunk_size:
-                    res = controller.plan_step(z_t, target_pose_mat, prev_action=prev_u)
+                    target_pose_plan = torch.stack(
+                        [
+                            target_grasp_mat if (t + tau) <= t_c else target_final_mat
+                            for tau in range(controller.horizon)
+                        ],
+                        dim=0,
+                    )
+                    res = controller.plan_step(z_t, target_pose_plan, prev_action=prev_u)
                     current_chunk = res.action_chunk
                     chunk_idx = 0
 

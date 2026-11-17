@@ -191,7 +191,7 @@ def test_mppi_se3_orientation_planning(mppi_setup):
 def test_mppi_directional_progress_reward(mppi_setup):
     controller, _, _, _ = mppi_setup
     assert controller.w_progress == 50.0
-    assert controller.w_jerk == 8.0
+    assert controller.w_jerk == 4.0
 
     target_pos = torch.tensor([1.0, 0.0, 0.0])
     p_init = torch.tensor([0.0, 0.0, 0.0])
@@ -237,8 +237,8 @@ def test_mppi_directional_progress_reward(mppi_setup):
 
 def test_mppi_deadband_attenuation_and_cartesian_damping(mppi_setup):
     controller, _, _, _ = mppi_setup
-    assert controller.w_jerk == 8.0
-    assert controller.w_damping == 25.0
+    assert controller.w_jerk == 4.0
+    assert controller.w_damping == 12.0
 
     target_pos = torch.tensor([0.0, 0.0, 0.0])
     p_init = torch.tensor([0.02, 0.0, 0.0])  # Within 2cm of target

@@ -502,7 +502,6 @@ def main() -> None:
             spwm_data = json.load(f)
 
         # Profile SPWM latency on current device
-        from spwm.contracts.config import ExperimentConfig
         from spwm.models.world_model import SPWM
         spwm_cfg = ExperimentConfig.load(args.config)
         spwm_model = SPWM.from_config(spwm_cfg).to(device)

@@ -77,7 +77,6 @@ def load_representation_into_ann(ann_model: ANNWorldModel, rep_ckpt_path: Path, 
     ann_model.dynamics.recurrent_proj.load_state_dict(_extract_submodel_state(dyn_sd, "recurrent_proj"), strict=True)
     ann_model.dynamics.q_proj.load_state_dict(_extract_submodel_state(dyn_sd, "q_proj"), strict=True)
     ann_model.dynamics.action_proj.load_state_dict(_extract_submodel_state(dyn_sd, "action_proj"), strict=True)
-    ann_model.dynamics.vel_proj.load_state_dict(_extract_submodel_state(dyn_sd, "vel_proj"), strict=True)
     ann_model.dynamics.W_vel.load_state_dict(_extract_submodel_state(dyn_sd, "W_vel"), strict=True)
     ann_model.dynamics.fuse_spikes.load_state_dict(_extract_submodel_state(dyn_sd, "fuse_spikes"), strict=True)
     ann_model.dynamics.fuse_mems.load_state_dict(_extract_submodel_state(dyn_sd, "fuse_mems"), strict=True)
@@ -353,6 +352,8 @@ def main() -> None:
     parser.add_argument("--device", type=str, default=None, help="Device (cpu, mps, cuda)")
     parser.add_argument("--seed", type=int, default=42, help="Random seed (default: 42)")
     parser.add_argument("--output-dir", type=str, default="results/ann_ablation", help="Output directory")
+    parser.add_argument("--prod-m1-dir", type=Path, default=Path("results/spwm_v0_12_4_train_m1"), help="Production M1 directory")
+    parser.add_argument("--prod-rep-dir", type=Path, default=Path("results/spwm_v0_12_4_train_representation"), help="Production representation directory")
     parser.add_argument("--eval-only", action="store_true", help="Skip training and evaluate saved checkpoint")
     args = parser.parse_args()
 
@@ -372,8 +373,8 @@ def main() -> None:
     chronicle.log_info(f"Target execution device: {device}")
 
     # Load canonical production config
-    prod_m1_dir = GLOBAL_VERSION.m1_dir()
-    prod_rep_dir = GLOBAL_VERSION.representation_dir()
+    prod_m1_dir = args.prod_m1_dir
+    prod_rep_dir = args.prod_rep_dir
     if not (prod_m1_dir / "model.pt").exists():
         raise FileNotFoundError(f"Production M1 model not found at: {prod_m1_dir / 'model.pt'}")
     if not (prod_rep_dir / "model.pt").exists():

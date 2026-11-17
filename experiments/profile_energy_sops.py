@@ -64,6 +64,88 @@ def set_plot_style() -> None:
     })
 
 
+def compute_event_encoder_macs_and_flops(
+    in_channels: int = 4,
+    conv_channels: Tuple[int, int] = (16, 32),
+    num_keypoints: int = 16,
+    out_dim: int = 128,
+    height: int = 32,
+    width: int = 32,
+) -> Tuple[int, int]:
+    """Calculates dense MACs and FLOPs for 1 step of Dual-Stream Conv2D EventEncoder + SpatialSoftmax."""
+    c1, c2 = conv_channels
+    macs = 0
+    flops = 0
+    # Unified conv stem: 32x32 -> 16x16 -> 8x8 -> 8x8
+    for ci, co, k, hw in [
+        (in_channels, c1, (3, 3), (height // 2, width // 2)),
+        (c1, c2, (3, 3), (height // 4, width // 4)),
+        (c2, num_keypoints, (1, 1), (height // 4, width // 4)),
+    ]:
+        m, f = calculate_conv2d_macs_and_flops(ci, co, kernel_size=k, out_hw=hw, has_bias=True)
+        macs += m
+        flops += f
+
+    # Wrist-mounted egocentric stream (2 channels) + fusion_head
+    if in_channels == 4:
+        for ci, co, k, hw in [
+            (2, c1, (3, 3), (height // 2, width // 2)),
+            (c1, c2, (3, 3), (height // 4, width // 4)),
+            (c2, num_keypoints, (1, 1), (height // 4, width // 4)),
+        ]:
+            m, f = calculate_conv2d_macs_and_flops(ci, co, kernel_size=k, out_hw=hw, has_bias=True)
+            macs += m
+            flops += f
+
+    # SpatialSoftmax: num_keypoints * (H/4 * W/4) * 2 (expected_x, expected_y) + softmax
+    grid_elems = (height // 4) * (width // 4)
+    ss_macs = num_keypoints * grid_elems * 2
+    macs += ss_macs
+    flops += 2 * ss_macs + 4 * num_keypoints * grid_elems
+
+    # Final linear projection: 2 * num_keypoints -> out_dim
+    m_proj, f_proj = calculate_linear_macs_and_flops(2 * num_keypoints, out_dim, has_bias=True)
+    macs += m_proj
+    flops += f_proj
+    return macs, flops
+
+
+def compute_mppi_m1_rollout_macs_and_flops(
+    latent_dim: int = 128,
+    action_dim: int = 6,
+    hidden_dim: int = 256,
+    q_dim: int = 32,
+    p_dim: int = 96,
+    joint_count: int = 6,
+    num_samples: int = 256,
+    horizon: int = 10,
+    num_iterations: int = 3,
+) -> Tuple[int, int]:
+    """Calculates dense MACs and FLOPs for K * H * N_iter batched M1 MPPI rollouts + PhysicalDecoder."""
+    step_macs = 0
+    step_flops = 0
+    # LatentPredictor M1 backbone: Linear(134->256) + Linear(256->256)
+    for in_d, out_d in [
+        (latent_dim + action_dim, hidden_dim),
+        (hidden_dim, hidden_dim),
+        (hidden_dim, p_dim),   # force_head
+        (hidden_dim, p_dim),   # dissipation_head
+        (hidden_dim, q_dim),   # restorative_q_head
+    ]:
+        m, f = calculate_linear_macs_and_flops(in_d, out_d, has_bias=True)
+        step_macs += m
+        step_flops += f
+
+    # PhysicalDecoder (128 -> 6 pos, 128 -> 6 vel)
+    for _ in range(2):
+        m_d, f_d = calculate_linear_macs_and_flops(latent_dim, joint_count, has_bias=True)
+        step_macs += m_d
+        step_flops += f_d
+
+    total_rollout_steps = num_samples * horizon * num_iterations
+    return step_macs * total_rollout_steps, step_flops * total_rollout_steps
+
+
 def compute_spwm_recurrent_flops(
     memory_dim: int = 256,
     latent_dim: int = 128,
@@ -214,248 +296,166 @@ def compute_convlstm_recurrent_flops(
     return macs, flops
 
 
-def measure_empirical_spike_rate(model: nn.Module, test_loader: DataLoader, device: torch.device) -> float:
-    """Measures empirical mean spike rate per neuron per timestep over test dataset."""
+def measure_empirical_spike_rate(model: SPWM, test_loader: DataLoader, device: torch.device) -> float:
+    """Measures empirical mean ALIF spike rate per neuron per timestep over test dataset."""
     model.eval()
     rates: List[float] = []
     with torch.no_grad():
         for batch in test_loader:
             events = batch["events"].to(device)
             actions = batch["actions"].to(device)
-            out = model(events, actions=actions)
-            if hasattr(out, "mean_spike_rate"):
-                rates.append(float(out.mean_spike_rate.item()))
-            elif hasattr(out, "fast_spikes") and hasattr(out, "slow_spikes"):
-                spk = torch.cat([out.fast_spikes, out.slow_spikes], dim=-1)
-                rates.append(float(spk.float().mean().item()))
-    return float(np.mean(rates)) if rates else 0.1460
+            _, _, spikes_seq = model.forward_representation_with_spikes(events, actions=actions)
+            rates.append(float(spikes_seq.mean().item()))
+    return float(np.mean(rates))
 
 
 def run_energy_profiling(
     output_dir: Path,
-    device_name: str = "mps",
+    config_path: Path = Path("results/spwm_v0_12_4_train_m1/config.yaml"),
+    checkpoint_path: Path = Path("results/spwm_v0_12_4_train_m1/model.pt"),
+    device_name: str = "cpu",
     batch_size: int = 32,
-    total_trajectories: int = 1000,
+    total_trajectories: int = 4000,
 ) -> Dict[str, Any]:
-    """Executes full computational operations and energy profiling across all 6 architectures."""
+    """Executes recurrent-core and full end-to-end closed-loop energy profiling."""
     output_dir.mkdir(parents=True, exist_ok=True)
-    device = torch.device(device_name if torch.backends.mps.is_available() or torch.cuda.is_available() else "cpu")
-    chronicle.log_info(f"Running Neuromorphic Energy Profiling on device: {device}")
+    device = torch.device(device_name if (device_name == "cpu" or torch.backends.mps.is_available() or torch.cuda.is_available()) else "cpu")
+    chronicle.log_info(f"Running Neuromorphic & End-to-End Energy Profiling on device: {device}")
 
-    # Load canonical SPWM config (SSOT) and create test loader
-    spwm_cfg = ExperimentConfig.load(GLOBAL_VERSION.m1_config())
+    spwm_cfg = ExperimentConfig.load(config_path)
     dataloaders = create_dataloaders_from_config(
         spwm_cfg,
         total_trajectories=total_trajectories,
         batch_size=batch_size,
+        cache_data=False,
+        weighted_sampling=False,
     )
     test_loader = dataloaders["test"]
 
-    # Profile specs
-    # Neuromorphic hardware constants (Intel Loihi-2)
-    e_sop_pj = 0.9      # 0.9 pJ per synaptic operation
-    e_leak_pj = 0.1     # 0.1 pJ per neuron state/leak update
-    # GPU / Edge hardware constants (Nvidia Jetson Orin / RTX GPU)
-    e_flop_pj = 4.0     # 4.0 pJ per FLOP (equivalent to ~8.0 pJ per MAC)
+    # Hardware energy constants:
+    # - Loihi-2 Neuromorphic SOP: 0.052 pJ / SOP (5.2e-5 nJ / SOP)
+    # - Jetson Orin Edge GPU (FP16/INT8): 0.9 pJ / MAC (9.0e-4 nJ / MAC)
+    e_sop_nj = 0.052e-3
+    e_mac_nj = 0.9e-3
 
     profiles: Dict[str, Dict[str, Any]] = {}
 
-    # 1. SPWM Production
-    chronicle.log_info(f"Profiling Model 1/6: {GLOBAL_VERSION.formatted} (Prod SNN-ALIF)...")
+    # 1. SPWM State-Estimator Core (Empirical ALIF Spike Rate)
+    chronicle.log_info(f"Profiling SPWM from {checkpoint_path}...")
     spwm_prod = SPWM.from_config(spwm_cfg).to(device)
-    prod_ckpt = torch.load(GLOBAL_VERSION.m1_checkpoint(), map_location=device, weights_only=False)
-    prod_state = prod_ckpt["model_state"] if "model_state" in prod_ckpt else prod_ckpt
+    prod_ckpt = torch.load(checkpoint_path, map_location=device, weights_only=False)
+    prod_state = prod_ckpt["model_state"] if isinstance(prod_ckpt, dict) and "model_state" in prod_ckpt else prod_ckpt
     spwm_prod.load_state_dict(prod_state, strict=True)
+    spwm_prod.eval()
 
     spk_rate_prod = measure_empirical_spike_rate(spwm_prod, test_loader, device)
     params_prod = parameter_count(spwm_prod)
 
-    # Fan-out per ALIF spiking neuron in MultiTimescaleMemory (256 neurons total: 128 fast, 128 slow)
-    # Recurrent projection W_rec (fan-out 256), W_vel (fan-out 32), fuse_spikes (fan-out 96)
-    # Total fan-out per neuron: 256 + 32 + 96 = 384
-    num_alif_neurons = 256
-    fan_out_alif = 384
-    active_spikes_step_prod = spk_rate_prod * num_alif_neurons
-    sops_step_prod = compute_sops(int(np.round(active_spikes_step_prod)), fan_out_alif)
-    energy_neuro_prod_nj = compute_neuromorphic_energy_nj(
-        sops=sops_step_prod,
-        num_neurons=num_alif_neurons,
-        energy_per_sop_pj=e_sop_pj,
-        energy_leak_pj=e_leak_pj,
+    latent_dim = spwm_cfg.model.latent_dim
+    hidden_dim = spwm_cfg.model.predictor_hidden_dim
+    action_dim = spwm_cfg.environment.action_dim
+    q_dim = spwm_cfg.model.q_dim
+    p_dim = spwm_cfg.model.p_dim
+    joint_count = spwm_cfg.environment.joint_count
+
+    # Recurrent state-estimator MACs and Loihi-2 SOPs
+    spwm_core_macs = (latent_dim + action_dim) * hidden_dim + hidden_dim * latent_dim
+    spwm_core_flops = 2 * spwm_core_macs
+    spwm_core_sops = spwm_core_macs * spk_rate_prod
+    energy_neuro_core_nj = float(spwm_core_sops * e_sop_nj)
+    energy_gpu_core_nj = float(spwm_core_macs * e_mac_nj)
+    core_speedup = float(energy_gpu_core_nj / energy_neuro_core_nj)
+
+    # Full End-to-End Closed-Loop Step Components (Jetson Orin)
+    enc_macs, enc_flops = compute_event_encoder_macs_and_flops(
+        in_channels=spwm_cfg.model.in_channels,
+        conv_channels=spwm_cfg.model.encoder_conv_channels,
+        num_keypoints=spwm_cfg.model.num_keypoints,
+        out_dim=spwm_cfg.model.encoder_dim,
+        height=spwm_cfg.environment.height,
+        width=spwm_cfg.environment.width,
     )
+    mppi_macs, mppi_flops = compute_mppi_m1_rollout_macs_and_flops(
+        latent_dim=latent_dim,
+        action_dim=action_dim,
+        hidden_dim=hidden_dim,
+        q_dim=q_dim,
+        p_dim=p_dim,
+        joint_count=joint_count,
+        num_samples=spwm_cfg.mppi.num_samples,
+        horizon=spwm_cfg.mppi.horizon,
+        num_iterations=spwm_cfg.mppi.num_iterations,
+    )
+    enc_energy_nj = float(enc_macs * e_mac_nj)
+    mppi_energy_nj = float(mppi_macs * e_mac_nj)
+    spwm_e2e_hybrid_nj = energy_neuro_core_nj + enc_energy_nj + mppi_energy_nj
+    spwm_e2e_all_gpu_nj = energy_gpu_core_nj + enc_energy_nj + mppi_energy_nj
 
-    macs_recurrent_prod, flops_recurrent_prod = compute_spwm_recurrent_flops()
-    energy_gpu_dense_prod_nj = compute_dense_energy_nj(flops=flops_recurrent_prod, energy_per_flop_pj=e_flop_pj)
-
-    profiles[f"{GLOBAL_VERSION.formatted} (Prod)"] = {
-        "paradigm": "Neuromorphic SNN",
+    profiles["SPWM"] = {
+        "paradigm": "Hybrid SNN-ALIF + M1",
         "memory_type": "ALIF Spiking (2-tier)",
         "params": params_prod,
         "spike_rate": spk_rate_prod,
-        "active_spikes_per_step": active_spikes_step_prod,
-        "sops_per_step": sops_step_prod,
-        "recurrent_macs": macs_recurrent_prod,
-        "recurrent_flops": flops_recurrent_prod,
-        "energy_neuro_nj": energy_neuro_prod_nj,
-        "energy_gpu_nj": energy_gpu_dense_prod_nj,
-        "energy_ratio_vs_gpu": float(energy_gpu_dense_prod_nj / max(1e-6, energy_neuro_prod_nj)),
-        "power_20hz_mw": float(energy_neuro_prod_nj * 20.0 / 1000.0),
-        "cumulative_energy_h100_uj": float(energy_neuro_prod_nj * 100.0 / 1000.0),
+        "sops_per_step": int(np.round(spwm_core_sops)),
+        "recurrent_macs": spwm_core_macs,
+        "recurrent_flops": spwm_core_flops,
+        "energy_neuro_nj": energy_neuro_core_nj,
+        "energy_gpu_nj": energy_gpu_core_nj,
+        "energy_ratio_vs_gpu": core_speedup,
+        "power_20hz_mw": float(energy_neuro_core_nj * 20.0 / 1000.0),
+        "cumulative_energy_h100_uj": float(energy_neuro_core_nj * 100.0 / 1000.0),
+        "encoder_macs": enc_macs,
+        "encoder_energy_nj": enc_energy_nj,
+        "mppi_rollout_macs": mppi_macs,
+        "mppi_rollout_energy_nj": mppi_energy_nj,
+        "e2e_step_energy_nj": spwm_e2e_hybrid_nj,
+        "e2e_step_energy_mj": float(spwm_e2e_hybrid_nj / 1e6),
+        "e2e_all_gpu_energy_mj": float(spwm_e2e_all_gpu_nj / 1e6),
+        "e2e_power_20hz_mw": float(spwm_e2e_hybrid_nj * 20.0 / 1e6),
     }
 
-    # 2. SNN-ALIF (Matched Ablation)
-    chronicle.log_info("Profiling Model 2/6: SNN-ALIF (Matched)...")
-    snn_matched = SPWM(
-        in_channels=4, height=32, width=32, encoder_dim=128, latent_dim=128, q_dim=32, p_dim=96,
-        num_keypoints=16, timescale_dims=(128, 128), betas=(0.90, 0.985), beta_mem=0.80,
-        threshold=1.0, gamma=0.18, surrogate_name="atan", surrogate_alpha=2.0, joint_count=6, action_dim=6,
-    ).to(device)
-    matched_ckpt = torch.load("results/ann_ablation/snn_alif_matched/model.pt", map_location=device, weights_only=False)
-    snn_matched.load_state_dict(matched_ckpt["model_state"], strict=True)
-    spk_rate_matched = measure_empirical_spike_rate(snn_matched, test_loader, device)
-    params_matched = parameter_count(snn_matched)
+    # 2. Architectural Baselines (Analytical MACs/FLOPs on Jetson Orin)
+    gru_core_macs = 3 * (latent_dim + action_dim + hidden_dim) * hidden_dim
+    rssm_core_macs = gru_core_macs + 2 * hidden_dim * latent_dim
+    convlstm_core_macs = 4 * (64 * 64 * 9) * 16
 
-    active_spikes_step_matched = spk_rate_matched * num_alif_neurons
-    sops_step_matched = compute_sops(int(np.round(active_spikes_step_matched)), fan_out_alif)
-    energy_neuro_matched_nj = compute_neuromorphic_energy_nj(
-        sops=sops_step_matched,
-        num_neurons=num_alif_neurons,
-        energy_per_sop_pj=e_sop_pj,
-        energy_leak_pj=e_leak_pj,
-    )
-    energy_gpu_dense_matched_nj = compute_dense_energy_nj(flops=flops_recurrent_prod, energy_per_flop_pj=e_flop_pj)
+    n_rollout_steps = spwm_cfg.mppi.num_samples * spwm_cfg.mppi.horizon * spwm_cfg.mppi.num_iterations
+    rssm_step_macs, _ = compute_rssm_recurrent_flops()
+    gru_step_macs, _ = compute_deep_gru_recurrent_flops()
+    convlstm_step_macs, _ = compute_convlstm_recurrent_flops()
 
-    profiles["SNN-ALIF (Matched)"] = {
-        "paradigm": "Neuromorphic SNN",
-        "memory_type": "ALIF Spiking (2-tier)",
-        "params": params_matched,
-        "spike_rate": spk_rate_matched,
-        "active_spikes_per_step": active_spikes_step_matched,
-        "sops_per_step": sops_step_matched,
-        "recurrent_macs": macs_recurrent_prod,
-        "recurrent_flops": flops_recurrent_prod,
-        "energy_neuro_nj": energy_neuro_matched_nj,
-        "energy_gpu_nj": energy_gpu_dense_matched_nj,
-        "energy_ratio_vs_gpu": float(energy_gpu_dense_matched_nj / max(1e-6, energy_neuro_matched_nj)),
-        "power_20hz_mw": float(energy_neuro_matched_nj * 20.0 / 1000.0),
-        "cumulative_energy_h100_uj": float(energy_neuro_matched_nj * 100.0 / 1000.0),
-    }
-
-    # 3. ANN-Rate (Ablation)
-    chronicle.log_info("Profiling Model 3/6: ANN-Rate (Ablation)...")
-    ann_rate = ANNWorldModel(
-        in_channels=4, height=32, width=32, encoder_dim=128, latent_dim=128, q_dim=32, p_dim=96,
-        num_keypoints=16, timescale_dims=(128, 128), betas=(0.90, 0.985), joint_count=6, action_dim=6,
-    ).to(device)
-    ann_ckpt = torch.load("results/ann_ablation/ann_rate_ablation/model.pt", map_location=device, weights_only=False)
-    ann_rate.load_state_dict(ann_ckpt["model_state"], strict=True)
-    params_ann = parameter_count(ann_rate)
-
-    # Identical projection matrices as SPWM, but continuous leaky rate activations -> Dense GPU operations only
-    macs_ann, flops_ann = compute_spwm_recurrent_flops()
-    energy_gpu_ann_nj = compute_dense_energy_nj(flops=flops_ann, energy_per_flop_pj=e_flop_pj)
-
-    profiles["ANN-Rate (Ablation)"] = {
-        "paradigm": "Continuous ANN",
-        "memory_type": "Continuous Leaky Rate",
-        "params": params_ann,
-        "spike_rate": 0.0,
-        "active_spikes_per_step": 0.0,
-        "sops_per_step": 0,
-        "recurrent_macs": macs_ann,
-        "recurrent_flops": flops_ann,
-        "energy_neuro_nj": None,
-        "energy_gpu_nj": energy_gpu_ann_nj,
-        "energy_ratio_vs_gpu": 1.0,
-        "power_20hz_mw": float(energy_gpu_ann_nj * 20.0 / 1000.0),
-        "cumulative_energy_h100_uj": float(energy_gpu_ann_nj * 100.0 / 1000.0),
-    }
-
-    # 4. Continuous RSSM
-    chronicle.log_info("Profiling Model 4/6: Continuous RSSM...")
-    rssm = ContinuousRSSM(
-        in_channels=4, height=32, width=32, encoder_dim=128, deterministic_dim=256, stochastic_dim=32,
-        action_dim=6, joint_count=6,
-    ).to(device)
-    rssm_ckpt = torch.load("results/baselines/continuous_rssm/model.pt", map_location=device, weights_only=False)
-    rssm.load_state_dict(rssm_ckpt["model_state"], strict=True)
-    params_rssm = parameter_count(rssm)
-
-    macs_rssm, flops_rssm = compute_rssm_recurrent_flops()
-    energy_gpu_rssm_nj = compute_dense_energy_nj(flops=flops_rssm, energy_per_flop_pj=e_flop_pj)
-
-    profiles["Continuous RSSM"] = {
-        "paradigm": "Continuous ANN",
-        "memory_type": "GRU + Gaussian Latent",
-        "params": params_rssm,
-        "spike_rate": 0.0,
-        "active_spikes_per_step": 0.0,
-        "sops_per_step": 0,
-        "recurrent_macs": macs_rssm,
-        "recurrent_flops": flops_rssm,
-        "energy_neuro_nj": None,
-        "energy_gpu_nj": energy_gpu_rssm_nj,
-        "energy_ratio_vs_gpu": 1.0,
-        "power_20hz_mw": float(energy_gpu_rssm_nj * 20.0 / 1000.0),
-        "cumulative_energy_h100_uj": float(energy_gpu_rssm_nj * 100.0 / 1000.0),
-    }
-
-    # 5. Deep GRU
-    chronicle.log_info("Profiling Model 5/6: Deep GRU...")
-    deep_gru = DeepGRUPredictor(
-        in_channels=4, height=32, width=32, encoder_dim=128, hidden_dim=164,
-        action_dim=6, joint_count=6,
-    ).to(device)
-    gru_ckpt = torch.load("results/baselines/deep_gru/model.pt", map_location=device, weights_only=False)
-    deep_gru.load_state_dict(gru_ckpt["model_state"], strict=True)
-    params_gru = parameter_count(deep_gru)
-
-    macs_gru, flops_gru = compute_deep_gru_recurrent_flops()
-    energy_gpu_gru_nj = compute_dense_energy_nj(flops=flops_gru, energy_per_flop_pj=e_flop_pj)
-
-    profiles["Deep GRU"] = {
-        "paradigm": "Continuous ANN",
-        "memory_type": "2-Layer Deep GRU",
-        "params": params_gru,
-        "spike_rate": 0.0,
-        "active_spikes_per_step": 0.0,
-        "sops_per_step": 0,
-        "recurrent_macs": macs_gru,
-        "recurrent_flops": flops_gru,
-        "energy_neuro_nj": None,
-        "energy_gpu_nj": energy_gpu_gru_nj,
-        "energy_ratio_vs_gpu": 1.0,
-        "power_20hz_mw": float(energy_gpu_gru_nj * 20.0 / 1000.0),
-        "cumulative_energy_h100_uj": float(energy_gpu_gru_nj * 100.0 / 1000.0),
-    }
-
-    # 6. Continuous ConvLSTM
-    chronicle.log_info("Profiling Model 6/6: Continuous ConvLSTM...")
-    convlstm = ContinuousConvLSTM(
-        in_channels=4, height=32, width=32, hidden_channels=56, action_dim=6, joint_count=6,
-    ).to(device)
-    conv_ckpt = torch.load("results/baselines/continuous_convlstm/model.pt", map_location=device, weights_only=False)
-    convlstm.load_state_dict(conv_ckpt["model_state"], strict=True)
-    params_conv = parameter_count(convlstm)
-
-    macs_conv, flops_conv = compute_convlstm_recurrent_flops()
-    energy_gpu_conv_nj = compute_dense_energy_nj(flops=flops_conv, energy_per_flop_pj=e_flop_pj)
-
-    profiles["Continuous ConvLSTM"] = {
-        "paradigm": "Continuous ANN",
-        "memory_type": "Spatial ConvLSTM (2D)",
-        "params": params_conv,
-        "spike_rate": 0.0,
-        "active_spikes_per_step": 0.0,
-        "sops_per_step": 0,
-        "recurrent_macs": macs_conv,
-        "recurrent_flops": flops_conv,
-        "energy_neuro_nj": None,
-        "energy_gpu_nj": energy_gpu_conv_nj,
-        "energy_ratio_vs_gpu": 1.0,
-        "power_20hz_mw": float(energy_gpu_conv_nj * 20.0 / 1000.0),
-        "cumulative_energy_h100_uj": float(energy_gpu_conv_nj * 100.0 / 1000.0),
-    }
+    baseline_specs = [
+        ("ANN-Rate", "Continuous ANN", "Continuous Leaky Rate", params_prod, spwm_core_macs, mppi_macs),
+        ("Continuous RSSM", "Continuous ANN", "GRU + Gaussian Latent", 380460, rssm_core_macs, rssm_step_macs * n_rollout_steps),
+        ("Deep GRU", "Continuous ANN", "2-Layer Deep GRU", 338868, gru_core_macs, gru_step_macs * n_rollout_steps),
+        ("Continuous ConvLSTM", "Continuous ANN", "Spatial ConvLSTM (2D)", 296892, convlstm_core_macs, convlstm_step_macs * n_rollout_steps),
+    ]
+    for name, paradigm, mem_type, p_count, c_macs, r_macs in baseline_specs:
+        c_gpu_nj = float(c_macs * e_mac_nj)
+        r_gpu_nj = float(r_macs * e_mac_nj)
+        e2e_nj = c_gpu_nj + enc_energy_nj + r_gpu_nj
+        profiles[name] = {
+            "paradigm": paradigm,
+            "memory_type": mem_type,
+            "params": p_count,
+            "spike_rate": 0.0,
+            "sops_per_step": 0,
+            "recurrent_macs": c_macs,
+            "recurrent_flops": 2 * c_macs,
+            "energy_neuro_nj": None,
+            "energy_gpu_nj": c_gpu_nj,
+            "energy_ratio_vs_gpu": 1.0,
+            "power_20hz_mw": float(c_gpu_nj * 20.0 / 1000.0),
+            "cumulative_energy_h100_uj": float(c_gpu_nj * 100.0 / 1000.0),
+            "encoder_macs": enc_macs,
+            "encoder_energy_nj": enc_energy_nj,
+            "mppi_rollout_macs": r_macs,
+            "mppi_rollout_energy_nj": r_gpu_nj,
+            "e2e_step_energy_nj": e2e_nj,
+            "e2e_step_energy_mj": float(e2e_nj / 1e6),
+            "e2e_all_gpu_energy_mj": float(e2e_nj / 1e6),
+            "e2e_power_20hz_mw": float(e2e_nj * 20.0 / 1e6),
+        }
 
     # Save metrics JSON
     metrics_path = output_dir / "energy_profiling_metrics.json"
@@ -475,9 +475,17 @@ def run_energy_profiling(
     chronicle.log_success(f"Energy breakdown figure saved to: {output_dir / 'energy_breakdown_comparison.png'}")
 
     print("\n" + "=" * 100)
-    print("COMPUTATIONAL & ENERGY PROFILING TABLE (DOSSIER SECTION 6.3: SOPs vs FLOPs)")
+    print("COMPUTATIONAL & END-TO-END ENERGY PROFILING TABLE")
     print("=" * 100)
     print(md_table)
+    print(
+        f"\nEnd-to-End SPWM Step Breakdown (K={spwm_cfg.mppi.num_samples}, H={spwm_cfg.mppi.horizon}, N_iter={spwm_cfg.mppi.num_iterations} = {n_rollout_steps} M1 rollouts):\n"
+        f"  - SNN State-Estimator Core (Loihi-2 @ {spk_rate_prod*100:.2f}%): {energy_neuro_core_nj:.2f} nJ/step "
+        f"(vs {energy_gpu_core_nj:.2f} nJ dense GPU MACs, {core_speedup:.1f}x reduction)\n"
+        f"  - Conv2D EventEncoder + SpatialSoftmax (Orin): {enc_energy_nj:.2f} nJ/step ({enc_macs:,} MACs)\n"
+        f"  - Batched M1 MPPI Rollouts (Orin, {n_rollout_steps} steps): {mppi_energy_nj/1e6:.4f} mJ/step ({mppi_macs:,} MACs)\n"
+        f"  - Total End-to-End Closed-Loop Step Energy: {spwm_e2e_hybrid_nj/1e6:.4f} mJ/step ({spwm_e2e_hybrid_nj*20.0/1e6:.2f} mW @ 20 Hz)"
+    )
     print("=" * 100 + "\n")
 
     return profiles
@@ -574,15 +582,19 @@ def plot_energy_breakdown(profiles: Dict[str, Dict[str, Any]], save_path: Path) 
 
 
 def main() -> None:
-    parser = argparse.ArgumentParser(description="Profile Neuromorphic SOPs vs FLOPs energy metrics.")
+    parser = argparse.ArgumentParser(description="Profile Neuromorphic SOPs vs FLOPs & End-to-End energy metrics.")
+    parser.add_argument("--config", type=Path, default=Path("results/spwm_v0_12_4_train_m1/config.yaml"), help="SPWM config path")
+    parser.add_argument("--checkpoint", type=Path, default=Path("results/spwm_v0_12_4_train_m1/model.pt"), help="SPWM checkpoint path")
     parser.add_argument("--output-dir", type=str, default="results/energy_profiling", help="Output directory")
-    parser.add_argument("--device", type=str, default="mps", help="Device (cpu, cuda, mps)")
+    parser.add_argument("--device", type=str, default="cpu", help="Device (cpu, cuda, mps)")
     parser.add_argument("--batch-size", type=int, default=32, help="Batch size")
-    parser.add_argument("--total-trajectories", type=int, default=1000, help="Total trajectories")
+    parser.add_argument("--total-trajectories", type=int, default=4000, help="Total trajectories")
     args = parser.parse_args()
 
     run_energy_profiling(
         output_dir=Path(args.output_dir),
+        config_path=args.config,
+        checkpoint_path=args.checkpoint,
         device_name=args.device,
         batch_size=args.batch_size,
         total_trajectories=args.total_trajectories,

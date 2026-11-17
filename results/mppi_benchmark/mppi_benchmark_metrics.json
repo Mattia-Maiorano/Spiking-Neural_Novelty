@@ -1,14 +1,21 @@
 {
-  "benchmark_name": "SPWM-v0.12.4 Closed-Loop Latent MPPI Control Benchmark",
+  "benchmark_name": "SPWM Closed-Loop Latent MPPI Control Benchmark",
   "checkpoint": "results/spwm_v0_12_4_train_m1/model.pt",
   "episodes_evaluated": 50,
-  "total_benchmark_time_sec": 34.9773755420465,
+  "total_benchmark_time_sec": 34.328646333073266,
   "overall_metrics": {
     "grasp_success_rate_pct": 96.0,
     "terminal_placement_accuracy_cm": 0.6696032772958279,
     "placement_accuracy_std_cm": 0.45874769553561406,
     "terminal_error_cm": 1.207380838394165,
-    "mppi_inference_latency_ms": 22.206835744861863
+    "terminal_error_std_cm": 0.6988937014146033,
+    "mppi_inference_latency_ms": 21.862994945655714,
+    "mean_joint_accel_rad_s2": 0.006116986921988428,
+    "std_joint_accel_rad_s2": 0.002312369256495449,
+    "mean_joint_jerk_rad_s3": 0.005014372430741787,
+    "std_joint_jerk_rad_s3": 0.0025539229214049824,
+    "mean_direction_flips": 14.58,
+    "std_direction_flips": 8.330882306214631
   },
   "elevation_plane_breakdown": {
     "Low": {
@@ -73,7 +80,7 @@
       "terminal_placement_error_cm": 1.8884549140930176,
       "terminal_angular_velocity": 0.6836905479431152,
       "grasp_success": true,
-      "mean_latency_ms": 22.296346757294877,
+      "mean_latency_ms": 22.433903251242423,
       "step_errors_cm": [
         10.242919921875,
         8.424116134643555,
@@ -105,7 +112,10 @@
         1.8884549140930176
       ],
       "grasp_error_cm": 1.1296879053115845,
-      "grasp_rot_error_rad": 0.004475175403058529
+      "grasp_rot_error_rad": 0.004475175403058529,
+      "mean_joint_accel_rad_s2": 0.005068447906523943,
+      "mean_joint_jerk_rad_s3": 0.005323539488017559,
+      "direction_flips": 24
     },
     {
       "trajectory_id": 3601,
@@ -126,7 +136,7 @@
       "terminal_placement_error_cm": 0.39236629009246826,
       "terminal_angular_velocity": 0.6293636560440063,
       "grasp_success": true,
-      "mean_latency_ms": 22.02024102526983,
+      "mean_latency_ms": 21.843212881192034,
       "step_errors_cm": [
         19.108238220214844,
         18.73957061767578,
@@ -158,7 +168,10 @@
         0.39236629009246826
       ],
       "grasp_error_cm": 0.829271137714386,
-      "grasp_rot_error_rad": 0.04066229611635208
+      "grasp_rot_error_rad": 0.04066229611635208,
+      "mean_joint_accel_rad_s2": 0.00502836424857378,
+      "mean_joint_jerk_rad_s3": 0.002285280264914036,
+      "direction_flips": 6
     },
     {
       "trajectory_id": 3602,
@@ -179,7 +192,7 @@
       "terminal_placement_error_cm": 1.115102767944336,
       "terminal_angular_velocity": 0.8146834373474121,
       "grasp_success": true,
-      "mean_latency_ms": 22.23031406174414,
+      "mean_latency_ms": 21.685739638217324,
       "step_errors_cm": [
         12.694923400878906,
         10.700407981872559,
@@ -211,7 +224,10 @@
         1.115102767944336
       ],
       "grasp_error_cm": 1.5321197509765625,
-      "grasp_rot_error_rad": 0.017880935221910477
+      "grasp_rot_error_rad": 0.017880935221910477,
+      "mean_joint_accel_rad_s2": 0.004231718834489584,
+      "mean_joint_jerk_rad_s3": 0.004483018070459366,
+      "direction_flips": 27
     },
     {
       "trajectory_id": 3603,
@@ -232,7 +248,7 @@
       "terminal_placement_error_cm": 0.8817962408065796,
       "terminal_angular_velocity": 0.5617283582687378,
       "grasp_success": true,
-      "mean_latency_ms": 22.120248509704002,
+      "mean_latency_ms": 21.871154903367692,
       "step_errors_cm": [
         20.273210525512695,
         19.23360824584961,
@@ -264,7 +280,10 @@
         0.8817962408065796
       ],
       "grasp_error_cm": 1.3408100605010986,
-      "grasp_rot_error_rad": 0.02634080871939659
+      "grasp_rot_error_rad": 0.02634080871939659,
+      "mean_joint_accel_rad_s2": 0.005083214957267046,
+      "mean_joint_jerk_rad_s3": 0.0027943658642470837,
+      "direction_flips": 11
     },
     {
       "trajectory_id": 3604,
@@ -285,7 +304,7 @@
       "terminal_placement_error_cm": 0.9697327613830566,
       "terminal_angular_velocity": 0.6287801861763,
       "grasp_success": true,
-      "mean_latency_ms": 21.729360340395942,
+      "mean_latency_ms": 21.98048324789852,
       "step_errors_cm": [
         16.868436813354492,
         16.386838912963867,
@@ -309,7 +328,10 @@
         0.9697327613830566
       ],
       "grasp_error_cm": 1.114490032196045,
-      "grasp_rot_error_rad": 0.07136772572994232
+      "grasp_rot_error_rad": 0.07136772572994232,
+      "mean_joint_accel_rad_s2": 0.0070799775421619415,
+      "mean_joint_jerk_rad_s3": 0.004778889007866383,
+      "direction_flips": 6
     },
     {
       "trajectory_id": 3605,
@@ -330,7 +352,7 @@
       "terminal_placement_error_cm": 0.616763174533844,
       "terminal_angular_velocity": 0.6911824345588684,
       "grasp_success": true,
-      "mean_latency_ms": 22.145461390859314,
+      "mean_latency_ms": 21.799681496174475,
       "step_errors_cm": [
         16.2681827545166,
         14.860254287719727,
@@ -362,7 +384,10 @@
         0.616763174533844
       ],
       "grasp_error_cm": 0.7288031578063965,
-      "grasp_rot_error_rad": 0.008638603612780571
+      "grasp_rot_error_rad": 0.008638603612780571,
+      "mean_joint_accel_rad_s2": 0.004851675126701593,
+      "mean_joint_jerk_rad_s3": 0.005306419916450977,
+      "direction_flips": 29
     },
     {
       "trajectory_id": 3606,
@@ -383,7 +408,7 @@
       "terminal_placement_error_cm": 2.058925151824951,
       "terminal_angular_velocity": 0.6106354594230652,
       "grasp_success": true,
-      "mean_latency_ms": 21.957851210442772,
+      "mean_latency_ms": 22.259174031205475,
       "step_errors_cm": [
         22.380861282348633,
         21.974809646606445,
@@ -415,7 +440,10 @@
         2.058925151824951
       ],
       "grasp_error_cm": 1.4730581045150757,
-      "grasp_rot_error_rad": 0.057815272361040115
+      "grasp_rot_error_rad": 0.057815272361040115,
+      "mean_joint_accel_rad_s2": 0.006031742785125971,
+      "mean_joint_jerk_rad_s3": 0.002557001542299986,
+      "direction_flips": 9
     },
     {
       "trajectory_id": 3607,
@@ -436,7 +464,7 @@
       "terminal_placement_error_cm": 2.2107315063476562,
       "terminal_angular_velocity": 0.9249321818351746,
       "grasp_success": true,
-      "mean_latency_ms": 21.84411746566184,
+      "mean_latency_ms": 21.675819867856003,
       "step_errors_cm": [
         11.75160026550293,
         9.890595436096191,
@@ -468,7 +496,10 @@
         2.2107315063476562
       ],
       "grasp_error_cm": 0.6721408367156982,
-      "grasp_rot_error_rad": 0.024487806484103203
+      "grasp_rot_error_rad": 0.024487806484103203,
+      "mean_joint_accel_rad_s2": 0.0033706037793308496,
+      "mean_joint_jerk_rad_s3": 0.003217119723558426,
+      "direction_flips": 14
     },
     {
       "trajectory_id": 3608,
@@ -489,7 +520,7 @@
       "terminal_placement_error_cm": 0.8619856834411621,
       "terminal_angular_velocity": 0.5207621455192566,
       "grasp_success": true,
-      "mean_latency_ms": 22.13107146755127,
+      "mean_latency_ms": 21.631516275062626,
       "step_errors_cm": [
         20.76964569091797,
         20.420333862304688,
@@ -521,7 +552,10 @@
         0.8619856834411621
       ],
       "grasp_error_cm": 1.0353021621704102,
-      "grasp_rot_error_rad": 0.029782254248857498
+      "grasp_rot_error_rad": 0.029782254248857498,
+      "mean_joint_accel_rad_s2": 0.005344439297914505,
+      "mean_joint_jerk_rad_s3": 0.003491958836093545,
+      "direction_flips": 14
     },
     {
       "trajectory_id": 3609,
@@ -542,7 +576,7 @@
       "terminal_placement_error_cm": 0.9342793226242065,
       "terminal_angular_velocity": 1.1684691905975342,
       "grasp_success": true,
-      "mean_latency_ms": 21.762611984740943,
+      "mean_latency_ms": 21.751023508841172,
       "step_errors_cm": [
         11.664375305175781,
         11.196061134338379,
@@ -562,7 +596,10 @@
         0.9342793226242065
       ],
       "grasp_error_cm": 4.735703945159912,
-      "grasp_rot_error_rad": 0.10676556825637817
+      "grasp_rot_error_rad": 0.10676556825637817,
+      "mean_joint_accel_rad_s2": 0.012801771983504295,
+      "mean_joint_jerk_rad_s3": 0.013401255011558533,
+      "direction_flips": 5
     },
     {
       "trajectory_id": 3610,
@@ -583,7 +620,7 @@
       "terminal_placement_error_cm": 2.753537178039551,
       "terminal_angular_velocity": 0.5444954633712769,
       "grasp_success": true,
-      "mean_latency_ms": 21.983031250004256,
+      "mean_latency_ms": 21.651363149950548,
       "step_errors_cm": [
         18.60422134399414,
         17.180641174316406,
@@ -615,7 +652,10 @@
         2.753537178039551
       ],
       "grasp_error_cm": 3.0980634689331055,
-      "grasp_rot_error_rad": 0.019954252988100052
+      "grasp_rot_error_rad": 0.019954252988100052,
+      "mean_joint_accel_rad_s2": 0.005028635263442993,
+      "mean_joint_jerk_rad_s3": 0.0035686257760971785,
+      "direction_flips": 14
     },
     {
       "trajectory_id": 3611,
@@ -636,7 +676,7 @@
       "terminal_placement_error_cm": 0.863197922706604,
       "terminal_angular_velocity": 0.7226830720901489,
       "grasp_success": true,
-      "mean_latency_ms": 22.651152118392613,
+      "mean_latency_ms": 21.59790769118168,
       "step_errors_cm": [
         18.578596115112305,
         18.07543182373047,
@@ -663,7 +703,10 @@
         0.863197922706604
       ],
       "grasp_error_cm": 1.0394773483276367,
-      "grasp_rot_error_rad": 0.040650561451911926
+      "grasp_rot_error_rad": 0.040650561451911926,
+      "mean_joint_accel_rad_s2": 0.007579019758850336,
+      "mean_joint_jerk_rad_s3": 0.005186479073017836,
+      "direction_flips": 6
     },
     {
       "trajectory_id": 3612,
@@ -684,7 +727,7 @@
       "terminal_placement_error_cm": 1.1234043836593628,
       "terminal_angular_velocity": 0.7799205780029297,
       "grasp_success": true,
-      "mean_latency_ms": 21.95271267555654,
+      "mean_latency_ms": 21.818903199995734,
       "step_errors_cm": [
         16.51876449584961,
         14.285106658935547,
@@ -716,7 +759,10 @@
         1.1234043836593628
       ],
       "grasp_error_cm": 1.1181013584136963,
-      "grasp_rot_error_rad": 0.01430267933756113
+      "grasp_rot_error_rad": 0.01430267933756113,
+      "mean_joint_accel_rad_s2": 0.005421977024525404,
+      "mean_joint_jerk_rad_s3": 0.006747884675860405,
+      "direction_flips": 25
     },
     {
       "trajectory_id": 3613,
@@ -737,7 +783,7 @@
       "terminal_placement_error_cm": 2.623591661453247,
       "terminal_angular_velocity": 0.2115291953086853,
       "grasp_success": true,
-      "mean_latency_ms": 22.311721616590926,
+      "mean_latency_ms": 23.152717256120273,
       "step_errors_cm": [
         22.270389556884766,
         21.58013916015625,
@@ -769,7 +815,10 @@
         2.623591661453247
       ],
       "grasp_error_cm": 2.0917153358459473,
-      "grasp_rot_error_rad": 0.04364389926195145
+      "grasp_rot_error_rad": 0.04364389926195145,
+      "mean_joint_accel_rad_s2": 0.0091873062774539,
+      "mean_joint_jerk_rad_s3": 0.010186358354985714,
+      "direction_flips": 17
     },
     {
       "trajectory_id": 3614,
@@ -790,7 +839,7 @@
       "terminal_placement_error_cm": 1.6365967988967896,
       "terminal_angular_velocity": 0.8853379487991333,
       "grasp_success": true,
-      "mean_latency_ms": 22.254108675822085,
+      "mean_latency_ms": 21.722439002977417,
       "step_errors_cm": [
         7.972930431365967,
         6.1389946937561035,
@@ -822,7 +871,10 @@
         1.6365967988967896
       ],
       "grasp_error_cm": 0.8364143967628479,
-      "grasp_rot_error_rad": 0.013407845050096512
+      "grasp_rot_error_rad": 0.013407845050096512,
+      "mean_joint_accel_rad_s2": 0.004322823602706194,
+      "mean_joint_jerk_rad_s3": 0.00470651313662529,
+      "direction_flips": 33
     },
     {
       "trajectory_id": 3615,
@@ -843,7 +895,7 @@
       "terminal_placement_error_cm": 1.1043223142623901,
       "terminal_angular_velocity": 0.7276119589805603,
       "grasp_success": true,
-      "mean_latency_ms": 21.994047561228008,
+      "mean_latency_ms": 21.760884115272866,
       "step_errors_cm": [
         15.870462417602539,
         14.895597457885742,
@@ -875,7 +927,10 @@
         1.1043223142623901
       ],
       "grasp_error_cm": 1.5597048997879028,
-      "grasp_rot_error_rad": 0.051030345261096954
+      "grasp_rot_error_rad": 0.051030345261096954,
+      "mean_joint_accel_rad_s2": 0.0049045393243432045,
+      "mean_joint_jerk_rad_s3": 0.002692354843020439,
+      "direction_flips": 10
     },
     {
       "trajectory_id": 3616,
@@ -896,7 +951,7 @@
       "terminal_placement_error_cm": 0.5417562127113342,
       "terminal_angular_velocity": 1.1324020624160767,
       "grasp_success": true,
-      "mean_latency_ms": 22.898153524453704,
+      "mean_latency_ms": 21.43477840888265,
       "step_errors_cm": [
         16.253385543823242,
         15.780716896057129,
@@ -919,7 +974,10 @@
         0.5417562127113342
       ],
       "grasp_error_cm": 3.409832715988159,
-      "grasp_rot_error_rad": 0.06029951199889183
+      "grasp_rot_error_rad": 0.06029951199889183,
+      "mean_joint_accel_rad_s2": 0.01110594067722559,
+      "mean_joint_jerk_rad_s3": 0.009571769274771214,
+      "direction_flips": 7
     },
     {
       "trajectory_id": 3617,
@@ -940,7 +998,7 @@
       "terminal_placement_error_cm": 2.162670135498047,
       "terminal_angular_velocity": 0.8806945085525513,
       "grasp_success": true,
-      "mean_latency_ms": 22.015818544397398,
+      "mean_latency_ms": 22.480982147888945,
       "step_errors_cm": [
         15.3473539352417,
         13.813892364501953,
@@ -972,7 +1030,10 @@
         2.162670135498047
       ],
       "grasp_error_cm": 2.238468647003174,
-      "grasp_rot_error_rad": 0.022086743265390396
+      "grasp_rot_error_rad": 0.022086743265390396,
+      "mean_joint_accel_rad_s2": 0.004468330182135105,
+      "mean_joint_jerk_rad_s3": 0.003626895835623145,
+      "direction_flips": 14
     },
     {
       "trajectory_id": 3618,
@@ -993,7 +1054,7 @@
       "terminal_placement_error_cm": 1.0552928447723389,
       "terminal_angular_velocity": 0.50874263048172,
       "grasp_success": true,
-      "mean_latency_ms": 21.924213125692823,
+      "mean_latency_ms": 21.78134783081567,
       "step_errors_cm": [
         19.363615036010742,
         18.902345657348633,
@@ -1023,7 +1084,10 @@
         1.0552928447723389
       ],
       "grasp_error_cm": 1.2135101556777954,
-      "grasp_rot_error_rad": 0.06728395819664001
+      "grasp_rot_error_rad": 0.06728395819664001,
+      "mean_joint_accel_rad_s2": 0.006756575778126717,
+      "mean_joint_jerk_rad_s3": 0.0034963765647262335,
+      "direction_flips": 10
     },
     {
       "trajectory_id": 3619,
@@ -1044,7 +1108,7 @@
       "terminal_placement_error_cm": 0.5199618339538574,
       "terminal_angular_velocity": 0.8582165837287903,
       "grasp_success": true,
-      "mean_latency_ms": 22.166729197903937,
+      "mean_latency_ms": 21.74860121366302,
       "step_errors_cm": [
         14.183509826660156,
         12.078701972961426,
@@ -1076,7 +1140,10 @@
         0.5199618339538574
       ],
       "grasp_error_cm": 0.8252454996109009,
-      "grasp_rot_error_rad": 0.025499071925878525
+      "grasp_rot_error_rad": 0.025499071925878525,
+      "mean_joint_accel_rad_s2": 0.004617510829120874,
+      "mean_joint_jerk_rad_s3": 0.005101040005683899,
+      "direction_flips": 26
     },
     {
       "trajectory_id": 3620,
@@ -1097,7 +1164,7 @@
       "terminal_placement_error_cm": 1.1309949159622192,
       "terminal_angular_velocity": 0.13846811652183533,
       "grasp_success": false,
-      "mean_latency_ms": 26.063327423928836,
+      "mean_latency_ms": 21.75029625401034,
       "step_errors_cm": [
         22.869081497192383,
         22.381744384765625,
@@ -1129,7 +1196,10 @@
         1.1309949159622192
       ],
       "grasp_error_cm": 1.494201898574829,
-      "grasp_rot_error_rad": 0.04261258244514465
+      "grasp_rot_error_rad": 0.04261258244514465,
+      "mean_joint_accel_rad_s2": 0.010995538905262947,
+      "mean_joint_jerk_rad_s3": 0.011487051844596863,
+      "direction_flips": 13
     },
     {
       "trajectory_id": 3621,
@@ -1150,7 +1220,7 @@
       "terminal_placement_error_cm": 1.5826572179794312,
       "terminal_angular_velocity": 0.9725302457809448,
       "grasp_success": true,
-      "mean_latency_ms": 24.42746447299474,
+      "mean_latency_ms": 21.64848360449209,
       "step_errors_cm": [
         8.150534629821777,
         6.487374782562256,
@@ -1182,7 +1252,10 @@
         1.5826572179794312
       ],
       "grasp_error_cm": 0.40040430426597595,
-      "grasp_rot_error_rad": 0.024492675438523293
+      "grasp_rot_error_rad": 0.024492675438523293,
+      "mean_joint_accel_rad_s2": 0.0040735588409006596,
+      "mean_joint_jerk_rad_s3": 0.00450519472360611,
+      "direction_flips": 29
     },
     {
       "trajectory_id": 3622,
@@ -1203,7 +1276,7 @@
       "terminal_placement_error_cm": 1.0407025814056396,
       "terminal_angular_velocity": 0.5960390567779541,
       "grasp_success": true,
-      "mean_latency_ms": 22.017883752206608,
+      "mean_latency_ms": 21.95211613850136,
       "step_errors_cm": [
         16.835268020629883,
         15.614631652832031,
@@ -1235,7 +1308,10 @@
         1.0407025814056396
       ],
       "grasp_error_cm": 1.9512507915496826,
-      "grasp_rot_error_rad": 0.0164285097271204
+      "grasp_rot_error_rad": 0.0164285097271204,
+      "mean_joint_accel_rad_s2": 0.0051400684751570225,
+      "mean_joint_jerk_rad_s3": 0.004437242168933153,
+      "direction_flips": 11
     },
     {
       "trajectory_id": 3623,
@@ -1256,7 +1332,7 @@
       "terminal_placement_error_cm": 0.7353683710098267,
       "terminal_angular_velocity": 0.7751212120056152,
       "grasp_success": true,
-      "mean_latency_ms": 22.381634583739057,
+      "mean_latency_ms": 21.85922731984068,
       "step_errors_cm": [
         19.0130672454834,
         18.529220581054688,
@@ -1282,7 +1358,10 @@
         0.7353683710098267
       ],
       "grasp_error_cm": 2.1009347438812256,
-      "grasp_rot_error_rad": 0.017469502985477448
+      "grasp_rot_error_rad": 0.017469502985477448,
+      "mean_joint_accel_rad_s2": 0.008832578547298908,
+      "mean_joint_jerk_rad_s3": 0.007999851368367672,
+      "direction_flips": 8
     },
     {
       "trajectory_id": 3624,
@@ -1303,7 +1382,7 @@
       "terminal_placement_error_cm": 0.49283015727996826,
       "terminal_angular_velocity": 0.5896028876304626,
       "grasp_success": true,
-      "mean_latency_ms": 22.13068027880841,
+      "mean_latency_ms": 21.724572920772648,
       "step_errors_cm": [
         10.687779426574707,
         9.224438667297363,
@@ -1335,7 +1414,10 @@
         0.49283015727996826
       ],
       "grasp_error_cm": 0.5979201793670654,
-      "grasp_rot_error_rad": 0.03995826840400696
+      "grasp_rot_error_rad": 0.03995826840400696,
+      "mean_joint_accel_rad_s2": 0.004448717460036278,
+      "mean_joint_jerk_rad_s3": 0.003729070071130991,
+      "direction_flips": 20
     },
     {
       "trajectory_id": 3625,
@@ -1356,7 +1438,7 @@
       "terminal_placement_error_cm": 0.8987256288528442,
       "terminal_angular_velocity": 0.5168832540512085,
       "grasp_success": true,
-      "mean_latency_ms": 21.859860126694134,
+      "mean_latency_ms": 21.723559558657662,
       "step_errors_cm": [
         19.48771858215332,
         18.979877471923828,
@@ -1388,7 +1470,10 @@
         0.8987256288528442
       ],
       "grasp_error_cm": 1.1072275638580322,
-      "grasp_rot_error_rad": 0.06559067219495773
+      "grasp_rot_error_rad": 0.06559067219495773,
+      "mean_joint_accel_rad_s2": 0.005448502022773027,
+      "mean_joint_jerk_rad_s3": 0.002902271458879113,
+      "direction_flips": 4
     },
     {
       "trajectory_id": 3626,
@@ -1409,7 +1494,7 @@
       "terminal_placement_error_cm": 1.0323610305786133,
       "terminal_angular_velocity": 0.8800111413002014,
       "grasp_success": true,
-      "mean_latency_ms": 22.182319957729696,
+      "mean_latency_ms": 21.821619073827087,
       "step_errors_cm": [
         14.437274932861328,
         12.363874435424805,
@@ -1441,7 +1526,10 @@
         1.0323610305786133
       ],
       "grasp_error_cm": 0.9325991272926331,
-      "grasp_rot_error_rad": 0.019005658105015755
+      "grasp_rot_error_rad": 0.019005658105015755,
+      "mean_joint_accel_rad_s2": 0.004855808336287737,
+      "mean_joint_jerk_rad_s3": 0.00627718074247241,
+      "direction_flips": 29
     },
     {
       "trajectory_id": 3627,
@@ -1462,7 +1550,7 @@
       "terminal_placement_error_cm": 1.2450770139694214,
       "terminal_angular_velocity": 0.5539379119873047,
       "grasp_success": true,
-      "mean_latency_ms": 22.170334742570827,
+      "mean_latency_ms": 21.460983598704583,
       "step_errors_cm": [
         21.609241485595703,
         20.970354080200195,
@@ -1494,7 +1582,10 @@
         1.2450770139694214
       ],
       "grasp_error_cm": 1.2591007947921753,
-      "grasp_rot_error_rad": 0.029810264706611633
+      "grasp_rot_error_rad": 0.029810264706611633,
+      "mean_joint_accel_rad_s2": 0.0053956578485667706,
+      "mean_joint_jerk_rad_s3": 0.0026051229797303677,
+      "direction_flips": 9
     },
     {
       "trajectory_id": 3628,
@@ -1515,7 +1606,7 @@
       "terminal_placement_error_cm": 0.634300172328949,
       "terminal_angular_velocity": 0.8581123948097229,
       "grasp_success": true,
-      "mean_latency_ms": 21.58237724021698,
+      "mean_latency_ms": 22.148081004464377,
       "step_errors_cm": [
         17.334367752075195,
         16.983232498168945,
@@ -1537,7 +1628,10 @@
         0.634300172328949
       ],
       "grasp_error_cm": 2.4570488929748535,
-      "grasp_rot_error_rad": 0.14150898158550262
+      "grasp_rot_error_rad": 0.14150898158550262,
+      "mean_joint_accel_rad_s2": 0.008610911667346954,
+      "mean_joint_jerk_rad_s3": 0.006755279842764139,
+      "direction_flips": 7
     },
     {
       "trajectory_id": 3629,
@@ -1558,7 +1652,7 @@
       "terminal_placement_error_cm": 0.506727933883667,
       "terminal_angular_velocity": 0.5710688233375549,
       "grasp_success": true,
-      "mean_latency_ms": 22.60146422694171,
+      "mean_latency_ms": 21.765660752342747,
       "step_errors_cm": [
         15.112735748291016,
         13.774791717529297,
@@ -1590,7 +1684,10 @@
         0.506727933883667
       ],
       "grasp_error_cm": 0.6698695421218872,
-      "grasp_rot_error_rad": 0.033233363181352615
+      "grasp_rot_error_rad": 0.033233363181352615,
+      "mean_joint_accel_rad_s2": 0.004827731288969517,
+      "mean_joint_jerk_rad_s3": 0.004025076050311327,
+      "direction_flips": 12
     },
     {
       "trajectory_id": 3630,
@@ -1611,7 +1708,7 @@
       "terminal_placement_error_cm": 1.319524884223938,
       "terminal_angular_velocity": 0.5646147131919861,
       "grasp_success": true,
-      "mean_latency_ms": 22.537918398156762,
+      "mean_latency_ms": 21.469756616279483,
       "step_errors_cm": [
         20.763029098510742,
         20.364418029785156,
@@ -1640,7 +1737,10 @@
         1.319524884223938
       ],
       "grasp_error_cm": 0.25348880887031555,
-      "grasp_rot_error_rad": 0.031471773982048035
+      "grasp_rot_error_rad": 0.031471773982048035,
+      "mean_joint_accel_rad_s2": 0.00662437966093421,
+      "mean_joint_jerk_rad_s3": 0.003911122214049101,
+      "direction_flips": 7
     },
     {
       "trajectory_id": 3631,
@@ -1661,7 +1761,7 @@
       "terminal_placement_error_cm": 1.8429737091064453,
       "terminal_angular_velocity": 0.6826892495155334,
       "grasp_success": true,
-      "mean_latency_ms": 21.60252824874728,
+      "mean_latency_ms": 21.650754451651924,
       "step_errors_cm": [
         12.834980964660645,
         11.140464782714844,
@@ -1693,7 +1793,10 @@
         1.8429737091064453
       ],
       "grasp_error_cm": 0.557299017906189,
-      "grasp_rot_error_rad": 0.03287626430392265
+      "grasp_rot_error_rad": 0.03287626430392265,
+      "mean_joint_accel_rad_s2": 0.004396004602313042,
+      "mean_joint_jerk_rad_s3": 0.004291616380214691,
+      "direction_flips": 21
     },
     {
       "trajectory_id": 3632,
@@ -1714,7 +1817,7 @@
       "terminal_placement_error_cm": 0.9762020707130432,
       "terminal_angular_velocity": 0.5031729936599731,
       "grasp_success": true,
-      "mean_latency_ms": 22.1504702099732,
+      "mean_latency_ms": 22.955348083217228,
       "step_errors_cm": [
         19.49070930480957,
         19.02494239807129,
@@ -1746,7 +1849,10 @@
         0.9762020707130432
       ],
       "grasp_error_cm": 1.2548482418060303,
-      "grasp_rot_error_rad": 0.04496544972062111
+      "grasp_rot_error_rad": 0.04496544972062111,
+      "mean_joint_accel_rad_s2": 0.005375260021537542,
+      "mean_joint_jerk_rad_s3": 0.0028522179927676916,
+      "direction_flips": 7
     },
     {
       "trajectory_id": 3633,
@@ -1767,7 +1873,7 @@
       "terminal_placement_error_cm": 1.051703691482544,
       "terminal_angular_velocity": 0.8514500260353088,
       "grasp_success": true,
-      "mean_latency_ms": 21.91232157305681,
+      "mean_latency_ms": 21.6080223451302,
       "step_errors_cm": [
         12.088096618652344,
         9.915129661560059,
@@ -1799,7 +1905,10 @@
         1.051703691482544
       ],
       "grasp_error_cm": 0.9630773067474365,
-      "grasp_rot_error_rad": 0.006477794144302607
+      "grasp_rot_error_rad": 0.006477794144302607,
+      "mean_joint_accel_rad_s2": 0.004365499131381512,
+      "mean_joint_jerk_rad_s3": 0.004738935735076666,
+      "direction_flips": 35
     },
     {
       "trajectory_id": 3634,
@@ -1820,7 +1929,7 @@
       "terminal_placement_error_cm": 2.242981195449829,
       "terminal_angular_velocity": 0.5869777798652649,
       "grasp_success": true,
-      "mean_latency_ms": 21.918788714434154,
+      "mean_latency_ms": 22.397129497091687,
       "step_errors_cm": [
         19.587602615356445,
         18.3730525970459,
@@ -1852,7 +1961,10 @@
         2.242981195449829
       ],
       "grasp_error_cm": 2.0502562522888184,
-      "grasp_rot_error_rad": 0.038412440568208694
+      "grasp_rot_error_rad": 0.038412440568208694,
+      "mean_joint_accel_rad_s2": 0.00498472573235631,
+      "mean_joint_jerk_rad_s3": 0.0028783180750906467,
+      "direction_flips": 10
     },
     {
       "trajectory_id": 3635,
@@ -1873,7 +1985,7 @@
       "terminal_placement_error_cm": 0.7384148240089417,
       "terminal_angular_velocity": 0.9589859247207642,
       "grasp_success": true,
-      "mean_latency_ms": 22.18138334574178,
+      "mean_latency_ms": 21.66841696598567,
       "step_errors_cm": [
         18.686986923217773,
         18.254634857177734,
@@ -1897,7 +2009,10 @@
         0.7384148240089417
       ],
       "grasp_error_cm": 3.280271291732788,
-      "grasp_rot_error_rad": 0.12216383963823318
+      "grasp_rot_error_rad": 0.12216383963823318,
+      "mean_joint_accel_rad_s2": 0.007387770339846611,
+      "mean_joint_jerk_rad_s3": 0.0054095154628157616,
+      "direction_flips": 7
     },
     {
       "trajectory_id": 3636,
@@ -1918,7 +2033,7 @@
       "terminal_placement_error_cm": 0.5590090751647949,
       "terminal_angular_velocity": 0.7710319757461548,
       "grasp_success": true,
-      "mean_latency_ms": 21.816142938665248,
+      "mean_latency_ms": 21.814065378358855,
       "step_errors_cm": [
         10.427882194519043,
         8.717863082885742,
@@ -1950,7 +2065,10 @@
         0.5590090751647949
       ],
       "grasp_error_cm": 1.0889450311660767,
-      "grasp_rot_error_rad": 0.06731586158275604
+      "grasp_rot_error_rad": 0.06731586158275604,
+      "mean_joint_accel_rad_s2": 0.0037038587033748627,
+      "mean_joint_jerk_rad_s3": 0.0027505483012646437,
+      "direction_flips": 13
     },
     {
       "trajectory_id": 3637,
@@ -1971,7 +2089,7 @@
       "terminal_placement_error_cm": 1.7585458755493164,
       "terminal_angular_velocity": 0.6548144817352295,
       "grasp_success": true,
-      "mean_latency_ms": 22.05294486235029,
+      "mean_latency_ms": 21.830992623498396,
       "step_errors_cm": [
         23.41184425354004,
         22.889616012573242,
@@ -2003,7 +2121,10 @@
         1.7585458755493164
       ],
       "grasp_error_cm": 1.9553991556167603,
-      "grasp_rot_error_rad": 0.03621388599276543
+      "grasp_rot_error_rad": 0.03621388599276543,
+      "mean_joint_accel_rad_s2": 0.005455526057630777,
+      "mean_joint_jerk_rad_s3": 0.0032461087685078382,
+      "direction_flips": 10
     },
     {
       "trajectory_id": 3638,
@@ -2024,7 +2145,7 @@
       "terminal_placement_error_cm": 1.8657312393188477,
       "terminal_angular_velocity": 0.8340675830841064,
       "grasp_success": true,
-      "mean_latency_ms": 22.19919950584881,
+      "mean_latency_ms": 21.426168153993785,
       "step_errors_cm": [
         9.876331329345703,
         8.003398895263672,
@@ -2056,7 +2177,10 @@
         1.8657312393188477
       ],
       "grasp_error_cm": 1.709234356880188,
-      "grasp_rot_error_rad": 0.009392311796545982
+      "grasp_rot_error_rad": 0.009392311796545982,
+      "mean_joint_accel_rad_s2": 0.004082757979631424,
+      "mean_joint_jerk_rad_s3": 0.004585128743201494,
+      "direction_flips": 27
     },
     {
       "trajectory_id": 3639,
@@ -2077,7 +2201,7 @@
       "terminal_placement_error_cm": 0.30485326051712036,
       "terminal_angular_velocity": 0.6214320659637451,
       "grasp_success": true,
-      "mean_latency_ms": 21.634400364876324,
+      "mean_latency_ms": 22.04374860489874,
       "step_errors_cm": [
         17.086332321166992,
         16.477306365966797,
@@ -2109,7 +2233,10 @@
         0.30485326051712036
       ],
       "grasp_error_cm": 0.7273600101470947,
-      "grasp_rot_error_rad": 0.04215681180357933
+      "grasp_rot_error_rad": 0.04215681180357933,
+      "mean_joint_accel_rad_s2": 0.005267512984573841,
+      "mean_joint_jerk_rad_s3": 0.003164042718708515,
+      "direction_flips": 8
     },
     {
       "trajectory_id": 3640,
@@ -2130,7 +2257,7 @@
       "terminal_placement_error_cm": 1.361080527305603,
       "terminal_angular_velocity": 1.3410112857818604,
       "grasp_success": true,
-      "mean_latency_ms": 22.20952088100603,
+      "mean_latency_ms": 22.543294333445374,
       "step_errors_cm": [
         12.214021682739258,
         11.74438762664795,
@@ -2150,7 +2277,10 @@
         1.361080527305603
       ],
       "grasp_error_cm": 3.5735480785369873,
-      "grasp_rot_error_rad": 0.09638101607561111
+      "grasp_rot_error_rad": 0.09638101607561111,
+      "mean_joint_accel_rad_s2": 0.010976077988743782,
+      "mean_joint_jerk_rad_s3": 0.010852636769413948,
+      "direction_flips": 4
     },
     {
       "trajectory_id": 3641,
@@ -2171,7 +2301,7 @@
       "terminal_placement_error_cm": 0.8330183029174805,
       "terminal_angular_velocity": 0.5754672884941101,
       "grasp_success": true,
-      "mean_latency_ms": 22.202241122223704,
+      "mean_latency_ms": 22.118922601553745,
       "step_errors_cm": [
         17.73661231994629,
         16.268386840820312,
@@ -2203,7 +2333,10 @@
         0.8330183029174805
       ],
       "grasp_error_cm": 1.052306890487671,
-      "grasp_rot_error_rad": 0.013776218518614769
+      "grasp_rot_error_rad": 0.013776218518614769,
+      "mean_joint_accel_rad_s2": 0.004803245421499014,
+      "mean_joint_jerk_rad_s3": 0.0030287927947938442,
+      "direction_flips": 15
     },
     {
       "trajectory_id": 3642,
@@ -2224,7 +2357,7 @@
       "terminal_placement_error_cm": 3.889899969100952,
       "terminal_angular_velocity": 0.46400538086891174,
       "grasp_success": false,
-      "mean_latency_ms": 21.53826984273189,
+      "mean_latency_ms": 21.808306084257428,
       "step_errors_cm": [
         21.229106903076172,
         20.763696670532227,
@@ -2251,7 +2384,10 @@
         3.889899969100952
       ],
       "grasp_error_cm": 3.235805034637451,
-      "grasp_rot_error_rad": 0.06568336486816406
+      "grasp_rot_error_rad": 0.06568336486816406,
+      "mean_joint_accel_rad_s2": 0.010312158614397049,
+      "mean_joint_jerk_rad_s3": 0.006637408398091793,
+      "direction_flips": 12
     },
     {
       "trajectory_id": 3643,
@@ -2272,7 +2408,7 @@
       "terminal_placement_error_cm": 0.7223706245422363,
       "terminal_angular_velocity": 0.5027598142623901,
       "grasp_success": true,
-      "mean_latency_ms": 22.172668179596908,
+      "mean_latency_ms": 21.761133826138185,
       "step_errors_cm": [
         13.299314498901367,
         11.605843544006348,
@@ -2304,7 +2440,10 @@
         0.7223706245422363
       ],
       "grasp_error_cm": 1.5136682987213135,
-      "grasp_rot_error_rad": 0.04233182221651077
+      "grasp_rot_error_rad": 0.04233182221651077,
+      "mean_joint_accel_rad_s2": 0.004360924940556288,
+      "mean_joint_jerk_rad_s3": 0.004415533971041441,
+      "direction_flips": 15
     },
     {
       "trajectory_id": 3644,
@@ -2325,7 +2464,7 @@
       "terminal_placement_error_cm": 0.5177049040794373,
       "terminal_angular_velocity": 0.5593205094337463,
       "grasp_success": true,
-      "mean_latency_ms": 22.252805115255928,
+      "mean_latency_ms": 21.53701932651789,
       "step_errors_cm": [
         22.01893424987793,
         21.38745880126953,
@@ -2357,7 +2496,10 @@
         0.5177049040794373
       ],
       "grasp_error_cm": 0.8425773978233337,
-      "grasp_rot_error_rad": 0.034607745707035065
+      "grasp_rot_error_rad": 0.034607745707035065,
+      "mean_joint_accel_rad_s2": 0.005278890021145344,
+      "mean_joint_jerk_rad_s3": 0.003815876552835107,
+      "direction_flips": 12
     },
     {
       "trajectory_id": 3645,
@@ -2378,7 +2520,7 @@
       "terminal_placement_error_cm": 0.5204315781593323,
       "terminal_angular_velocity": 0.7583476305007935,
       "grasp_success": true,
-      "mean_latency_ms": 21.862816913718625,
+      "mean_latency_ms": 21.827339227976545,
       "step_errors_cm": [
         8.49206256866455,
         6.859379768371582,
@@ -2410,7 +2552,10 @@
         0.5204315781593323
       ],
       "grasp_error_cm": 0.3367852568626404,
-      "grasp_rot_error_rad": 0.018886100500822067
+      "grasp_rot_error_rad": 0.018886100500822067,
+      "mean_joint_accel_rad_s2": 0.004449367523193359,
+      "mean_joint_jerk_rad_s3": 0.005408958066254854,
+      "direction_flips": 26
     },
     {
       "trajectory_id": 3646,
@@ -2431,7 +2576,7 @@
       "terminal_placement_error_cm": 1.1388593912124634,
       "terminal_angular_velocity": 0.4904175102710724,
       "grasp_success": true,
-      "mean_latency_ms": 22.18051193215485,
+      "mean_latency_ms": 21.608383997642836,
       "step_errors_cm": [
         18.21530532836914,
         17.27383804321289,
@@ -2463,7 +2608,10 @@
         1.1388593912124634
       ],
       "grasp_error_cm": 1.2158840894699097,
-      "grasp_rot_error_rad": 0.023781411349773407
+      "grasp_rot_error_rad": 0.023781411349773407,
+      "mean_joint_accel_rad_s2": 0.005680462811142206,
+      "mean_joint_jerk_rad_s3": 0.004407919943332672,
+      "direction_flips": 11
     },
     {
       "trajectory_id": 3647,
@@ -2484,7 +2632,7 @@
       "terminal_placement_error_cm": 1.0929408073425293,
       "terminal_angular_velocity": 1.0217705965042114,
       "grasp_success": true,
-      "mean_latency_ms": 21.89542094588672,
+      "mean_latency_ms": 21.709210435418708,
       "step_errors_cm": [
         16.486068725585938,
         16.013811111450195,
@@ -2507,7 +2655,10 @@
         1.0929408073425293
       ],
       "grasp_error_cm": 3.342074155807495,
-      "grasp_rot_error_rad": 0.0571804977953434
+      "grasp_rot_error_rad": 0.0571804977953434,
+      "mean_joint_accel_rad_s2": 0.012039151042699814,
+      "mean_joint_jerk_rad_s3": 0.010348755866289139,
+      "direction_flips": 7
     },
     {
       "trajectory_id": 3648,
@@ -2528,7 +2679,7 @@
       "terminal_placement_error_cm": 0.888803243637085,
       "terminal_angular_velocity": 0.7162086367607117,
       "grasp_success": true,
-      "mean_latency_ms": 21.96890624639179,
+      "mean_latency_ms": 21.815709719833517,
       "step_errors_cm": [
         13.798644065856934,
         12.398695945739746,
@@ -2560,7 +2711,10 @@
         0.888803243637085
       ],
       "grasp_error_cm": 0.46288734674453735,
-      "grasp_rot_error_rad": 0.06441430002450943
+      "grasp_rot_error_rad": 0.06441430002450943,
+      "mean_joint_accel_rad_s2": 0.0048607527278363705,
+      "mean_joint_jerk_rad_s3": 0.003543667495250702,
+      "direction_flips": 22
     },
     {
       "trajectory_id": 3649,
@@ -2581,7 +2735,7 @@
       "terminal_placement_error_cm": 1.1297786235809326,
       "terminal_angular_velocity": 0.5714928507804871,
       "grasp_success": true,
-      "mean_latency_ms": 22.24586859273796,
+      "mean_latency_ms": 21.619791666475628,
       "step_errors_cm": [
         20.224096298217773,
         19.695636749267578,
@@ -2611,7 +2765,10 @@
         1.1297786235809326
       ],
       "grasp_error_cm": 2.538677215576172,
-      "grasp_rot_error_rad": 0.061218295246362686
+      "grasp_rot_error_rad": 0.061218295246362686,
+      "mean_joint_accel_rad_s2": 0.006531331222504377,
+      "mean_joint_jerk_rad_s3": 0.003185030771419406,
+      "direction_flips": 11
     }
   ]
 }

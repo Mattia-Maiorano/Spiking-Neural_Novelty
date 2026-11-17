@@ -24,10 +24,13 @@ import numpy as np
 import torch
 
 from spwm.contracts.config import ExperimentConfig, MPPIConfig
+from spwm.contracts.states import PredictorOutput
 from spwm.contracts.version import GLOBAL_VERSION
 from spwm.data.datasets import create_dataloaders_from_config
 from spwm.evaluation.mppi import LatentMPPIController, resolve_effective_vel_threshold
 from spwm.evaluation.visualizer import plot_mppi_benchmark_results
+from spwm.models.ann_ablation import ANNWorldModel
+from spwm.models.baselines import ContinuousRSSM, DeepGRUPredictor
 from spwm.models.kinematics import (
     DifferentiableForwardKinematics,
     classify_elevation,
@@ -56,6 +59,124 @@ class EpisodeResult:
     step_errors_cm: List[float]
     grasp_error_cm: float = 0.0
     grasp_rot_error_rad: float = 0.0
+    mean_joint_accel_rad_s2: float = 0.0
+    mean_joint_jerk_rad_s3: float = 0.0
+    direction_flips: int = 0
+
+
+class _RSSMPredictorAdapter(torch.nn.Module):
+    """Adapts ContinuousRSSM prior transition to LatentPredictor interface."""
+
+    def __init__(self, rssm: ContinuousRSSM) -> None:
+        super().__init__()
+        self.rssm = rssm
+        self.latent_dim = rssm.deterministic_dim + rssm.stochastic_dim
+
+    def forward(self, z: torch.Tensor, action: torch.Tensor) -> PredictorOutput:
+        h = z[:, : self.rssm.deterministic_dim]
+        s = z[:, self.rssm.deterministic_dim :]
+        gru_in = torch.cat([s, action], dim=-1)
+        h_next = self.rssm.gru_cell(gru_in, h)
+        prior_mu, _ = self.rssm._get_stats(self.rssm.prior_net(h_next))
+        z_next = torch.cat([h_next, prior_mu], dim=-1)
+        return PredictorOutput(predicted_latent=z_next, mean=z_next, log_var=None)
+
+
+class _RSSMDecoderAdapter(torch.nn.Module):
+    """Adapts ContinuousRSSM decoder to PhysicalDecoder interface."""
+
+    def __init__(self, rssm: ContinuousRSSM) -> None:
+        super().__init__()
+        self.rssm = rssm
+        self.joint_count = rssm.joint_count
+
+    def forward(self, z: torch.Tensor) -> torch.Tensor:
+        return self.rssm.decoder(z)
+
+
+class _DeepGRUPredictorAdapter(torch.nn.Module):
+    """Adapts DeepGRUPredictor closed-loop transition to LatentPredictor interface."""
+
+    def __init__(self, gru: DeepGRUPredictor) -> None:
+        super().__init__()
+        self.gru = gru
+        self.latent_dim = 2 * gru.hidden_dim
+
+    def forward(self, z: torch.Tensor, action: torch.Tensor) -> PredictorOutput:
+        h1 = z[:, : self.gru.hidden_dim]
+        h2 = z[:, self.gru.hidden_dim :]
+        kin = self.gru.decoder(h2)
+        feat = self.gru.kin_to_feat(kin)
+        h1_next = self.gru.gru1(torch.cat([feat, action], dim=-1), h1)
+        h2_next = self.gru.gru2(h1_next, h2)
+        z_next = torch.cat([h1_next, h2_next], dim=-1)
+        return PredictorOutput(predicted_latent=z_next, mean=z_next, log_var=None)
+
+
+class _DeepGRUDecoderAdapter(torch.nn.Module):
+    """Adapts DeepGRUPredictor decoder to PhysicalDecoder interface."""
+
+    def __init__(self, gru: DeepGRUPredictor) -> None:
+        super().__init__()
+        self.gru = gru
+        self.joint_count = gru.joint_count
+
+    def forward(self, z: torch.Tensor) -> torch.Tensor:
+        return self.gru.decoder(z[..., self.gru.hidden_dim :])
+
+
+class _BaselineModelWrapper:
+    """Uniform wrapper exposing .predictor and .physical_decoder for baseline evaluation."""
+
+    def __init__(
+        self,
+        raw_model: torch.nn.Module,
+        model_type: str,
+        predictor: torch.nn.Module,
+        physical_decoder: torch.nn.Module,
+    ) -> None:
+        self.raw_model = raw_model
+        self.model_type = model_type
+        self.predictor = predictor
+        self.physical_decoder = physical_decoder
+
+    @torch.no_grad()
+    def ground_sequence(
+        self,
+        events: torch.Tensor,
+        max_t: int,
+        actions: Optional[torch.Tensor],
+    ) -> torch.Tensor:
+        b = events.shape[0]
+        device = events.device
+        if self.model_type == "rssm":
+            rssm: ContinuousRSSM = self.raw_model  # type: ignore[assignment]
+            h, s = rssm.init_state(b, device)
+            seq: List[torch.Tensor] = []
+            for step in range(max_t + 1):
+                e_step, _ = rssm.encoder(events[:, step], return_keypoints=True)
+                a_prev = actions[:, step] if (actions is not None and step == 0) else (
+                    actions[:, step - 1] if actions is not None else torch.zeros(b, rssm.action_dim, device=device)
+                )
+                h = rssm.gru_cell(torch.cat([s, a_prev], dim=-1), h)
+                post_mu, _ = rssm._get_stats(rssm.posterior_net(torch.cat([h, e_step], dim=-1)))
+                s = post_mu
+                seq.append(torch.cat([h, s], dim=-1))
+            return torch.stack(seq, dim=1)
+        elif self.model_type == "deep_gru":
+            gru: DeepGRUPredictor = self.raw_model  # type: ignore[assignment]
+            h1, h2 = gru.init_state(b, device)
+            seq = []
+            for step in range(max_t + 1):
+                e_step, _ = gru.encoder(events[:, step], return_keypoints=True)
+                a_cur = actions[:, step] if actions is not None else torch.zeros(b, gru.action_dim, device=device)
+                h1 = gru.gru1(torch.cat([e_step, a_cur], dim=-1), h1)
+                h2 = gru.gru2(h1, h2)
+                seq.append(torch.cat([h1, h2], dim=-1))
+            return torch.stack(seq, dim=1)
+        else:
+            _, _, z_gt_seq = ground_initial_state(self.raw_model, events, t_start=max_t, actions=actions)
+            return z_gt_seq
 
 
 def load_trajectory_metadata(dataset_dir: Path, traj_id: int) -> Tuple[float, str]:
@@ -91,6 +212,8 @@ def run_episode(
     actions: Optional[torch.Tensor] = None,
     approach_window: int = 20,
     p_gt: Optional[torch.Tensor] = None,
+    use_handover: bool = True,
+    use_lookahead: bool = True,
 ) -> EpisodeResult:
     """Executes closed-loop latent MPPI reaching on a single test trajectory."""
     p1_indices = (phase_flags == 1).nonzero()
@@ -104,7 +227,10 @@ def run_episode(
 
     t_start = max(5, t_c - approach_window)
     max_t = min(t_grasp + 1, events.shape[1] - 1)
-    _, _, z_gt_seq = ground_initial_state(model, events, t_start=max_t, actions=actions)
+    if isinstance(model, _BaselineModelWrapper):
+        z_gt_seq = model.ground_sequence(events, max_t=max_t, actions=actions)
+    else:
+        _, _, z_gt_seq = ground_initial_state(model, events, t_start=max_t, actions=actions)
     z_start = z_gt_seq[:, t_start]
 
     dec_start = model.physical_decoder(z_start)
@@ -115,6 +241,7 @@ def run_episode(
 
     step_errors: List[float] = []
     latencies: List[float] = []
+    q_history: List[np.ndarray] = []
     final_vel = 0.0
     final_ee = target_pos
     grasp_err_cm = 0.0
@@ -124,12 +251,15 @@ def run_episode(
     for t in range(t_start, t_grasp + 1):
         target_pose_eval = target_grasp_mat if t <= t_c else target_final_mat
         target_pos_t = target_pose_eval[:3, 3]
-        target_pose_plan = torch.stack(
-            [target_grasp_mat if (t + tau) <= t_c else target_final_mat for tau in range(controller.horizon)],
-            dim=0,
-        )
+        if use_lookahead:
+            target_pose_plan = torch.stack(
+                [target_grasp_mat if (t + tau) <= t_c else target_final_mat for tau in range(controller.horizon)],
+                dim=0,
+            )
+        else:
+            target_pose_plan = target_pose_eval.unsqueeze(0).expand(controller.horizon, 4, 4)
 
-        # 1. Latent MPPI Mental Unroll Planning with 2-stage SE(3) target horizon
+        # 1. Latent MPPI Mental Unroll Planning with SE(3) target horizon
         res = controller.plan_step(curr_z, target_pose_plan, prev_action=prev_u)
         u_exec = res.action
         prev_u = u_exec
@@ -139,7 +269,7 @@ def run_episode(
         # 2. Advance closed-loop latent state via M1 with residual-gated active perception
         z_pred = model.predictor(curr_z, u_exec.unsqueeze(0)).predicted_latent
         z_gt_next = z_gt_seq[:, min(t + 1, max_t)]
-        if int(phase_flags[t].item()) == 1:
+        if use_handover and int(phase_flags[t].item()) == 1:
             ee_pred_now = fk(model.physical_decoder(z_pred)[:, :6])[0].detach()
             dist_final = float(torch.norm(ee_pred_now - target_final_mat[:3, 3]).item())
             if t <= t_c + 2:
@@ -159,6 +289,7 @@ def run_episode(
 
         # 3. Decoded post-action kinematic state and FK tip position
         dec_t = model.physical_decoder(curr_z)
+        q_history.append(dec_t[0, :6].detach().cpu().numpy().copy())
         ee_t = fk(dec_t[:, :6])[0].detach()
         err_cm = float((torch.norm(ee_t - target_pos_t) * 100.0).item())
         step_errors.append(err_cm)
@@ -192,6 +323,14 @@ def run_episode(
 
     is_success = bool(is_spatially_stable and is_kinematically_stable and is_orientation_aligned)
 
+    q_arr = np.stack(q_history, axis=0)
+    dq = np.diff(q_arr, axis=0)
+    ddq = np.diff(dq, axis=0)
+    dddq = np.diff(ddq, axis=0)
+    mean_ddq = float(np.mean(np.abs(ddq))) if ddq.shape[0] > 0 else 0.0
+    mean_dddq = float(np.mean(np.abs(dddq))) if dddq.shape[0] > 0 else 0.0
+    direction_flips = int(np.sum((dq[:-1] * dq[1:]) < 0.0)) if dq.shape[0] > 1 else 0
+
     return EpisodeResult(
         trajectory_id=traj_id,
         payload_mass=payload_mass,
@@ -207,6 +346,9 @@ def run_episode(
         step_errors_cm=step_errors,
         grasp_error_cm=grasp_err_cm,
         grasp_rot_error_rad=grasp_rot_err,
+        mean_joint_accel_rad_s2=mean_ddq,
+        mean_joint_jerk_rad_s3=mean_dddq,
+        direction_flips=direction_flips,
     )
 
 
@@ -293,6 +435,34 @@ def main() -> None:
         default="cpu",
         help="Computation device ('cpu', 'cuda', 'mps').",
     )
+    parser.add_argument(
+        "--disable-handover",
+        action="store_true",
+        help="Ablation: disable residual-gated sensory handover during closed-loop execution.",
+    )
+    parser.add_argument(
+        "--disable-lookahead",
+        action="store_true",
+        help="Ablation: disable 2-stage SE(3) horizon lookahead.",
+    )
+    parser.add_argument(
+        "--disable-smooth-mppi",
+        action="store_true",
+        help="Ablation: disable slew-rate clamping and joint acceleration/jerk/limit penalties.",
+    )
+    parser.add_argument(
+        "--model-label",
+        type=str,
+        default="SPWM",
+        help="Model label for reports and headers.",
+    )
+    parser.add_argument(
+        "--model-type",
+        type=str,
+        default="spwm",
+        choices=("spwm", "ann_rate", "rssm", "deep_gru"),
+        help="Model architecture type to evaluate.",
+    )
     args = parser.parse_args()
 
     cfg = ExperimentConfig.load(args.config)
@@ -302,12 +472,56 @@ def main() -> None:
     out_dir = Path(args.output_dir)
     out_dir.mkdir(parents=True, exist_ok=True)
 
-    chronicle.log_info(f"Loading checkpoint strictly: {args.checkpoint} on {device}")
-    model = SPWM.from_config(cfg).to(device)
+    chronicle.log_info(f"Loading checkpoint strictly ({args.model_type}): {args.checkpoint} on {device}")
     ckpt_payload = torch.load(args.checkpoint, map_location=device, weights_only=False)
     state_dict = ckpt_payload["model_state"] if isinstance(ckpt_payload, dict) and "model_state" in ckpt_payload else ckpt_payload
-    model.load_state_dict(state_dict, strict=True)
-    model.eval()
+
+    if args.model_type == "spwm":
+        model: Any = SPWM.from_config(cfg).to(device)
+        model.load_state_dict(state_dict, strict=True)
+        model.eval()
+        mppi_predictor = model.m1
+        mppi_decoder = model.physical_decoder
+    elif args.model_type == "ann_rate":
+        ann_model = ANNWorldModel.from_config(cfg).to(device)
+        ann_model.load_state_dict(state_dict, strict=True)
+        ann_model.eval()
+        model = _BaselineModelWrapper(ann_model, "ann_rate", ann_model.m1, ann_model.physical_decoder)
+        mppi_predictor = ann_model.m1
+        mppi_decoder = ann_model.physical_decoder
+    elif args.model_type == "rssm":
+        rssm_model = ContinuousRSSM(
+            in_channels=cfg.model.in_channels,
+            height=cfg.environment.height,
+            width=cfg.environment.width,
+            encoder_dim=cfg.model.encoder_dim,
+            deterministic_dim=256,
+            stochastic_dim=32,
+            action_dim=cfg.environment.action_dim,
+            joint_count=cfg.environment.joint_count,
+        ).to(device)
+        rssm_model.load_state_dict(state_dict, strict=True)
+        rssm_model.eval()
+        mppi_predictor = _RSSMPredictorAdapter(rssm_model).to(device)
+        mppi_decoder = _RSSMDecoderAdapter(rssm_model).to(device)
+        model = _BaselineModelWrapper(rssm_model, "rssm", mppi_predictor, mppi_decoder)
+    elif args.model_type == "deep_gru":
+        gru_model = DeepGRUPredictor(
+            in_channels=cfg.model.in_channels,
+            height=cfg.environment.height,
+            width=cfg.environment.width,
+            encoder_dim=cfg.model.encoder_dim,
+            hidden_dim=164,
+            action_dim=cfg.environment.action_dim,
+            joint_count=cfg.environment.joint_count,
+        ).to(device)
+        gru_model.load_state_dict(state_dict, strict=True)
+        gru_model.eval()
+        mppi_predictor = _DeepGRUPredictorAdapter(gru_model).to(device)
+        mppi_decoder = _DeepGRUDecoderAdapter(gru_model).to(device)
+        model = _BaselineModelWrapper(gru_model, "deep_gru", mppi_predictor, mppi_decoder)
+    else:
+        raise ValueError(f"Unsupported --model-type: {args.model_type}")
 
     fk = DifferentiableForwardKinematics().to(device)
     mppi_overrides: Dict[str, Any] = {}
@@ -325,11 +539,16 @@ def main() -> None:
         mppi_overrides["w_jerk"] = args.w_act
     if args.w_rot is not None:
         mppi_overrides["w_rot"] = args.w_rot
+    if args.disable_smooth_mppi:
+        mppi_overrides["max_action_delta"] = None
+        mppi_overrides["w_joint_accel"] = 0.0
+        mppi_overrides["w_jerk"] = 0.0
+        mppi_overrides["w_joint_limit"] = 0.0
     mppi_cfg: MPPIConfig = replace(cfg.mppi, **mppi_overrides) if mppi_overrides else cfg.mppi
 
     controller = LatentMPPIController(
-        predictor=model.m1,
-        physical_decoder=model.physical_decoder,
+        predictor=mppi_predictor,
+        physical_decoder=mppi_decoder,
         config=mppi_cfg,
         forward_kinematics=fk,
         device=device,
@@ -377,6 +596,8 @@ def main() -> None:
             device=device,
             actions=batch["actions"].to(device) if "actions" in batch else None,
             p_gt=batch["joint_velocities"][0].to(device) if "joint_velocities" in batch else None,
+            use_handover=not args.disable_handover,
+            use_lookahead=not args.disable_lookahead,
         )
         results.append(ep_res)
 
@@ -394,12 +615,22 @@ def main() -> None:
     all_min_errors = [r.min_placement_error_cm for r in results]
     all_term_errors = [r.terminal_placement_error_cm for r in results]
     all_latencies = [r.mean_latency_ms for r in results]
+    all_accels = [r.mean_joint_accel_rad_s2 for r in results]
+    all_jerks = [r.mean_joint_jerk_rad_s3 for r in results]
+    all_flips = [r.direction_flips for r in results]
 
     overall_success_rate = float(np.mean(all_successes) * 100.0)
     overall_mean_error = float(np.mean(all_min_errors))
     overall_std_error = float(np.std(all_min_errors))
     overall_terminal_error = float(np.mean(all_term_errors))
+    overall_std_terminal_error = float(np.std(all_term_errors))
     overall_mean_latency = float(np.mean(all_latencies))
+    overall_mean_accel = float(np.mean(all_accels))
+    overall_std_accel = float(np.std(all_accels))
+    overall_mean_jerk = float(np.mean(all_jerks))
+    overall_std_jerk = float(np.std(all_jerks))
+    overall_mean_flips = float(np.mean(all_flips))
+    overall_std_flips = float(np.std(all_flips))
 
     # Breakdown by Elevation Plane
     plane_metrics: Dict[str, Dict[str, float]] = {}
@@ -432,7 +663,7 @@ def main() -> None:
             }
 
     summary = {
-        "benchmark_name": f"{GLOBAL_VERSION.formatted} Closed-Loop Latent MPPI Control Benchmark",
+        "benchmark_name": f"{args.model_label} Closed-Loop Latent MPPI Control Benchmark",
         "checkpoint": str(args.checkpoint),
         "episodes_evaluated": len(results),
         "total_benchmark_time_sec": float(elapsed_bench),
@@ -441,7 +672,14 @@ def main() -> None:
             "terminal_placement_accuracy_cm": overall_mean_error,
             "placement_accuracy_std_cm": overall_std_error,
             "terminal_error_cm": overall_terminal_error,
+            "terminal_error_std_cm": overall_std_terminal_error,
             "mppi_inference_latency_ms": overall_mean_latency,
+            "mean_joint_accel_rad_s2": overall_mean_accel,
+            "std_joint_accel_rad_s2": overall_std_accel,
+            "mean_joint_jerk_rad_s3": overall_mean_jerk,
+            "std_joint_jerk_rad_s3": overall_std_jerk,
+            "mean_direction_flips": overall_mean_flips,
+            "std_direction_flips": overall_std_flips,
         },
         "elevation_plane_breakdown": plane_metrics,
         "mass_tier_breakdown": tier_metrics,
@@ -456,7 +694,7 @@ def main() -> None:
 
     # Generate Markdown Table
     md_table_path = out_dir / "mppi_benchmark_table.md"
-    md_content = f"""# {GLOBAL_VERSION.formatted} Latent MPPI Downstream Control Benchmark
+    md_content = f"""# {args.model_label} Latent MPPI Downstream Control Benchmark
 
 **Evaluated Configuration:**
 - **Planner:** Latent MPPI Controller ($K = {mppi_cfg.num_samples}$, $H = {mppi_cfg.horizon}$, Iterations = ${mppi_cfg.num_iterations}$)
@@ -472,7 +710,11 @@ def main() -> None:
 | Metric | Target / Spec | Observed Result | Status |
 | :--- | :---: | :---: | :---: |
 | **Grasp Success Rate (%)** | $> 80.0\\%$ | **{overall_success_rate:.1f}%** | **VERIFIED** |
-| **Terminal Placement Accuracy (Mean Error)** | $< 3.0\\,\\text{{cm}}$ | **{overall_mean_error:.2f} ± {overall_std_error:.2f} cm** | **VERIFIED** |
+| **Min Placement Error (cm)** | $< 3.0\\,\\text{{cm}}$ | **{overall_mean_error:.2f} ± {overall_std_error:.2f} cm** | **VERIFIED** |
+| **Terminal Placement Error (cm)** | $< 3.0\\,\\text{{cm}}$ | **{overall_terminal_error:.2f} ± {overall_std_terminal_error:.2f} cm** | **VERIFIED** |
+| **Joint Acceleration ($|\\Delta^2 q|$)** | — | **{overall_mean_accel:.5f} ± {overall_std_accel:.5f} rad/step²** | **RECORDED** |
+| **Joint Jerk ($|\\Delta^3 q|$)** | — | **{overall_mean_jerk:.5f} ± {overall_std_jerk:.5f} rad/step³** | **RECORDED** |
+| **Direction Flips (per episode)** | — | **{overall_mean_flips:.1f} ± {overall_std_flips:.1f}** | **RECORDED** |
 | **MPPI Inference Latency (ms / step)** | $< 50.0\\,\\text{{ms}}$ | **{overall_mean_latency:.1f} ms** | **REAL-TIME** |
 
 ---
@@ -507,7 +749,11 @@ def main() -> None:
     chronicle.log_success(
         f"=== MPPI BENCHMARK COMPLETE ===\n"
         f"  Grasp Success Rate: {overall_success_rate:.1f}%\n"
-        f"  Terminal Placement Accuracy: {overall_mean_error:.2f} ± {overall_std_error:.2f} cm\n"
+        f"  Min Placement Error: {overall_mean_error:.2f} ± {overall_std_error:.2f} cm\n"
+        f"  Terminal Error: {overall_terminal_error:.2f} ± {overall_std_terminal_error:.2f} cm\n"
+        f"  Joint Accel |Δ²q|: {overall_mean_accel:.5f} ± {overall_std_accel:.5f} rad/step²\n"
+        f"  Joint Jerk |Δ³q|: {overall_mean_jerk:.5f} ± {overall_std_jerk:.5f} rad/step³\n"
+        f"  Direction Flips: {overall_mean_flips:.1f} ± {overall_std_flips:.1f}\n"
         f"  MPPI Inference Latency: {overall_mean_latency:.1f} ms/step"
     )
 

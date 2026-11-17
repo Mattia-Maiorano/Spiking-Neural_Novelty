@@ -187,8 +187,10 @@ def plot_fig1_mppi(mppi_data: Dict[str, Any], out_dir: Path) -> None:
     ax.set_xticklabels(planes)
     ax.set_ylim(0, 115)
     ax2.set_ylim(0, 3.5)
-    ax.set_ylabel("Grasp Success Rate (%)")
-    ax2.set_ylabel("Min Placement Error (cm)")
+    ax.set_ylabel("Grasp Success Rate (%)", color="#1f4e79", fontweight="bold")
+    ax.tick_params(axis="y", colors="#1f4e79")
+    ax2.set_ylabel("Min Placement Error (cm)", color="#d95f02", fontweight="bold")
+    ax2.tick_params(axis="y", colors="#d95f02")
     ax.set_title("(a) Elevation Plane Stratification")
     h1, l1 = ax.get_legend_handles_labels()
     h2, l2 = ax2.get_legend_handles_labels()
@@ -225,7 +227,7 @@ def plot_fig1_mppi(mppi_data: Dict[str, Any], out_dir: Path) -> None:
     ax.legend(loc="upper right", fontsize=8)
     ax.grid(True, alpha=0.25)
 
-    fig.suptitle(f"{GLOBAL_VERSION.tag} Closed-Loop Latent MPPI Benchmark (N={len(eps)} Episodes)", fontweight="bold", y=1.02)
+    fig.suptitle(f"SPWM Closed-Loop Latent MPPI Benchmark (N={len(eps)} Episodes)", fontweight="bold", y=1.02)
     fig.tight_layout()
     save_publication_figure(fig, out_dir / "fig1_mppi_benchmark")
     plt.close(fig)
@@ -252,7 +254,7 @@ def plot_fig2_rollout(ssot_data: Dict[str, Any], out_dir: Path) -> None:
 
     ax.set_xlabel("Prediction Horizon Step $h$ ($\\Delta t = 50$ ms)")
     ax.set_ylabel("Decoded Joint-Space Error $\\|\\hat{\\mathbf{q}}_h - \\mathbf{q}^*_h\\|_2$ (rad)")
-    ax.set_title(f"{GLOBAL_VERSION.tag} Multi-Horizon Rollout: Open-Loop vs. Phasic Handover (N={ssot_data['n_test']})")
+    ax.set_title(f"SPWM Multi-Horizon Rollout: Open-Loop vs. Phasic Handover (N={ssot_data['n_test']})")
     ax.legend(loc="upper left", fontsize=8.5)
     ax.grid(True, alpha=0.25)
     fig.tight_layout()
@@ -291,45 +293,69 @@ def plot_fig3_robustness(rob_data: Dict[str, Any], out_dir: Path) -> None:
     ax.axhline(1.5, color="black", linestyle="--", linewidth=1.6)
     cbar = fig.colorbar(im, ax=ax, fraction=0.03, pad=0.03)
     cbar.set_label("Grasp Success Rate (%)")
-    ax.set_title(f"{GLOBAL_VERSION.tag} Zero-Shot Domain Gap & Robustness Matrix")
+    ax.set_title("SPWM Zero-Shot Domain Gap & Robustness Matrix")
     fig.tight_layout()
     save_publication_figure(fig, out_dir / "fig3_robustness_domain")
     plt.close(fig)
 
 
-def plot_fig4_energy(ssot_data: Dict[str, Any], out_dir: Path) -> None:
-    """Plot Fig 4: Measured SPWM SOP Energy vs Architectural GPU MAC Energy."""
+def plot_fig4_energy(ssot_data: Dict[str, Any], out_dir: Path, energy_json_path: Path = Path("results/energy_profiling/energy_profiling_metrics.json")) -> None:
+    """Plot Fig 5: Recurrent State-Estimator Core vs. Full End-to-End Closed-Loop Step Energy."""
     set_paper_style()
     e = ssot_data["energy"]
-    labels = [
-        f"{GLOBAL_VERSION.tag} (Loihi-2 SOPs)",
-        f"{GLOBAL_VERSION.tag} / ANN (Orin GPU)",
+    e2e_data = json.loads(energy_json_path.read_text(encoding="utf-8"))
+
+    fig, axes = plt.subplots(1, 2, figsize=(13.0, 4.2))
+
+    # Panel (a): Recurrent State-Estimator Core Step Energy (nJ/step, log scale)
+    ax = axes[0]
+    labels_core = [
+        "SPWM (Loihi-2 SOPs)",
+        "SPWM / ANN-Rate (Orin GPU)",
         "Deep GRU (Orin GPU)",
         "Continuous RSSM (Orin GPU)",
         "ConvLSTM (Orin GPU)",
     ]
-    vals = [
+    vals_core = [
         e["spwm_neuro_nj"],
         e["ann_rate_gpu_nj"],
         e["deep_gru_gpu_nj"],
         e["rssm_gpu_nj"],
         e["convlstm_gpu_nj"],
     ]
-    colors = ["#1b9e77", "#d95f02", "#7570b3", "#e7298a", "#666666"]
-
-    fig, ax = plt.subplots(figsize=(8.0, 4.0))
-    y = np.arange(len(labels))
-    bars = ax.barh(y, vals, color=colors, height=0.55)
+    colors_core = ["#1b9e77", "#d95f02", "#7570b3", "#e7298a", "#666666"]
+    y = np.arange(len(labels_core))
+    bars = ax.barh(y, vals_core, color=colors_core, height=0.55)
     ax.set_xscale("log")
     ax.set_yticks(y)
-    ax.set_yticklabels(labels)
+    ax.set_yticklabels(labels_core)
     ax.invert_yaxis()
-    ax.set_xlim(left=0.1, right=max(vals) * 8.0)
-    ax.set_xlabel("Recurrent Step Energy (nJ / step, log scale)")
-    ax.set_title(f"{GLOBAL_VERSION.tag} Step Energy (Measured Spike Rate: {ssot_data['mean_spike_rate']*100:.1f}%)")
-    for b, v in zip(bars, vals):
+    ax.set_xlim(left=0.1, right=max(vals_core) * 10.0)
+    ax.set_xlabel("Core Step Energy (nJ / step, log scale)")
+    ax.set_title(f"(a) Recurrent Core Energy (Spike Rate: {ssot_data['mean_spike_rate']*100:.2f}%)")
+    for b, v in zip(bars, vals_core):
         ax.text(v * 1.15, b.get_y() + b.get_height() / 2, f"{v:.2f} nJ", va="center", ha="left", fontsize=8.5)
     ax.grid(True, axis="x", alpha=0.25)
+
+    # Panel (b): Full End-to-End Closed-Loop Step Energy (mJ/step on Jetson Orin)
+    ax2 = axes[1]
+    e2e_models = ["SPWM", "ANN-Rate", "Deep GRU", "Continuous RSSM"]
+    e2e_labels = ["SPWM\n(Loihi-2 Core + Orin MPPI)", "ANN-Rate\n(Orin GPU)", "Deep GRU\n(Orin GPU)", "Continuous RSSM\n(Orin GPU)"]
+    e2e_vals_mj = [e2e_data[m]["e2e_step_energy_mj"] for m in e2e_models]
+    e2e_colors = ["#1b9e77", "#d95f02", "#7570b3", "#e7298a"]
+    y2 = np.arange(len(e2e_models))
+    bars2 = ax2.barh(y2, e2e_vals_mj, color=e2e_colors, height=0.55)
+    ax2.set_yticks(y2)
+    ax2.set_yticklabels(e2e_labels)
+    ax2.invert_yaxis()
+    ax2.set_xlim(0.0, max(e2e_vals_mj) * 1.28)
+    ax2.set_xlabel("End-to-End Closed-Loop Step Energy (mJ / step)")
+    ax2.set_title("(b) Full-System Step Energy (Encoder + K=256xH=10x3 MPPI)")
+    for b, v in zip(bars2, e2e_vals_mj):
+        ax2.text(v + max(e2e_vals_mj) * 0.02, b.get_y() + b.get_height() / 2, f"{v:.2f} mJ", va="center", ha="left", fontsize=8.5)
+    ax2.grid(True, axis="x", alpha=0.25)
+
+    fig.suptitle("SPWM Neuromorphic Core vs. Full End-to-End Closed-Loop Energy", fontweight="bold", y=1.02)
     fig.tight_layout()
     save_publication_figure(fig, out_dir / "fig4_energy_efficiency")
     plt.close(fig)
@@ -351,11 +377,10 @@ def write_ssot_markdown(
     lats = [e["mean_latency_ms"] for e in eps]
 
     lines: List[str] = [
-        f"# Master Figure Metrics & Critical Analysis (`{GLOBAL_VERSION.tag}`)",
+        "# Master Figure Metrics & Critical Analysis (SPWM)",
         "",
-        f"**Active Version (SSOT)**: `{GLOBAL_VERSION.tag}`  ",
-        f"**Checkpoint**: `{GLOBAL_VERSION.m1_checkpoint()}`  ",
-        f"**Generated**: `{ts}`  ",
+        "**Model**: `SPWM`  ",
+        "**Generated**: `{ts}`  ",
         "**Generated By**: `scripts/run_ssot_benchmark_and_plot.py`  ",
         "",
         "---",
@@ -409,8 +434,8 @@ def write_ssot_markdown(
     lines.extend([
         "",
         "## 4. Recurrent Step Energy (`figures/fig4_energy_efficiency.png`)",
-        f"- **{GLOBAL_VERSION.tag} (Loihi-2 SOPs @ `{ssot_data['mean_spike_rate']*100:.2f}%` spike rate)**: `{e['spwm_neuro_nj']:.2f} nJ/step` (**`{e['speedup_vs_own_gpu']:.1f}x`** vs own GPU MACs)",
-        f"- **{GLOBAL_VERSION.tag} / ANN (Orin GPU MACs)**: `{e['ann_rate_gpu_nj']:.2f} nJ/step`",
+        f"- **SPWM (Loihi-2 SOPs @ `{ssot_data['mean_spike_rate']*100:.2f}%` spike rate)**: `{e['spwm_neuro_nj']:.2f} nJ/step` (**`{e['speedup_vs_own_gpu']:.1f}x`** vs own GPU MACs)",
+        f"- **SPWM / ANN (Orin GPU MACs)**: `{e['ann_rate_gpu_nj']:.2f} nJ/step`",
         f"- **Deep GRU (Orin GPU MACs)**: `{e['deep_gru_gpu_nj']:.2f} nJ/step`",
         f"- **Continuous RSSM (Orin GPU MACs)**: `{e['rssm_gpu_nj']:.2f} nJ/step`",
         f"- **ConvLSTM (Orin GPU MACs)**: `{e['convlstm_gpu_nj']:.2f} nJ/step`",
@@ -431,12 +456,14 @@ def main() -> None:
     parser.add_argument("--mppi-episodes", type=int, default=50)
     parser.add_argument("--robustness-episodes", type=int, default=20)
     parser.add_argument("--sensor-trajectories", type=int, default=50)
+    parser.add_argument("--config", type=Path, default=Path("results/spwm_v0_12_4_train_m1/config.yaml"))
+    parser.add_argument("--checkpoint", type=Path, default=Path("results/spwm_v0_12_4_train_m1/model.pt"))
     parser.add_argument("--skip-eval", action="store_true", help="Re-plot from existing results JSONs without re-running evals")
     parser.add_argument("--reuse-benchmarks", action="store_true", help="Reuse existing mppi/robustness JSONs and only run rollout+energy+plots")
     args = parser.parse_args()
 
-    cfg_path = GLOBAL_VERSION.m1_config()
-    ckpt_path = GLOBAL_VERSION.m1_checkpoint()
+    cfg_path = args.config
+    ckpt_path = args.checkpoint
     data_dir = Path("sim/ExportedTrajectories")
     fig_dir = Path("figures")
     mppi_json = Path("results/mppi_benchmark/mppi_benchmark_metrics.json")
@@ -479,8 +506,6 @@ def main() -> None:
     mppi_data = json.loads(mppi_json.read_text(encoding="utf-8"))
     rob_data = json.loads(rob_json.read_text(encoding="utf-8"))
 
-    if fig_dir.exists():
-        shutil.rmtree(fig_dir)
     fig_dir.mkdir(parents=True, exist_ok=True)
 
     print("\n>>> Rendering clean SSOT figures...")

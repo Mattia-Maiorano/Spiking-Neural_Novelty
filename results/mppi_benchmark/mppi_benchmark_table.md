@@ -1,4 +1,4 @@
-# SPWM-v0.12.4 Latent MPPI Downstream Control Benchmark
+# SPWM Latent MPPI Downstream Control Benchmark
 
 **Evaluated Configuration:**
 - **Planner:** Latent MPPI Controller ($K = 256$, $H = 10$, Iterations = $3$)
@@ -14,8 +14,12 @@
 | Metric | Target / Spec | Observed Result | Status |
 | :--- | :---: | :---: | :---: |
 | **Grasp Success Rate (%)** | $> 80.0\%$ | **96.0%** | **VERIFIED** |
-| **Terminal Placement Accuracy (Mean Error)** | $< 3.0\,\text{cm}$ | **0.67 ± 0.46 cm** | **VERIFIED** |
-| **MPPI Inference Latency (ms / step)** | $< 50.0\,\text{ms}$ | **22.2 ms** | **REAL-TIME** |
+| **Min Placement Error (cm)** | $< 3.0\,\text{cm}$ | **0.67 ± 0.46 cm** | **VERIFIED** |
+| **Terminal Placement Error (cm)** | $< 3.0\,\text{cm}$ | **1.21 ± 0.70 cm** | **VERIFIED** |
+| **Joint Acceleration ($|\Delta^2 q|$)** | — | **0.00612 ± 0.00231 rad/step²** | **RECORDED** |
+| **Joint Jerk ($|\Delta^3 q|$)** | — | **0.00501 ± 0.00255 rad/step³** | **RECORDED** |
+| **Direction Flips (per episode)** | — | **14.6 ± 8.3** | **RECORDED** |
+| **MPPI Inference Latency (ms / step)** | $< 50.0\,\text{ms}$ | **21.9 ms** | **REAL-TIME** |
 
 ---
 

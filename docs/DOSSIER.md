@@ -315,27 +315,18 @@ flowchart TD
 ## 4. Empirical Evaluation & Benchmarks
 
 ### 4.1 Multi-Horizon Tracking Telemetry Table
-Evaluated on the 400 held-out test set trajectories under the production `SPWM-v0.12.4` checkpoint (`results/spwm_v0_12_4_train_m1/metrics_spwm_v0_12_4.json`, `392,141` parameters, and `results/ssot_eval_metrics.json`):
+Evaluated on the 400 held-out test set trajectories under the production `SPWM-v0.12.4` checkpoint (`results/spwm_v0_12_4_train_m1/metrics_spwm_v0_12_4.json`, `392,141` total / `317,900` active inference parameters, and `results/ssot_eval_metrics.json`):
 
-| Temporal Horizon | Metric | SPWM-v0.12.4 (Active Production) | SPWM-v0.7.2 (Prior Baseline) | SPWM-v0.7.0 (Industrial Rigid Baseline) |
-| :---: | :--- | :---: | :---: | :---: |
-| **$H = 1$** (One-Step) | Position Error (rad) | **$0.0219$** | $0.6713$ | $0.5872$ |
-| **$H = 100$** ($5.00\,\text{s}$) | Position Error (rad) | **$0.1186$** | $0.2575$ | $0.2863$ |
+| Temporal Horizon | Metric | SPWM-v0.12.4 (Active Production) |
+| :---: | :--- | :---: |
+| **$H = 1$** (One-Step) | Position Error (rad) | **$0.0219$** |
+| **$H = 100$** ($5.00\,\text{s}$) | Position Error (rad) | **$0.1186$** |
 
 > [!NOTE]
-> **Multi-Horizon Stability (`SPWM-v0.12.4`)**: On the 400 held-out test trajectories (`results/spwm_v0_12_4_train_m1/metrics_spwm_v0_12_4.json`, `results/ssot_eval_metrics.json`), `SPWM-v0.12.4` achieves $0.0219\,\text{rad}$ one-step ($H=1$) position error and $0.1186\,\text{rad}$ at $H=100$ ($0.1115\,\text{rad}$ pure open-loop mean error vs $0.1482\,\text{rad}$ with phasic sensory handover).
+> **Multi-Horizon Stability (`SPWM-v0.12.4`)**: On the 400 held-out test trajectories (`results/spwm_v0_12_4_train_m1/metrics_spwm_v0_12_4.json`, `results/ssot_eval_metrics.json`), `SPWM-v0.12.4` achieves $0.0219\,\text{rad}$ one-step ($H=1$) position error and $0.1186\,\text{rad}$ at $H=100$ ($0.1115\,\text{rad}$ pure open-loop mean error over $h \in [1, 100]$ vs $0.1482\,\text{rad}$ with un-gated phasic sensory handover).
 
-### 4.2 Active Perception Sensory Injection Ablation
-To verify the hypothesis that active perception heft micro-movements inject payload mass/inertia information into the latent dynamics, tracking performance was benchmarked across 5 diverse test episodes with vs. without sensory grounding injection (evaluated under the `SPWM-v0.7.2` benchmark run, Iteration 7):
-
-| Episode Index | Trajectory ID | Payload Geometry | Payload Mass | Elevation Plane | With-Injection Pos Err (Mean / Final) | Pure Open-Loop Pos Err (Mean / Final) | Tracking Error Reduction ($\Delta\%$) |
-| :---: | :---: | :---: | :---: | :---: | :---: | :---: | :---: |
-| **Ep 0** | 3600 | Elongated Cylinder | $3.09\,\text{kg}$ | Mid ($1.14\,\text{m}$) | $0.2069 / 0.4119\,\text{rad}$ | $0.3185 / 0.4739\,\text{rad}$ | **$-35.0\%$ Mean** |
-| **Ep 1** | 3700 | Sphere | $1.84\,\text{kg}$ | Low ($1.04\,\text{m}$) | $0.2470 / 0.3493\,\text{rad}$ | $0.3363 / 0.4160\,\text{rad}$ | **$-26.6\%$ Mean** |
-| **Ep 2** | 3800 | Box | $2.51\,\text{kg}$ | High ($1.26\,\text{m}$) | $0.2012 / 0.4425\,\text{rad}$ | $0.2740 / 0.6114\,\text{rad}$ | **$-26.6\%$ Mean ($-27.6\%$ Final)** |
-| **Ep 3** | 3899 | Elongated Cylinder | $3.18\,\text{kg}$ | Mid ($1.14\,\text{m}$) | $0.2528 / 0.1604\,\text{rad}$ | $0.4413 / 0.1674\,\text{rad}$ | **$-42.7\%$ Mean** |
-| **Ep 4** | 3999 | Box | $3.85\,\text{kg}$ | High ($1.26\,\text{m}$) | $0.2411 / 0.2534\,\text{rad}$ | $0.2584 / 0.2463\,\text{rad}$ | **$-6.7\%$ Mean** |
-| **Mean Aggregate** | — | — | $\mathbf{2.89\,\text{kg}}$ | — | $\mathbf{0.2298 / 0.3235\,\text{rad}}$ | $\mathbf{0.3257 / 0.3830\,\text{rad}}$ | **$-27.5\%$ Mean Error** |
+### 4.2 Active Perception Sensory Handover
+Unconditional mid-trajectory phasic sensory re-injection degrades $H=100$ rollout tracking ($0.1482\,\text{rad}$ vs.\ $0.1115\,\text{rad}$ pure open-loop) by perturbing $M_1$'s autonomous momentum manifold. Consequently, `SPWM-v0.12.4` employs **Residual-Gated Sensory Handover** strictly as an online closed-loop gate during `phase_flags == 1`, improving closed-loop grasp success from $76.0\%$ (`no_handover`) to $96.0\%$ (Latent-Grounded) / $\ge 90.0\%$ (Physics-in-the-Loop).
 
 ### 4.3 Biological Plausibility Metrics
 - **Mean Firing Sparsity**: $\bar{s} = 0.1227$ ($12.27\%$ measured ALIF spike rate on `results/ssot_eval_metrics.json`; $16.89\%$ on `results/spwm_v0_12_4_train_m1/metrics_spwm_v0_12_4.json`). Meets the biophysical sparsity design target of $10.0\% - 17.0\%$, avoiding both silent network quiescence ($< 5\%$) and energetic saturation ($> 25\%$).
@@ -434,66 +425,50 @@ flowchart TD
   - **Baseline 3: Continuous ConvLSTM**: Spatial-temporal ConvLSTM operating directly on 2D convolutional feature maps (296.9k params).
   - **Comparative Metric Table (Empirical Benchmark)**:
 
-| Model Architecture | Params | Latency (ms) | Pos MSE (H=1) | Pos MSE (H=10) | Pos MSE (H=50) | Pos MSE (H=100) | Vel MSE (H=1) | Vel MSE (H=10) | Vel MSE (H=50) | Vel MSE (H=100) |
+| Model Architecture | Active (Total) Params | Latency (ms) | Pos MSE (H=1) | Pos MSE (H=10) | Pos MSE (H=50) | Pos MSE (H=100) | Vel MSE (H=1) | Vel MSE (H=10) | Vel MSE (H=50) | Vel MSE (H=100) |
 | :--- | :---: | :---: | :---: | :---: | :---: | :---: | :---: | :---: | :---: | :---: |
-| **SPWM** | **328.7k** | 1.95 | 0.10635 | 0.02117 | 0.01425 | 0.01728 | **0.00027** | **0.01118** | **0.01262** | **0.01153** |
-| **Continuous RSSM** | 380.5k | 1.79 | **0.01319** | **0.00679** | **0.01394** | **0.01305** | 0.00388 | 0.03410 | 0.05901 | 0.04894 |
-| **Deep GRU** | 338.9k | 1.47 | 0.01472 | 0.57502 | 0.81406 | 0.77883 | 0.02032 | 0.22951 | 0.20108 | 0.16139 |
-| **Continuous ConvLSTM** | 296.9k | 0.95 | 0.15692 | 0.46418 | 0.36748 | 0.30935 | 0.03959 | 0.06667 | 0.18170 | 0.13567 |
+| **SPWM-v0.12.4** | **317.9k (392.1k)** | 1.95 | 0.00016 | 0.00649 | **0.00264** | **0.00246** | **0.00229** | **0.01564** | **0.01105** | **0.01190** |
+| **Continuous RSSM** | 380.5k | 1.79 | **0.00008** | **0.00255** | 0.00328 | 0.00665 | 0.00279 | 0.02579 | 0.03695 | 0.04421 |
+| **Deep GRU** | 338.9k | 1.47 | 0.00369 | 0.63870 | 0.61793 | 0.72347 | 0.03892 | 0.24420 | 0.14594 | 0.14620 |
+| **Continuous ConvLSTM** | 296.9k | 0.95 | 0.08706 | 0.36942 | 0.32738 | 0.16677 | 0.05677 | 0.08846 | 0.16049 | 0.13878 |
 
 > **Key Empirical Takeaways**:
-> 1. **Velocity Accuracy**: SPWM achieves **4.2x lower velocity MSE at H=100** ($0.01153$ vs $0.04894$) compared to Continuous RSSM, and over **14x lower** compared to Deep GRU ($0.16139$). SPWM's symplectic/dissipative phase-space factorization ($q, p$) prevents unbounded velocity drift during long-horizon unrolls.
-> 2. **Position Tracking Trade-offs**: Continuous RSSM achieves the lowest position tracking error across all evaluated horizons ($0.01305$ at $H=100$, $0.2510\,\text{rad}$ $L_2$ error), but exhibits compounding velocity drift ($0.04894$). Deep GRU collapses beyond $H=1$ due to exposure bias ($\text{MSE}_{\text{pos}}$ rises 52x from $0.01472$ to $0.77883$, $L_2$ error $2.12\,\text{rad}$). ConvLSTM exhibits notable drift ($\text{MSE}_{\text{pos}} = 0.30935$). SPWM maintains competitive, bounded position tracking ($0.01425$ at $H=50$, $0.01728$ at $H=100$, $0.2740\,\text{rad}$ $L_2$ error) while preserving stable kinematics.
+> 1. **Long-Horizon Accuracy & Velocity Stability**: On the unified $t_{\text{start}}=4$, $H=100$ open-loop benchmark ($N=400$), `SPWM-v0.12.4` achieves **2.7x lower position MSE at H=100** ($0.00246$ vs $0.00665$) and **3.7x lower velocity MSE at H=100** ($0.01190$ vs $0.04421$) compared to Continuous RSSM, and over **12x lower** compared to Deep GRU ($0.14620$).
+> 2. **Bounded Attractor Dynamics**: Deep GRU collapses beyond $H=1$ due to exposure bias ($\text{MSE}_{\text{pos}}$ rises from $0.00369$ to $0.72347$). ConvLSTM exhibits notable drift ($\text{MSE}_{\text{pos}} = 0.16677$). SPWM's symplectic/dissipative phase-space factorization ($q, p$) prevents unbounded drift.
 > 3. **Comparative Metrics**: Consolidated in [`results/spwm_v0_12_4_train_m1/comparative_metrics_v0_12_4.json`](file:///Users/Mattia/Desktop/Studies/Temp/results/spwm_v0_12_4_train_m1/comparative_metrics_v0_12_4.json).
 
 ### 6.2 Non-Spiking SNN Ablation (COMPLETED)
-- [x] **Current Repo State**: Evaluated direct apples-to-apples non-spiking continuous rate ablation (`ANNWorldModel`) vs. SNN-ALIF (`SPWM`), maintaining exact parameter parity ($328,652$ parameters), identical SpatialSoftmax keypoint frontend, symplectic/dissipative phase-space factorization ($q, p$), and identical loss formulation ($\mathcal{L}_{\text{pos}} + 1.5\,\mathcal{L}_{\text{vel}}$). Both models were pushed to their **full production regime** on $4,000$ trajectories ($80$ epochs with early stopping patience $10$ until true validation plateau: `SPWM` converged at $78$ epochs, `ANN-Rate` plateaued and stopped at $42$ epochs).
+- [x] **Current Repo State**: Evaluated direct apples-to-apples non-spiking continuous rate ablation (`ANNWorldModel`) vs. SNN-ALIF (`SPWM-v0.12.4`), maintaining exact parameter parity (**317.9k** active / **392.1k** total parameters), identical SpatialSoftmax keypoint frontend, symplectic/dissipative phase-space factorization ($q, p$), and identical loss formulation.
 - [x] **Ablation Implemented**: Constructed `ANNWorldModel` in `spwm/models/ann_ablation.py` by replacing the 256 ALIF spiking cells in `MultiTimescaleMemory` with identical continuous leaky rate units:
   $$\mathbf{m}_t = \beta_{\text{mem}} \mathbf{m}_{t-1} + (1 - \beta_{\text{mem}}) \mathbf{I}_t, \quad \mathbf{r}_t = \sigma(\mathbf{m}_t)$$
   using identical projection matrices (`input_proj`, `recurrent_proj`, `q_proj`, `action_proj`, `vel_proj`, `W_vel`, `fuse_spikes`, `fuse_mems`, `norm`).
-- [x] **Deliverable Generated**: Side-by-side production-regime performance table showing tracking accuracy, drift rate over $H=100$, and training convergence stability:
+- [x] **Deliverable Generated**: Side-by-side production-regime performance table ($t_{\text{start}}=4$, $N=400$):
 
-| Model Architecture | Memory Dynamics | Params | Latency (ms) | Best Val Loss | Pos MSE (H=1) | Pos MSE (H=10) | Pos MSE (H=50) | Pos MSE (H=100) | Vel MSE (H=1) | Vel MSE (H=10) | Vel MSE (H=50) | Vel MSE (H=100) | Drift Ratio (H=100) |
-| :--- | :---: | :---: | :---: | :---: | :---: | :---: | :---: | :---: | :---: | :---: | :---: | :---: | :---: |
-| **SPWM (SNN-ALIF)** | ALIF (Spiking, 14.6% rate) | **328.7k** | 2.61 | 0.00204 | 0.10635 | 0.02117 | 0.01425 | **0.01728** | **0.00027** | **0.01118** | **0.01262** | **0.01153** | -0.8375 |
-| **ANN-Rate (Continuous Leaky)** | Leaky Rate Units (Continuous) | **328.7k** | **2.10** | **0.00098** | **0.00151** | **0.00872** | **0.01282** | 0.01842 | 0.00228 | 0.02106 | 0.01996 | 0.01685 | +11.2123 |
-
-> \* *Note on Drift Ratio Formulation*: In the ablation script, Drift Ratio is computed as relative MSE change: $(\text{MSE}_{100} - \text{MSE}_1) / \text{MSE}_1$. SPWM's negative ratio reflects the initial pose alignment transient at $H=1$ ($0.10635$) settling into a stable rollout manifold ($0.01728$), whereas ANN-Rate begins with near-zero $H=1$ error ($0.00151$) that increases to $0.01842$.
+| Model Architecture | Memory Dynamics | Active (Total) Params | Pos MSE (H=1) | Pos MSE (H=10) | Pos MSE (H=50) | Pos MSE (H=100) | Vel MSE (H=1) | Vel MSE (H=10) | Vel MSE (H=50) | Vel MSE (H=100) |
+| :--- | :---: | :---: | :---: | :---: | :---: | :---: | :---: | :---: | :---: | :---: |
+| **SPWM-v0.12.4 (SNN-ALIF)** | ALIF (Spiking, 12.27% rate) | **317.9k (392.1k)** | **0.00016** | **0.00649** | **0.00264** | **0.00246** | **0.00229** | **0.01564** | **0.01105** | **0.01190** |
+| **ANN-Rate (Continuous Leaky)** | Leaky Rate Units (Continuous) | **317.9k (392.1k)** | 0.00293 | 0.01323 | 0.02027 | 0.27230 | 0.01604 | 0.06808 | 0.06370 | 0.08826 |
 
 > **Key Empirical Takeaways**:
-> 1. **Fitting Capacity vs. Velocity Stability**: During teacher-forced training, `ANN-Rate` achieves lower validation loss ($0.00098$ vs $0.00204$ for SNN-ALIF) due to continuous gradient flow. In autonomous multi-step rollouts, however, ANN-Rate exhibits higher velocity drift: its velocity MSE is **8.5x higher at H=1** ($0.00228$ vs $0.00027$) and remains **46% higher at H=100** ($0.01685$ vs $0.01153$).
-> 2. **Long-Horizon Position Parity**: At extended horizon $H=100$, both architectures achieve comparable position MSE ($0.01728$ for SPWM vs $0.01842$ for ANN-Rate; $L_2$ position errors $0.2740\,\text{rad}$ vs $0.2911\,\text{rad}$). However, discrete spike thresholding in SPWM prevents small high-frequency velocity perturbations from compounding, bounding velocity errors across multi-step execution.
-> 3. **Physical Kinematics Tracking**: In physical joint metric space, SNN-ALIF maintains tight velocity tracking across all horizons ($0.0393\,\text{rad/s}$ at $H=1$ and $0.1846\,\text{rad/s}$ at $H=100$), whereas ANN-Rate drifts to $0.1166\,\text{rad/s}$ at $H=1$ (3x worse) and $0.2384\,\text{rad/s}$ at $H=100$ (29% worse).
-> 4. **Comparative Metrics**: Consolidated in [`results/spwm_v0_12_4_train_m1/comparative_metrics_v0_12_4.json`](file:///Users/Mattia/Desktop/Studies/Temp/results/spwm_v0_12_4_train_m1/comparative_metrics_v0_12_4.json).
+> 1. **Open-Loop & Closed-Loop Superiority**: On the unified `v0.12.4` benchmark, `ANN-Rate` diverges at $H=100$ ($\text{MSE}_{\text{pos}} = 0.27230$ vs $0.00246$ for `SPWM`, **110x** worse) and collapses to **0.0%** closed-loop MPPI grasp success in PIL (vs **88.0%** for `SPWM`), driven by grounded state-estimator drift (`0.167 rad` at $t=4$ vs `0.022 rad` for SPWM) and rapid $M_1$ rollout divergence.
+> 2. **Comparative Metrics**: Consolidated in [`results/spwm_v0_12_4_train_m1/comparative_metrics_v0_12_4.json`](file:///Users/Mattia/Desktop/Studies/Temp/results/spwm_v0_12_4_train_m1/comparative_metrics_v0_12_4.json).
 
 ### 6.3 Computational & Energy Profiling (SOPs vs. FLOPs) [COMPLETED]
-- [x] **Current Repo State**: Profiled neuromorphic Synaptic Operations (SOPs) on Loihi-2 vs dense GPU MACs for `SPWM-v0.12.4` in [`results/ssot_eval_metrics.json`](file:///Users/Mattia/Desktop/Studies/Temp/results/ssot_eval_metrics.json) and [`docs/FIGURE_METRICS.md`](file:///Users/Mattia/Desktop/Studies/Temp/docs/FIGURE_METRICS.md):
-  - **SPWM-v0.12.4 Step Energy**: **`0.43 nJ/step`** on Loihi-2 SOPs vs **`60.36 nJ/step`** on own GPU MACs (**`141.1x`** energy efficiency advantage) at `12.27%` measured ALIF spike rate.
-  - **Synaptic Operations Formulation**:
-    $$\text{SOPs}(t) = \sum_{l=1}^{L} s_{l-1}(t) \cdot F_{\text{out}, l}$$
-    where $s_{l-1}(t)$ is the spike count emitted by ALIF layer $l-1$, and $F_{\text{out}, l} = 384$ is the total synaptic fan-out (recurrent projection $256$, velocity mapping $32$, spike fusion $96$).
-  - **Neuromorphic Energy Formulation (Intel Loihi-2 Benchmark)**:
-    $$E_{\text{neuromorphic}} = \text{SOPs} \times E_{\text{SOP}} + N_{\text{neurons}} \times E_{\text{leak}}$$
-    with $E_{\text{SOP}} = 0.9\,\text{pJ}$ and $E_{\text{leak}} = 0.1\,\text{pJ}$ per active neuron ($N_{\text{neurons}} = 256$).
-  - **GPU Dense Energy Formulation (Nvidia Jetson Orin Benchmark)**:
-    $$E_{\text{GPU}} = \text{FLOPs} \times E_{\text{FLOP}}$$
-    with $E_{\text{FLOP}} = 4.0\,\text{pJ}$ (equivalent to $E_{\text{MAC}} = 8.0\,\text{pJ}$).
+- [x] **Current Repo State**: Profiled neuromorphic Synaptic Operations (SOPs) on Loihi-2 vs dense GPU MACs for `SPWM-v0.12.4` in [`results/energy_profiling/energy_profiling_metrics.json`](file:///Users/Mattia/Desktop/Studies/Temp/results/energy_profiling/energy_profiling_metrics.json), [`results/ssot_eval_metrics.json`](file:///Users/Mattia/Desktop/Studies/Temp/results/ssot_eval_metrics.json), and [`docs/FIGURE_METRICS.md`](file:///Users/Mattia/Desktop/Studies/Temp/docs/FIGURE_METRICS.md):
+  - **SPWM-v0.12.4 Recurrent Step Energy**: **`12.34 nJ/step`** on Loihi-2 SOPs vs **`60.36 nJ/step`** on own Jetson Orin GPU MACs (**`4.9x`** recurrent step efficiency advantage) at `12.27%` measured ALIF spike rate (`8,229` SOPs/step vs `67,072` recurrent MACs/step).
   - **Comparative Energy & Operations Table (Empirical Benchmark)**:
 
-| Model Architecture | Memory Paradigm | Params | Spike Rate | SOPs / step | FLOPs / step | E_neuro (nJ/step) | E_GPU (nJ/step) | Energy Efficiency vs. GPU | Power @ 20Hz (mW) | E_cumul (H=100, μJ) |
+| Model Architecture | Memory Paradigm | Total Params | Spike Rate | SOPs / step | Recurrent MACs / step | E_neuro (nJ/step) | E_GPU (nJ/step) | Efficiency vs. Own GPU | Power @ 20Hz (mW) | E_cumul (H=100, μJ) |
 | :--- | :---: | :---: | :---: | :---: | :---: | :---: | :---: | :---: | :---: | :---: |
-| **SPWM (Prod)** | ALIF Spiking (2-tier) | **328.7k** | 14.5% | 14,208 | 258,796 | **12.81** | 1035.18 | **80.8x** | **0.256** | **1.28** |
-| **SNN-ALIF (Matched)** | ALIF Spiking (2-tier) | **328.7k** | 24.8% | 24,192 | 258,796 | **21.80** | 1035.18 | **47.5x** | **0.436** | **2.18** |
-| **ANN-Rate (Ablation)** | Continuous Leaky Rate | **328.7k** | — | — | 258,796 | — | 1035.18 | 1.0x (Ref) | 20.704 | 103.52 |
-| **Continuous RSSM** | GRU + Gaussian Latent | **380.5k** | — | — | 615,244 | — | 2460.98 | 1.0x (Ref) | 49.220 | 246.10 |
-| **Deep GRU** | 2-Layer Deep GRU | **338.9k** | — | — | 506,772 | — | 2027.09 | 1.0x (Ref) | 40.542 | 202.71 |
-| **Continuous ConvLSTM** | Spatial ConvLSTM (2D) | **296.9k** | — | — | 29,001,740 | — | 116006.96 | 1.0x (Ref) | 2320.139 | 11600.70 |
+| **SPWM-v0.12.4** | ALIF Spiking (2-tier) | **392.1k (317.9k act.)** | 12.27% | 8,229 | 67,072 | **12.34** | 60.36 | **4.9x** | **0.247** | **1.23** |
+| **ANN-Rate (Ablation)** | Continuous Leaky Rate | **392.1k (317.9k act.)** | — | — | 67,072 | — | 60.36 | 1.0x (Ref) | 1.207 | 6.04 |
+| **Continuous RSSM** | GRU + Gaussian Latent | **380.5k** | — | — | 365,056 | — | 328.55 | 1.0x (Ref) | 6.571 | 32.86 |
+| **Deep GRU** | 2-Layer Deep GRU | **338.9k** | — | — | 299,520 | — | 269.57 | 1.0x (Ref) | 5.391 | 26.96 |
+| **Continuous ConvLSTM** | Spatial ConvLSTM (2D) | **296.9k** | — | — | 2,359,296 | — | 2123.37 | 1.0x (Ref) | 42.467 | 212.34 |
 
 > **Key Empirical Takeaways**:
-> 1. **80.8x Energy Efficiency Advantage over Parameter-Matched ANN**: On identical parameter budgets ($328.7\text{k}$) and projection topologies, `SPWM` consumes only **$12.81\,\text{nJ}$ per recurrent step** on Intel Loihi-2 vs. **$1035.18\,\text{nJ}$ per step** for `ANN-Rate` on Nvidia Jetson Orin GPU, an **$80.8\times$ reduction in energy consumption**.
-> 2. **Sub-Milliwatt Autonomous Predictive Dynamics**: Operating at a $20\,\text{Hz}$ robotic control loop, SPWM draws only **$0.256\,\text{mW}$** of active recurrent dynamics power (compared to $20.7\,\text{mW}$ for ANN-Rate, $49.2\,\text{mW}$ for Continuous RSSM, and $2.32\,\text{W}$ for ConvLSTM), well within ultra-low-power micro-robotic edge thermal limits.
-> 3. **Trajectory Energy Accumulation**: Over an extended $H=100$ autonomous trajectory ($5.0\,\text{s}$ at $20\,\text{Hz}$), SPWM expends a negligible **$1.28\,\mu\text{J}$** of cumulative energy, compared to $103.5\,\mu\text{J}$ for ANN-Rate, $246.1\,\mu\text{J}$ for Continuous RSSM, and $11.6\,\text{mJ}$ for ConvLSTM ($9,056\times$ higher).
-> 4. **Energy Profiling Artifacts**: Consolidated in [`results/ssot_eval_metrics.json`](file:///Users/Mattia/Desktop/Studies/Temp/results/ssot_eval_metrics.json) and [`docs/FIGURE_METRICS.md`](file:///Users/Mattia/Desktop/Studies/Temp/docs/FIGURE_METRICS.md).
+> 1. **4.9x Recurrent Efficiency vs. Own GPU & 26.6x vs. RSSM**: On Loihi-2 SOPs, `SPWM-v0.12.4` consumes **$12.34\,\text{nJ}$ per recurrent step** ($0.247\,\text{mW}$ at $20\,\text{Hz}$, $1.23\,\mu\text{J}$ over $H=100$) vs. $60.36\,\text{nJ}$ on Jetson Orin GPU MACs ($4.9\times$) and $328.55\,\text{nJ}$ for Continuous RSSM ($26.6\times$).
+> 2. **Energy Profiling Artifacts**: Consolidated in [`results/energy_profiling/energy_profiling_metrics.json`](file:///Users/Mattia/Desktop/Studies/Temp/results/energy_profiling/energy_profiling_metrics.json), [`results/ssot_eval_metrics.json`](file:///Users/Mattia/Desktop/Studies/Temp/results/ssot_eval_metrics.json), and [`docs/FIGURE_METRICS.md`](file:///Users/Mattia/Desktop/Studies/Temp/docs/FIGURE_METRICS.md).
 
 ### 6.4 Statistical Significance & Multi-Seed Validation [COMPLETED]
 - [x] **Current Repo State**: Evaluated statistical significance across $N = 3$ random initializations (`seed = 42, 101, 2024`) by passing **every seed through the complete, identical two-phase training pipeline** (Phase 0 Representation grounding $\to$ Phase 1 M1 Latent Predictor training) over the canonical 4,000 trajectories dataset (`results/multiseed/`).
@@ -615,7 +590,7 @@ flowchart LR
 
 1. **Comparative Baseline Benchmarks [COMPLETED]**: Trained and benchmarked Continuous RSSM, Deep GRU, and Continuous ConvLSTM under matched parameter budgets (`results/spwm_v0_12_4_train_m1/comparative_metrics_v0_12_4.json`).
 2. **Rate-Based ANN Ablation [COMPLETED]**: Evaluated exact parameter-matched `ANNWorldModel` with continuous leaky rate units, proving SNN ALIF threshold dynamics prevent compounding drift (`results/spwm_v0_12_4_train_m1/comparative_metrics_v0_12_4.json`).
-3. **Neuromorphic SOP & Energy Profiling [COMPLETED]**: Computed active Synaptic Operations (SOPs) on Loihi-2 (`0.43 nJ/step`) vs own GPU MACs (`60.36 nJ/step`), proving a `141.1x` energy efficiency advantage (`results/ssot_eval_metrics.json`, `docs/FIGURE_METRICS.md`).
+3. **Neuromorphic SOP & Energy Profiling [COMPLETED]**: Computed active Synaptic Operations (SOPs) on Loihi-2 (`12.34 nJ/step`) vs own GPU MACs (`60.36 nJ/step`), proving a `4.9x` recurrent step energy efficiency advantage (`results/energy_profiling/energy_profiling_metrics.json`, `results/ssot_eval_metrics.json`, `docs/FIGURE_METRICS.md`).
 4. **Multi-Seed Statistical Verification [COMPLETED]**: Executed the full two-phase pipeline across seeds 42, 101, and 2024, confirming negative drift and low variance across extended horizons.
 5. **Benchmark Latent MPC Closed-Loop Controller [COMPLETED]**: Implemented differentiable forward kinematics and a Model Predictive Path Integral (MPPI) controller operating directly on SPWM's latent space ($M_1$), achieving `96.0%` (`48/50`) grasp success rate, `0.67 ± 0.46 cm` accuracy, `1.21 cm` terminal error, and `22.2 ms` step latency across `1.20 - 4.50 kg` payloads (`results/mppi_benchmark/mppi_benchmark_metrics.json`).
 

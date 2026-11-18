@@ -40,16 +40,18 @@ Evaluated on `400` unseen test trajectories (`H=100`):
 
 ## 3. Zero-Shot Robustness & Domain Gap (`figures/fig3_robustness_domain.png`)
 
-| Perturbation Condition | Overall Success | Min Placement Error | Terminal Error |
-| :--- | :---: | :---: | :---: |
-| Nominal Baseline | `100.0%` | `1.01 cm` | `1.81 cm` |
-| Sensory Noise Injection (1.0%) | `95.0%` | `1.19 cm` | `2.31 cm` |
-| Payload Extrapolation (4.80 kg) | `70.0%` | `2.84 cm` | `4.37 cm` |
-| Actuator Drift (0.80x Friction) | `70.0%` | `2.69 cm` | `3.70 cm` |
-| Actuator Drift (1.20x Friction) | `60.0%` | `2.65 cm` | `4.56 cm` |
+Evaluated across **all 50 canonical test episodes** (`[3600, 3649]`) under both Latent-Grounded and Physics-in-the-Loop (PIL) execution:
+
+| Perturbation Condition | Latent-Grounded Succ (50 ep) | Latent-Grounded Min Err | PIL Succ (50 ep) | PIL Min Err | PIL Term Err |
+| :--- | :---: | :---: | :---: | :---: | :---: |
+| Nominal Baseline | `96.0% (48/50)` | `0.67 ± 0.46 cm` | `88.0% (44/50)` | `0.88 ± 0.81 cm` | `1.60 cm` |
+| Sensory Noise Injection (1.0%) | `82.0% (41/50)` | `1.06 ± 1.23 cm` | `72.0% (36/50)` | `1.04 ± 0.87 cm` | `1.89 cm` |
+| Payload Extrapolation (4.80 kg) | `74.0% (37/50)` | `1.57 ± 1.91 cm` | `78.0% (39/50)` | `1.27 ± 1.12 cm` | `1.80 cm` |
+| Actuator Drift (0.80x Friction) | `70.0% (35/50)` | `1.61 ± 2.07 cm` | `70.0% (35/50)` | `1.35 ± 1.26 cm` | `2.09 cm` |
+| Actuator Drift (1.20x Friction) | `80.0% (40/50)` | `1.53 ± 1.91 cm` | `76.0% (38/50)` | `1.34 ± 1.23 cm` | `1.98 cm` |
 
 ## 4. Recurrent Step Energy (`figures/fig4_energy_efficiency.png`)
-- **SPWM (Loihi-2 SOPs @ `12.27%` spike rate)**: `0.43 nJ/step` (**`141.1x`** vs own GPU MACs)
+- **SPWM (Loihi-2 SOPs @ `12.27%` spike rate)**: `12.34 nJ/step` (**`4.9x`** vs own GPU MACs)
 - **SPWM / ANN (Orin GPU MACs)**: `60.36 nJ/step`
 - **Deep GRU (Orin GPU MACs)**: `269.57 nJ/step`
 - **Continuous RSSM (Orin GPU MACs)**: `328.55 nJ/step`

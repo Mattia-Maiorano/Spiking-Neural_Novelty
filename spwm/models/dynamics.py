@@ -83,6 +83,7 @@ class SpikingLatentDynamics(nn.Module):
         self.action_proj = nn.Linear(self.action_dim, self.total_memory_dim, bias=False)
         nn.init.zeros_(self.action_proj.weight)
 
+        # Legacy projection retained for strict=True checkpoint compatibility; velocity readout uses vel(p) = p[..., :q_dim].
         self.W_vel = nn.Linear(self.total_memory_dim, self.q_dim, bias=False)
         nn.init.normal_(self.W_vel.weight, mean=0.0, std=0.01)
 

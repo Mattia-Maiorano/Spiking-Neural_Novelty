@@ -106,14 +106,14 @@ def evaluate_rollout_and_sops(
     mean_spike_rate = float(np.mean(spike_rates))
 
     # Measure architectural energy (Loihi-2 SOPs vs Orin GPU MACs)
-    # 1 SOP = 0.052 pJ (5.2e-5 nJ), 1 MAC on Orin = 0.9 pJ (9e-4 nJ) for FP16/INT8 edge
+    # 1 SOP = 1.5 pJ (1.5e-3 nJ; Orchard et al., 2021 / Davies et al., 2021), 1 MAC on Orin = 0.9 pJ (9e-4 nJ) for FP16/INT8 edge
     hidden_dim = cfg.model.predictor_hidden_dim
     latent_dim = cfg.model.latent_dim
     action_dim = int(actions.shape[-1])
     # Recurrent step ops for SPWM dynamics + M1 predictor
     spwm_dense_macs = (latent_dim + action_dim) * hidden_dim + hidden_dim * latent_dim
     spwm_sops = spwm_dense_macs * mean_spike_rate
-    e_sop_nj = 0.052e-3
+    e_sop_nj = 1.5e-3
     e_mac_nj = 0.9e-3
     spwm_neuro_nj = spwm_sops * e_sop_nj
     spwm_gpu_nj = spwm_dense_macs * e_mac_nj
@@ -148,6 +148,7 @@ def evaluate_rollout_and_sops(
         "horizon": int(open_mat.shape[1]),
         "mean_spike_rate": mean_spike_rate,
         "open_overall_mean": float(np.mean(open_mat)),
+        "open_h100_mean": float(np.mean(open_mat[:, -1])),
         "handover_overall_mean": float(np.mean(ho_mat)),
         "open_curve_mean": [float(x) for x in np.mean(open_mat, axis=0)],
         "open_curve_q25": [float(x) for x in np.percentile(open_mat, 25, axis=0)],
@@ -234,9 +235,9 @@ def plot_fig1_mppi(mppi_data: Dict[str, Any], out_dir: Path) -> None:
 
 
 def plot_fig2_rollout(ssot_data: Dict[str, Any], out_dir: Path) -> None:
-    """Plot Fig 2: Open-Loop vs Phasic Sensory Handover Joint Error across H=100."""
+    """Plot Fig 2: Open-Loop vs Phasic Sensory Handover & Baseline Joint Error across H=100."""
     set_paper_style()
-    fig, ax = plt.subplots(figsize=(7.5, 4.3))
+    fig, ax = plt.subplots(figsize=(7.5, 4.4))
     h_axis = np.arange(1, ssot_data["horizon"] + 1)
 
     o_mean = np.array(ssot_data["open_curve_mean"])
@@ -246,16 +247,40 @@ def plot_fig2_rollout(ssot_data: Dict[str, Any], out_dir: Path) -> None:
     ho_q25 = np.array(ssot_data["handover_curve_q25"])
     ho_q75 = np.array(ssot_data["handover_curve_q75"])
 
-    ax.fill_between(h_axis, o_q25, o_q75, color="#d95f02", alpha=0.16)
-    ax.plot(h_axis, o_mean, color="#d95f02", linewidth=2.0, linestyle="--", label=f"Pure Open-Loop (mean {ssot_data['open_overall_mean']:.4f} rad)")
+    comp_path = Path("results/spwm_v0_12_4_train_m1/comparative_metrics_v0_12_4.json")
+    if comp_path.is_file():
+        comp_data = json.loads(comp_path.read_text(encoding="utf-8"))
+        if "ANN-Rate" in comp_data and "curve_l2_mean" in comp_data["ANN-Rate"]:
+            ann_mean = np.array(comp_data["ANN-Rate"]["curve_l2_mean"][: len(h_axis)])
+            ax.plot(
+                h_axis,
+                ann_mean,
+                color="#e7298a",
+                linewidth=1.8,
+                linestyle=":",
+                label=f"ANN-Rate (mean {comp_data['ANN-Rate']['overall_l2_mean']:.4f} rad)",
+            )
+        if "Continuous RSSM" in comp_data and "curve_l2_mean" in comp_data["Continuous RSSM"]:
+            rssm_mean = np.array(comp_data["Continuous RSSM"]["curve_l2_mean"][: len(h_axis)])
+            ax.plot(
+                h_axis,
+                rssm_mean,
+                color="#7570b3",
+                linewidth=1.8,
+                linestyle="-.",
+                label=f"Continuous RSSM (mean {comp_data['Continuous RSSM']['overall_l2_mean']:.4f} rad)",
+            )
 
-    ax.fill_between(h_axis, ho_q25, ho_q75, color="#1f4e79", alpha=0.20)
-    ax.plot(h_axis, ho_mean, color="#1f4e79", linewidth=2.2, label=f"Phasic Sensory Handover (mean {ssot_data['handover_overall_mean']:.4f} rad)")
+    ax.fill_between(h_axis, o_q25, o_q75, color="#1b9e77", alpha=0.16)
+    ax.plot(h_axis, o_mean, color="#1b9e77", linewidth=2.2, label=f"SPWM Open-Loop (mean {ssot_data['open_overall_mean']:.4f} rad)")
+
+    ax.fill_between(h_axis, ho_q25, ho_q75, color="#d95f02", alpha=0.14)
+    ax.plot(h_axis, ho_mean, color="#d95f02", linewidth=2.0, linestyle="--", label=f"SPWM Phasic Handover (mean {ssot_data['handover_overall_mean']:.4f} rad)")
 
     ax.set_xlabel("Prediction Horizon Step $h$ ($\\Delta t = 50$ ms)")
     ax.set_ylabel("Decoded Joint-Space Error $\\|\\hat{\\mathbf{q}}_h - \\mathbf{q}^*_h\\|_2$ (rad)")
-    ax.set_title(f"SPWM Multi-Horizon Rollout: Open-Loop vs. Phasic Handover (N={ssot_data['n_test']})")
-    ax.legend(loc="upper left", fontsize=8.5)
+    ax.set_title(f"Multi-Horizon Open-Loop Rollout Comparison (N={ssot_data['n_test']}, H={ssot_data['horizon']})")
+    ax.legend(loc="upper left", fontsize=8.0)
     ax.grid(True, alpha=0.25)
     fig.tight_layout()
     save_publication_figure(fig, out_dir / "fig2_rollout_open_vs_handover")

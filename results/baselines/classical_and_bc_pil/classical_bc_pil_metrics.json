@@ -1,0 +1,33 @@
+{
+  "fixed_gain_pd_pil": {
+    "model_label": "fixed_pd",
+    "episodes_evaluated": 50,
+    "grasp_success_rate_pct": 100.0,
+    "terminal_placement_accuracy_cm": 0.012367156036998495,
+    "placement_accuracy_std_cm": 0.030753244864751787,
+    "terminal_error_cm": 0.08309775857254863,
+    "terminal_error_std_cm": 0.10092270916484877,
+    "mean_joint_accel_rad_s2": 0.007942232391797007,
+    "std_joint_accel_rad_s2": 0.004215657937576221,
+    "mean_joint_jerk_rad_s3": 0.005970936140511185,
+    "std_joint_jerk_rad_s3": 0.004371338237415331,
+    "mean_direction_flips": 9.52,
+    "mppi_inference_latency_ms": 2.6156186674830235
+  },
+  "reactive_bc_pil": {
+    "model_label": "bc",
+    "episodes_evaluated": 50,
+    "grasp_success_rate_pct": 0.0,
+    "terminal_placement_accuracy_cm": 11.992765748500824,
+    "placement_accuracy_std_cm": 6.3817845001943505,
+    "terminal_error_cm": 14.390976424217223,
+    "terminal_error_std_cm": 7.950067850722715,
+    "mean_joint_accel_rad_s2": 0.0020829036633949727,
+    "std_joint_accel_rad_s2": 0.0007958763159653654,
+    "mean_joint_jerk_rad_s3": 0.002537129144184291,
+    "std_joint_jerk_rad_s3": 0.0010862459352832048,
+    "mean_direction_flips": 18.08,
+    "mppi_inference_latency_ms": 0.9597314479920915,
+    "parameter_count": 322210
+  }
+}

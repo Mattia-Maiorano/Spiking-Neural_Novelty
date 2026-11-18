@@ -57,6 +57,7 @@ from spwm.evaluation.robustness import (
     render_events_from_kinematics,
     simulate_perturbed_kinematics,
 )
+from experiments.benchmark_mppi_control import run_episode
 from spwm.models.kinematics import DifferentiableForwardKinematics, classify_elevation, compute_rot_error
 from spwm.models.rollout import ground_initial_state
 from spwm.models.world_model import SPWM
@@ -247,6 +248,7 @@ def evaluate_mppi_suite(
     dataset_dir: Path,
     device: torch.device,
     seed: int = 42,
+    physics_in_loop: bool = False,
 ) -> List[MPPIPerturbationResult]:
     """Evaluates closed-loop Latent MPPI robustness across the 5 shifted conditions."""
     mppi_conditions = [
@@ -319,21 +321,32 @@ def evaluate_mppi_suite(
             else:
                 raise ValueError(f"Unknown MPPI benchmark mode: {mode}")
 
-            min_err, term_err, final_v, lat, is_succ = run_mppi_single_episode(
+            eff_mass = 4.80 if mode == "payload_extrap" else mass
+            damping_scale = 0.80 if mode == "friction_loose" else (1.20 if mode == "friction_stiff" else 1.0)
+            p_gt_t = torch.from_numpy(traj.joint_velocities).to(device)
+            ep_res = run_episode(
                 model=model,
                 controller=controller,
                 fk=fk,
                 events=events,
                 q_gt=q_gt,
                 phase_flags=phase_flags,
-                actions=torch.from_numpy(traj.actions).unsqueeze(0).to(device),
                 traj_id=tid,
+                payload_mass=eff_mass,
+                payload_shape=traj.payload_shape,
+                device=device,
+                actions=torch.from_numpy(traj.actions).unsqueeze(0).to(device),
+                p_gt=p_gt_t,
+                use_handover=True,
+                use_lookahead=True,
+                physics_in_loop=physics_in_loop,
+                physics_damping_scale=damping_scale,
             )
-            min_errors.append(min_err)
-            term_errors.append(term_err)
-            final_vels.append(final_v)
-            latencies.append(lat)
-            successes.append(is_succ)
+            min_errors.append(ep_res.min_placement_error_cm)
+            term_errors.append(ep_res.terminal_placement_error_cm)
+            final_vels.append(ep_res.terminal_angular_velocity)
+            latencies.append(ep_res.mean_latency_ms)
+            successes.append(ep_res.grasp_success)
 
         succ_rate = float(np.mean(successes) * 100.0)
         mean_min_err = float(np.mean(min_errors))
@@ -590,6 +603,8 @@ def main() -> None:
     parser.add_argument("--num-mppi-episodes", type=int, default=50)
     parser.add_argument("--batch-size", type=int, default=32)
     parser.add_argument("--device", type=str, default="cpu")
+    parser.add_argument("--physics-in-loop", action="store_true")
+    parser.add_argument("--skip-sensor-suite", action="store_true")
     args = parser.parse_args()
 
     cfg = ExperimentConfig.load(args.config)
@@ -624,34 +639,32 @@ def main() -> None:
     t_start_total = time.perf_counter()
 
     # --- Suite 1: Sensor Domain Gap Benchmark ---
-    chronicle.log_info(f"--- Starting Suite 1: Visual Stream Perturbations ({len(sensor_eval_ids)} trajectories) ---")
-    t0_sensor = time.perf_counter()
-    with torch.no_grad():
-        sensor_results = evaluate_sensor_suite(
-            model=model,
-            test_ids=sensor_eval_ids,
-            dataset_dir=dataset_dir,
-            device=device,
-            batch_size=args.batch_size,
-            seed=cfg.project.seed,
-        )
-    t_sensor = time.perf_counter() - t0_sensor
-    chronicle.log_success(f"Suite 1 completed in {t_sensor:.1f}s")
+    sensor_results: List[SensorPerturbationResult] = []
+    t_sensor = 0.0
+    if not args.skip_sensor_suite:
+        chronicle.log_info(f"--- Starting Suite 1: Visual Stream Perturbations ({len(sensor_eval_ids)} trajectories) ---")
+        t0_sensor = time.perf_counter()
+        with torch.no_grad():
+            sensor_results = evaluate_sensor_suite(
+                model=model,
+                test_ids=sensor_eval_ids,
+                dataset_dir=dataset_dir,
+                device=device,
+                batch_size=args.batch_size,
+                seed=cfg.project.seed,
+            )
+        t_sensor = time.perf_counter() - t0_sensor
+        chronicle.log_success(f"Suite 1 completed in {t_sensor:.1f}s")
 
     # --- Suite 2: Downstream Latent MPPI Robustness ---
-    chronicle.log_info(f"--- Starting Suite 2: Latent MPPI Robustness ({len(mppi_eval_ids)} episodes) ---")
-    fk = DifferentiableForwardKinematics().to(device)
-    mppi_cfg = MPPIConfig(
-        num_samples=256,
-        horizon=20,
-        num_iterations=3,
-        noise_sigma=0.20,
-        temperature=0.03,
+    chronicle.log_info(
+        f"--- Starting Suite 2: Latent MPPI Robustness ({len(mppi_eval_ids)} episodes, PIL={args.physics_in_loop}) ---"
     )
+    fk = DifferentiableForwardKinematics().to(device)
     controller = LatentMPPIController(
         predictor=model.m1,
         physical_decoder=model.physical_decoder,
-        config=mppi_cfg,
+        config=cfg.mppi,
         forward_kinematics=fk,
         device=device,
     )
@@ -666,6 +679,7 @@ def main() -> None:
             dataset_dir=dataset_dir,
             device=device,
             seed=cfg.project.seed,
+            physics_in_loop=args.physics_in_loop,
         )
     t_mppi = time.perf_counter() - t0_mppi
     chronicle.log_success(f"Suite 2 completed in {t_mppi:.1f}s")

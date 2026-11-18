@@ -333,9 +333,9 @@ def run_energy_profiling(
     test_loader = dataloaders["test"]
 
     # Hardware energy constants:
-    # - Loihi-2 Neuromorphic SOP: 0.052 pJ / SOP (5.2e-5 nJ / SOP)
+    # - Loihi-2 Neuromorphic SOP: 1.5 pJ / SOP (1.5e-3 nJ / SOP; Orchard et al., 2021 / Davies et al., 2021)
     # - Jetson Orin Edge GPU (FP16/INT8): 0.9 pJ / MAC (9.0e-4 nJ / MAC)
-    e_sop_nj = 0.052e-3
+    e_sop_nj = 1.5e-3
     e_mac_nj = 0.9e-3
 
     profiles: Dict[str, Dict[str, Any]] = {}

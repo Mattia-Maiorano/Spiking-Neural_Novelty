@@ -342,3 +342,28 @@ class EventCameraSimulator:
     def dense_to_sparse_tensor(self, dense_events: torch.Tensor) -> torch.Tensor:
         """Converts dense events [B, T, C, H, W] to sparse coordinate tensor [N_events, 5]."""
         return torch.nonzero(dense_events > 0, as_tuple=False)
+
+
+class OnlineEventCameraStream:
+    """Incremental dual-camera neuromorphic event stream for closed-loop physics-in-the-loop control."""
+
+    def __init__(self, camera: EventCameraSimulator, q_init: np.ndarray) -> None:
+        self.camera = camera
+        if camera.in_channels != C_EVENT:
+            raise ValueError(f"OnlineEventCameraStream requires in_channels={C_EVENT}, got {camera.in_channels}")
+        self.ref_dual = camera.render_dual_articulated_frames(q_init).copy()
+
+    def step(self, q_phys: np.ndarray) -> torch.Tensor:
+        """Renders online [1, 4, H, W] polarity events from updated joint state q_phys."""
+        curr_dual = self.camera.render_dual_articulated_frames(q_phys)
+        ev = np.zeros((1, C_EVENT, self.camera.height, self.camera.width), dtype=np.float32)
+        for ch_pair, cam_idx in ((0, 0), (2, 1)):
+            delta_l = curr_dual[cam_idx] - self.ref_dual[cam_idx]
+            pos_mask = delta_l > self.camera.event_threshold
+            neg_mask = delta_l < -self.camera.event_threshold
+            ev[0, ch_pair] = pos_mask.astype(np.float32)
+            ev[0, ch_pair + 1] = neg_mask.astype(np.float32)
+            event_mask = pos_mask | neg_mask
+            self.ref_dual[cam_idx][event_mask] = curr_dual[cam_idx][event_mask]
+        return torch.from_numpy(ev)
+

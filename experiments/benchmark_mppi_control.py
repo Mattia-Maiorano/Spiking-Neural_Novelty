@@ -27,6 +27,8 @@ from spwm.contracts.config import ExperimentConfig, MPPIConfig
 from spwm.contracts.states import PredictorOutput
 from spwm.contracts.version import GLOBAL_VERSION
 from spwm.data.datasets import create_dataloaders_from_config
+from spwm.data.event_camera import EventCameraSimulator, OnlineEventCameraStream
+from spwm.data.sim_6dof import ArticulatedArmPhysicsStepper
 from spwm.evaluation.mppi import LatentMPPIController, resolve_effective_vel_threshold
 from spwm.evaluation.visualizer import plot_mppi_benchmark_results
 from spwm.models.ann_ablation import ANNWorldModel
@@ -36,7 +38,7 @@ from spwm.models.kinematics import (
     classify_elevation,
     compute_rot_error,
 )
-from spwm.models.rollout import ground_initial_state
+from spwm.models.rollout import ground_initial_state, step_grounded
 from spwm.models.world_model import SPWM
 from spwm.utils.reproducibility import set_seed
 
@@ -214,6 +216,8 @@ def run_episode(
     p_gt: Optional[torch.Tensor] = None,
     use_handover: bool = True,
     use_lookahead: bool = True,
+    physics_in_loop: bool = False,
+    physics_damping_scale: float = 1.0,
 ) -> EpisodeResult:
     """Executes closed-loop latent MPPI reaching on a single test trajectory."""
     p1_indices = (phase_flags == 1).nonzero()
@@ -227,17 +231,45 @@ def run_episode(
 
     t_start = max(5, t_c - approach_window)
     max_t = min(t_grasp + 1, events.shape[1] - 1)
+    dyn_state = None
     if isinstance(model, _BaselineModelWrapper):
         z_gt_seq = model.ground_sequence(events, max_t=max_t, actions=actions)
+        z_start = z_gt_seq[:, t_start]
+    elif physics_in_loop:
+        z_start, dyn_state, z_gt_seq = ground_initial_state(model, events, t_start=t_start, actions=actions)
     else:
-        _, _, z_gt_seq = ground_initial_state(model, events, t_start=max_t, actions=actions)
-    z_start = z_gt_seq[:, t_start]
+        _, dyn_state, z_gt_seq = ground_initial_state(model, events, t_start=max_t, actions=actions)
+        z_start = z_gt_seq[:, t_start]
 
     dec_start = model.physical_decoder(z_start)
     initial_bias = dec_start[0, :6] / 3.14
     controller.reset(initial_action_bias=initial_bias, seed=42000 + traj_id)
     prev_u = initial_bias.clone()
     curr_z = z_start.clone()
+
+    phys_stepper: Optional[ArticulatedArmPhysicsStepper] = None
+    event_stream: Optional[OnlineEventCameraStream] = None
+    if physics_in_loop:
+        p_init_np = (
+            p_gt[t_start].detach().cpu().numpy()
+            if p_gt is not None
+            else np.zeros((q_gt.shape[1],), dtype=np.float32)
+        )
+        phys_stepper = ArticulatedArmPhysicsStepper(
+            q_init=q_gt[t_start].detach().cpu().numpy(),
+            p_init=p_init_np,
+            payload_mass=payload_mass,
+            payload_shape=payload_shape,
+            damping=0.15 * physics_damping_scale,
+        )
+        if not isinstance(model, _BaselineModelWrapper):
+            sim_cam = EventCameraSimulator(
+                height=events.shape[-2],
+                width=events.shape[-1],
+                event_threshold=0.08,
+                in_channels=events.shape[2],
+            )
+            event_stream = OnlineEventCameraStream(sim_cam, phys_stepper.q)
 
     step_errors: List[float] = []
     latencies: List[float] = []
@@ -247,6 +279,7 @@ def run_episode(
     grasp_err_cm = 0.0
     grasp_rot_err = 0.0
     target_pose_eval = target_grasp_mat
+    q_eval_t = dec_start[0, :6]
 
     for t in range(t_start, t_grasp + 1):
         target_pose_eval = target_grasp_mat if t <= t_c else target_final_mat
@@ -266,40 +299,85 @@ def run_episode(
         controller.prev_action = u_exec.clone()
         latencies.append(res.latency_ms)
 
-        # 2. Advance closed-loop latent state via M1 with residual-gated active perception
+        # 2. Advance closed-loop state
         z_pred = model.predictor(curr_z, u_exec.unsqueeze(0)).predicted_latent
-        z_gt_next = z_gt_seq[:, min(t + 1, max_t)]
-        if use_handover and int(phase_flags[t].item()) == 1:
-            ee_pred_now = fk(model.physical_decoder(z_pred)[:, :6])[0].detach()
-            dist_final = float(torch.norm(ee_pred_now - target_final_mat[:3, 3]).item())
-            if t <= t_c + 2:
-                w_t = 0.40 * max(0.0, min(1.0, (dist_final - 0.032) / 0.04))
-            else:
-                dec_gt_now = model.physical_decoder(z_gt_next)
-                ee_gt_now = fk(dec_gt_now[:, :6])[0].detach()
-                dist_gt = float(torch.norm(ee_gt_now - target_final_mat[:3, 3]).item())
-                rot_gt = compute_rot_error(fk, dec_gt_now[0, :6], target_final_mat)
-                if dist_final > 0.026 and dist_gt < 0.025 and rot_gt < 0.049:
-                    w_t = 0.85
+        if physics_in_loop and phys_stepper is not None:
+            dec_pred = model.physical_decoder(z_pred)
+            q_des = dec_pred[0, :6].detach().cpu().numpy()
+            dq_des = dec_pred[0, 6:12].detach().cpu().numpy()
+            q_phys_next, p_phys_next, u_pd = phys_stepper.step_pd_target(
+                q_des=q_des,
+                dq_des=dq_des,
+                payload_attached=(t >= t_grasp),
+            )
+            if event_stream is not None and dyn_state is not None and not isinstance(model, _BaselineModelWrapper):
+                ev_online = event_stream.step(q_phys_next).to(device)
+                u_pd_t = torch.from_numpy(u_pd).to(device).unsqueeze(0)
+                z_obs, dyn_state = step_grounded(
+                    model,
+                    ev_online,
+                    dyn_state,
+                    in_sensory_phase=True,
+                    unconstrained=False,
+                    action=u_pd_t,
+                )
+                if use_handover and int(phase_flags[t].item()) == 1:
+                    ee_pred_now = fk(dec_pred[:, :6])[0].detach()
+                    dist_pred = float(torch.norm(ee_pred_now - target_final_mat[:3, 3]).item())
+                    dec_obs = model.physical_decoder(z_obs)
+                    ee_obs_now = fk(dec_obs[:, :6])[0].detach()
+                    dist_obs = float(torch.norm(ee_obs_now - target_final_mat[:3, 3]).item())
+                    rot_obs = compute_rot_error(fk, dec_obs[0, :6], target_final_mat)
+                    if dist_pred > 0.026 and dist_obs < 0.025 and rot_obs < 0.049:
+                        w_t = 0.85
+                    elif dist_obs < dist_pred and t <= t_c + 2:
+                        w_t = 0.40 * max(0.0, min(1.0, (dist_pred - 0.032) / 0.04))
+                    else:
+                        w_t = 0.0
+                    curr_z = (1.0 - w_t) * z_pred + w_t * z_obs
                 else:
-                    w_t = 0.0
-            curr_z = (1.0 - w_t) * z_pred + w_t * z_gt_next
-        else:
-            curr_z = z_pred
+                    curr_z = z_pred
+            else:
+                curr_z = z_pred
 
-        # 3. Decoded post-action kinematic state and FK tip position
-        dec_t = model.physical_decoder(curr_z)
-        q_history.append(dec_t[0, :6].detach().cpu().numpy().copy())
-        ee_t = fk(dec_t[:, :6])[0].detach()
+            q_eval_t = torch.from_numpy(q_phys_next).to(device)
+            p_eval_t = torch.from_numpy(p_phys_next).to(device)
+        else:
+            z_gt_next = z_gt_seq[:, min(t + 1, max_t)]
+            if use_handover and int(phase_flags[t].item()) == 1:
+                ee_pred_now = fk(model.physical_decoder(z_pred)[:, :6])[0].detach()
+                dist_final = float(torch.norm(ee_pred_now - target_final_mat[:3, 3]).item())
+                if t <= t_c + 2:
+                    w_t = 0.40 * max(0.0, min(1.0, (dist_final - 0.032) / 0.04))
+                else:
+                    dec_gt_now = model.physical_decoder(z_gt_next)
+                    ee_gt_now = fk(dec_gt_now[:, :6])[0].detach()
+                    dist_gt = float(torch.norm(ee_gt_now - target_final_mat[:3, 3]).item())
+                    rot_gt = compute_rot_error(fk, dec_gt_now[0, :6], target_final_mat)
+                    if dist_final > 0.026 and dist_gt < 0.025 and rot_gt < 0.049:
+                        w_t = 0.85
+                    else:
+                        w_t = 0.0
+                curr_z = (1.0 - w_t) * z_pred + w_t * z_gt_next
+            else:
+                curr_z = z_pred
+
+            dec_t = model.physical_decoder(curr_z)
+            q_eval_t = dec_t[0, :6]
+            p_eval_t = dec_t[0, 6:12]
+
+        # 3. Evaluate kinematic state and FK tip position
+        q_history.append(q_eval_t.detach().cpu().numpy().copy())
+        ee_t = fk(q_eval_t.unsqueeze(0))[0].detach()
         err_cm = float((torch.norm(ee_t - target_pos_t) * 100.0).item())
         step_errors.append(err_cm)
 
         if t == t_c:
             grasp_err_cm = err_cm
-            grasp_rot_err = compute_rot_error(fk, dec_t[0, :6], target_grasp_mat)
+            grasp_rot_err = compute_rot_error(fk, q_eval_t, target_grasp_mat)
 
         if t == t_grasp:
-            final_vel = float(torch.norm(dec_t[0, 6:12]).item())
+            final_vel = float(torch.norm(p_eval_t).item())
             final_ee = (float(ee_t[0].item()), float(ee_t[1].item()), float(ee_t[2].item()))
 
     min_err = min(step_errors)
@@ -315,8 +393,8 @@ def run_episode(
     effective_vel_threshold = resolve_effective_vel_threshold(1.5, gt_final_vel)
     is_kinematically_stable = (final_vel < effective_vel_threshold)
     
-    # Pass the decoded joint positions (first 6 dims) to the function
-    final_rot_err = compute_rot_error(fk, dec_t[0, :6], target_pose_eval) 
+    # Pass the evaluated joint positions (first 6 dims) to the function
+    final_rot_err = compute_rot_error(fk, q_eval_t, target_pose_eval) 
     
     # Require rotation error to be low (e.g., < 0.05, representing minor angular deviation)
     is_orientation_aligned = final_rot_err < 0.05 
@@ -424,6 +502,12 @@ def main() -> None:
         help="Override MPPIConfig.w_jerk action smoothness weight (default: from config.mppi).",
     )
     parser.add_argument(
+        "--w-pos",
+        type=float,
+        default=None,
+        help="Override MPPIConfig.w_pos Cartesian position weight (default: from config.mppi).",
+    )
+    parser.add_argument(
         "--w-rot",
         type=float,
         default=None,
@@ -462,6 +546,11 @@ def main() -> None:
         default="spwm",
         choices=("spwm", "ann_rate", "rssm", "deep_gru"),
         help="Model architecture type to evaluate.",
+    )
+    parser.add_argument(
+        "--physics-in-loop",
+        action="store_true",
+        help="Execute true Featherstone articulated physics + online EventCameraSimulator in the closed loop.",
     )
     args = parser.parse_args()
 
@@ -537,6 +626,8 @@ def main() -> None:
         mppi_overrides["temperature"] = args.temperature
     if args.w_act is not None:
         mppi_overrides["w_jerk"] = args.w_act
+    if args.w_pos is not None:
+        mppi_overrides["w_pos"] = args.w_pos
     if args.w_rot is not None:
         mppi_overrides["w_rot"] = args.w_rot
     if args.disable_smooth_mppi:
@@ -598,6 +689,7 @@ def main() -> None:
             p_gt=batch["joint_velocities"][0].to(device) if "joint_velocities" in batch else None,
             use_handover=not args.disable_handover,
             use_lookahead=not args.disable_lookahead,
+            physics_in_loop=args.physics_in_loop,
         )
         results.append(ep_res)
 
@@ -664,6 +756,7 @@ def main() -> None:
 
     summary = {
         "benchmark_name": f"{args.model_label} Closed-Loop Latent MPPI Control Benchmark",
+        "evaluation_protocol": "physics_in_loop" if args.physics_in_loop else "latent_grounded",
         "checkpoint": str(args.checkpoint),
         "episodes_evaluated": len(results),
         "total_benchmark_time_sec": float(elapsed_bench),

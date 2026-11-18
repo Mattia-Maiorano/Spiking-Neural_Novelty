@@ -2770,5 +2770,107 @@
       "mean_joint_jerk_rad_s3": 0.003185030771419406,
       "direction_flips": 11
     }
-  ]
+  ],
+  "physics_in_loop_metrics": {
+    "spwm": {
+      "grasp_success_rate_pct": 88.0,
+      "terminal_placement_accuracy_cm": 0.8831607940793037,
+      "placement_accuracy_std_cm": 0.8119840275846506,
+      "terminal_error_cm": 1.5998407745361327,
+      "terminal_error_std_cm": 1.0035375962561464,
+      "mppi_inference_latency_ms": 22.07838824687911,
+      "mean_joint_accel_rad_s2": 0.005810882518999278,
+      "std_joint_accel_rad_s2": 0.0013435228680266074,
+      "mean_joint_jerk_rad_s3": 0.003634960176423192,
+      "std_joint_jerk_rad_s3": 0.0007344861000397225,
+      "mean_direction_flips": 13.98,
+      "std_direction_flips": 7.778148880035661
+    },
+    "rssm": {
+      "grasp_success_rate_pct": 48.0,
+      "terminal_placement_accuracy_cm": 1.3246886438131333,
+      "placement_accuracy_std_cm": 0.9257910382404726,
+      "terminal_error_cm": 2.2245967417955397,
+      "terminal_error_std_cm": 1.2122357740777538,
+      "mppi_inference_latency_ms": 31.119440857837045,
+      "mean_joint_accel_rad_s2": 0.012931671738624573,
+      "std_joint_accel_rad_s2": 0.003191803684412109,
+      "mean_joint_jerk_rad_s3": 0.012974122744053603,
+      "std_joint_jerk_rad_s3": 0.003128405403233471,
+      "mean_direction_flips": 32.54,
+      "std_direction_flips": 9.974387199221814
+    },
+    "deep_gru": {
+      "grasp_success_rate_pct": 0.0,
+      "terminal_placement_accuracy_cm": 12.671033895015716,
+      "placement_accuracy_std_cm": 5.714335461327533,
+      "terminal_error_cm": 29.83362277984619,
+      "terminal_error_std_cm": 7.4562288356886945,
+      "mppi_inference_latency_ms": 44.544892053711976,
+      "mean_joint_accel_rad_s2": 0.004151119305752218,
+      "std_joint_accel_rad_s2": 0.002353932190856757,
+      "mean_joint_jerk_rad_s3": 0.0016224616684485226,
+      "std_joint_jerk_rad_s3": 0.0010136947580609817,
+      "mean_direction_flips": 2.34,
+      "std_direction_flips": 1.1244554237496478
+    },
+    "ann_rate": {
+      "grasp_success_rate_pct": 0.0,
+      "terminal_placement_accuracy_cm": 7.362843397855759,
+      "placement_accuracy_std_cm": 3.0365703771808814,
+      "terminal_error_cm": 16.44354862213135,
+      "terminal_error_std_cm": 9.040494966017693,
+      "mppi_inference_latency_ms": 30.358604718370135,
+      "mean_joint_accel_rad_s2": 0.004622546173632145,
+      "std_joint_accel_rad_s2": 0.0010745891550026964,
+      "mean_joint_jerk_rad_s3": 0.001883915641810745,
+      "std_joint_jerk_rad_s3": 0.0003426545436441245,
+      "mean_direction_flips": 9.44,
+      "std_direction_flips": 3.0077233915371937
+    }
+  },
+  "physics_in_loop_ablations": {
+    "stage1_base_pil": {
+      "grasp_success_rate_pct": 62.0,
+      "terminal_placement_accuracy_cm": 1.2695935297012328,
+      "placement_accuracy_std_cm": 1.1398629120900612,
+      "terminal_error_cm": 2.500952044725418,
+      "terminal_error_std_cm": 1.5454209736919107,
+      "mppi_inference_latency_ms": 24.228714070396236,
+      "mean_joint_accel_rad_s2": 0.007134863389655948,
+      "std_joint_accel_rad_s2": 0.0017063712916169438,
+      "mean_joint_jerk_rad_s3": 0.0053022167272865775,
+      "std_joint_jerk_rad_s3": 0.0014671047833172324,
+      "mean_direction_flips": 17.16,
+      "std_direction_flips": 9.533855463557227
+    },
+    "stage2_smooth_mppi_pil": {
+      "grasp_success_rate_pct": 62.0,
+      "terminal_placement_accuracy_cm": 1.0944786427915096,
+      "placement_accuracy_std_cm": 0.9675195647047423,
+      "terminal_error_cm": 2.214964910745621,
+      "terminal_error_std_cm": 1.6896172979036426,
+      "mppi_inference_latency_ms": 28.134234842828775,
+      "mean_joint_accel_rad_s2": 0.007255648942664266,
+      "std_joint_accel_rad_s2": 0.0019073873357738735,
+      "mean_joint_jerk_rad_s3": 0.00465158506296575,
+      "std_joint_jerk_rad_s3": 0.0013619774867168733,
+      "mean_direction_flips": 15.7,
+      "std_direction_flips": 8.163945124754331
+    },
+    "stage3_se3_homeostasis_pil": {
+      "grasp_success_rate_pct": 74.0,
+      "terminal_placement_accuracy_cm": 0.9919915619492531,
+      "placement_accuracy_std_cm": 0.9748825553230612,
+      "terminal_error_cm": 1.8238282418251037,
+      "terminal_error_std_cm": 1.2674219078096127,
+      "mppi_inference_latency_ms": 27.543232955609774,
+      "mean_joint_accel_rad_s2": 0.005967851150780916,
+      "std_joint_accel_rad_s2": 0.0016630297944008234,
+      "mean_joint_jerk_rad_s3": 0.003749257093295455,
+      "std_joint_jerk_rad_s3": 0.000997509240772106,
+      "mean_direction_flips": 14.56,
+      "std_direction_flips": 8.270816162870505
+    }
+  }
 }

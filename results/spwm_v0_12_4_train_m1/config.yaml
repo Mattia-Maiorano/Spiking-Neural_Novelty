@@ -67,7 +67,7 @@ memory:
   - 0.985
 training:
   mode: train_m1
-  epochs: 60
+  epochs: 240
   early_stopping_patience: 10
   batch_size: 32
   weight_decay: 0.0005
@@ -91,7 +91,7 @@ training:
   classic_patience: false
   ema_decay: 0.99
   mppi_noise_warmup_epochs: 10
-  mppi_noise_ramp_epochs: 12
+  mppi_noise_ramp_epochs: 20
   mppi_noise_target_alpha: 0.25
   phase1_loss_threshold: 0.1
   phase2_loss_threshold: 0.095

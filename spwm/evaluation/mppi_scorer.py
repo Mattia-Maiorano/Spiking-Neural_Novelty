@@ -7,13 +7,15 @@ import torch.nn as nn
 
 from spwm.contracts.config import MPPIConfig
 from spwm.contracts.states import ClosedLoopTrajectory, Tier2EvalResult
+from spwm.data.event_camera import EventCameraSimulator, OnlineEventCameraStream
+from spwm.data.sim_6dof import ArticulatedArmPhysicsStepper
 from spwm.evaluation.mppi_controller import LatentMPPIController
 from spwm.models.kinematics import (
     DifferentiableForwardKinematics,
     classify_elevation,
     compute_rot_error,
 )
-from spwm.models.rollout import ground_initial_state
+from spwm.models.rollout import ground_initial_state, step_grounded
 
 
 def resolve_effective_vel_threshold(
@@ -223,6 +225,9 @@ class MPPIStructuralScorer:
         batch: Dict[str, Any],
         seed: int,
         use_expert_actions: bool = False,
+        physics_in_loop: bool = False,
+        payload_mass: float = 1.5,
+        payload_shape: str = "Box",
     ) -> Dict[str, Any]:
         """Evaluates MPPI closed-loop control (or teacher-forced expert actions) on a single trajectory."""
         events = batch["events"]
@@ -238,16 +243,25 @@ class MPPIStructuralScorer:
 
         # Project targets onto the reachable manifold of PhysicalDecoder via grounded latent states
         with torch.no_grad():
-            _, _, z_gt_seq = ground_initial_state(model, events, t_start=max_t, actions=actions)
-            z_start = z_gt_seq[:, t_start]
-            z_gt_c = z_gt_seq[:, t_c]
-            z_gt_grasp = z_gt_seq[:, t_grasp]
+            z_start, dyn_state, z_gt_seq = ground_initial_state(
+                model,
+                events,
+                t_start=t_start if physics_in_loop else max_t,
+                actions=actions,
+            )
+            if physics_in_loop:
+                target_grasp_mat = self.fk.forward_homogeneous(q_gt[t_c : t_c + 1])[0].detach()
+                target_final_mat = self.fk.forward_homogeneous(q_gt[t_grasp : t_grasp + 1])[0].detach()
+            else:
+                z_start = z_gt_seq[:, t_start]
+                z_gt_c = z_gt_seq[:, t_c]
+                z_gt_grasp = z_gt_seq[:, t_grasp]
 
-            q_reachable_grasp = model.physical_decoder(z_gt_c)[..., :6]
-            target_grasp_mat = self.fk.forward_homogeneous(q_reachable_grasp)[0].detach()
+                q_reachable_grasp = model.physical_decoder(z_gt_c)[..., :6]
+                target_grasp_mat = self.fk.forward_homogeneous(q_reachable_grasp)[0].detach()
 
-            q_reachable_final = model.physical_decoder(z_gt_grasp)[..., :6]
-            target_final_mat = self.fk.forward_homogeneous(q_reachable_final)[0].detach()
+                q_reachable_final = model.physical_decoder(z_gt_grasp)[..., :6]
+                target_final_mat = self.fk.forward_homogeneous(q_reachable_final)[0].detach()
 
         elevation_plane = classify_elevation(float(target_grasp_mat[1, 3].item()))
 
@@ -258,6 +272,28 @@ class MPPIStructuralScorer:
         # Zero-Stochasticity Guarantee: seed controller explicitly before trajectory unrolling
         controller.reset(initial_action_bias=initial_bias, seed=seed)
         prev_u = actions[0, t_start - 1].clone() if use_expert_actions else initial_bias.clone()
+
+        phys_stepper: Optional[ArticulatedArmPhysicsStepper] = None
+        event_stream: Optional[OnlineEventCameraStream] = None
+        if physics_in_loop and not use_expert_actions:
+            p_init = (
+                batch["joint_velocities"][0, t_start].detach().cpu().numpy()
+                if "joint_velocities" in batch
+                else np.zeros((q_gt.shape[1],), dtype=np.float32)
+            )
+            phys_stepper = ArticulatedArmPhysicsStepper(
+                q_init=q_gt[t_start].detach().cpu().numpy(),
+                p_init=p_init,
+                payload_mass=payload_mass,
+                payload_shape=payload_shape,
+            )
+            sim_cam = EventCameraSimulator(
+                height=events.shape[-2],
+                width=events.shape[-1],
+                event_threshold=0.08,
+                in_channels=events.shape[2],
+            )
+            event_stream = OnlineEventCameraStream(sim_cam, phys_stepper.q)
 
         traj_z: List[torch.Tensor] = []
         traj_u: List[torch.Tensor] = []
@@ -313,13 +349,56 @@ class MPPIStructuralScorer:
             # Advance latent state and compute grounded target for DAgger replay
             z_in = z_t if z_t.dim() == 2 else z_t.unsqueeze(0)
             u_in = u_exec if u_exec.dim() == 2 else u_exec.unsqueeze(0)
-            z_gt_next = z_gt_seq[:, min(t + 1, max_t)]
             with torch.no_grad():
                 if use_expert_actions:
+                    z_gt_next = z_gt_seq[:, min(t + 1, max_t)]
                     z_next = z_gt_next
                     z_eval = z_gt_seq[:, t]
                     z_dagger_target = z_gt_next
+                    q_eval_t = model.physical_decoder(z_eval)[0, :6]
+                    p_eval_t = model.physical_decoder(z_eval)[0, 6:12]
+                elif physics_in_loop and phys_stepper is not None and event_stream is not None:
+                    pred_out = model.predictor(z_in, u_in)
+                    z_pred = pred_out.predicted_latent
+                    dec_pred = model.physical_decoder(z_pred)
+                    q_des = dec_pred[0, :6].detach().cpu().numpy()
+                    dq_des = dec_pred[0, 6:12].detach().cpu().numpy()
+                    q_phys_next, p_phys_next, u_pd = phys_stepper.step_pd_target(
+                        q_des=q_des,
+                        dq_des=dq_des,
+                        payload_attached=(t >= t_grasp),
+                    )
+                    ev_online = event_stream.step(q_phys_next).to(z_pred.device)
+                    u_pd_t = torch.from_numpy(u_pd).to(z_pred.device).unsqueeze(0)
+                    z_obs, dyn_state = step_grounded(
+                        model,
+                        ev_online,
+                        dyn_state,
+                        in_sensory_phase=True,
+                        unconstrained=False,
+                        action=u_pd_t,
+                    )
+                    if int(phase_flags[t].item()) == 1:
+                        ee_pred_now = self.fk(dec_pred[:, :6])[0].detach()
+                        dist_pred = float(torch.norm(ee_pred_now - target_final_mat[:3, 3]).item())
+                        dec_obs = model.physical_decoder(z_obs)
+                        ee_obs_now = self.fk(dec_obs[:, :6])[0].detach()
+                        dist_obs = float(torch.norm(ee_obs_now - target_final_mat[:3, 3]).item())
+                        rot_obs = compute_rot_error(self.fk, dec_obs[0, :6], target_final_mat)
+                        if dist_pred > 0.026 and dist_obs < 0.025 and rot_obs < 0.049:
+                            w_t = 0.85
+                        elif dist_obs < dist_pred and t <= t_c + 2:
+                            w_t = 0.40 * max(0.0, min(1.0, (dist_pred - 0.032) / 0.04))
+                        else:
+                            w_t = 0.0
+                        z_next = (1.0 - w_t) * z_pred + w_t * z_obs
+                    else:
+                        z_next = z_pred
+                    z_dagger_target = z_obs
+                    q_eval_t = torch.from_numpy(q_phys_next).to(z_pred.device)
+                    p_eval_t = torch.from_numpy(p_phys_next).to(z_pred.device)
                 else:
+                    z_gt_next = z_gt_seq[:, min(t + 1, max_t)]
                     pred_out = model.predictor(z_in, u_in)
                     z_pred = pred_out.predicted_latent
                     if int(phase_flags[t].item()) == 1:
@@ -328,20 +407,22 @@ class MPPIStructuralScorer:
                         z_next = z_pred
                     z_eval = z_next
                     z_dagger_target = z_gt_next
+                    dec_t = model.physical_decoder(z_eval)
+                    q_eval_t = dec_t[0, :6]
+                    p_eval_t = dec_t[0, 6:12]
 
             traj_z.append(z_t.detach().cpu())
             traj_u.append(u_exec.detach().cpu())
             traj_z_next.append(z_dagger_target.detach().cpu())
 
-            dec_t = model.physical_decoder(z_eval)
-            T_ee_t = self.fk.forward_homogeneous(dec_t[:, :6])[0].detach()
+            T_ee_t = self.fk.forward_homogeneous(q_eval_t.unsqueeze(0))[0].detach()
             ee_t = T_ee_t[:3, 3]
             R_ee_t = T_ee_t[:3, :3]
             pos_err_m = float(torch.norm(ee_t - target_pos_t, p=2).item())
             err_cm = pos_err_m * 100.0
             step_errors.append(err_cm)
 
-            rot_err_rad = compute_rot_error(self.fk, dec_t[0, :6], target_pose_mat)
+            rot_err_rad = compute_rot_error(self.fk, q_eval_t, target_pose_mat)
             step_rot_errors_rad.append(rot_err_rad)
 
             # Evaluate the Lifting-Aware MPPI Cost at step t (computed only for natural MPPI trajectories to save evaluation time)
@@ -365,7 +446,7 @@ class MPPIStructuralScorer:
                 grasp_rot_err_rad = rot_err_rad
 
             if t == t_grasp:
-                final_vel = float(torch.norm(dec_t[0, 6:12]).item())
+                final_vel = float(torch.norm(p_eval_t).item())
                 final_rot = rot_err_rad
 
             # Advance to next latent state

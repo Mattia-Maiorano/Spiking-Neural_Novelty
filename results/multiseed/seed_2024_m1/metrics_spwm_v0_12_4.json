@@ -1,0 +1,2051 @@
+{
+  "version": "spwm_v0_12_4",
+  "model_name": "spwm_v0_12_4_train_m1",
+  "total_epochs": 30,
+  "parameters": 392141,
+  "evaluation": {
+    "teacher_forcing_mse": 0.05915561060492809,
+    "mean_spike_rate": 0.14291142385739547,
+    "rollout_mae": 0.16398201873287174,
+    "rollout_score": 0.329194311575335,
+    "dynamic_score": 0.329194311575335,
+    "drift_ratio": 1.3247765860925433,
+    "horizons": [
+      1,
+      5,
+      10,
+      25,
+      50,
+      100
+    ],
+    "latent_mse_per_horizon": {
+      "1": 0.03404427061860378,
+      "5": 0.058021687544309176,
+      "10": 0.08023456484079361,
+      "25": 0.12055977376607749,
+      "50": 0.20548859467873207,
+      "100": 0.5755253938528208
+    },
+    "position_error_per_horizon": {
+      "1": 0.15276741293760446,
+      "5": 0.12502067536115646,
+      "10": 0.11485057381483224,
+      "25": 0.20238269177766946,
+      "50": 0.2050125266496952,
+      "100": 0.18385823185627276
+    },
+    "velocity_error_per_horizon": {
+      "1": 0.06506607137047328,
+      "5": 0.24291830223340255,
+      "10": 0.41309861494944644,
+      "25": 0.49437928887513966,
+      "50": 0.47880110373863805,
+      "100": 0.4429932259596311
+    },
+    "position_mse_per_horizon": {
+      "1": 0.003913140712449184,
+      "5": 0.0026795735869270107,
+      "10": 0.0024390235507430937,
+      "25": 0.010732113383710384,
+      "50": 0.010117440699384762,
+      "100": 0.007904675502616625
+    },
+    "velocity_mse_per_horizon": {
+      "1": 0.0007220628053451387,
+      "5": 0.01217198228606811,
+      "10": 0.04354900064376684,
+      "25": 0.0598734153004793,
+      "50": 0.05320605922203798,
+      "100": 0.04573972809773225
+    },
+    "q_mse_per_horizon": {
+      "1": 0.0008645562517743271,
+      "5": 0.007806313761438315,
+      "10": 0.027497651055455208,
+      "25": 0.11553511424706532,
+      "50": 0.3245542347431183,
+      "100": 1.3992157716017504
+    },
+    "p_mse_per_horizon": {
+      "1": 0.045104176665727906,
+      "5": 0.07476014586595389,
+      "10": 0.09781353748761691,
+      "25": 0.1222346591261717,
+      "50": 0.16580004073106325,
+      "100": 0.3009619346031776
+    },
+    "physical_rollout_degradation": {
+      "position_relative": {
+        "1": 1.0,
+        "5": 0.8183726683400685,
+        "10": 0.7518002144982401,
+        "25": 1.3247765860925433,
+        "50": 1.3419912185946976,
+        "100": 1.2035173491572242
+      },
+      "velocity_relative": {
+        "1": 1.0,
+        "5": 3.7334097036575944,
+        "10": 6.348909750480324,
+        "25": 7.598111864788058,
+        "50": 7.35869084537838,
+        "100": 6.808359819933122
+      },
+      "position_normalized": {
+        "1": 0.07638370646880223,
+        "5": 0.06251033768057823,
+        "10": 0.05742528690741612,
+        "25": 0.10119134588883473,
+        "50": 0.1025062633248476,
+        "100": 0.09192911592813638
+      },
+      "velocity_normalized": {
+        "1": 0.03253303568523664,
+        "5": 0.12145915111670127,
+        "10": 0.20654930747472322,
+        "25": 0.24718964443756983,
+        "50": 0.23940055186931902,
+        "100": 0.22149661297981554
+      }
+    },
+    "latent_rollout_degradation": {
+      "latent_relative": {
+        "1": 1.0,
+        "5": 1.7043010906100227,
+        "10": 2.3567714444423653,
+        "25": 3.541264699623101,
+        "50": 6.035922959866295,
+        "100": 16.905205586584664
+      },
+      "q_relative": {
+        "1": 1.0,
+        "5": 9.029272236962525,
+        "10": 31.805508315996594,
+        "25": 133.63516140210984,
+        "50": 375.3997892873208,
+        "100": 1618.4207432774242
+      },
+      "p_relative": {
+        "1": 1.0,
+        "5": 1.6574994023282963,
+        "10": 2.168613745297336,
+        "25": 2.7100518879230724,
+        "50": 3.6759354230058534,
+        "100": 6.672595685176566
+      }
+    }
+  },
+  "training_progression": {
+    "total_epochs": 30,
+    "num_segments": 10,
+    "best_checkpoint": {
+      "epoch": 30,
+      "score": 4.084704
+    },
+    "trends": {
+      "train_loss": {
+        "initial": 76.406797,
+        "final": 1.425189,
+        "best": 1.425189,
+        "best_epoch": 30,
+        "change": -74.981609,
+        "pct_change": "-98.13%"
+      },
+      "val_loss": {
+        "initial": 24.248087,
+        "final": 1.528706,
+        "best": 1.30414,
+        "best_epoch": 29,
+        "change": -22.719381,
+        "pct_change": "-93.70%"
+      },
+      "train_pos_err": {
+        "initial": 1.022871,
+        "final": 0.218271,
+        "best": 0.218271,
+        "best_epoch": 30,
+        "change": -0.8046,
+        "pct_change": "-78.66%"
+      },
+      "val_pos_err": {
+        "initial": 0.742428,
+        "final": 0.214834,
+        "best": 0.202333,
+        "best_epoch": 29,
+        "change": -0.527594,
+        "pct_change": "-71.06%"
+      },
+      "train_vel_err": {
+        "initial": 1.052692,
+        "final": 0.489666,
+        "best": 0.489666,
+        "best_epoch": 30,
+        "change": -0.563027,
+        "pct_change": "-53.48%"
+      },
+      "val_vel_err": {
+        "initial": 0.993379,
+        "final": 0.46981,
+        "best": 0.46981,
+        "best_epoch": 30,
+        "change": -0.523569,
+        "pct_change": "-52.71%"
+      },
+      "score": {
+        "initial": 6.500955,
+        "final": 4.084704,
+        "best": 4.084704,
+        "best_epoch": 30,
+        "change": -2.416251,
+        "pct_change": "-37.17%"
+      },
+      "mppi_score": {
+        "initial": 6.500955,
+        "final": 4.084704,
+        "best": 4.084704,
+        "best_epoch": 30,
+        "change": -2.416251,
+        "pct_change": "-37.17%"
+      },
+      "mppi_cost": {
+        "initial": 1.120776,
+        "final": 0.638808,
+        "best": 0.638808,
+        "best_epoch": 30,
+        "change": -0.481968,
+        "pct_change": "-43.00%"
+      },
+      "mppi_success_rate": {
+        "initial": 0.833333,
+        "final": 1.0,
+        "best": 1.0,
+        "best_epoch": 30,
+        "change": 0.166667,
+        "pct_change": "+20.00%"
+      },
+      "mppi_mean_error_cm": {
+        "initial": 10.30296,
+        "final": 5.737243,
+        "best": 5.737243,
+        "best_epoch": 30,
+        "change": -4.565717,
+        "pct_change": "-44.31%"
+      },
+      "mppi_grasp_error_cm": {
+        "initial": 6.054524,
+        "final": 3.555263,
+        "best": 3.555263,
+        "best_epoch": 30,
+        "change": -2.499261,
+        "pct_change": "-41.28%"
+      },
+      "mppi_grasp_rot_err_rad": {
+        "initial": 0.142178,
+        "final": 0.04925,
+        "best": 0.04925,
+        "best_epoch": 30,
+        "change": -0.092928,
+        "pct_change": "-65.36%"
+      },
+      "mppi_terminal_error_cm": {
+        "initial": 1.572033,
+        "final": 1.774315,
+        "best": 1.572033,
+        "best_epoch": 5,
+        "change": 0.202282,
+        "pct_change": "+12.87%"
+      },
+      "mppi_steady_state_error_cm": {
+        "initial": 1.546047,
+        "final": 1.569272,
+        "best": 1.546047,
+        "best_epoch": 5,
+        "change": 0.023225,
+        "pct_change": "+1.50%"
+      },
+      "mppi_min_error_cm": {
+        "initial": 1.356264,
+        "final": 1.05757,
+        "best": 1.05757,
+        "best_epoch": 30,
+        "change": -0.298695,
+        "pct_change": "-22.02%"
+      },
+      "mppi_rot_err_rad": {
+        "initial": 0.041382,
+        "final": 0.023495,
+        "best": 0.023495,
+        "best_epoch": 30,
+        "change": -0.017887,
+        "pct_change": "-43.22%"
+      },
+      "mppi_final_vel": {
+        "initial": 0.421642,
+        "final": 0.411354,
+        "best": 0.39367,
+        "best_epoch": 15,
+        "change": -0.010287,
+        "pct_change": "-2.44%"
+      },
+      "mppi_final_rot": {
+        "initial": 0.041382,
+        "final": 0.023495,
+        "best": 0.023495,
+        "best_epoch": 30,
+        "change": -0.017887,
+        "pct_change": "-43.22%"
+      },
+      "mppi_pos_penalty": {
+        "initial": 0.275644,
+        "final": 0.29355,
+        "best": 0.275644,
+        "best_epoch": 5,
+        "change": 0.017906,
+        "pct_change": "+6.50%"
+      },
+      "mppi_vel_penalty": {
+        "initial": 0.083594,
+        "final": 0.079954,
+        "best": 0.073361,
+        "best_epoch": 15,
+        "change": -0.00364,
+        "pct_change": "-4.35%"
+      },
+      "mppi_rot_penalty": {
+        "initial": 0.761538,
+        "final": 0.265304,
+        "best": 0.265304,
+        "best_epoch": 30,
+        "change": -0.496234,
+        "pct_change": "-65.16%"
+      },
+      "train_mppi_noise_alpha": {
+        "initial": 0.0,
+        "final": 0.0,
+        "best": 0.0,
+        "best_epoch": 1,
+        "change": 0.0,
+        "pct_change": "+0.00%"
+      },
+      "mppi_expert_trajectories": {
+        "initial": 4.0,
+        "final": 4.0,
+        "best": 4.0,
+        "best_epoch": 5,
+        "change": 0.0,
+        "pct_change": "+0.00%"
+      }
+    },
+    "sampled_segments": [
+      {
+        "segment": 1,
+        "epoch": 1,
+        "progress_pct": "0.0%",
+        "train_loss": 76.406797,
+        "val_loss": 24.248087,
+        "train_pos_err": 1.022871,
+        "val_pos_err": 0.742428,
+        "train_vel_err": 1.052692,
+        "val_vel_err": 0.993379,
+        "score": null,
+        "train_mppi_noise_alpha": 0.0
+      },
+      {
+        "segment": 2,
+        "epoch": 4,
+        "progress_pct": "11.1%",
+        "train_loss": 7.181003,
+        "val_loss": 6.4723,
+        "train_pos_err": 0.436753,
+        "val_pos_err": 0.40241,
+        "train_vel_err": 0.790881,
+        "val_vel_err": 0.728057,
+        "score": null,
+        "train_mppi_noise_alpha": 0.0
+      },
+      {
+        "segment": 3,
+        "epoch": 7,
+        "progress_pct": "22.2%",
+        "train_loss": 4.81332,
+        "val_loss": 4.121995,
+        "train_pos_err": 0.36422,
+        "val_pos_err": 0.330773,
+        "train_vel_err": 0.692784,
+        "val_vel_err": 0.667023,
+        "score": 6.500955,
+        "train_mppi_noise_alpha": 0.0
+      },
+      {
+        "segment": 4,
+        "epoch": 11,
+        "progress_pct": "33.3%",
+        "train_loss": 3.925109,
+        "val_loss": 3.665541,
+        "train_pos_err": 0.34627,
+        "val_pos_err": 0.380765,
+        "train_vel_err": 0.613984,
+        "val_vel_err": 0.599801,
+        "score": 6.111544,
+        "train_mppi_noise_alpha": 0.0
+      },
+      {
+        "segment": 5,
+        "epoch": 14,
+        "progress_pct": "44.4%",
+        "train_loss": 3.447895,
+        "val_loss": 2.863648,
+        "train_pos_err": 0.332151,
+        "val_pos_err": 0.316579,
+        "train_vel_err": 0.633508,
+        "val_vel_err": 0.555,
+        "score": 6.111544,
+        "train_mppi_noise_alpha": 0.0
+      },
+      {
+        "segment": 6,
+        "epoch": 17,
+        "progress_pct": "55.6%",
+        "train_loss": 3.121085,
+        "val_loss": 2.738096,
+        "train_pos_err": 0.315592,
+        "val_pos_err": 0.280973,
+        "train_vel_err": 0.58735,
+        "val_vel_err": 0.58522,
+        "score": 5.625499,
+        "train_mppi_noise_alpha": 0.0
+      },
+      {
+        "segment": 7,
+        "epoch": 20,
+        "progress_pct": "66.7%",
+        "train_loss": 2.773795,
+        "val_loss": 2.954426,
+        "train_pos_err": 0.288826,
+        "val_pos_err": 0.309421,
+        "train_vel_err": 0.560966,
+        "val_vel_err": 0.525054,
+        "score": 5.152313,
+        "mppi_score": 5.152313,
+        "mppi_cost": 1.031893,
+        "mppi_success_rate": 0.833333,
+        "mppi_mean_error_cm": 7.732241,
+        "mppi_grasp_error_cm": 4.49652,
+        "mppi_grasp_rot_err_rad": 0.053297,
+        "mppi_terminal_error_cm": 1.872905,
+        "mppi_steady_state_error_cm": 1.718957,
+        "mppi_min_error_cm": 1.434922,
+        "mppi_rot_err_rad": 0.035376,
+        "mppi_final_vel": 0.407632,
+        "mppi_final_rot": 0.035376,
+        "mppi_pos_penalty": 0.341505,
+        "mppi_vel_penalty": 0.0789,
+        "mppi_rot_penalty": 0.611488,
+        "train_mppi_noise_alpha": 0.0,
+        "mppi_expert_trajectories": 4.0,
+        "mppi_expert_blocks": [
+          "Mid",
+          "Mid",
+          "Mid",
+          "Mid"
+        ]
+      },
+      {
+        "segment": 8,
+        "epoch": 24,
+        "progress_pct": "77.8%",
+        "train_loss": 2.15056,
+        "val_loss": 2.349503,
+        "train_pos_err": 0.256162,
+        "val_pos_err": 0.257347,
+        "train_vel_err": 0.549843,
+        "val_vel_err": 0.588684,
+        "score": 5.152313,
+        "train_mppi_noise_alpha": 0.0
+      },
+      {
+        "segment": 9,
+        "epoch": 27,
+        "progress_pct": "88.9%",
+        "train_loss": 1.760427,
+        "val_loss": 1.887759,
+        "train_pos_err": 0.227764,
+        "val_pos_err": 0.260835,
+        "train_vel_err": 0.501874,
+        "val_vel_err": 0.49353,
+        "score": 4.904078,
+        "train_mppi_noise_alpha": 0.0
+      },
+      {
+        "segment": 10,
+        "epoch": 30,
+        "progress_pct": "100.0%",
+        "train_loss": 1.425189,
+        "val_loss": 1.528706,
+        "train_pos_err": 0.218271,
+        "val_pos_err": 0.214834,
+        "train_vel_err": 0.489666,
+        "val_vel_err": 0.46981,
+        "score": 4.084704,
+        "mppi_score": 4.084704,
+        "mppi_cost": 0.638808,
+        "mppi_success_rate": 1.0,
+        "mppi_mean_error_cm": 5.737243,
+        "mppi_grasp_error_cm": 3.555263,
+        "mppi_grasp_rot_err_rad": 0.04925,
+        "mppi_terminal_error_cm": 1.774315,
+        "mppi_steady_state_error_cm": 1.569272,
+        "mppi_min_error_cm": 1.05757,
+        "mppi_rot_err_rad": 0.023495,
+        "mppi_final_vel": 0.411354,
+        "mppi_final_rot": 0.023495,
+        "mppi_pos_penalty": 0.29355,
+        "mppi_vel_penalty": 0.079954,
+        "mppi_rot_penalty": 0.265304,
+        "train_mppi_noise_alpha": 0.0,
+        "mppi_expert_trajectories": 4.0,
+        "mppi_expert_blocks": [
+          "Mid",
+          "Mid",
+          "Low",
+          "Mid"
+        ]
+      }
+    ]
+  },
+  "mppi_progression": {
+    "total_evaluations": 6,
+    "best_checkpoint": {
+      "epoch": 30,
+      "score": 4.084704,
+      "best_success_rate_pct": 100.0
+    },
+    "final_metrics": {
+      "mppi_score": 4.084704,
+      "success_rate_pct": 100.0,
+      "mean_cartesian_error_cm": 5.737,
+      "grasp_error_cm": 3.555,
+      "grasp_rot_err_rad": 0.0492,
+      "terminal_error_cm": 1.774,
+      "rotational_error_rad": 0.0235,
+      "terminal_velocity_rad_s": 0.4114
+    },
+    "expert_execution": {
+      "initial_expert_trajectories": 4,
+      "final_expert_trajectories": 4,
+      "curriculum_annealed_to_autonomous": false,
+      "total_overwritten_trajectories": 24,
+      "tracked_elevation_counts": {
+        "Low": 4,
+        "Mid": 20,
+        "High": 0
+      },
+      "final_natural_trajectory_ids": [
+        3201,
+        3202,
+        3200,
+        3204,
+        3205,
+        3203
+      ],
+      "final_natural_blocks": [
+        "Mid",
+        "Mid",
+        "Mid",
+        "Low",
+        "Mid",
+        "Mid"
+      ],
+      "final_expert_trajectory_ids": [
+        3202,
+        3200,
+        3204,
+        3205
+      ],
+      "final_overwritten_blocks": [
+        "Mid",
+        "Mid",
+        "Low",
+        "Mid"
+      ],
+      "final_elevation_breakdown": {
+        "natural_low": {
+          "count": 1,
+          "trajectory_ids": [
+            3204
+          ],
+          "avg_vel_err": 0.3216,
+          "avg_rot_err": 0.0172,
+          "avg_cartesian_err_cm": 4.278,
+          "avg_terminal_err_cm": 1.109
+        },
+        "natural_mid": {
+          "count": 5,
+          "trajectory_ids": [
+            3201,
+            3202,
+            3200,
+            3205,
+            3203
+          ],
+          "avg_vel_err": 0.4293,
+          "avg_rot_err": 0.0247,
+          "avg_cartesian_err_cm": 6.029,
+          "avg_terminal_err_cm": 1.908
+        },
+        "expert_low": {
+          "count": 1,
+          "trajectory_ids": [
+            3204
+          ],
+          "avg_vel_err": 0.126,
+          "avg_rot_err": 0.0,
+          "avg_cartesian_err_cm": 4.939,
+          "avg_terminal_err_cm": 0.0
+        },
+        "expert_mid": {
+          "count": 3,
+          "trajectory_ids": [
+            3202,
+            3200,
+            3205
+          ],
+          "avg_vel_err": 0.4242,
+          "avg_rot_err": 0.0,
+          "avg_cartesian_err_cm": 6.8,
+          "avg_terminal_err_cm": 0.0
+        }
+      },
+      "final_trials": [
+        {
+          "trajectory_id": 3201,
+          "elevation_plane": "Mid",
+          "is_expert": false,
+          "score": 0.876111,
+          "mean_cartesian_err_cm": 4.85,
+          "terminal_error_cm": 1.787,
+          "final_vel": 0.5528,
+          "final_rot": 0.0383,
+          "grasp_error_cm": 4.186,
+          "grasp_rot_err_rad": 0.1055,
+          "success": true
+        },
+        {
+          "trajectory_id": 3202,
+          "elevation_plane": "Mid",
+          "is_expert": false,
+          "score": 0.519111,
+          "mean_cartesian_err_cm": 5.401,
+          "terminal_error_cm": 1.623,
+          "final_vel": 0.4766,
+          "final_rot": 0.0087,
+          "grasp_error_cm": 2.989,
+          "grasp_rot_err_rad": 0.0543,
+          "success": true
+        },
+        {
+          "trajectory_id": 3202,
+          "elevation_plane": "Mid",
+          "is_expert": true,
+          "score": 0.080809,
+          "mean_cartesian_err_cm": 5.74,
+          "terminal_error_cm": 0.0,
+          "final_vel": 0.3841,
+          "final_rot": 0.0,
+          "grasp_error_cm": 0.0,
+          "grasp_rot_err_rad": 0.0,
+          "success": true
+        },
+        {
+          "trajectory_id": 3200,
+          "elevation_plane": "Mid",
+          "is_expert": false,
+          "score": 0.81175,
+          "mean_cartesian_err_cm": 7.095,
+          "terminal_error_cm": 2.277,
+          "final_vel": 0.2508,
+          "final_rot": 0.0253,
+          "grasp_error_cm": 3.66,
+          "grasp_rot_err_rad": 0.0367,
+          "success": true
+        },
+        {
+          "trajectory_id": 3200,
+          "elevation_plane": "Mid",
+          "is_expert": true,
+          "score": 0.05854,
+          "mean_cartesian_err_cm": 6.463,
+          "terminal_error_cm": 0.0,
+          "final_vel": 0.3358,
+          "final_rot": 0.0,
+          "grasp_error_cm": 0.0,
+          "grasp_rot_err_rad": 0.0,
+          "success": true
+        },
+        {
+          "trajectory_id": 3204,
+          "elevation_plane": "Low",
+          "is_expert": false,
+          "score": 0.274179,
+          "mean_cartesian_err_cm": 4.278,
+          "terminal_error_cm": 1.109,
+          "final_vel": 0.3216,
+          "final_rot": 0.0172,
+          "grasp_error_cm": 3.647,
+          "grasp_rot_err_rad": 0.0397,
+          "success": true
+        },
+        {
+          "trajectory_id": 3204,
+          "elevation_plane": "Low",
+          "is_expert": true,
+          "score": 0.015713,
+          "mean_cartesian_err_cm": 4.939,
+          "terminal_error_cm": 0.0,
+          "final_vel": 0.126,
+          "final_rot": 0.0,
+          "grasp_error_cm": 0.0,
+          "grasp_rot_err_rad": 0.0,
+          "success": true
+        },
+        {
+          "trajectory_id": 3205,
+          "elevation_plane": "Mid",
+          "is_expert": false,
+          "score": 0.412683,
+          "mean_cartesian_err_cm": 6.676,
+          "terminal_error_cm": 1.658,
+          "final_vel": 0.4836,
+          "final_rot": 0.0163,
+          "grasp_error_cm": 3.042,
+          "grasp_rot_err_rad": 0.0289,
+          "success": true
+        },
+        {
+          "trajectory_id": 3205,
+          "elevation_plane": "Mid",
+          "is_expert": true,
+          "score": 0.15511,
+          "mean_cartesian_err_cm": 8.198,
+          "terminal_error_cm": 0.0,
+          "final_vel": 0.5527,
+          "final_rot": 0.0,
+          "grasp_error_cm": 0.0,
+          "grasp_rot_err_rad": 0.0,
+          "success": true
+        },
+        {
+          "trajectory_id": 3203,
+          "elevation_plane": "Mid",
+          "is_expert": false,
+          "score": 0.939012,
+          "mean_cartesian_err_cm": 6.124,
+          "terminal_error_cm": 2.193,
+          "final_vel": 0.3827,
+          "final_rot": 0.0351,
+          "grasp_error_cm": 3.806,
+          "grasp_rot_err_rad": 0.0303,
+          "success": true
+        }
+      ]
+    },
+    "evaluations_history": [
+      {
+        "epoch": 5,
+        "mppi_score": 6.500955,
+        "success_rate_pct": 83.33,
+        "mean_cartesian_error_cm": 10.303,
+        "grasp_error_cm": 6.055,
+        "terminal_error_cm": 1.572,
+        "natural_trajectories_count": 6,
+        "natural_blocks": [
+          "Mid",
+          "Mid",
+          "Mid",
+          "Low",
+          "Mid",
+          "Mid"
+        ],
+        "natural_trajectory_ids": [
+          3201,
+          3202,
+          3200,
+          3204,
+          3205,
+          3203
+        ],
+        "expert_trajectories_count": 4,
+        "overwritten_blocks": [
+          "Mid",
+          "Low",
+          "Mid",
+          "Mid"
+        ],
+        "overwritten_trajectory_ids": [
+          3200,
+          3204,
+          3205,
+          3203
+        ],
+        "elevation_breakdown": {
+          "natural_low": {
+            "count": 1,
+            "trajectory_ids": [
+              3204
+            ],
+            "avg_vel_err": 0.2704,
+            "avg_rot_err": 0.0401,
+            "avg_cartesian_err_cm": 8.174,
+            "avg_terminal_err_cm": 1.175
+          },
+          "natural_mid": {
+            "count": 5,
+            "trajectory_ids": [
+              3201,
+              3202,
+              3200,
+              3205,
+              3203
+            ],
+            "avg_vel_err": 0.4519,
+            "avg_rot_err": 0.0417,
+            "avg_cartesian_err_cm": 10.729,
+            "avg_terminal_err_cm": 1.652
+          },
+          "expert_low": {
+            "count": 1,
+            "trajectory_ids": [
+              3204
+            ],
+            "avg_vel_err": 0.126,
+            "avg_rot_err": 0.0,
+            "avg_cartesian_err_cm": 4.939,
+            "avg_terminal_err_cm": 0.0
+          },
+          "expert_mid": {
+            "count": 3,
+            "trajectory_ids": [
+              3200,
+              3205,
+              3203
+            ],
+            "avg_vel_err": 0.4227,
+            "avg_rot_err": 0.0002,
+            "avg_cartesian_err_cm": 7.59,
+            "avg_terminal_err_cm": 0.0
+          }
+        },
+        "trials": [
+          {
+            "trajectory_id": 3201,
+            "elevation_plane": "Mid",
+            "is_expert": false,
+            "score": 2.214433,
+            "mean_cartesian_err_cm": 7.193,
+            "terminal_error_cm": 1.851,
+            "final_vel": 0.5136,
+            "final_rot": 0.0664,
+            "grasp_error_cm": 3.399,
+            "grasp_rot_err_rad": 0.1468,
+            "success": false
+          },
+          {
+            "trajectory_id": 3202,
+            "elevation_plane": "Mid",
+            "is_expert": false,
+            "score": 0.667231,
+            "mean_cartesian_err_cm": 9.326,
+            "terminal_error_cm": 1.51,
+            "final_vel": 0.5304,
+            "final_rot": 0.0209,
+            "grasp_error_cm": 6.36,
+            "grasp_rot_err_rad": 0.0558,
+            "success": true
+          },
+          {
+            "trajectory_id": 3200,
+            "elevation_plane": "Mid",
+            "is_expert": false,
+            "score": 1.312017,
+            "mean_cartesian_err_cm": 12.263,
+            "terminal_error_cm": 2.126,
+            "final_vel": 0.3083,
+            "final_rot": 0.047,
+            "grasp_error_cm": 9.557,
+            "grasp_rot_err_rad": 0.195,
+            "success": true
+          },
+          {
+            "trajectory_id": 3200,
+            "elevation_plane": "Mid",
+            "is_expert": true,
+            "score": 0.05854,
+            "mean_cartesian_err_cm": 6.463,
+            "terminal_error_cm": 0.0,
+            "final_vel": 0.3358,
+            "final_rot": 0.0,
+            "grasp_error_cm": 0.0,
+            "grasp_rot_err_rad": 0.0,
+            "success": true
+          },
+          {
+            "trajectory_id": 3204,
+            "elevation_plane": "Low",
+            "is_expert": false,
+            "score": 0.826374,
+            "mean_cartesian_err_cm": 8.174,
+            "terminal_error_cm": 1.175,
+            "final_vel": 0.2704,
+            "final_rot": 0.0401,
+            "grasp_error_cm": 2.965,
+            "grasp_rot_err_rad": 0.0894,
+            "success": true
+          },
+          {
+            "trajectory_id": 3204,
+            "elevation_plane": "Low",
+            "is_expert": true,
+            "score": 0.015713,
+            "mean_cartesian_err_cm": 4.939,
+            "terminal_error_cm": 0.0,
+            "final_vel": 0.126,
+            "final_rot": 0.0,
+            "grasp_error_cm": 0.0,
+            "grasp_rot_err_rad": 0.0,
+            "success": true
+          },
+          {
+            "trajectory_id": 3205,
+            "elevation_plane": "Mid",
+            "is_expert": false,
+            "score": 0.681563,
+            "mean_cartesian_err_cm": 14.126,
+            "terminal_error_cm": 1.245,
+            "final_vel": 0.497,
+            "final_rot": 0.033,
+            "grasp_error_cm": 8.674,
+            "grasp_rot_err_rad": 0.2323,
+            "success": true
+          },
+          {
+            "trajectory_id": 3205,
+            "elevation_plane": "Mid",
+            "is_expert": true,
+            "score": 0.15511,
+            "mean_cartesian_err_cm": 8.198,
+            "terminal_error_cm": 0.0,
+            "final_vel": 0.5527,
+            "final_rot": 0.0,
+            "grasp_error_cm": 0.0,
+            "grasp_rot_err_rad": 0.0,
+            "success": true
+          },
+          {
+            "trajectory_id": 3203,
+            "elevation_plane": "Mid",
+            "is_expert": false,
+            "score": 1.023036,
+            "mean_cartesian_err_cm": 10.737,
+            "terminal_error_cm": 1.526,
+            "final_vel": 0.4102,
+            "final_rot": 0.041,
+            "grasp_error_cm": 5.372,
+            "grasp_rot_err_rad": 0.1338,
+            "success": true
+          },
+          {
+            "trajectory_id": 3203,
+            "elevation_plane": "Mid",
+            "is_expert": true,
+            "score": 0.154442,
+            "mean_cartesian_err_cm": 8.108,
+            "terminal_error_cm": 0.0,
+            "final_vel": 0.3797,
+            "final_rot": 0.0005,
+            "grasp_error_cm": 0.0,
+            "grasp_rot_err_rad": 0.0,
+            "success": true
+          }
+        ]
+      },
+      {
+        "epoch": 10,
+        "mppi_score": 6.111544,
+        "success_rate_pct": 33.33,
+        "mean_cartesian_error_cm": 9.934,
+        "grasp_error_cm": 5.306,
+        "terminal_error_cm": 1.765,
+        "natural_trajectories_count": 6,
+        "natural_blocks": [
+          "Mid",
+          "Mid",
+          "Mid",
+          "Low",
+          "Mid",
+          "Mid"
+        ],
+        "natural_trajectory_ids": [
+          3201,
+          3202,
+          3200,
+          3204,
+          3205,
+          3203
+        ],
+        "expert_trajectories_count": 4,
+        "overwritten_blocks": [
+          "Mid",
+          "Low",
+          "Mid",
+          "Mid"
+        ],
+        "overwritten_trajectory_ids": [
+          3201,
+          3204,
+          3205,
+          3203
+        ],
+        "elevation_breakdown": {
+          "natural_low": {
+            "count": 1,
+            "trajectory_ids": [
+              3204
+            ],
+            "avg_vel_err": 0.2524,
+            "avg_rot_err": 0.0557,
+            "avg_cartesian_err_cm": 8.069,
+            "avg_terminal_err_cm": 1.184
+          },
+          "natural_mid": {
+            "count": 5,
+            "trajectory_ids": [
+              3201,
+              3202,
+              3200,
+              3205,
+              3203
+            ],
+            "avg_vel_err": 0.4254,
+            "avg_rot_err": 0.0573,
+            "avg_cartesian_err_cm": 10.307,
+            "avg_terminal_err_cm": 1.881
+          },
+          "expert_low": {
+            "count": 1,
+            "trajectory_ids": [
+              3204
+            ],
+            "avg_vel_err": 0.126,
+            "avg_rot_err": 0.0,
+            "avg_cartesian_err_cm": 4.939,
+            "avg_terminal_err_cm": 0.0
+          },
+          "expert_mid": {
+            "count": 3,
+            "trajectory_ids": [
+              3201,
+              3205,
+              3203
+            ],
+            "avg_vel_err": 0.4836,
+            "avg_rot_err": 0.0002,
+            "avg_cartesian_err_cm": 7.583,
+            "avg_terminal_err_cm": 0.0
+          }
+        },
+        "trials": [
+          {
+            "trajectory_id": 3201,
+            "elevation_plane": "Mid",
+            "is_expert": false,
+            "score": 3.011209,
+            "mean_cartesian_err_cm": 7.272,
+            "terminal_error_cm": 1.884,
+            "final_vel": 0.5255,
+            "final_rot": 0.081,
+            "grasp_error_cm": 3.829,
+            "grasp_rot_err_rad": 0.1395,
+            "success": false
+          },
+          {
+            "trajectory_id": 3201,
+            "elevation_plane": "Mid",
+            "is_expert": true,
+            "score": 0.229401,
+            "mean_cartesian_err_cm": 6.442,
+            "terminal_error_cm": 0.0,
+            "final_vel": 0.5183,
+            "final_rot": 0.0,
+            "grasp_error_cm": 0.0,
+            "grasp_rot_err_rad": 0.0,
+            "success": true
+          },
+          {
+            "trajectory_id": 3202,
+            "elevation_plane": "Mid",
+            "is_expert": false,
+            "score": 1.263232,
+            "mean_cartesian_err_cm": 8.827,
+            "terminal_error_cm": 1.698,
+            "final_vel": 0.4734,
+            "final_rot": 0.043,
+            "grasp_error_cm": 5.604,
+            "grasp_rot_err_rad": 0.0667,
+            "success": true
+          },
+          {
+            "trajectory_id": 3200,
+            "elevation_plane": "Mid",
+            "is_expert": false,
+            "score": 1.864226,
+            "mean_cartesian_err_cm": 11.457,
+            "terminal_error_cm": 2.373,
+            "final_vel": 0.2687,
+            "final_rot": 0.0576,
+            "grasp_error_cm": 7.233,
+            "grasp_rot_err_rad": 0.134,
+            "success": false
+          },
+          {
+            "trajectory_id": 3204,
+            "elevation_plane": "Low",
+            "is_expert": false,
+            "score": 1.412496,
+            "mean_cartesian_err_cm": 8.069,
+            "terminal_error_cm": 1.184,
+            "final_vel": 0.2524,
+            "final_rot": 0.0557,
+            "grasp_error_cm": 3.382,
+            "grasp_rot_err_rad": 0.1139,
+            "success": false
+          },
+          {
+            "trajectory_id": 3204,
+            "elevation_plane": "Low",
+            "is_expert": true,
+            "score": 0.015713,
+            "mean_cartesian_err_cm": 4.939,
+            "terminal_error_cm": 0.0,
+            "final_vel": 0.126,
+            "final_rot": 0.0,
+            "grasp_error_cm": 0.0,
+            "grasp_rot_err_rad": 0.0,
+            "success": true
+          },
+          {
+            "trajectory_id": 3205,
+            "elevation_plane": "Mid",
+            "is_expert": false,
+            "score": 1.123896,
+            "mean_cartesian_err_cm": 13.509,
+            "terminal_error_cm": 1.529,
+            "final_vel": 0.4702,
+            "final_rot": 0.0455,
+            "grasp_error_cm": 6.882,
+            "grasp_rot_err_rad": 0.2307,
+            "success": true
+          },
+          {
+            "trajectory_id": 3205,
+            "elevation_plane": "Mid",
+            "is_expert": true,
+            "score": 0.15511,
+            "mean_cartesian_err_cm": 8.198,
+            "terminal_error_cm": 0.0,
+            "final_vel": 0.5527,
+            "final_rot": 0.0,
+            "grasp_error_cm": 0.0,
+            "grasp_rot_err_rad": 0.0,
+            "success": true
+          },
+          {
+            "trajectory_id": 3203,
+            "elevation_plane": "Mid",
+            "is_expert": false,
+            "score": 1.829256,
+            "mean_cartesian_err_cm": 10.471,
+            "terminal_error_cm": 1.92,
+            "final_vel": 0.3893,
+            "final_rot": 0.0596,
+            "grasp_error_cm": 4.905,
+            "grasp_rot_err_rad": 0.1346,
+            "success": false
+          },
+          {
+            "trajectory_id": 3203,
+            "elevation_plane": "Mid",
+            "is_expert": true,
+            "score": 0.154442,
+            "mean_cartesian_err_cm": 8.108,
+            "terminal_error_cm": 0.0,
+            "final_vel": 0.3797,
+            "final_rot": 0.0005,
+            "grasp_error_cm": 0.0,
+            "grasp_rot_err_rad": 0.0,
+            "success": true
+          }
+        ]
+      },
+      {
+        "epoch": 15,
+        "mppi_score": 5.625499,
+        "success_rate_pct": 50.0,
+        "mean_cartesian_error_cm": 9.062,
+        "grasp_error_cm": 4.663,
+        "terminal_error_cm": 1.906,
+        "natural_trajectories_count": 6,
+        "natural_blocks": [
+          "Mid",
+          "Mid",
+          "Mid",
+          "Low",
+          "Mid",
+          "Mid"
+        ],
+        "natural_trajectory_ids": [
+          3201,
+          3202,
+          3200,
+          3204,
+          3205,
+          3203
+        ],
+        "expert_trajectories_count": 4,
+        "overwritten_blocks": [
+          "Mid",
+          "Mid",
+          "Mid",
+          "Mid"
+        ],
+        "overwritten_trajectory_ids": [
+          3201,
+          3202,
+          3205,
+          3203
+        ],
+        "elevation_breakdown": {
+          "natural_low": {
+            "count": 1,
+            "trajectory_ids": [
+              3204
+            ],
+            "avg_vel_err": 0.2603,
+            "avg_rot_err": 0.0568,
+            "avg_cartesian_err_cm": 7.157,
+            "avg_terminal_err_cm": 1.3
+          },
+          "natural_mid": {
+            "count": 5,
+            "trajectory_ids": [
+              3201,
+              3202,
+              3200,
+              3205,
+              3203
+            ],
+            "avg_vel_err": 0.4203,
+            "avg_rot_err": 0.0513,
+            "avg_cartesian_err_cm": 9.443,
+            "avg_terminal_err_cm": 2.028
+          },
+          "expert_mid": {
+            "count": 4,
+            "trajectory_ids": [
+              3201,
+              3202,
+              3205,
+              3203
+            ],
+            "avg_vel_err": 0.4587,
+            "avg_rot_err": 0.0001,
+            "avg_cartesian_err_cm": 7.122,
+            "avg_terminal_err_cm": 0.0
+          }
+        },
+        "trials": [
+          {
+            "trajectory_id": 3201,
+            "elevation_plane": "Mid",
+            "is_expert": false,
+            "score": 3.032748,
+            "mean_cartesian_err_cm": 6.904,
+            "terminal_error_cm": 2.004,
+            "final_vel": 0.5087,
+            "final_rot": 0.0812,
+            "grasp_error_cm": 2.673,
+            "grasp_rot_err_rad": 0.1135,
+            "success": false
+          },
+          {
+            "trajectory_id": 3201,
+            "elevation_plane": "Mid",
+            "is_expert": true,
+            "score": 0.229401,
+            "mean_cartesian_err_cm": 6.442,
+            "terminal_error_cm": 0.0,
+            "final_vel": 0.5183,
+            "final_rot": 0.0,
+            "grasp_error_cm": 0.0,
+            "grasp_rot_err_rad": 0.0,
+            "success": true
+          },
+          {
+            "trajectory_id": 3202,
+            "elevation_plane": "Mid",
+            "is_expert": false,
+            "score": 1.047559,
+            "mean_cartesian_err_cm": 8.16,
+            "terminal_error_cm": 1.872,
+            "final_vel": 0.4847,
+            "final_rot": 0.0331,
+            "grasp_error_cm": 6.553,
+            "grasp_rot_err_rad": 0.056,
+            "success": true
+          },
+          {
+            "trajectory_id": 3202,
+            "elevation_plane": "Mid",
+            "is_expert": true,
+            "score": 0.080809,
+            "mean_cartesian_err_cm": 5.74,
+            "terminal_error_cm": 0.0,
+            "final_vel": 0.3841,
+            "final_rot": 0.0,
+            "grasp_error_cm": 0.0,
+            "grasp_rot_err_rad": 0.0,
+            "success": true
+          },
+          {
+            "trajectory_id": 3200,
+            "elevation_plane": "Mid",
+            "is_expert": false,
+            "score": 1.413964,
+            "mean_cartesian_err_cm": 10.446,
+            "terminal_error_cm": 2.462,
+            "final_vel": 0.2634,
+            "final_rot": 0.0454,
+            "grasp_error_cm": 6.763,
+            "grasp_rot_err_rad": 0.0784,
+            "success": true
+          },
+          {
+            "trajectory_id": 3204,
+            "elevation_plane": "Low",
+            "is_expert": false,
+            "score": 1.497322,
+            "mean_cartesian_err_cm": 7.157,
+            "terminal_error_cm": 1.3,
+            "final_vel": 0.2603,
+            "final_rot": 0.0568,
+            "grasp_error_cm": 4.141,
+            "grasp_rot_err_rad": 0.026,
+            "success": false
+          },
+          {
+            "trajectory_id": 3205,
+            "elevation_plane": "Mid",
+            "is_expert": false,
+            "score": 1.091146,
+            "mean_cartesian_err_cm": 12.39,
+            "terminal_error_cm": 1.68,
+            "final_vel": 0.4584,
+            "final_rot": 0.0434,
+            "grasp_error_cm": 4.007,
+            "grasp_rot_err_rad": 0.1477,
+            "success": true
+          },
+          {
+            "trajectory_id": 3205,
+            "elevation_plane": "Mid",
+            "is_expert": true,
+            "score": 0.15511,
+            "mean_cartesian_err_cm": 8.198,
+            "terminal_error_cm": 0.0,
+            "final_vel": 0.5527,
+            "final_rot": 0.0,
+            "grasp_error_cm": 0.0,
+            "grasp_rot_err_rad": 0.0,
+            "success": true
+          },
+          {
+            "trajectory_id": 3203,
+            "elevation_plane": "Mid",
+            "is_expert": false,
+            "score": 1.602938,
+            "mean_cartesian_err_cm": 9.316,
+            "terminal_error_cm": 2.12,
+            "final_vel": 0.3864,
+            "final_rot": 0.0534,
+            "grasp_error_cm": 3.842,
+            "grasp_rot_err_rad": 0.0921,
+            "success": false
+          },
+          {
+            "trajectory_id": 3203,
+            "elevation_plane": "Mid",
+            "is_expert": true,
+            "score": 0.154442,
+            "mean_cartesian_err_cm": 8.108,
+            "terminal_error_cm": 0.0,
+            "final_vel": 0.3797,
+            "final_rot": 0.0005,
+            "grasp_error_cm": 0.0,
+            "grasp_rot_err_rad": 0.0,
+            "success": true
+          }
+        ]
+      },
+      {
+        "epoch": 20,
+        "mppi_score": 5.152313,
+        "success_rate_pct": 83.33,
+        "mean_cartesian_error_cm": 7.732,
+        "grasp_error_cm": 4.497,
+        "terminal_error_cm": 1.873,
+        "natural_trajectories_count": 6,
+        "natural_blocks": [
+          "Mid",
+          "Mid",
+          "Mid",
+          "Low",
+          "Mid",
+          "Mid"
+        ],
+        "natural_trajectory_ids": [
+          3201,
+          3202,
+          3200,
+          3204,
+          3205,
+          3203
+        ],
+        "expert_trajectories_count": 4,
+        "overwritten_blocks": [
+          "Mid",
+          "Mid",
+          "Mid",
+          "Mid"
+        ],
+        "overwritten_trajectory_ids": [
+          3201,
+          3202,
+          3200,
+          3203
+        ],
+        "elevation_breakdown": {
+          "natural_low": {
+            "count": 1,
+            "trajectory_ids": [
+              3204
+            ],
+            "avg_vel_err": 0.2951,
+            "avg_rot_err": 0.0375,
+            "avg_cartesian_err_cm": 5.865,
+            "avg_terminal_err_cm": 1.266
+          },
+          "natural_mid": {
+            "count": 5,
+            "trajectory_ids": [
+              3201,
+              3202,
+              3200,
+              3205,
+              3203
+            ],
+            "avg_vel_err": 0.4301,
+            "avg_rot_err": 0.035,
+            "avg_cartesian_err_cm": 8.106,
+            "avg_terminal_err_cm": 1.994
+          },
+          "expert_mid": {
+            "count": 4,
+            "trajectory_ids": [
+              3201,
+              3202,
+              3200,
+              3203
+            ],
+            "avg_vel_err": 0.4045,
+            "avg_rot_err": 0.0001,
+            "avg_cartesian_err_cm": 6.688,
+            "avg_terminal_err_cm": 0.0
+          }
+        },
+        "trials": [
+          {
+            "trajectory_id": 3201,
+            "elevation_plane": "Mid",
+            "is_expert": false,
+            "score": 2.26718,
+            "mean_cartesian_err_cm": 5.907,
+            "terminal_error_cm": 2.021,
+            "final_vel": 0.5402,
+            "final_rot": 0.0686,
+            "grasp_error_cm": 0.922,
+            "grasp_rot_err_rad": 0.0748,
+            "success": false
+          },
+          {
+            "trajectory_id": 3201,
+            "elevation_plane": "Mid",
+            "is_expert": true,
+            "score": 0.229401,
+            "mean_cartesian_err_cm": 6.442,
+            "terminal_error_cm": 0.0,
+            "final_vel": 0.5183,
+            "final_rot": 0.0,
+            "grasp_error_cm": 0.0,
+            "grasp_rot_err_rad": 0.0,
+            "success": true
+          },
+          {
+            "trajectory_id": 3202,
+            "elevation_plane": "Mid",
+            "is_expert": false,
+            "score": 0.72901,
+            "mean_cartesian_err_cm": 7.225,
+            "terminal_error_cm": 1.802,
+            "final_vel": 0.4914,
+            "final_rot": 0.0195,
+            "grasp_error_cm": 5.683,
+            "grasp_rot_err_rad": 0.0692,
+            "success": true
+          },
+          {
+            "trajectory_id": 3202,
+            "elevation_plane": "Mid",
+            "is_expert": true,
+            "score": 0.080809,
+            "mean_cartesian_err_cm": 5.74,
+            "terminal_error_cm": 0.0,
+            "final_vel": 0.3841,
+            "final_rot": 0.0,
+            "grasp_error_cm": 0.0,
+            "grasp_rot_err_rad": 0.0,
+            "success": true
+          },
+          {
+            "trajectory_id": 3200,
+            "elevation_plane": "Mid",
+            "is_expert": false,
+            "score": 0.921248,
+            "mean_cartesian_err_cm": 9.184,
+            "terminal_error_cm": 2.387,
+            "final_vel": 0.2523,
+            "final_rot": 0.0297,
+            "grasp_error_cm": 6.903,
+            "grasp_rot_err_rad": 0.0572,
+            "success": true
+          },
+          {
+            "trajectory_id": 3200,
+            "elevation_plane": "Mid",
+            "is_expert": true,
+            "score": 0.05854,
+            "mean_cartesian_err_cm": 6.463,
+            "terminal_error_cm": 0.0,
+            "final_vel": 0.3358,
+            "final_rot": 0.0,
+            "grasp_error_cm": 0.0,
+            "grasp_rot_err_rad": 0.0,
+            "success": true
+          },
+          {
+            "trajectory_id": 3204,
+            "elevation_plane": "Low",
+            "is_expert": false,
+            "score": 0.765786,
+            "mean_cartesian_err_cm": 5.865,
+            "terminal_error_cm": 1.266,
+            "final_vel": 0.2951,
+            "final_rot": 0.0375,
+            "grasp_error_cm": 4.858,
+            "grasp_rot_err_rad": 0.0427,
+            "success": true
+          },
+          {
+            "trajectory_id": 3205,
+            "elevation_plane": "Mid",
+            "is_expert": false,
+            "score": 0.490069,
+            "mean_cartesian_err_cm": 10.271,
+            "terminal_error_cm": 1.685,
+            "final_vel": 0.4857,
+            "final_rot": 0.019,
+            "grasp_error_cm": 3.884,
+            "grasp_rot_err_rad": 0.026,
+            "success": true
+          },
+          {
+            "trajectory_id": 3203,
+            "elevation_plane": "Mid",
+            "is_expert": false,
+            "score": 1.018065,
+            "mean_cartesian_err_cm": 7.942,
+            "terminal_error_cm": 2.077,
+            "final_vel": 0.3811,
+            "final_rot": 0.038,
+            "grasp_error_cm": 4.73,
+            "grasp_rot_err_rad": 0.0499,
+            "success": true
+          },
+          {
+            "trajectory_id": 3203,
+            "elevation_plane": "Mid",
+            "is_expert": true,
+            "score": 0.154442,
+            "mean_cartesian_err_cm": 8.108,
+            "terminal_error_cm": 0.0,
+            "final_vel": 0.3797,
+            "final_rot": 0.0005,
+            "grasp_error_cm": 0.0,
+            "grasp_rot_err_rad": 0.0,
+            "success": true
+          }
+        ]
+      },
+      {
+        "epoch": 25,
+        "mppi_score": 4.904078,
+        "success_rate_pct": 83.33,
+        "mean_cartesian_error_cm": 6.788,
+        "grasp_error_cm": 4.572,
+        "terminal_error_cm": 1.801,
+        "natural_trajectories_count": 6,
+        "natural_blocks": [
+          "Mid",
+          "Mid",
+          "Mid",
+          "Low",
+          "Mid",
+          "Mid"
+        ],
+        "natural_trajectory_ids": [
+          3201,
+          3202,
+          3200,
+          3204,
+          3205,
+          3203
+        ],
+        "expert_trajectories_count": 4,
+        "overwritten_blocks": [
+          "Mid",
+          "Mid",
+          "Mid",
+          "Low"
+        ],
+        "overwritten_trajectory_ids": [
+          3201,
+          3202,
+          3200,
+          3204
+        ],
+        "elevation_breakdown": {
+          "natural_low": {
+            "count": 1,
+            "trajectory_ids": [
+              3204
+            ],
+            "avg_vel_err": 0.3006,
+            "avg_rot_err": 0.0289,
+            "avg_cartesian_err_cm": 5.194,
+            "avg_terminal_err_cm": 1.193
+          },
+          "natural_mid": {
+            "count": 5,
+            "trajectory_ids": [
+              3201,
+              3202,
+              3200,
+              3205,
+              3203
+            ],
+            "avg_vel_err": 0.427,
+            "avg_rot_err": 0.0294,
+            "avg_cartesian_err_cm": 7.107,
+            "avg_terminal_err_cm": 1.922
+          },
+          "expert_low": {
+            "count": 1,
+            "trajectory_ids": [
+              3204
+            ],
+            "avg_vel_err": 0.126,
+            "avg_rot_err": 0.0,
+            "avg_cartesian_err_cm": 4.939,
+            "avg_terminal_err_cm": 0.0
+          },
+          "expert_mid": {
+            "count": 3,
+            "trajectory_ids": [
+              3201,
+              3202,
+              3200
+            ],
+            "avg_vel_err": 0.4127,
+            "avg_rot_err": 0.0,
+            "avg_cartesian_err_cm": 6.215,
+            "avg_terminal_err_cm": 0.0
+          }
+        },
+        "trials": [
+          {
+            "trajectory_id": 3201,
+            "elevation_plane": "Mid",
+            "is_expert": false,
+            "score": 1.378004,
+            "mean_cartesian_err_cm": 5.284,
+            "terminal_error_cm": 1.906,
+            "final_vel": 0.5618,
+            "final_rot": 0.0505,
+            "grasp_error_cm": 3.473,
+            "grasp_rot_err_rad": 0.1289,
+            "success": false
+          },
+          {
+            "trajectory_id": 3201,
+            "elevation_plane": "Mid",
+            "is_expert": true,
+            "score": 0.229401,
+            "mean_cartesian_err_cm": 6.442,
+            "terminal_error_cm": 0.0,
+            "final_vel": 0.5183,
+            "final_rot": 0.0,
+            "grasp_error_cm": 0.0,
+            "grasp_rot_err_rad": 0.0,
+            "success": true
+          },
+          {
+            "trajectory_id": 3202,
+            "elevation_plane": "Mid",
+            "is_expert": false,
+            "score": 0.644774,
+            "mean_cartesian_err_cm": 6.548,
+            "terminal_error_cm": 1.713,
+            "final_vel": 0.4826,
+            "final_rot": 0.016,
+            "grasp_error_cm": 4.847,
+            "grasp_rot_err_rad": 0.0684,
+            "success": true
+          },
+          {
+            "trajectory_id": 3202,
+            "elevation_plane": "Mid",
+            "is_expert": true,
+            "score": 0.080809,
+            "mean_cartesian_err_cm": 5.74,
+            "terminal_error_cm": 0.0,
+            "final_vel": 0.3841,
+            "final_rot": 0.0,
+            "grasp_error_cm": 0.0,
+            "grasp_rot_err_rad": 0.0,
+            "success": true
+          },
+          {
+            "trajectory_id": 3200,
+            "elevation_plane": "Mid",
+            "is_expert": false,
+            "score": 0.883897,
+            "mean_cartesian_err_cm": 8.347,
+            "terminal_error_cm": 2.337,
+            "final_vel": 0.2426,
+            "final_rot": 0.0286,
+            "grasp_error_cm": 5.425,
+            "grasp_rot_err_rad": 0.0472,
+            "success": true
+          },
+          {
+            "trajectory_id": 3200,
+            "elevation_plane": "Mid",
+            "is_expert": true,
+            "score": 0.05854,
+            "mean_cartesian_err_cm": 6.463,
+            "terminal_error_cm": 0.0,
+            "final_vel": 0.3358,
+            "final_rot": 0.0,
+            "grasp_error_cm": 0.0,
+            "grasp_rot_err_rad": 0.0,
+            "success": true
+          },
+          {
+            "trajectory_id": 3204,
+            "elevation_plane": "Low",
+            "is_expert": false,
+            "score": 0.517981,
+            "mean_cartesian_err_cm": 5.194,
+            "terminal_error_cm": 1.193,
+            "final_vel": 0.3006,
+            "final_rot": 0.0289,
+            "grasp_error_cm": 4.727,
+            "grasp_rot_err_rad": 0.0417,
+            "success": true
+          },
+          {
+            "trajectory_id": 3204,
+            "elevation_plane": "Low",
+            "is_expert": true,
+            "score": 0.015713,
+            "mean_cartesian_err_cm": 4.939,
+            "terminal_error_cm": 0.0,
+            "final_vel": 0.126,
+            "final_rot": 0.0,
+            "grasp_error_cm": 0.0,
+            "grasp_rot_err_rad": 0.0,
+            "success": true
+          },
+          {
+            "trajectory_id": 3205,
+            "elevation_plane": "Mid",
+            "is_expert": false,
+            "score": 0.415516,
+            "mean_cartesian_err_cm": 8.286,
+            "terminal_error_cm": 1.633,
+            "final_vel": 0.4779,
+            "final_rot": 0.0158,
+            "grasp_error_cm": 4.039,
+            "grasp_rot_err_rad": 0.0357,
+            "success": true
+          },
+          {
+            "trajectory_id": 3203,
+            "elevation_plane": "Mid",
+            "is_expert": false,
+            "score": 0.926233,
+            "mean_cartesian_err_cm": 7.069,
+            "terminal_error_cm": 2.023,
+            "final_vel": 0.3699,
+            "final_rot": 0.0359,
+            "grasp_error_cm": 4.924,
+            "grasp_rot_err_rad": 0.0549,
+            "success": true
+          }
+        ]
+      },
+      {
+        "epoch": 30,
+        "mppi_score": 4.084704,
+        "success_rate_pct": 100.0,
+        "mean_cartesian_error_cm": 5.737,
+        "grasp_error_cm": 3.555,
+        "terminal_error_cm": 1.774,
+        "natural_trajectories_count": 6,
+        "natural_blocks": [
+          "Mid",
+          "Mid",
+          "Mid",
+          "Low",
+          "Mid",
+          "Mid"
+        ],
+        "natural_trajectory_ids": [
+          3201,
+          3202,
+          3200,
+          3204,
+          3205,
+          3203
+        ],
+        "expert_trajectories_count": 4,
+        "overwritten_blocks": [
+          "Mid",
+          "Mid",
+          "Low",
+          "Mid"
+        ],
+        "overwritten_trajectory_ids": [
+          3202,
+          3200,
+          3204,
+          3205
+        ],
+        "elevation_breakdown": {
+          "natural_low": {
+            "count": 1,
+            "trajectory_ids": [
+              3204
+            ],
+            "avg_vel_err": 0.3216,
+            "avg_rot_err": 0.0172,
+            "avg_cartesian_err_cm": 4.278,
+            "avg_terminal_err_cm": 1.109
+          },
+          "natural_mid": {
+            "count": 5,
+            "trajectory_ids": [
+              3201,
+              3202,
+              3200,
+              3205,
+              3203
+            ],
+            "avg_vel_err": 0.4293,
+            "avg_rot_err": 0.0247,
+            "avg_cartesian_err_cm": 6.029,
+            "avg_terminal_err_cm": 1.908
+          },
+          "expert_low": {
+            "count": 1,
+            "trajectory_ids": [
+              3204
+            ],
+            "avg_vel_err": 0.126,
+            "avg_rot_err": 0.0,
+            "avg_cartesian_err_cm": 4.939,
+            "avg_terminal_err_cm": 0.0
+          },
+          "expert_mid": {
+            "count": 3,
+            "trajectory_ids": [
+              3202,
+              3200,
+              3205
+            ],
+            "avg_vel_err": 0.4242,
+            "avg_rot_err": 0.0,
+            "avg_cartesian_err_cm": 6.8,
+            "avg_terminal_err_cm": 0.0
+          }
+        },
+        "trials": [
+          {
+            "trajectory_id": 3201,
+            "elevation_plane": "Mid",
+            "is_expert": false,
+            "score": 0.876111,
+            "mean_cartesian_err_cm": 4.85,
+            "terminal_error_cm": 1.787,
+            "final_vel": 0.5528,
+            "final_rot": 0.0383,
+            "grasp_error_cm": 4.186,
+            "grasp_rot_err_rad": 0.1055,
+            "success": true
+          },
+          {
+            "trajectory_id": 3202,
+            "elevation_plane": "Mid",
+            "is_expert": false,
+            "score": 0.519111,
+            "mean_cartesian_err_cm": 5.401,
+            "terminal_error_cm": 1.623,
+            "final_vel": 0.4766,
+            "final_rot": 0.0087,
+            "grasp_error_cm": 2.989,
+            "grasp_rot_err_rad": 0.0543,
+            "success": true
+          },
+          {
+            "trajectory_id": 3202,
+            "elevation_plane": "Mid",
+            "is_expert": true,
+            "score": 0.080809,
+            "mean_cartesian_err_cm": 5.74,
+            "terminal_error_cm": 0.0,
+            "final_vel": 0.3841,
+            "final_rot": 0.0,
+            "grasp_error_cm": 0.0,
+            "grasp_rot_err_rad": 0.0,
+            "success": true
+          },
+          {
+            "trajectory_id": 3200,
+            "elevation_plane": "Mid",
+            "is_expert": false,
+            "score": 0.81175,
+            "mean_cartesian_err_cm": 7.095,
+            "terminal_error_cm": 2.277,
+            "final_vel": 0.2508,
+            "final_rot": 0.0253,
+            "grasp_error_cm": 3.66,
+            "grasp_rot_err_rad": 0.0367,
+            "success": true
+          },
+          {
+            "trajectory_id": 3200,
+            "elevation_plane": "Mid",
+            "is_expert": true,
+            "score": 0.05854,
+            "mean_cartesian_err_cm": 6.463,
+            "terminal_error_cm": 0.0,
+            "final_vel": 0.3358,
+            "final_rot": 0.0,
+            "grasp_error_cm": 0.0,
+            "grasp_rot_err_rad": 0.0,
+            "success": true
+          },
+          {
+            "trajectory_id": 3204,
+            "elevation_plane": "Low",
+            "is_expert": false,
+            "score": 0.274179,
+            "mean_cartesian_err_cm": 4.278,
+            "terminal_error_cm": 1.109,
+            "final_vel": 0.3216,
+            "final_rot": 0.0172,
+            "grasp_error_cm": 3.647,
+            "grasp_rot_err_rad": 0.0397,
+            "success": true
+          },
+          {
+            "trajectory_id": 3204,
+            "elevation_plane": "Low",
+            "is_expert": true,
+            "score": 0.015713,
+            "mean_cartesian_err_cm": 4.939,
+            "terminal_error_cm": 0.0,
+            "final_vel": 0.126,
+            "final_rot": 0.0,
+            "grasp_error_cm": 0.0,
+            "grasp_rot_err_rad": 0.0,
+            "success": true
+          },
+          {
+            "trajectory_id": 3205,
+            "elevation_plane": "Mid",
+            "is_expert": false,
+            "score": 0.412683,
+            "mean_cartesian_err_cm": 6.676,
+            "terminal_error_cm": 1.658,
+            "final_vel": 0.4836,
+            "final_rot": 0.0163,
+            "grasp_error_cm": 3.042,
+            "grasp_rot_err_rad": 0.0289,
+            "success": true
+          },
+          {
+            "trajectory_id": 3205,
+            "elevation_plane": "Mid",
+            "is_expert": true,
+            "score": 0.15511,
+            "mean_cartesian_err_cm": 8.198,
+            "terminal_error_cm": 0.0,
+            "final_vel": 0.5527,
+            "final_rot": 0.0,
+            "grasp_error_cm": 0.0,
+            "grasp_rot_err_rad": 0.0,
+            "success": true
+          },
+          {
+            "trajectory_id": 3203,
+            "elevation_plane": "Mid",
+            "is_expert": false,
+            "score": 0.939012,
+            "mean_cartesian_err_cm": 6.124,
+            "terminal_error_cm": 2.193,
+            "final_vel": 0.3827,
+            "final_rot": 0.0351,
+            "grasp_error_cm": 3.806,
+            "grasp_rot_err_rad": 0.0303,
+            "success": true
+          }
+        ]
+      }
+    ],
+    "spec_verification": {
+      "grasp_success_rate_ge_80pct": true,
+      "placement_accuracy_lt_3cm": true,
+      "rotational_alignment_lt_0_05rad": true,
+      "terminal_velocity_lt_1_5rad_s": true
+    }
+  }
+}

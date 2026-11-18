@@ -3,6 +3,7 @@
   "horizon": 100,
   "mean_spike_rate": 0.12268746128449073,
   "open_overall_mean": 0.11145036667585373,
+  "open_h100_mean": 0.11163192987442017,
   "handover_overall_mean": 0.14822937548160553,
   "open_curve_mean": [
     0.029773293063044548,
@@ -710,12 +711,12 @@
     }
   ],
   "energy": {
-    "spwm_neuro_nj": 0.42790245697021484,
+    "spwm_neuro_nj": 12.343340104910045,
     "spwm_gpu_nj": 60.364799999999995,
     "ann_rate_gpu_nj": 60.364799999999995,
     "deep_gru_gpu_nj": 269.568,
     "rssm_gpu_nj": 328.55039999999997,
     "convlstm_gpu_nj": 2123.3664,
-    "speedup_vs_own_gpu": 141.0714031123262
+    "speedup_vs_own_gpu": 4.890475307893975
   }
 }

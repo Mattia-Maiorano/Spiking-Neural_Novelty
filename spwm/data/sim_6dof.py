@@ -278,3 +278,84 @@ def simulate_articulated_trajectory(
         payload_shape=payload_shape,
     )
 
+
+class ArticulatedArmPhysicsStepper:
+    """Single-step Featherstone 6-DOF articulated arm dynamics with 100 Hz sub-stepping."""
+
+    def __init__(
+        self,
+        q_init: np.ndarray,
+        p_init: np.ndarray,
+        payload_mass: float,
+        payload_shape: str,
+        joint_count: int = J,
+        dt: float = 0.05,
+        damping: float = 0.15,
+        drive_stiffness: float = 16.5,
+        gravity_scale: float = 0.22,
+        max_joint_angle: float = 3.14,
+        sub_steps: int = 5,
+    ) -> None:
+        self.q = np.asarray(q_init, dtype=np.float32).copy()
+        self.p = np.asarray(p_init, dtype=np.float32).copy()
+        self.payload_mass = float(payload_mass)
+        self.payload_shape = str(payload_shape)
+        self.joint_count = int(joint_count)
+        self.dt = float(dt)
+        self.damping = float(damping)
+        self.drive_stiffness = float(drive_stiffness)
+        self.gravity_scale = float(gravity_scale)
+        self.max_joint_angle = float(max_joint_angle)
+        self.sub_steps = int(sub_steps)
+
+        self.unloaded_inertia = np.array(
+            [max(0.16, 0.80 - 0.11 * j) for j in range(self.joint_count)],
+            dtype=np.float32,
+        )
+        shape_rot_factor = (
+            1.45 if self.payload_shape == "ElongatedCylinder"
+            else (1.18 if self.payload_shape == "Box" else 0.85)
+        )
+        self.payload_inertia = np.array(
+            [
+                0.16 * self.payload_mass * (1.25 if j < max(1, self.joint_count // 2) else shape_rot_factor)
+                for j in range(self.joint_count)
+            ],
+            dtype=np.float32,
+        )
+
+    def step_pd_target(
+        self,
+        q_des: np.ndarray,
+        dq_des: np.ndarray,
+        payload_attached: bool,
+        kp: float = 18.0,
+        kd: float = 0.80,
+    ) -> Tuple[np.ndarray, np.ndarray, np.ndarray]:
+        """Advances articulated physics over `dt` using `sub_steps` 100 Hz PD tracking sub-steps."""
+        eff_inertia = (self.unloaded_inertia + self.payload_inertia) if payload_attached else self.unloaded_inertia
+        eff_gravity = self.gravity_scale * (1.0 + 0.42 * self.payload_mass) if payload_attached else self.gravity_scale
+        sub_dt = self.dt / float(self.sub_steps)
+        last_u = np.zeros((self.joint_count,), dtype=np.float32)
+
+        for _ in range(self.sub_steps):
+            grav_ff = (eff_gravity * np.sin(self.q)) / self.drive_stiffness
+            u_pd = np.clip(
+                (q_des + kp * (q_des - self.q) + kd * (dq_des - self.p) + grav_ff) / self.max_joint_angle,
+                -1.0,
+                1.0,
+            ).astype(np.float32)
+            last_u = u_pd
+            drive_target_rad = u_pd * self.max_joint_angle
+            motor_torque = self.drive_stiffness * (drive_target_rad - self.q)
+            gravity_torque = -eff_gravity * np.sin(self.q)
+            coulomb_friction = -0.04 * np.tanh(5.0 * self.p)
+            viscous_torque = -(self.damping * 7.5) * self.p
+            accel = (motor_torque + gravity_torque + coulomb_friction + viscous_torque) / eff_inertia
+
+            self.p = np.clip(self.p + sub_dt * accel, -4.5, 4.5).astype(np.float32)
+            self.q = np.clip(self.q + sub_dt * self.p, -self.max_joint_angle, self.max_joint_angle).astype(np.float32)
+
+        return self.q.copy(), self.p.copy(), last_u
+
+

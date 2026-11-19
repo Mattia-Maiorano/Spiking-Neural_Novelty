@@ -84,7 +84,12 @@ class ReactiveBCPolicy(nn.Module):
         u = self.head(h_next)
         return u, h_next
 
-    def forward_sequence(self, events: torch.Tensor, actions: torch.Tensor) -> torch.Tensor:
+    def forward_sequence(
+        self,
+        events: torch.Tensor,
+        actions: torch.Tensor,
+        scheduled_sampling_prob: float = 0.0,
+    ) -> torch.Tensor:
         B, T = events.shape[:2]
         h = self.init_hidden(B, events.device)
         preds: List[torch.Tensor] = []
@@ -92,7 +97,11 @@ class ReactiveBCPolicy(nn.Module):
         for t in range(T):
             u_t, h = self.step(events[:, t], prev_u, h)
             preds.append(u_t)
-            prev_u = actions[:, t]
+            if scheduled_sampling_prob > 0.0:
+                use_pred = (torch.rand(B, 1, device=events.device) < scheduled_sampling_prob).float()
+                prev_u = use_pred * u_t.detach() + (1.0 - use_pred) * actions[:, t]
+            else:
+                prev_u = actions[:, t]
         return torch.stack(preds, dim=1)
 
 
@@ -204,7 +213,7 @@ def eval_pil_baseline(
             h_bc = bc_policy.init_hidden(1, device)
             with torch.no_grad():
                 u_prev_burn = torch.zeros(1, actions.shape[-1], device=device)
-                for tau in range(t_start + 1):
+                for tau in range(t_start):
                     _, h_bc = bc_policy.step(events[:, tau], u_prev_burn, h_bc)
                     u_prev_burn = actions[tau : tau + 1]
 
@@ -227,7 +236,7 @@ def eval_pil_baseline(
                 q_phys_next, p_phys_next, _ = stepper.step_pd_target(
                     q_des=q_des,
                     dq_des=dq_des,
-                    payload_attached=(t >= t_grasp),
+                    payload_attached=(t >= t_c),
                     kp=18.0 * (mean_calib_mass / 2.85),
                     kd=0.80,
                 )
@@ -241,7 +250,7 @@ def eval_pil_baseline(
                 q_phys_next, p_phys_next, _ = stepper.step_pd_target(
                     q_des=q_des,
                     dq_des=dq_des,
-                    payload_attached=(t >= t_grasp),
+                    payload_attached=(t >= t_c),
                 )
             else:
                 raise ValueError(f"Unsupported baseline mode: {mode}")
@@ -287,18 +296,21 @@ def train_bc_policy(
     cfg: ExperimentConfig,
     dataset_dir: Path,
     device: torch.device,
-    epochs: int = 12,
+    epochs: int = 50,
     batch_size: int = 32,
 ) -> ReactiveBCPolicy:
-    """Trains the parameter-matched ~318k Reactive BC policy on [0, 3199]."""
+    """Trains the parameter-matched ~322k Reactive BC policy on [0, 3199] with val checkpointing."""
     splits = partition_trajectories(
         total_trajectories=cfg.data.total_trajectories,
         train_split=cfg.data.train_split,
         val_split=cfg.data.val_split,
     )
     train_ids = list(range(splits["train"][0], splits["train"][1]))
+    val_ids = list(range(splits["val"][0], splits["val"][1]))
     train_ds = EventWorldDataset(train_ids, dataset_dir=dataset_dir)
+    val_ds = EventWorldDataset(val_ids, dataset_dir=dataset_dir)
     loader = DataLoader(train_ds, batch_size=batch_size, shuffle=True, num_workers=0)
+    val_loader = DataLoader(val_ds, batch_size=batch_size, shuffle=False, num_workers=0)
 
     policy = ReactiveBCPolicy(
         in_channels=cfg.model.in_channels,
@@ -312,25 +324,51 @@ def train_bc_policy(
     chronicle.log_info(f"ReactiveBCPolicy parameter count: {param_cnt:,}")
 
     opt = torch.optim.AdamW(policy.parameters(), lr=1e-3, weight_decay=1e-4)
+    scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(opt, T_max=max(1, epochs), eta_min=1e-5)
     loss_fn = nn.MSELoss()
+    best_val = float("inf")
+    best_state: Dict[str, torch.Tensor] | None = None
 
-    policy.train()
     for ep in range(1, epochs + 1):
+        policy.train()
         tot_loss = 0.0
         n_batches = 0
+        ss_prob = min(0.5, 0.5 * (ep / max(1, epochs)))
         for batch in loader:
             ev = batch["events"].to(device)
             act = batch["actions"].to(device)
             opt.zero_grad()
-            pred = policy.forward_sequence(ev, act)
-            loss = loss_fn(pred, act)
+            pred = policy.forward_sequence(ev, act, scheduled_sampling_prob=ss_prob)
+            mse_loss = loss_fn(pred, act)
+            smooth_loss = torch.mean((pred[:, 1:] - pred[:, :-1]) ** 2)
+            loss = mse_loss + 0.1 * smooth_loss
             loss.backward()
             torch.nn.utils.clip_grad_norm_(policy.parameters(), 1.0)
             opt.step()
-            tot_loss += float(loss.item())
+            tot_loss += float(mse_loss.item())
             n_batches += 1
-        chronicle.log_info(f"BC Epoch {ep:02d}/{epochs}: train_mse={tot_loss / max(1, n_batches):.6f}")
+        scheduler.step()
 
+        policy.eval()
+        val_loss = 0.0
+        val_batches = 0
+        with torch.no_grad():
+            for batch in val_loader:
+                ev = batch["events"].to(device)
+                act = batch["actions"].to(device)
+                pred = policy.forward_sequence(ev, act, scheduled_sampling_prob=0.0)
+                val_loss += float(loss_fn(pred, act).item())
+                val_batches += 1
+        mean_val = val_loss / max(1, val_batches)
+        if mean_val < best_val:
+            best_val = mean_val
+            best_state = {k: v.detach().cpu().clone() for k, v in policy.state_dict().items()}
+        chronicle.log_info(
+            f"BC Epoch {ep:02d}/{epochs}: train_mse={tot_loss / max(1, n_batches):.6f} | val_mse={mean_val:.6f} (best={best_val:.6f})"
+        )
+
+    if best_state is not None:
+        policy.load_state_dict(best_state, strict=True)
     policy.eval()
     return policy
 
@@ -339,7 +377,7 @@ def main() -> None:
     parser = argparse.ArgumentParser(description="Non-World-Model & Classical Control PIL Baselines.")
     parser.add_argument("--config", type=str, default="results/spwm_v0_12_4_train_m1/config.yaml")
     parser.add_argument("--output-dir", type=str, default="results/baselines/classical_and_bc_pil")
-    parser.add_argument("--bc-epochs", type=int, default=12)
+    parser.add_argument("--bc-epochs", type=int, default=50)
     parser.add_argument("--num-episodes", type=int, default=50)
     parser.add_argument("--device", type=str, default="cpu")
     args = parser.parse_args()

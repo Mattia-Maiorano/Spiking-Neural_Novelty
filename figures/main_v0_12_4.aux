@@ -1,0 +1,91 @@
+\relax 
+\citation{hafner2019dreamer,hafner2025dreamerv3}
+\citation{cho2014learning}
+\citation{shi2015convolutional}
+\citation{gallego2020event}
+\citation{maass1997networks}
+\citation{finn2016spatial}
+\citation{bellec2018long,bellec2020solution}
+\@writefile{toc}{\contentsline {section}{\numberline {1}Introduction}{1}{}\protected@file@percent }
+\citation{orchard2021loihi2}
+\citation{ha2018world}
+\citation{hafner2019dreamer,hafner2025dreamerv3}
+\citation{cho2014learning}
+\citation{wu2023daydreamer}
+\citation{bengio2015scheduled}
+\citation{greydanus2019hamiltonian,zhong2020symplectic}
+\citation{gallego2020event}
+\citation{maass1997networks}
+\citation{orchard2021loihi2}
+\citation{sanket2020evdodge}
+\citation{tieck2018controlling}
+\citation{neftci2019surrogate}
+\citation{bellec2020solution}
+\citation{sun2025spikingwm}
+\citation{williams2016aggressive}
+\citation{todorov2012mujoco}
+\citation{hafner2019learning,hansen2024tdmpc2}
+\@writefile{toc}{\contentsline {section}{\numberline {2}Related Work}{2}{}\protected@file@percent }
+\@writefile{toc}{\contentsline {subsection}{\numberline {2.1}World Models in Robotics}{2}{}\protected@file@percent }
+\@writefile{toc}{\contentsline {subsection}{\numberline {2.2}Neuromorphic Visuomotor Control}{2}{}\protected@file@percent }
+\@writefile{toc}{\contentsline {subsection}{\numberline {2.3}Latent Sampling-based Planning}{2}{}\protected@file@percent }
+\citation{finn2016spatial}
+\citation{bellec2020solution}
+\@writefile{lof}{\contentsline {figure}{\numberline {1}{\ignorespaces \textbf  {End-to-End SPWM Architecture.} Four-stage dataflow: (1) \textit  {Perceptual Bottleneck}: Dual event-camera streams $\mathbf  {E}_t \in \{0, 1\}^{B \times 4 \times 32 \times 32}$ processed via Conv2D + residual fusion ($\mathbf  {F}_t \in \mathbb  {R}^{B \times 16 \times 8 \times 8}$) and SpatialSoftmax ($\tau = 1.0$) extracting topological keypoints $\mathbf  {k}_t \in [-1, 1]^{32}$ and visual embedding $\mathbf  {x}_t \in \mathbb  {R}^{128}$; (2) \textit  {Recurrent Spiking Dynamics}: Predictive coding error $\boldsymbol  {\epsilon }_t = \mathbf  {x}_t - \mathbf  {W}_{\text  {pred}}\mathbf  {z}_{t-1}$ driving a two-tier ALIF core ($N=256$, fast pool $\tau _{\text  {adapt}} \approx 0.47\,\text  {s}$ and slow pool $\tau _{\text  {adapt}} \approx 3.31\,\text  {s}$) with firing-rate homeostasis, producing spikes $\mathbf  {s}_t \in \{0,1\}^{256}$ and membrane states $\mathbf  {m}_t \in \mathbb  {R}^{256}$; (3) \textit  {Phase-Space Partitioning}: Normalization into $\mathbf  {p}_{t+1} \in \mathbb  {R}^{96}$ and direct momentum slicing $\mathbf  {p}_{t+1}[..., :32]$ into $\mathbf  {q}_{t+1} \in \mathbb  {R}^{32}$ regulated by the Anti-Evanescence Stasis Gate $K_{\text  {gate}}$; (4) \textit  {Predictor \& Decoder}: Action-conditioned dissipative surrogate ($M_1$) and zero-lag kinematic decoder feeding Differentiable Forward Kinematics (FK) and Residual-Gated Sensory Handover (Eq.~\ref {eq:handover}).}}{3}{}\protected@file@percent }
+\newlabel{fig:architecture}{{1}{3}{}{figure.1}{}}
+\@writefile{toc}{\contentsline {section}{\numberline {3}Methodology: SPWM}{3}{}\protected@file@percent }
+\@writefile{toc}{\contentsline {subsection}{\numberline {3.1}Continuous-Time Latent POMDP and Dual-Camera Neuromorphic Encoding}{3}{}\protected@file@percent }
+\@writefile{toc}{\contentsline {subsection}{\numberline {3.2}Recurrent Spiking Dynamics and Anti-Evanescence Stasis Gating}{4}{}\protected@file@percent }
+\@writefile{toc}{\contentsline {subsection}{\numberline {3.3}Dissipative Attractor Surrogate ($M_1$) and Residual-Gated Latent MPPI}{4}{}\protected@file@percent }
+\newlabel{eq:handover}{{7}{5}{}{equation.7}{}}
+\@writefile{toc}{\contentsline {subsection}{\numberline {3.4}Decoupled Two-Phase Curriculum}{5}{}\protected@file@percent }
+\@writefile{toc}{\contentsline {section}{\numberline {4}Experimental Setup}{5}{}\protected@file@percent }
+\@writefile{toc}{\contentsline {section}{\numberline {5}Results and Analysis}{5}{}\protected@file@percent }
+\@writefile{toc}{\contentsline {subsection}{\numberline {5.1}Phase 0 Representation Quality \& ALIF Homeostasis}{5}{}\protected@file@percent }
+\@writefile{lot}{\contentsline {table}{\numberline {1}{\ignorespaces \textbf  {Multi-Horizon Open-Loop Rollout Benchmark ($N=400$ Test Trajectories, mean $\pm $ std).} Joint Position MSE ($\text  {rad}^2$) and Joint Velocity MSE ($\text  {rad}^2/\text  {s}^2$) across horizons $H \in \{1, 10, 50, 100\}$. Active inference parameters are shown alongside total checkpoint parameters in parentheses.}}{6}{}\protected@file@percent }
+\newlabel{tab:rollout_horizons}{{1}{6}{}{table.1}{}}
+\@writefile{lof}{\contentsline {figure}{\numberline {2}{\ignorespaces \textbf  {Multi-Horizon Rollout: Open-Loop vs.\ Phasic Handover \& Baselines ($N=400$, $H=100$).} Decoded joint-space error $\|\hat  {\mathbf  {q}}_h - \mathbf  {q}^*_h\|_2$ (mean $\pm $ IQR) across 400 unseen test trajectories at 12.27\% measured ALIF spike rate. SPWM Pure Open-Loop ($0.1115\,\text  {rad}$ mean) outperforms un-gated Phasic Sensory Handover ($0.1482\,\text  {rad}$ mean), Continuous RSSM, and `ANN-Rate'.}}{6}{}\protected@file@percent }
+\newlabel{fig:rollout_handover}{{2}{6}{}{figure.2}{}}
+\@writefile{toc}{\contentsline {subsection}{\numberline {5.2}Multi-Horizon Open-Loop Rollout Stability}{6}{}\protected@file@percent }
+\@writefile{toc}{\contentsline {subsection}{\numberline {5.3}Latent MPPI Closed-Loop Control \& Physics-in-the-Loop Verification}{6}{}\protected@file@percent }
+\citation{orchard2021loihi2}
+\@writefile{lot}{\contentsline {table}{\numberline {2}{\ignorespaces \textbf  {50-Episode Closed-Loop Latent MPPI Benchmark: Continuous Baselines vs.\ 4-Stage SPWM Ablation.} All models run in the identical $K=256$, $H=10$, $N_{\text  {iter}}=3$ MPPI loop across 50 unseen test trajectories. Block 1 reports both Latent-Grounded and Physics-in-the-Loop (PIL) grasp success.}}{7}{}\protected@file@percent }
+\newlabel{tab:mppi_ablation}{{2}{7}{}{table.2}{}}
+\@writefile{lof}{\contentsline {figure}{\numberline {3}{\ignorespaces \textbf  {Closed-Loop Latent MPPI 50-Episode Benchmark (SPWM).} (a) Stratification across elevation planes (90.9\% Low, 100.0\% Mid/High), with Grasp Success Rate (\%) in blue and Min Placement Error (cm) in orange; (b) Minimum placement error vs.\ payload mass ($0.67 \pm 0.46\,\text  {cm}$ overall); (c) Inference latency distribution ($22.2\,\text  {ms}$ mean).}}{7}{}\protected@file@percent }
+\newlabel{fig:mppi_bench}{{3}{7}{}{figure.3}{}}
+\@writefile{toc}{\contentsline {subsection}{\numberline {5.4}Zero-Shot Sim-to-Real Domain Gap \& Robustness}{7}{}\protected@file@percent }
+\@writefile{toc}{\contentsline {subsection}{\numberline {5.5}Neuromorphic Core vs.\ Full-System Energy Efficiency}{7}{}\protected@file@percent }
+\@writefile{lof}{\contentsline {figure}{\numberline {4}{\ignorespaces \textbf  {Zero-Shot Domain Gap \& Robustness Matrix.} Sensory noise (1.0\%) preserves 95\% success. Unmodeled mass ($4.80\,\text  {kg}$) and actuator friction ($\pm 20\%$) expose mechanical transfer boundaries (60--70\% overall). Note that the ``Nominal Baseline'' row reports 100\% because it evaluates a stratified 20-episode robustness subset (whereas Figure~\ref {fig:mppi_bench} evaluates all 50 test episodes at 96.0\%).}}{8}{}\protected@file@percent }
+\newlabel{fig:robustness}{{4}{8}{}{figure.4}{}}
+\@writefile{lof}{\contentsline {figure}{\numberline {5}{\ignorespaces \textbf  {Recurrent Core vs.\ Full-System Closed-Loop Energy.} (a) Recurrent state-estimator core step energy (log scale): Intel Loihi-2 SOP execution ($12.34\,\text  {nJ/step}$ at $1.5\,\text  {pJ/SOP}$) achieves a $4.9\times $ reduction over dense Orin GPU MACs ($60.36\,\text  {nJ/step}$). (b) Full end-to-end closed-loop step energy including perceptual encoder and $K=256 \times H=10 \times 3$ batched MPPI rollouts on Jetson Orin ($1.10\,\text  {mJ/step}$ for SPWM).}}{8}{}\protected@file@percent }
+\newlabel{fig:energy}{{5}{8}{}{figure.5}{}}
+\@writefile{toc}{\contentsline {section}{\numberline {6}Conclusion and Limitations}{8}{}\protected@file@percent }
+\bibstyle{corlabbrvnat}
+\bibdata{main}
+\bibcite{hafner2019dreamer}{{1}{2019}{{Hafner et~al.}}{{Hafner, Lillicrap, Ba, and Norouzi}}}
+\bibcite{hafner2025dreamerv3}{{2}{2023}{{Hafner et~al.}}{{Hafner, Pasukonis, Ba, and Lillicrap}}}
+\bibcite{cho2014learning}{{3}{2014}{{Cho et~al.}}{{Cho, van Merrienboer, Gulcehre, Bahdanau, Bougares, Schwenk, and Bengio}}}
+\bibcite{shi2015convolutional}{{4}{2015}{{Shi et~al.}}{{Shi, Chen, Wang, Yeung, Wong, and Woo}}}
+\bibcite{gallego2020event}{{5}{2020}{{Gallego et~al.}}{{Gallego, Delbr{\"u}ck, Orchard, Bartolozzi, Taba, Censi, Leutenegger, Catalini, and Scaramuzza}}}
+\bibcite{maass1997networks}{{6}{1997}{{Maass}}{{}}}
+\bibcite{finn2016spatial}{{7}{2016}{{Finn et~al.}}{{Finn, Tan, Duan, Darrell, and Levine}}}
+\bibcite{bellec2018long}{{8}{2018}{{Bellec et~al.}}{{Bellec, Salaj, Subramoney, Legenstein, and Maass}}}
+\bibcite{bellec2020solution}{{9}{2020}{{Bellec et~al.}}{{Bellec, Scherr, Subramoney, Hajek, Salaj, Legenstein, and Maass}}}
+\bibcite{orchard2021loihi2}{{10}{2021}{{Orchard et~al.}}{{Orchard, Frady, Rubin, Sanborn, Shrestha, Sommer, and Davies}}}
+\bibcite{ha2018world}{{11}{2018}{{Ha and Schmidhuber}}{{}}}
+\bibcite{wu2023daydreamer}{{12}{2023}{{Wu et~al.}}{{Wu, Escontrela, Hafner, Goldberg, and Abbeel}}}
+\bibcite{bengio2015scheduled}{{13}{2015}{{Bengio et~al.}}{{Bengio, Vinyals, Jaitly, and Shazeer}}}
+\bibcite{greydanus2019hamiltonian}{{14}{2019}{{Greydanus et~al.}}{{Greydanus, Dzamba, and Yosinski}}}
+\bibcite{zhong2020symplectic}{{15}{2020}{{Zhong et~al.}}{{Zhong, Dey, and Chakraborty}}}
+\bibcite{sanket2020evdodge}{{16}{2020}{{Sanket et~al.}}{{Sanket, Parameshwara, Singh, Kurmi, Ferm{\"u}ller, and Aloimonos}}}
+\bibcite{tieck2018controlling}{{17}{2018}{{Tieck et~al.}}{{Tieck, Steffen, Kaiser, Roennau, and Dillmann}}}
+\bibcite{neftci2019surrogate}{{18}{2019}{{Neftci et~al.}}{{Neftci, Mostafa, and Zenke}}}
+\bibcite{sun2025spikingwm}{{19}{2025}{{Sun et~al.}}{{Sun, Zhao, and Wang}}}
+\bibcite{williams2016aggressive}{{20}{2016}{{Williams et~al.}}{{Williams, Drews, Goldfain, Rehg, and Theodorou}}}
+\bibcite{todorov2012mujoco}{{21}{2012}{{Todorov et~al.}}{{Todorov, Erez, and Tassa}}}
+\bibcite{hafner2019learning}{{22}{2019}{{Hafner et~al.}}{{Hafner, Lillicrap, Fischer, Villegas, Ha, Lee, and Davidson}}}
+\bibcite{hansen2024tdmpc2}{{23}{2023}{{Hansen et~al.}}{{Hansen, Su, and Wang}}}
+\@writefile{toc}{\contentsline {section}{\numberline {A}Latent MPPI \& Training Hyperparameters}{11}{}\protected@file@percent }
+\@writefile{lot}{\contentsline {table}{\numberline {3}{\ignorespaces \textbf  {Canonical SPWM and Latent MPPI Hyperparameters.} Total checkpoint parameter count (392{,}141) includes a 66{,}049-parameter terminal value head (\texttt  {LatentCritic}, $w_{\text  {critic}}=0.0$ in zero-shot eval) and 8{,}192 legacy `W\_vel' parameters (317{,}900 active inference parameters; 326{,}092 excluding `LatentCritic' only).}}{11}{}\protected@file@percent }
+\newlabel{tab:hyperparams}{{3}{11}{}{table.3}{}}
+\gdef \@abspage@last{11}

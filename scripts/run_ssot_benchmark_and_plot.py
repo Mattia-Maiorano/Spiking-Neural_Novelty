@@ -479,10 +479,11 @@ def write_ssot_markdown(
 def main() -> None:
     parser = argparse.ArgumentParser(description="SSOT Benchmark, Comparison & Plotting Pipeline.")
     parser.add_argument("--mppi-episodes", type=int, default=50)
-    parser.add_argument("--robustness-episodes", type=int, default=20)
-    parser.add_argument("--sensor-trajectories", type=int, default=50)
+    parser.add_argument("--robustness-episodes", type=int, default=50)
+    parser.add_argument("--sensor-trajectories", type=int, default=400)
     parser.add_argument("--config", type=Path, default=Path("results/spwm_v0_12_4_train_m1/config.yaml"))
     parser.add_argument("--checkpoint", type=Path, default=Path("results/spwm_v0_12_4_train_m1/model.pt"))
+    parser.add_argument("--physics-in-loop", action="store_true", help="Run MPPI and Robustness suites in PIL mode")
     parser.add_argument("--skip-eval", action="store_true", help="Re-plot from existing results JSONs without re-running evals")
     parser.add_argument("--reuse-benchmarks", action="store_true", help="Reuse existing mppi/robustness JSONs and only run rollout+energy+plots")
     args = parser.parse_args()
@@ -498,6 +499,7 @@ def main() -> None:
 
     if not args.skip_eval:
         if not args.reuse_benchmarks:
+            pil_flags = ["--physics-in-loop"] if args.physics_in_loop else []
             _run_subprocess(
                 [
                     sys.executable,
@@ -506,6 +508,7 @@ def main() -> None:
                     "--checkpoint", str(ckpt_path),
                     "--output-dir", str(mppi_json.parent),
                     "--num-episodes", str(args.mppi_episodes),
+                    *pil_flags,
                 ],
                 "Closed-Loop MPPI Benchmark",
             )
@@ -518,6 +521,7 @@ def main() -> None:
                     "--output-dir", str(rob_json.parent),
                     "--num-mppi-episodes", str(args.robustness_episodes),
                     "--num-sensor-trajectories", str(args.sensor_trajectories),
+                    *pil_flags,
                 ],
                 "Robustness Stress Test",
             )

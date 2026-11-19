@@ -366,7 +366,7 @@ class MPPIStructuralScorer:
                     q_phys_next, p_phys_next, u_pd = phys_stepper.step_pd_target(
                         q_des=q_des,
                         dq_des=dq_des,
-                        payload_attached=(t >= t_grasp),
+                        payload_attached=(t >= t_c),
                     )
                     ev_online = event_stream.step(q_phys_next).to(z_pred.device)
                     u_pd_t = torch.from_numpy(u_pd).to(z_pred.device).unsqueeze(0)

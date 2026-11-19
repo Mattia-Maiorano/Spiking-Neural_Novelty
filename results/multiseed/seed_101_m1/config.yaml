@@ -67,8 +67,8 @@ memory:
   - 0.985
 training:
   mode: train_m1
-  epochs: 30
-  early_stopping_patience: 8
+  epochs: 240
+  early_stopping_patience: 10
   batch_size: 32
   weight_decay: 0.0005
   grad_clip_norm: 0.8

@@ -116,7 +116,10 @@ class EventWorldDataset(Dataset):
         self._cache: Dict[int, Dict[str, Any]] = {}
         if cache_data:
             for traj_id in self.trajectory_indices:
-                self._cache[traj_id] = self._load_or_simulate_item(traj_id)
+                item = self._load_or_simulate_item(traj_id)
+                # Store binary {0, 1} events as uint8 to cut RAM usage 4x (~1.7 GB vs ~6.8 GB).
+                item["events"] = item["events"].to(torch.uint8)
+                self._cache[traj_id] = item
 
     def _resolve_unity_file(self, traj_id: int) -> Optional[Path]:
         if self.dataset_dir is None or not self.dataset_dir.is_dir():
@@ -199,7 +202,10 @@ class EventWorldDataset(Dataset):
     def __getitem__(self, idx: int) -> Dict[str, Any]:
         traj_id = self.trajectory_indices[idx]
         if self.cache_data and traj_id in self._cache:
-            return self._cache[traj_id]
+            cached = self._cache[traj_id]
+            out = dict(cached)
+            out["events"] = cached["events"].float()
+            return out
         return self._load_or_simulate_item(traj_id)
 
 

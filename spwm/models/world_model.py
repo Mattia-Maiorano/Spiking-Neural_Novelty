@@ -321,18 +321,21 @@ class SPWM(nn.Module):
         error_neuron_steps = []
         spike_steps = []
 
+        sensory_seq, kp_seq = self.encoder(event_sequence, return_keypoints=True)
+        if event_sequence.shape[2] >= 4:
+            act_global = event_sequence[:, :, :2].abs().mean(dim=(2, 3, 4), keepdim=False).unsqueeze(-1)
+            act_wrist = event_sequence[:, :, 2:].abs().mean(dim=(2, 3, 4), keepdim=False).unsqueeze(-1)
+            event_activity_seq = torch.maximum(act_global, act_wrist)
+        else:
+            event_activity_seq = event_sequence.abs().mean(dim=(2, 3, 4), keepdim=False).unsqueeze(-1)
+
         for t in range(T):
-            event_frame = event_sequence[:, t]
-            sensory_x, sensory_keypoints = self.encoder.encode_step(event_frame)
+            sensory_x = sensory_seq[:, t]
+            sensory_keypoints = kp_seq[:, t]
             z_prev = state.dynamics_state.z_prev
             predicted_x = self.sensory_predictor(z_prev)
             epsilon_t = sensory_x - predicted_x
-            if event_frame.shape[1] >= 4:
-                act_global = event_frame[:, :2].abs().mean(dim=(1, 2, 3), keepdim=True)
-                act_wrist = event_frame[:, 2:].abs().mean(dim=(1, 2, 3), keepdim=True)
-                event_activity = torch.maximum(act_global, act_wrist)
-            else:
-                event_activity = event_frame.abs().mean(dim=(1, 2, 3), keepdim=True)
+            event_activity = event_activity_seq[:, t]
             u_t = actions[:, t] if actions is not None else None
 
             z_t, new_dyn_state = self.dynamics.step(

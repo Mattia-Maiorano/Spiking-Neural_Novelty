@@ -28,7 +28,7 @@ data:
   strict_dataset: true
   pre_contact_sensory_steps: 7
   post_contact_sensory_steps: 7
-  weighted_sampling: true
+  weighted_sampling: false
 model:
   type: spwm
   num_keypoints: 16
@@ -67,8 +67,8 @@ memory:
   - 0.985
 training:
   mode: train_representation
-  epochs: 30
-  early_stopping_patience: 8
+  epochs: 160
+  early_stopping_patience: 10
   batch_size: 32
   weight_decay: 0.0005
   grad_clip_norm: 0.8
@@ -76,7 +76,7 @@ training:
   probe_lr: 0.0002
   probe_weight_decay: 0.0001
   temporal_burn_in: 15
-  representation_checkpoint: results/spwm_v0_12_4_train_representation/model.pt
+  representation_checkpoint: null
   phase_horizon: 100
   tier2_frequency: 5
   tier2_trajectories: 6

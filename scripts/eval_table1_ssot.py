@@ -94,6 +94,56 @@ def evaluate_model_rollout(
     }
 
 
+def _aggregate_multiseed_rollout(
+    seed_results: Dict[int, Dict[str, Any]],
+    horizons: List[int],
+) -> Dict[str, Any]:
+    """Aggregate multi-seed open-loop rollout results while keeping canonical top-level keys."""
+    seeds = sorted(seed_results.keys())
+    first = seed_results[seeds[0]]
+    agg: Dict[str, Any] = {
+        "n_test": first["n_test"],
+        "seeds": seeds,
+        "parameter_count": first["parameter_count"],
+        "per_seed": {str(s): seed_results[s] for s in seeds},
+        "position_mse_per_horizon": {},
+        "position_mse_std_per_horizon": {},
+        "position_mse_seed_std_per_horizon": {},
+        "velocity_mse_per_horizon": {},
+        "velocity_mse_std_per_horizon": {},
+        "velocity_mse_seed_std_per_horizon": {},
+        "position_error_per_horizon": {},
+        "position_error_std_per_horizon": {},
+        "position_error_seed_std_per_horizon": {},
+    }
+    if "active_inference_params" in first:
+        agg["active_inference_params"] = first["active_inference_params"]
+
+    ddof = 1 if len(seeds) > 1 else 0
+    for h in horizons:
+        hs = str(h)
+        p_vals = [seed_results[s]["position_mse_per_horizon"][hs] for s in seeds]
+        v_vals = [seed_results[s]["velocity_mse_per_horizon"][hs] for s in seeds]
+        e_vals = [seed_results[s]["position_error_per_horizon"][hs] for s in seeds]
+        agg["position_mse_per_horizon"][hs] = float(np.mean(p_vals))
+        agg["position_mse_std_per_horizon"][hs] = float(np.mean([seed_results[s]["position_mse_std_per_horizon"][hs] for s in seeds]))
+        agg["position_mse_seed_std_per_horizon"][hs] = float(np.std(p_vals, ddof=ddof))
+        agg["velocity_mse_per_horizon"][hs] = float(np.mean(v_vals))
+        agg["velocity_mse_std_per_horizon"][hs] = float(np.mean([seed_results[s]["velocity_mse_std_per_horizon"][hs] for s in seeds]))
+        agg["velocity_mse_seed_std_per_horizon"][hs] = float(np.std(v_vals, ddof=ddof))
+        agg["position_error_per_horizon"][hs] = float(np.mean(e_vals))
+        agg["position_error_std_per_horizon"][hs] = float(np.mean([seed_results[s]["position_error_std_per_horizon"][hs] for s in seeds]))
+        agg["position_error_seed_std_per_horizon"][hs] = float(np.std(e_vals, ddof=ddof))
+
+    overalls = [seed_results[s]["overall_l2_mean"] for s in seeds]
+    agg["overall_l2_mean"] = float(np.mean(overalls))
+    agg["overall_l2_seed_std"] = float(np.std(overalls, ddof=ddof))
+    agg["curve_l2_mean"] = first["curve_l2_mean"]
+    agg["curve_l2_q25"] = first["curve_l2_q25"]
+    agg["curve_l2_q75"] = first["curve_l2_q75"]
+    return agg
+
+
 def main() -> None:
     cfg = ExperimentConfig.load("results/spwm_v0_12_4_train_m1/config.yaml")
     device = torch.device("cpu")
@@ -101,38 +151,70 @@ def main() -> None:
     loader = DataLoader(ds_test, batch_size=32, shuffle=False)
     horizons = [1, 5, 10, 25, 50, 100]
 
-    # 1. SPWM
-    spwm = SPWM.from_config(cfg).to(device)
-    spwm.load_state_dict(_load_state(Path("results/spwm_v0_12_4_train_m1/model.pt"), device), strict=True)
-    spwm_res = evaluate_model_rollout(spwm, loader, device, horizons)
-    spwm_res["parameter_count"] = sum(p.numel() for p in spwm.parameters())
-    spwm_res["active_inference_params"] = spwm_res["parameter_count"] - sum(
-        p.numel() for n, p in spwm.named_parameters() if n.startswith("critic.") or n.endswith("W_vel.weight")
-    )
+    # 1. SPWM (Seeds 42, 101, 2024)
+    spwm_ckpts = {
+        42: Path("results/spwm_v0_12_4_train_m1/model.pt"),
+        101: Path("results/multiseed/seed_101_m1/model.pt"),
+        2024: Path("results/multiseed/seed_2024_m1/model.pt"),
+    }
+    spwm_per_seed: Dict[int, Dict[str, Any]] = {}
+    for seed, ckpt_path in spwm_ckpts.items():
+        if ckpt_path.is_file():
+            spwm = SPWM.from_config(cfg).to(device)
+            spwm.load_state_dict(_load_state(ckpt_path, device), strict=True)
+            res = evaluate_model_rollout(spwm, loader, device, horizons)
+            res["parameter_count"] = sum(p.numel() for p in spwm.parameters())
+            res["active_inference_params"] = res["parameter_count"] - sum(
+                p.numel() for n, p in spwm.named_parameters() if n.startswith("critic.") or n.endswith("W_vel.weight")
+            )
+            spwm_per_seed[seed] = res
+    spwm_res = _aggregate_multiseed_rollout(spwm_per_seed, horizons)
 
-    # 2. ANN-Rate
-    ann = ANNWorldModel.from_config(cfg).to(device)
-    ann.load_state_dict(_load_state(Path("results/ann_ablation/ann_rate_m1/model.pt"), device), strict=True)
-    ann_res = evaluate_model_rollout(ann, loader, device, horizons)
-    ann_res["parameter_count"] = sum(p.numel() for p in ann.parameters())
-    ann_res["active_inference_params"] = ann_res["parameter_count"] - sum(
-        p.numel() for n, p in ann.named_parameters() if n.startswith("critic.") or n.endswith("W_vel.weight")
-    )
+    # 2. ANN-Rate (Seeds 42, 101, 2024)
+    ann_ckpts = {
+        42: Path("results/ann_ablation/seed_42_m1/model.pt"),
+        101: Path("results/ann_ablation/seed_101_m1/model.pt"),
+        2024: Path("results/ann_ablation/seed_2024_m1/model.pt"),
+    }
+    if not ann_ckpts[42].is_file():
+        ann_ckpts[42] = Path("results/ann_ablation/ann_rate_m1/model.pt")
+    ann_per_seed: Dict[int, Dict[str, Any]] = {}
+    for seed, ckpt_path in ann_ckpts.items():
+        if ckpt_path.is_file():
+            ann = ANNWorldModel.from_config(cfg).to(device)
+            ann.load_state_dict(_load_state(ckpt_path, device), strict=True)
+            res = evaluate_model_rollout(ann, loader, device, horizons)
+            res["parameter_count"] = sum(p.numel() for p in ann.parameters())
+            res["active_inference_params"] = res["parameter_count"] - sum(
+                p.numel() for n, p in ann.named_parameters() if n.startswith("critic.") or n.endswith("W_vel.weight")
+            )
+            ann_per_seed[seed] = res
+    ann_res = _aggregate_multiseed_rollout(ann_per_seed, horizons)
 
-    # 3. Continuous RSSM
-    rssm = ContinuousRSSM(
-        in_channels=cfg.model.in_channels,
-        height=cfg.environment.height,
-        width=cfg.environment.width,
-        encoder_dim=cfg.model.encoder_dim,
-        deterministic_dim=256,
-        stochastic_dim=32,
-        action_dim=cfg.environment.action_dim,
-        joint_count=cfg.environment.joint_count,
-    ).to(device)
-    rssm.load_state_dict(_load_state(Path("results/baselines/continuous_rssm/model.pt"), device), strict=True)
-    rssm_res = evaluate_model_rollout(rssm, loader, device, horizons)
-    rssm_res["parameter_count"] = sum(p.numel() for p in rssm.parameters())
+    # 3. Continuous RSSM (Seeds 42, 101, 2024)
+    rssm_ckpts = {
+        42: Path("results/baselines/continuous_rssm/model.pt"),
+        101: Path("results/multiseed_rssm/seed_101/continuous_rssm/model.pt"),
+        2024: Path("results/multiseed_rssm/seed_2024/continuous_rssm/model.pt"),
+    }
+    rssm_per_seed: Dict[int, Dict[str, Any]] = {}
+    for seed, ckpt_path in rssm_ckpts.items():
+        if ckpt_path.is_file():
+            rssm = ContinuousRSSM(
+                in_channels=cfg.model.in_channels,
+                height=cfg.environment.height,
+                width=cfg.environment.width,
+                encoder_dim=cfg.model.encoder_dim,
+                deterministic_dim=256,
+                stochastic_dim=32,
+                action_dim=cfg.environment.action_dim,
+                joint_count=cfg.environment.joint_count,
+            ).to(device)
+            rssm.load_state_dict(_load_state(ckpt_path, device), strict=True)
+            res = evaluate_model_rollout(rssm, loader, device, horizons)
+            res["parameter_count"] = sum(p.numel() for p in rssm.parameters())
+            rssm_per_seed[seed] = res
+    rssm_res = _aggregate_multiseed_rollout(rssm_per_seed, horizons)
 
     # 4. Deep GRU
     gru = DeepGRUPredictor(
@@ -172,8 +254,9 @@ def main() -> None:
     out_path.write_text(json.dumps(out, indent=2), encoding="utf-8")
     print(f"Wrote {out_path}")
     for name, d in out.items():
+        seeds_str = f"seeds={d['seeds']}" if "seeds" in d else "seed=42"
         print(
-            f"{name:22s} | params={d['parameter_count']:,} | "
+            f"{name:22s} ({seeds_str}) | params={d['parameter_count']:,} | "
             f"H1={d['position_mse_per_horizon']['1']:.5f}+-{d['position_mse_std_per_horizon']['1']:.5f} | "
             f"H100={d['position_mse_per_horizon']['100']:.5f}+-{d['position_mse_std_per_horizon']['100']:.5f} | "
             f"V100={d['velocity_mse_per_horizon']['100']:.5f}+-{d['velocity_mse_std_per_horizon']['100']:.5f}"

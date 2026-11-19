@@ -24,6 +24,7 @@ import matplotlib.pyplot as plt
 import numpy as np
 import torch
 import torch.nn as nn
+import torch.nn.functional as F
 from torch.utils.data import DataLoader
 
 from spwm.contracts.config import ExperimentConfig
@@ -34,7 +35,9 @@ from spwm.models.baselines import (
     ContinuousRSSM,
     DeepGRUPredictor,
 )
+from spwm.models.kinematics import DifferentiableForwardKinematics
 from spwm.models.rollout import compute_rollout_schedule
+from spwm.training.losses import _decoded_kinematic_temporal_loss
 from spwm.training.metrics import position_error, velocity_error
 from spwm.utils.reproducibility import set_seed
 
@@ -97,6 +100,38 @@ def measure_inference_latency_ms(
     return float(latency_ms)
 
 
+def compute_equalized_kinematic_loss(
+    fk: DifferentiableForwardKinematics,
+    pred_pos: torch.Tensor,
+    pred_vel: torch.Tensor,
+    pos_gt: torch.Tensor,
+    vel_gt: torch.Tensor,
+    dt: float = 0.05,
+    cartesian_weight: float = 40.0,
+    ee_rot_weight: float = 0.5,
+    lambda_kinematic_smooth: float = 0.5,
+) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
+    """Equalized kinematic + SE(3) EE + smoothness loss matching SPWM supervision weights."""
+    loss_pos = F.mse_loss(pred_pos, pos_gt, reduction="none").sum(dim=-1).mean()
+    loss_vel = F.mse_loss(pred_vel, vel_gt, reduction="none").sum(dim=-1).mean()
+    t_pred = fk.forward_homogeneous(pred_pos)
+    t_gt = fk.forward_homogeneous(pos_gt)
+    loss_ee_pos = F.mse_loss(t_pred[..., :3, 3], t_gt[..., :3, 3], reduction="none").sum(dim=-1).mean()
+    loss_ee_rot = F.mse_loss(t_pred[..., :3, :3], t_gt[..., :3, :3], reduction="none").sum(dim=(-2, -1)).mean()
+    loss_cart = float(cartesian_weight) * (loss_ee_pos + float(ee_rot_weight) * loss_ee_rot)
+    loss_smooth = float(lambda_kinematic_smooth) * _decoded_kinematic_temporal_loss(
+        pos_pred=pred_pos,
+        vel_pred=pred_vel,
+        pos_true=pos_gt,
+        dt=dt,
+        reduce_joint_sum=True,
+    )
+    total = loss_pos + loss_vel + loss_cart + loss_smooth
+    raw_pos_mse = torch.mean((pred_pos - pos_gt) ** 2)
+    raw_vel_mse = torch.mean((pred_vel - vel_gt) ** 2)
+    return total, raw_pos_mse, raw_vel_mse
+
+
 def train_single_baseline(
     model_name: str,
     model: nn.Module,
@@ -110,9 +145,11 @@ def train_single_baseline(
     save_dir: Path,
     joint_count: int = 6,
 ) -> Dict[str, Any]:
-    chronicle.log_info(f"--- Training {model_name} on {device} ({epochs} epochs max) ---")
+    chronicle.log_info(f"--- Training {model_name} (Equalized SE(3) + Multi-Step Rollout) on {device} ({epochs} epochs max) ---")
     model = model.to(device)
+    fk = DifferentiableForwardKinematics(joint_count=joint_count).to(device)
     optimizer = torch.optim.AdamW(model.parameters(), lr=lr, weight_decay=weight_decay)
+    scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(optimizer, T_max=max(1, epochs), eta_min=1e-5)
 
     best_val_loss = float("inf")
     epochs_no_improve = 0
@@ -122,8 +159,6 @@ def train_single_baseline(
     for ep in range(1, epochs + 1):
         model.train()
         train_losses: List[float] = []
-        train_pos_losses: List[float] = []
-        train_vel_losses: List[float] = []
 
         t0 = time.perf_counter()
         for batch in train_loader:
@@ -135,25 +170,33 @@ def train_single_baseline(
 
             optimizer.zero_grad()
             out = model(events, actions=actions)
-            pred_pos = out["positions"]
-            pred_vel = out["velocities"]
-
-            loss_pos = torch.mean((pred_pos - pos_gt) ** 2)
-            loss_vel = torch.mean((pred_vel - vel_gt) ** 2)
-            total_loss = loss_pos + 1.5 * loss_vel
-
+            tf_loss, _, _ = compute_equalized_kinematic_loss(
+                fk, out["positions"], out["velocities"], pos_gt, vel_gt
+            )
             if "kl_loss" in out:
-                total_loss = total_loss + 0.1 * out["kl_loss"]
+                tf_loss = tf_loss + 0.1 * out["kl_loss"]
 
+            t_start = 4
+            roll_h = min(80, events.shape[1] - t_start - 1)
+            roll_res = model.rollout_train(events=events, actions=actions, horizon=roll_h, t_start=t_start)
+            roll_loss, _, _ = compute_equalized_kinematic_loss(
+                fk,
+                roll_res.positions,
+                roll_res.velocities,
+                pos_gt[:, t_start + 1 : t_start + 1 + roll_h],
+                vel_gt[:, t_start + 1 : t_start + 1 + roll_h],
+            )
+
+            total_loss = 0.5 * tf_loss + 1.0 * roll_loss
             total_loss.backward()
             torch.nn.utils.clip_grad_norm_(model.parameters(), max_norm=1.0)
             optimizer.step()
 
             train_losses.append(float(total_loss.item()))
-            train_pos_losses.append(float(loss_pos.item()))
-            train_vel_losses.append(float(loss_vel.item()))
 
-        # Validation
+        scheduler.step()
+
+        # Validation on long-horizon autonomous rollout
         model.eval()
         val_losses: List[float] = []
         val_pos_losses: List[float] = []
@@ -166,12 +209,16 @@ def train_single_baseline(
                 pos_gt = kin_gt[..., :joint_count]
                 vel_gt = kin_gt[..., joint_count:2 * joint_count]
 
-                out = model(events, actions=actions)
-                loss_pos = torch.mean((out["positions"] - pos_gt) ** 2)
-                loss_vel = torch.mean((out["velocities"] - vel_gt) ** 2)
-                v_loss = loss_pos + 1.5 * loss_vel
-                if "kl_loss" in out:
-                    v_loss = v_loss + 0.1 * out["kl_loss"]
+                t_start = 4
+                val_h = min(100, events.shape[1] - t_start - 1)
+                roll_res = model.rollout(events=events, actions=actions, horizon=val_h, t_start=t_start)
+                v_loss, loss_pos, loss_vel = compute_equalized_kinematic_loss(
+                    fk,
+                    roll_res.positions,
+                    roll_res.velocities,
+                    pos_gt[:, t_start + 1 : t_start + 1 + val_h],
+                    vel_gt[:, t_start + 1 : t_start + 1 + val_h],
+                )
 
                 val_losses.append(float(v_loss.item()))
                 val_pos_losses.append(float(loss_pos.item()))
@@ -202,8 +249,8 @@ def train_single_baseline(
             star = ""
 
         chronicle.log_info(
-            f"[{model_name}] Ep {ep:02d}/{epochs:02d} | Train: {mean_train:.4f} | Val: {mean_val:.4f} "
-            f"(Pos: {record['val_pos_mse']:.4f}, Vel: {record['val_vel_mse']:.4f}) | {dt_ep:.1f}s{star}"
+            f"[{model_name}] Ep {ep:02d}/{epochs:02d} | Train: {mean_train:.4f} | ValRoll: {mean_val:.4f} "
+            f"(Pos: {record['val_pos_mse']:.5f}, Vel: {record['val_vel_mse']:.5f}) | {dt_ep:.1f}s{star}"
         )
 
         if epochs_no_improve >= patience:
@@ -370,11 +417,11 @@ def generate_markdown_table(benchmarks: Dict[str, Dict[str, Any]], horizons: Lis
 
 def main() -> None:
     parser = argparse.ArgumentParser(description="Train and evaluate comparative non-spiking baseline models.")
-    parser.add_argument("--epochs", type=int, default=18, help="Max epochs per baseline")
-    parser.add_argument("--patience", type=int, default=6, help="Early stopping patience")
-    parser.add_argument("--total-trajectories", type=int, default=1000, help="Total trajectories to partition")
+    parser.add_argument("--epochs", type=int, default=60, help="Max epochs per baseline")
+    parser.add_argument("--patience", type=int, default=15, help="Early stopping patience")
+    parser.add_argument("--total-trajectories", type=int, default=4000, help="Total trajectories to partition")
     parser.add_argument("--batch-size", type=int, default=32, help="Batch size")
-    parser.add_argument("--lr", type=float, default=2e-4, help="Learning rate")
+    parser.add_argument("--lr", type=float, default=3e-4, help="Learning rate")
     parser.add_argument("--weight-decay", type=float, default=1e-4, help="Weight decay")
     parser.add_argument("--device", type=str, default=None, help="Device (cpu, mps, cuda)")
     parser.add_argument("--seed", type=int, default=42, help="Random seed")
@@ -382,6 +429,14 @@ def main() -> None:
     parser.add_argument("--config", type=Path, default=GLOBAL_VERSION.m1_config(), help="Path to SPWM M1 config")
     parser.add_argument("--checkpoint", type=Path, default=GLOBAL_VERSION.m1_checkpoint(), help="Path to SPWM M1 checkpoint")
     parser.add_argument("--m1-metrics", type=Path, default=GLOBAL_VERSION.m1_metrics(), help="Path to SPWM M1 metrics JSON")
+    parser.add_argument(
+        "--models",
+        type=str,
+        nargs="+",
+        default=["all"],
+        choices=["all", "rssm", "deep_gru", "convlstm"],
+        help="Subset of baseline models to train and evaluate.",
+    )
     args = parser.parse_args()
 
     set_seed(args.seed)
@@ -414,7 +469,7 @@ def main() -> None:
     )
 
     # Models to benchmark
-    models: Dict[str, nn.Module] = {
+    all_models: Dict[str, nn.Module] = {
         "Continuous RSSM": ContinuousRSSM(
             in_channels=4,
             height=32,
@@ -445,6 +500,16 @@ def main() -> None:
             joint_count=6,
         ),
     }
+    key_map = {
+        "rssm": "Continuous RSSM",
+        "deep_gru": "Deep GRU",
+        "convlstm": "Continuous ConvLSTM",
+    }
+    if "all" in args.models:
+        models = all_models
+    else:
+        selected_names = [key_map[k] for k in args.models]
+        models = {k: v for k, v in all_models.items() if k in selected_names}
 
     benchmark_results: Dict[str, Dict[str, Any]] = {}
 

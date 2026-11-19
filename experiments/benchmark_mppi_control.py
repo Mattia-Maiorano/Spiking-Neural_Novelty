@@ -128,7 +128,7 @@ class _DeepGRUDecoderAdapter(torch.nn.Module):
 
 
 class _BaselineModelWrapper:
-    """Uniform wrapper exposing .predictor and .physical_decoder for baseline evaluation."""
+    """Uniform wrapper exposing .predictor, .physical_decoder, and causal online observation updates."""
 
     def __init__(
         self,
@@ -141,6 +141,55 @@ class _BaselineModelWrapper:
         self.model_type = model_type
         self.predictor = predictor
         self.physical_decoder = physical_decoder
+
+    @torch.no_grad()
+    def ground_initial(
+        self,
+        events: torch.Tensor,
+        t_start: int,
+        actions: Optional[torch.Tensor],
+    ) -> Tuple[torch.Tensor, Optional[Any], torch.Tensor]:
+        """Causal burn-in from 0..t_start without any access to future frames."""
+        if self.model_type == "ann_rate":
+            return ground_initial_state(self.raw_model, events, t_start=t_start, actions=actions)
+        z_seq = self.ground_sequence(events, max_t=t_start, actions=actions)
+        return z_seq[:, t_start], None, z_seq
+
+    @torch.no_grad()
+    def step_online(
+        self,
+        ev_online: torch.Tensor,
+        action: torch.Tensor,
+        curr_z: torch.Tensor,
+        dyn_state: Any,
+    ) -> Tuple[torch.Tensor, Any]:
+        """Applies the baseline's native online sensory observation update during PIL."""
+        if self.model_type == "ann_rate":
+            return step_grounded(
+                self.raw_model,
+                ev_online,
+                dyn_state,
+                in_sensory_phase=True,
+                unconstrained=False,
+                action=action,
+            )
+        if self.model_type == "rssm":
+            rssm: ContinuousRSSM = self.raw_model  # type: ignore[assignment]
+            h = curr_z[:, : rssm.deterministic_dim]
+            s = curr_z[:, rssm.deterministic_dim :]
+            h_next = rssm.gru_cell(torch.cat([s, action], dim=-1), h)
+            e_step, _ = rssm.encoder(ev_online, return_keypoints=True)
+            post_mu, _ = rssm._get_stats(rssm.posterior_net(torch.cat([h_next, e_step], dim=-1)))
+            return torch.cat([h_next, post_mu], dim=-1), dyn_state
+        if self.model_type == "deep_gru":
+            gru: DeepGRUPredictor = self.raw_model  # type: ignore[assignment]
+            h1 = curr_z[:, : gru.hidden_dim]
+            h2 = curr_z[:, gru.hidden_dim :]
+            e_step, _ = gru.encoder(ev_online, return_keypoints=True)
+            h1_next = gru.gru1(torch.cat([e_step, action], dim=-1), h1)
+            h2_next = gru.gru2(h1_next, h2)
+            return torch.cat([h1_next, h2_next], dim=-1), dyn_state
+        raise ValueError(f"Unsupported baseline model_type: {self.model_type}")
 
     @torch.no_grad()
     def ground_sequence(
@@ -179,6 +228,30 @@ class _BaselineModelWrapper:
         else:
             _, _, z_gt_seq = ground_initial_state(self.raw_model, events, t_start=max_t, actions=actions)
             return z_gt_seq
+
+
+def _compute_residual_handover_weight(
+    fk: DifferentiableForwardKinematics,
+    physical_decoder: torch.nn.Module,
+    z_pred: torch.Tensor,
+    z_obs: torch.Tensor,
+    target_final_mat: torch.Tensor,
+    t: int,
+    t_c: int,
+) -> float:
+    """Shared causal residual-gated handover rule for SPWM and ANN-Rate during phi_t == 1."""
+    dec_pred = physical_decoder(z_pred)
+    ee_pred_now = fk(dec_pred[:, :6])[0].detach()
+    dist_pred = float(torch.norm(ee_pred_now - target_final_mat[:3, 3]).item())
+    dec_obs = physical_decoder(z_obs)
+    ee_obs_now = fk(dec_obs[:, :6])[0].detach()
+    dist_obs = float(torch.norm(ee_obs_now - target_final_mat[:3, 3]).item())
+    rot_obs = compute_rot_error(fk, dec_obs[0, :6], target_final_mat)
+    if dist_pred > 0.026 and dist_obs < 0.025 and rot_obs < 0.049:
+        return 0.85
+    if dist_obs < dist_pred and t <= t_c + 2:
+        return 0.40 * max(0.0, min(1.0, (dist_pred - 0.032) / 0.04))
+    return 0.0
 
 
 def load_trajectory_metadata(dataset_dir: Path, traj_id: int) -> Tuple[float, str]:
@@ -233,8 +306,11 @@ def run_episode(
     max_t = min(t_grasp + 1, events.shape[1] - 1)
     dyn_state = None
     if isinstance(model, _BaselineModelWrapper):
-        z_gt_seq = model.ground_sequence(events, max_t=max_t, actions=actions)
-        z_start = z_gt_seq[:, t_start]
+        if physics_in_loop:
+            z_start, dyn_state, z_gt_seq = model.ground_initial(events, t_start=t_start, actions=actions)
+        else:
+            z_gt_seq = model.ground_sequence(events, max_t=max_t, actions=actions)
+            z_start = z_gt_seq[:, t_start]
     elif physics_in_loop:
         z_start, dyn_state, z_gt_seq = ground_initial_state(model, events, t_start=t_start, actions=actions)
     else:
@@ -262,14 +338,13 @@ def run_episode(
             payload_shape=payload_shape,
             damping=0.15 * physics_damping_scale,
         )
-        if not isinstance(model, _BaselineModelWrapper):
-            sim_cam = EventCameraSimulator(
-                height=events.shape[-2],
-                width=events.shape[-1],
-                event_threshold=0.08,
-                in_channels=events.shape[2],
-            )
-            event_stream = OnlineEventCameraStream(sim_cam, phys_stepper.q)
+        sim_cam = EventCameraSimulator(
+            height=events.shape[-2],
+            width=events.shape[-1],
+            event_threshold=0.08,
+            in_channels=events.shape[2],
+        )
+        event_stream = OnlineEventCameraStream(sim_cam, phys_stepper.q)
 
     step_errors: List[float] = []
     latencies: List[float] = []
@@ -308,33 +383,42 @@ def run_episode(
             q_phys_next, p_phys_next, u_pd = phys_stepper.step_pd_target(
                 q_des=q_des,
                 dq_des=dq_des,
-                payload_attached=(t >= t_grasp),
+                payload_attached=(t >= t_c),
             )
-            if event_stream is not None and dyn_state is not None and not isinstance(model, _BaselineModelWrapper):
+            if event_stream is not None:
                 ev_online = event_stream.step(q_phys_next).to(device)
                 u_pd_t = torch.from_numpy(u_pd).to(device).unsqueeze(0)
-                z_obs, dyn_state = step_grounded(
-                    model,
-                    ev_online,
-                    dyn_state,
-                    in_sensory_phase=True,
-                    unconstrained=False,
-                    action=u_pd_t,
-                )
-                if use_handover and int(phase_flags[t].item()) == 1:
-                    ee_pred_now = fk(dec_pred[:, :6])[0].detach()
-                    dist_pred = float(torch.norm(ee_pred_now - target_final_mat[:3, 3]).item())
-                    dec_obs = model.physical_decoder(z_obs)
-                    ee_obs_now = fk(dec_obs[:, :6])[0].detach()
-                    dist_obs = float(torch.norm(ee_obs_now - target_final_mat[:3, 3]).item())
-                    rot_obs = compute_rot_error(fk, dec_obs[0, :6], target_final_mat)
-                    if dist_pred > 0.026 and dist_obs < 0.025 and rot_obs < 0.049:
-                        w_t = 0.85
-                    elif dist_obs < dist_pred and t <= t_c + 2:
-                        w_t = 0.40 * max(0.0, min(1.0, (dist_pred - 0.032) / 0.04))
+                if isinstance(model, _BaselineModelWrapper):
+                    if model.model_type == "ann_rate":
+                        z_obs, dyn_state = model.step_online(ev_online, u_pd_t, curr_z, dyn_state)
+                        if use_handover and int(phase_flags[t].item()) == 1:
+                            w_t = _compute_residual_handover_weight(
+                                fk, model.physical_decoder, z_pred, z_obs, target_final_mat, t, t_c
+                            )
+                            curr_z = (1.0 - w_t) * z_pred + w_t * z_obs
+                        else:
+                            curr_z = z_pred
+                    elif int(phase_flags[t].item()) == 1:
+                        z_obs, dyn_state = model.step_online(ev_online, u_pd_t, curr_z, dyn_state)
+                        curr_z = z_obs
                     else:
-                        w_t = 0.0
-                    curr_z = (1.0 - w_t) * z_pred + w_t * z_obs
+                        curr_z = z_pred
+                elif dyn_state is not None:
+                    z_obs, dyn_state = step_grounded(
+                        model,
+                        ev_online,
+                        dyn_state,
+                        in_sensory_phase=True,
+                        unconstrained=False,
+                        action=u_pd_t,
+                    )
+                    if use_handover and int(phase_flags[t].item()) == 1:
+                        w_t = _compute_residual_handover_weight(
+                            fk, model.physical_decoder, z_pred, z_obs, target_final_mat, t, t_c
+                        )
+                        curr_z = (1.0 - w_t) * z_pred + w_t * z_obs
+                    else:
+                        curr_z = z_pred
                 else:
                     curr_z = z_pred
             else:

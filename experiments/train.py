@@ -30,6 +30,7 @@ from spwm.evaluation.visualizer import (
     plot_relay_rollout,
     plot_training_curves,
 )
+from spwm.models.ann_ablation import ANNWorldModel
 from spwm.models.rollout import rollout_latent
 from spwm.models.world_model import SPWM
 from spwm.training.diagnostics import (
@@ -199,6 +200,13 @@ def parse_args() -> argparse.Namespace:
         help="Disable Tier 2 closed-loop MPPI validation and rely strictly on Tier 1 open-loop MSE",
     )
     parser.add_argument(
+        "--model-type",
+        type=str,
+        default="spwm",
+        choices=["spwm", "ann_rate"],
+        help="Model architecture to train: canonical 'spwm' (ALIF) or parameter-matched 'ann_rate'.",
+    )
+    parser.add_argument(
         "--closed-loop-buffer",
         type=str,
         default=None,
@@ -285,9 +293,9 @@ def _evaluate_and_save_phase_artifacts(
     actions = sample_batch["actions"].to(device)
     burn_in = min(cfg.training.temporal_burn_in, max(0, events.shape[1] - 2))
     with torch.no_grad():
-        out = model(events, actions=actions)
-        z_start = out.latent_states[:, burn_in]
-        decoder_state = model.physical_decoder.warm_up_filter(out.latent_states[:, : burn_in + 1])
+        latents_out, _, spikes_out = model.forward_representation_with_spikes(events, actions=actions)
+        z_start = latents_out[:, burn_in]
+        decoder_state = model.physical_decoder.warm_up_filter(latents_out[:, : burn_in + 1])
         max_mode_h = max(eval_horizons)
         eval_h = min(max_mode_h, events.shape[1] - 1 - burn_in)
         roll_res = rollout_latent(
@@ -329,8 +337,7 @@ def _evaluate_and_save_phase_artifacts(
     chronicle.log_success(f"Generated metrics resume: {metrics_resume_path.name}")
 
     with torch.no_grad():
-        all_spikes = torch.cat([out.fast_spikes, out.slow_spikes], dim=-1)
-        spike_diag = collect_spike_statistics(all_spikes)
+        spike_diag = collect_spike_statistics(spikes_out)
     grad_diag = inspect_gradients(model)
     diag_summary = {
         "model_name": model_display_name,
@@ -405,6 +412,9 @@ def main() -> None:
     if args.max_eval_generations is not None:
         overrides["max_eval_generations"] = args.max_eval_generations
 
+    if args.model_type == "ann_rate" and (args.mode or cfg.training.mode) == "train_representation":
+        overrides["lambda_spike_balance"] = 0.0
+
     if overrides:
         cfg = cfg.with_overrides(**overrides)
 
@@ -426,7 +436,10 @@ def main() -> None:
 
     dataloaders = create_dataloaders_from_config(cfg)
 
-    model = SPWM.from_config(cfg).to(device)
+    if args.model_type == "ann_rate":
+        model = ANNWorldModel.from_config(cfg).to(device)
+    else:
+        model = SPWM.from_config(cfg).to(device)
 
     # Auto-enforced strict loading of best validation `model.pt` from matching version
     enforce_phase_prerequisites(model, cfg, device=device, results_root=results_root)

@@ -202,8 +202,7 @@ class ContinuousRSSM(nn.Module):
             "velocities": pred_kinematics[..., self.joint_count:],
         }
 
-    @torch.no_grad()
-    def rollout(
+    def rollout_train(
         self,
         events: torch.Tensor,
         actions: torch.Tensor,
@@ -211,24 +210,24 @@ class ContinuousRSSM(nn.Module):
         t_start: int = 5,
     ) -> BaselineRolloutResult:
         """
-        Executes burn-in with sensory observations up to t_start, then rolls out autonomously using prior dynamics.
+        Differentiable burn-in with sensory observations up to t_start, then autonomous rollout via prior dynamics.
         """
         b, t_seq, c, h_in, w_in = events.shape
         device = events.device
         h, s = self.init_state(b, device)
 
         # 1. Warm-up recurrent state during burn-in (steps 0 .. t_start)
+        enc_burn, _ = self.encoder(events[:, : t_start + 1], return_keypoints=True)
         for step in range(t_start + 1):
-            flat_ev = events[:, step]
-            e_step, _ = self.encoder(flat_ev, return_keypoints=True)
+            e_step = enc_burn[:, step]
             a_prev = actions[:, step] if step == 0 else actions[:, step - 1]
             gru_in = torch.cat([s, a_prev], dim=-1)
             h = self.gru_cell(gru_in, h)
 
             post_in = torch.cat([h, e_step], dim=-1)
             post_raw = self.posterior_net(post_in)
-            post_mu, post_std = self._get_stats(post_raw)
-            s = post_mu  # deterministic mean at inference
+            post_mu, _ = self._get_stats(post_raw)
+            s = post_mu  # deterministic mean at inference/rollout
 
         # 2. Autonomous rollout for horizon steps
         pred_kin_list = []
@@ -241,7 +240,7 @@ class ContinuousRSSM(nn.Module):
             gru_in = torch.cat([s, a_cur], dim=-1)
             h = self.gru_cell(gru_in, h)
 
-            # Prior dynamics (no sensory input available!)
+            # Prior dynamics (no sensory input available)
             prior_raw = self.prior_net(h)
             prior_mu, _ = self._get_stats(prior_raw)
             s = prior_mu  # mean of prior
@@ -261,6 +260,17 @@ class ContinuousRSSM(nn.Module):
             positions=traj[..., :self.joint_count],
             velocities=traj[..., self.joint_count:],
         )
+
+    @torch.no_grad()
+    def rollout(
+        self,
+        events: torch.Tensor,
+        actions: torch.Tensor,
+        horizon: int,
+        t_start: int = 5,
+    ) -> BaselineRolloutResult:
+        """Executes burn-in with sensory observations up to t_start, then rolls out autonomously using prior dynamics."""
+        return self.rollout_train(events=events, actions=actions, horizon=horizon, t_start=t_start)
 
 
 # ==============================================================================
@@ -362,8 +372,7 @@ class DeepGRUPredictor(nn.Module):
             "velocities": pred_kinematics[..., self.joint_count:],
         }
 
-    @torch.no_grad()
-    def rollout(
+    def rollout_train(
         self,
         events: torch.Tensor,
         actions: torch.Tensor,
@@ -376,8 +385,9 @@ class DeepGRUPredictor(nn.Module):
         last_kin = torch.zeros(b, 2 * self.joint_count, device=device)
 
         # 1. Sensory burn-in (steps 0 .. t_start)
+        enc_burn, _ = self.encoder(events[:, : t_start + 1], return_keypoints=True)
         for step in range(t_start + 1):
-            e_step, _ = self.encoder(events[:, step], return_keypoints=True)
+            e_step = enc_burn[:, step]
             gru_in = torch.cat([e_step, actions[:, step]], dim=-1)
             h1 = self.gru1(gru_in, h1)
             h2 = self.gru2(h1, h2)
@@ -409,6 +419,16 @@ class DeepGRUPredictor(nn.Module):
             positions=traj[..., :self.joint_count],
             velocities=traj[..., self.joint_count:],
         )
+
+    @torch.no_grad()
+    def rollout(
+        self,
+        events: torch.Tensor,
+        actions: torch.Tensor,
+        horizon: int,
+        t_start: int = 5,
+    ) -> BaselineRolloutResult:
+        return self.rollout_train(events=events, actions=actions, horizon=horizon, t_start=t_start)
 
 
 # ==============================================================================
@@ -571,8 +591,7 @@ class ContinuousConvLSTM(nn.Module):
             "velocities": pred_kinematics[..., self.joint_count:],
         }
 
-    @torch.no_grad()
-    def rollout(
+    def rollout_train(
         self,
         events: torch.Tensor,
         actions: torch.Tensor,
@@ -582,14 +601,16 @@ class ContinuousConvLSTM(nn.Module):
         b, t_seq, c, h_in, w_in = events.shape
         device = events.device
 
-        sample_stem = self.conv_stem(events[:, 0])
-        _, c_feat, h_feat, w_feat = sample_stem.shape
+        burn_steps = t_start + 1
+        burn_feats = self.conv_stem(events[:, :burn_steps].reshape(b * burn_steps, c, h_in, w_in))
+        _, c_feat, h_feat, w_feat = burn_feats.shape
+        burn_feats = burn_feats.reshape(b, burn_steps, c_feat, h_feat, w_feat)
 
         state = self.init_state(b, h_feat, w_feat, device)
 
         # 1. Sensory burn-in (steps 0 .. t_start)
-        for step in range(t_start + 1):
-            f_step = self.conv_stem(events[:, step])
+        for step in range(burn_steps):
+            f_step = burn_feats[:, step]
             a_spatial = self._embed_action_spatial(actions[:, step], h_feat, w_feat)
             cell_in = torch.cat([f_step, a_spatial], dim=1)
             h_cur, c_cur = self.cell(cell_in, state)
@@ -626,3 +647,13 @@ class ContinuousConvLSTM(nn.Module):
             positions=traj[..., :self.joint_count],
             velocities=traj[..., self.joint_count:],
         )
+
+    @torch.no_grad()
+    def rollout(
+        self,
+        events: torch.Tensor,
+        actions: torch.Tensor,
+        horizon: int,
+        t_start: int = 5,
+    ) -> BaselineRolloutResult:
+        return self.rollout_train(events=events, actions=actions, horizon=horizon, t_start=t_start)

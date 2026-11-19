@@ -296,14 +296,30 @@ class RolloutEvaluator:
             b, t, _, _, _ = events.shape
 
             out = self.model(events, actions=actions)
-            latent_states = out.latent_states
+            if isinstance(out, dict):
+                latent_states = out["latents"]
+                if actions is not None and latent_states.shape[1] > 1:
+                    bt_n = b * (t - 1)
+                    pred_flat = self.model.predictor(
+                        latent_states[:, :-1].reshape(bt_n, -1),
+                        actions[:, :-1].reshape(bt_n, -1),
+                    ).predicted_latent
+                    pred_latents = pred_flat.reshape(b, t - 1, -1)
+                    target_latents = latent_states[:, 1:]
+                    tf_mse = float(torch.mean((pred_latents - target_latents) ** 2).item())
+                else:
+                    tf_mse = 0.0
+                tf_errors.append(tf_mse)
+                spike_rates.append(0.0)
+            else:
+                latent_states = out.latent_states
 
-            pred_latents = out.predicted_latents[:, :-1]
-            target_latents = latent_states[:, 1:]
-            tf_mse = float(torch.mean((pred_latents - target_latents) ** 2).item())
-            tf_errors.append(tf_mse)
+                pred_latents = out.predicted_latents[:, :-1]
+                target_latents = latent_states[:, 1:]
+                tf_mse = float(torch.mean((pred_latents - target_latents) ** 2).item())
+                tf_errors.append(tf_mse)
 
-            spike_rates.append(float(out.mean_spike_rate.item()))
+                spike_rates.append(float(out.mean_spike_rate.item()))
 
             rollout_out = self._autonomous_rollout(
                 events, actions, max(self.horizons), phase_flags=phase_flags

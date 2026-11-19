@@ -1,0 +1,243 @@
+\documentclass{article}
+
+\usepackage{corl_2026} % Use this for the initial submission.
+\usepackage[textwidth=6.0in,textheight=9.4in]{geometry}
+\setlength{\textfloatsep}{8pt plus 2pt minus 2pt}
+\setlength{\intextsep}{8pt plus 2pt minus 2pt}
+\usepackage[numbers,sort&compress]{natbib}
+\usepackage{microtype}
+\usepackage{amsmath}
+\usepackage{amssymb}
+\usepackage{booktabs}
+\usepackage{graphicx}
+\usepackage{url}
+
+\begin{document}
+
+\title{Resolving Velocity Drift and Control Jitter in 3D Manipulation: Phase-Space Spiking World Models with Active Perception and Latent MPC}
+
+\begin{abstract}
+Continuous recurrent world models---such as Recurrent State-Space Models (RSSM) and Deep GRUs---struggle in contact-rich 6-DOF manipulation due to compounding velocity drift, exposure bias over long horizons, and high-frequency actuator jitter during latent sampling-based planning. Conversely, pure Spiking Neural Networks (SNNs) capture asynchronous event dynamics with microsecond precision and minimal synaptic energy, but are ill-suited for massively parallel batched trajectory rollouts on GPUs. We introduce SPWM, a hybrid neuromorphic Spiking Predictive World Model that decouples sparse state estimation from batched predictive planning. SPWM partitions its latent space into generalized coordinate ($\mathbf{q}_t \in \mathbb{R}^{32}$) and momentum ($\mathbf{p}_t \in \mathbb{R}^{96}$) manifolds. A dual-timescale Adaptive Leaky Integrate-and-Fire (ALIF) spiking core processes dual-camera neuromorphic event streams with an Anti-Evanescence Stasis Gate, acting as a sparse, drift-resistant state estimator, while an action-conditioned dissipative continuous surrogate ($M_1$) executes 7{,}680 batched rollouts per step for receding-horizon Latent MPPI control. Across $N=400$ unseen test trajectories at horizon $H=100$, SPWM achieves $0.1115\,\text{rad}$ mean open-loop joint error ($0.00246 \pm 0.00290\,\text{rad}^2$ position MSE at $H=100$)---a $2.7\times$ reduction over parameter-matched Continuous RSSM ($0.00665 \pm 0.00551$) and $110\times$ below `ANN-Rate' ($0.27230 \pm 0.03540$). In closed-loop 6-DOF grasping across 50 unseen episodes with variable payloads ($1.20\text{--}4.50\,\text{kg}$), SPWM achieves 96.0\% grasp success in latent-grounded evaluation ($0.67 \pm 0.46\,\text{cm}$ min error, $22.2\,\text{ms}$ latency) and 88.0\% under true Featherstone physics-in-the-loop execution ($0.88 \pm 0.81\,\text{cm}$ min error, $22.1\,\text{ms}$ latency)---outperforming Continuous RSSM (46.0\% / 48.0\%), Deep GRU (14.0\% / 0.0\%), and an exact parameter-matched continuous rate ablation (`ANN-Rate', 0.0\% / 0.0\%). On Intel Loihi-2 ($1.5\,\text{pJ/SOP}$), the recurrent SNN core requires $12.34\,\text{nJ/step}$ ($4.9\times$ below dense GPU MACs at $60.36\,\text{nJ/step}$ and $26.6\times$ below RSSM), while full end-to-end closed-loop execution on Jetson Orin requires $1.098\,\text{mJ/step}$ ($21.96\,\text{mW}$ at $20\,\text{Hz}$).
+\end{abstract}
+
+\section{Introduction}
+
+Deep recurrent world models, including Recurrent State-Space Models (RSSM) \cite{hafner2019dreamer, hafner2025dreamerv3}, Deep GRUs \cite{cho2014learning}, and ConvLSTMs \cite{shi2015convolutional}, compress visual observations into Markovian latent spaces for model-based planning. While effective in low-speed planar domains, continuous recurrent architectures encounter structural stability limits in high-speed, contact-rich 6-DOF manipulation. First, synchronous RGB framing (20--30\,Hz) aliases high-frequency dynamic transients during physical contact shocks. Second, continuous hidden states allow small velocity prediction residuals to accumulate over multi-step rollouts, producing compounding exposure bias. Third, sampling control trajectories inside unregularized latent spaces triggers high-frequency torque reversals and actuator jitter, complicating physical deployment.
+
+Neuromorphic computing processes asynchronous temporal contrast events \cite{gallego2020event} using Spiking Neural Networks (SNNs) \cite{maass1997networks} to preserve temporal precision and reduce synaptic energy. However, deploying SNNs in 3D articulated manipulation presents two fundamental challenges: (1) discrete spike trains must maintain smooth phase-space coherence across rigid contact impulses ($\mathbf{p}_t \to \mathbf{p}_t + \Delta \mathbf{p}_{\text{impulse}}$) while avoiding silent-neuron collapse and stationary drift when event cameras fall silent; and (2) pure spiking architectures are poorly suited for evaluating thousands of parallel trajectory rollouts per control step on edge GPUs.
+
+We introduce SPWM, a hybrid phase-space factorized neuromorphic world model that decouples asynchronous state estimation from batched predictive planning (Figure~\ref{fig:architecture}). SPWM partitions its latent state into generalized coordinate ($\mathbf{q}_t \in \mathbb{R}^{32}$) and normalized momentum ($\mathbf{p}_t \in \mathbb{R}^{96}$) manifolds. A differentiable SpatialSoftmax bottleneck \cite{finn2016spatial} extracts topological keypoints from dual-camera neuromorphic event streams (static global and egocentric wrist views). These keypoints drive a dual-timescale Adaptive Leaky Integrate-and-Fire (ALIF) \cite{bellec2018long, bellec2020solution} spiking core equipped with an Anti-Evanescence Stasis Gate, acting as a sparse, drift-resistant state estimator, while an action-conditioned dissipative continuous physics surrogate ($M_1$) executes batched GPU/NPU Latent MPPI planning.
+
+\textbf{Contributions:}
+\begin{itemize}
+\item \textbf{Hybrid Phase-Space Spiking Architecture \& Stasis Gating:} We pair a 256-unit dual-timescale ALIF state estimator (regulated by firing-rate homeostasis, $\lambda_{\text{spike\_balance}}=0.25$, and an Anti-Evanescence Stasis Gate) with a dissipative continuous surrogate ($M_1$) supervised by $\text{SE}(3)$ end-effector pose consistency and temporal kinematic smoothness (reducing grounded acceleration ratio from $7.79\times$ to $3.88\times$ and rotation error to $0.043\,\text{rad}$).
+\item \textbf{Multi-Horizon Rollout Stability Over Continuous Baselines:} Evaluated across $N=400$ unseen test trajectories up to $H=100$ ($5.0\,\text{s}$), SPWM achieves $0.00246 \pm 0.00290\,\text{rad}^2$ joint position MSE ($0.1115\,\text{rad}$ mean error over $h \in [1, 100]$) and $0.01175 \pm 0.02031\,\text{rad}^2/\text{s}^2$ velocity MSE---outperforming parameter-matched Continuous RSSM ($0.00665 \pm 0.00551$ position MSE), Deep GRU ($0.72347 \pm 0.02138$), ConvLSTM ($0.16677 \pm 0.02328$), and `ANN-Rate' ($0.27230 \pm 0.03540$). We further show that unconditional phasic sensory re-injection degrades rollout tracking ($0.1482\,\text{rad}$), motivating online residual-gated handover.
+\item \textbf{Closed-Loop Latent MPPI \& Physics-in-the-Loop Verification:} Pairing $M_1$ with a receding-horizon Latent MPPI controller (AR(1)-matched noise, slew-rate clamping at $0.10$ normalized units/step, 2-stage $\text{SE}(3)$ lookahead, and residual-gated sensory handover) yields 96.0\% grasp success ($0.67 \pm 0.46\,\text{cm}$ min error, $22.2\,\text{ms}$ latency) in latent-grounded evaluation and 88.0\% under external Featherstone physics-in-the-loop execution ($0.88 \pm 0.81\,\text{cm}$, $22.1\,\text{ms}$)---outperforming Continuous RSSM (48.0\%), Deep GRU (0.0\%), and `ANN-Rate' (0.0\%, $317.9\text{k}$ active / $392.1\text{k}$ total parameters), isolating discrete spike thresholding as a critical drift filter.
+\item \textbf{Transparent Core vs.\ Full-System Energy \& Sim-to-Real Boundaries:} At a 12.27\% rollout ALIF spike rate, the recurrent SNN core consumes $12.34\,\text{nJ/step}$ on Intel Loihi-2 ($1.5\,\text{pJ/SOP}$ \cite{orchard2021loihi2}) versus $60.36\,\text{nJ/step}$ in dense Nvidia Jetson Orin GPU MACs ($4.9\times$ reduction; $26.6\times$ below RSSM), while full end-to-end execution including 7{,}680 batched $M_1$ rollouts on Orin consumes $1.098\,\text{mJ/step}$ ($21.96\,\text{mW}$ at $20\,\text{Hz}$). Zero-shot stress tests establish strong sensor invariance (95.0\% success under 1.0\% noise) alongside mechanical transfer boundaries under $4.80\,\text{kg}$ payload extrapolation (70.0\%) and $\pm 20\%$ friction drift (60--70\%).
+\end{itemize}
+
+\section{Related Work}
+
+\subsection{World Models in Robotics}
+Latent dynamics modeling synthesizes behaviors through internal simulation \cite{ha2018world}. Frameworks like RSSM \cite{hafner2019dreamer, hafner2025dreamerv3} decompose latent dynamics into recurrent backbones \cite{cho2014learning} and stochastic states. While effective in continuous control \cite{wu2023daydreamer}, synchronous RGB framing aliases contact transients, continuous RNNs require $O(T)$ activation memory, and continuous hidden states compound exposure bias \cite{bengio2015scheduled}. Physics-informed priors \cite{greydanus2019hamiltonian, zhong2020symplectic} bound energy drift in conservative systems, but strict skew-symmetric recurrence disrupts flow continuity during dissipative contact shocks. SPWM replaces synchronous RGB framing and strict skew-symmetry with an event-driven spiking estimator paired with a dissipative phase-space surrogate.
+
+\subsection{Neuromorphic Visuomotor Control}
+Event-based cameras \cite{gallego2020event} and SNNs \cite{maass1997networks} provide sparse, high-resolution temporal data. Prior neuromorphic controllers deploy SNNs on hardware such as Intel Loihi \cite{orchard2021loihi2} for obstacle avoidance \cite{sanket2020evdodge} and planar tracking \cite{tieck2018controlling}, trained via surrogate gradients \cite{neftci2019surrogate} or eligibility propagation \cite{bellec2020solution}. Recent spiking world models \cite{sun2025spikingwm} extend SNNs to model-based reinforcement learning but rely on monolithic latent states vulnerable to contact impulse discontinuities and stationary drift. SPWM resolves 3D contact shocks and event stasis by combining dual-camera perception, ALIF homeostasis, an Anti-Evanescence Stasis Gate, and residual-gated sensory handover.
+
+\subsection{Latent Sampling-based Planning}
+Model Predictive Path Integral (MPPI) control \cite{williams2016aggressive} handles non-convex cost landscapes and discontinuous contact dynamics. To avoid physics engine latency \cite{todorov2012mujoco}, recent approaches sample trajectories directly in learned latent spaces \cite{hafner2019learning, hansen2024tdmpc2}. However, unregularized latent rollouts generate jerky control sequences. We structure a receding-horizon Latent MPPI controller that executes batched simulations ($K=256$, $H=10$) inside an isolated dissipative predictor ($M_1$) under matched AR(1) noise, slew-rate clamping, and joint acceleration regularization, maintaining $\approx 22.2\,\text{ms}$ step latency.
+
+\section{Methodology: SPWM}
+
+SPWM is formulated as an action-conditioned, phase-space factorized neuromorphic world model (Figure~\ref{fig:architecture}).
+
+\begin{figure}[t]
+\centering
+\includegraphics[width=0.78\textwidth]{Architecture.pdf}
+\caption{\textbf{End-to-End SPWM Architecture.} Four-stage dataflow: (1) \textit{Perceptual Bottleneck}: Dual event-camera streams $\mathbf{E}_t \in \{0, 1\}^{B \times 4 \times 32 \times 32}$ processed via Conv2D + residual fusion ($\mathbf{F}_t \in \mathbb{R}^{B \times 16 \times 8 \times 8}$) and SpatialSoftmax ($\tau = 1.0$) extracting topological keypoints $\mathbf{k}_t \in [-1, 1]^{32}$ and visual embedding $\mathbf{x}_t \in \mathbb{R}^{128}$; (2) \textit{Recurrent Spiking Dynamics}: Predictive coding error $\boldsymbol{\epsilon}_t = \mathbf{x}_t - \mathbf{W}_{\text{pred}}\mathbf{z}_{t-1}$ driving a two-tier ALIF core ($N=256$, fast pool $\tau_{\text{adapt}} \approx 0.47\,\text{s}$ and slow pool $\tau_{\text{adapt}} \approx 3.31\,\text{s}$) with firing-rate homeostasis, producing spikes $\mathbf{s}_t \in \{0,1\}^{256}$ and membrane states $\mathbf{m}_t \in \mathbb{R}^{256}$; (3) \textit{Phase-Space Partitioning}: Normalization into $\mathbf{p}_{t+1} \in \mathbb{R}^{96}$ and direct momentum slicing $\mathbf{p}_{t+1}[..., :32]$ into $\mathbf{q}_{t+1} \in \mathbb{R}^{32}$ regulated by the Anti-Evanescence Stasis Gate $K_{\text{gate}}$; (4) \textit{Predictor \& Decoder}: Action-conditioned dissipative surrogate ($M_1$) and zero-lag kinematic decoder feeding Differentiable Forward Kinematics (FK) and Residual-Gated Sensory Handover (Eq.~\ref{eq:handover}).}\label{fig:architecture}
+\end{figure}
+
+\subsection{Continuous-Time Latent POMDP and Dual-Camera Neuromorphic Encoding}
+We model 3D articulated manipulation as a continuous-time POMDP embedded in $\mathcal{M} = \text{SE}(3) \times \mathbb{R}^J$ ($J=6$). At discrete control steps $\Delta t = 0.05\,\text{s}$ ($20\,\text{Hz}$) integrating over $100\,\text{Hz}$ physics sub-steps ($\Delta t_{\text{phys}} = 0.01\,\text{s}$), motor commands $\mathbf{u}_t \in [-1.0, 1.0]^6$ drive a sequential controller across three high-level task phases $\phi_t \in \{0, 1, 2\}$: \textit{Blind Approach} ($\phi_t = 0$), \textit{Sensory Heft} ($\phi_t = 1$, spanning 7 steps pre-contact through 7 steps post-contact during a $+10\,\text{cm}$ vertical lift probe upon rigid palm-latch contact at $t_{\text{grasp}} = t_c + 7$ that exposes payload inertia $m_{\text{payload}} \in [1.20, 4.50]\,\text{kg}$), and \textit{Blind Transport} ($\phi_t = 2$).
+
+Accumulating asynchronous ON/OFF polarity events into $20\,\text{Hz}$ frames ($\Delta t = 50\,\text{ms}$) against logarithmic contrast threshold $\theta = 0.08$ over $100\,\text{Hz}$ physics sub-steps preserves intra-frame contact transients and $>85\%$ spatial sparsity without the motion blur of synchronous RGB integration. To resolve axial wrist-roll symmetry and elbow-flex depth foreshortening, a dual-camera neuromorphic system ($C = 4$, $H = W = 32$) pairs a static global observer (channels 0..1) with an egocentric wrist-mounted camera (channels 2..3), yielding $\mathbf{E}_t \in \{0, 1\}^{B \times C \times H \times W}$. The perceptual encoder $\mathcal{E}_\theta$ processes $\mathbf{E}_t$ through a stride-2 Conv2D backbone, adds a residual egocentric wrist branch via a $1 \times 1$ fusion head, extracts topological keypoints $\mathbf{k}_t \in [-1, 1]^{32}$ via SpatialSoftmax $\mathcal{S}$ \cite{finn2016spatial}, and projects to $\mathbf{x}_t \in \mathbb{R}^{128}$ to compute predictive-coding residuals $\boldsymbol{\epsilon}_t = \mathbf{x}_t - \mathbf{W}_{\text{pred}}\mathbf{z}_{t-1}$.
+
+\subsection{Recurrent Spiking Dynamics and Anti-Evanescence Stasis Gating}
+The spiking dynamics module $\mathcal{F}_\theta$ factorizes the latent state into $\mathbf{z}_t = [\mathbf{q}_t, \mathbf{p}_t] \in \mathbb{R}^{128}$ ($\mathbf{q}_t \in [-1.0, 1.0]^{32}$, $\mathbf{p}_t \in \mathbb{R}^{96}$). Its multi-timescale core integrates temporal context via $N = 256$ ALIF neurons \cite{bellec2020solution} partitioned into reactive ($\beta_1 = 0.90$, $\tau_{\text{adapt}} \approx 0.47\,\text{s}$) and slow contextual ($\beta_2 = 0.985$, $\tau_{\text{adapt}} \approx 3.31\,\text{s}$) pools with Arctangent surrogate gradients ($\beta_{\text{mem}}=0.80$, $\gamma=0.18$, $V_{\text{th0}}=1.0$). A firing-rate homeostasis penalty prevents silent-neuron collapse and energetic saturation:
+\begin{equation}
+\begin{aligned}
+\mathcal{L}_{\text{spike\_balance}} &= \sum_{i=1}^{N}\left(\bar{s}_i - r_{\text{target}}\right)^2 \\
+&\quad + 4.0\sum_{i=1}^{N}\max(0, 0.02 - \bar{s}_i)^2 + 2.0\sum_{i=1}^{N}\max(0, \bar{s}_i - 0.45)^2,
+\end{aligned}
+\end{equation}
+with $r_{\text{target}} = 0.12$ and $\lambda_{\text{spike\_balance}} = 0.25$, where $\bar{s}_i$ is the average firing rate. Momentum $\mathbf{p}_{t+1}$ fuses spikes $\mathbf{s}_t$ and compressed potentials $\tanh(\mathbf{m}_t)$ under LayerNorm.
+
+Because differential event cameras emit zero events when the arm pauses ($a_t \to 0$), residual currents from the slow ALIF pool ($\tau_{\text{adapt}} \approx 3.31\,\text{s}$) would otherwise cause stationary coordinate drift. We solve this event-stasis paradox by gating coordinate integration with channel-wise maximum event activity $a_t = \max(\overline{|\mathbf{E}_{t,\text{global}}|}, \overline{|\mathbf{E}_{t,\text{wrist}}|})$ ($\sigma_{\text{stasis}}=0.003$, $a_{\text{thresh}}=0.001$, $a_{\text{eff}} = \max(0, a_t - a_{\text{thresh}})$), consecutive active-step counter $g_t = \mathbb{I}[a_t > a_{\text{thresh}}](g_{t-1} + 1)$ with ramp factor $\rho_t = \operatorname{clamp}(g_t / N_{\text{ramp}}, 0, 1)$ ($N_{\text{ramp}}=4$), and the smooth Anti-Evanescence Stasis Gate $K_{\text{gate}} \in [0, K_{\text{max}}]^{32}$ ($K_{\text{max}} = 0.35$):
+\begin{align}
+K_{\text{gate}} &= \operatorname{clamp}\!\left(\rho_t K_{\text{max}}\!\left(1 - e^{-\operatorname{softplus}(\mathbf{g}_{\text{scale}}) a_{\text{eff}}}\right)\! \odot \tanh^2\!\left(\frac{a_{\text{eff}}}{\sigma_{\text{stasis}}}\right),\, 0,\, K_{\text{max}}\right), \\
+\mathbf{q}_{t+1} &= \mathbf{q}_{t} + \Delta t \tanh\!\left(\frac{a_t}{\sigma_{\text{stasis}}}\right)\mathbf{p}_{t+1}[..., :D_q] + K_{\text{gate}} \odot \text{clip}_{\text{norm}}\!\left(\mathbf{k}_t - \mathbf{q}_{t}, \, 0.50\right),
+\end{align}
+where $\mathbf{g}_{\text{scale}} \in \mathbb{R}^{32}$ is initialized to $50.0$. Thus, stationary drift is suppressed when both cameras are quiescent, while localized wrist rotations keep the gate active even when the proximal arm halts.
+
+\subsection{Dissipative Attractor Surrogate ($M_1$) and Residual-Gated Latent MPPI}
+Unlike conservative mechanical systems where strict skew-symmetric Port-Hamiltonian constraints ($\mathbf{W}_{\text{rec}} = \mathbf{J} - \mathbf{R}$) preserve phase-space volume, 6-DOF manipulation under joint friction and variable payload inertia ($1.20\text{--}4.50\,\text{kg}$) is inherently dissipative. In preliminary ablations, strict skew-symmetric recurrence disrupted flow continuity during contact shocks and froze long-horizon rollouts ($1.15\,\text{rad}$ error at $H=100$). Consequently, the differentiable continuous surrogate $M_1$ parameterizes a state-dependent dissipative vector field optimized for batched GPU/NPU MPPI rollouts. Given $\mathbf{h}_t = \text{MLP}_{\text{backbone}}([\mathbf{z}_t, \mathbf{u}_t]) \in \mathbb{R}^{256}$ (two LayerNorm+SiLU layers), $M_1$ predicts generalized forces $\mathbf{f}_p \in \mathbb{R}^{96}$, dissipation $\boldsymbol{\gamma}_t \in (0, 1)^{96}$, and restorative coordinate drift $\mathbf{f}_q \in \mathbb{R}^{32}$:
+\begin{align}
+\mathbf{f}_p &= \mathbf{W}_p \mathbf{h}_t + \mathbf{b}_p, \qquad \boldsymbol{\gamma}_t = \sigma(\mathbf{W}_\gamma \mathbf{h}_t + \mathbf{b}_\gamma), \qquad \mathbf{f}_q = \mathbf{W}_q \mathbf{h}_t + \mathbf{b}_q, \\
+\hat{\mathbf{p}}_{t+1} &= (1 - \Delta t \cdot \boldsymbol{\gamma}_t) \odot \mathbf{p}_t + \mathbf{f}_p, \\
+\hat{\mathbf{q}}_{t+1} &= \mathbf{q}_t + \Delta t \cdot \left(\hat{\mathbf{p}}_{t+1}[..., :D_q] + \mathbf{f}_q\right).
+\end{align}
+The zero-lag kinematic decoder $\mathcal{D}_\theta$ ($\alpha_{\text{pos}}=\alpha_{\text{vel}}=0.0$) maps $\mathbf{z}_t$ to joint coordinates $(\hat{\mathbf{q}}_t^*, \hat{\mathbf{p}}_t^*) \in \mathbb{R}^{12}$.
+
+In closed-loop execution, the Latent MPPI planner ($K=256$, $H=10$, $N_{\text{iter}}=3$, $\lambda=0.20$, $\gamma_{\text{nom}}=0.60$) plans over a 2-stage $\text{SE}(3)$ lookahead, sampling AR(1) perturbations ($\beta=0.90$, $\sigma=0.08$, shoulder $1.6\times$, elbow $1.4\times$) and enforcing action slew-rate clamping ($\|\Delta \mathbf{u}\|_\infty \le 0.10$ normalized units/step; full weights in Appendix Table~\ref{tab:hyperparams}). Because unconditional mid-trajectory sensory re-injection perturbs $M_1$'s internal momentum manifold during open-loop unrolls, SPWM employs \textbf{Residual-Gated Sensory Handover} strictly as an online closed-loop state-correction gate during $\phi_t = 1$:
+\begin{equation}\label{eq:handover}
+\begin{aligned}
+\mathbf{z}_{t+1} &= (1 - w_t)\,\hat{\mathbf{z}}_{t+1} + w_t\,\mathbf{z}^{\text{obs}}_{t+1}, \\
+w_t &= \begin{cases}
+0.40 \cdot \operatorname{clamp}\!\left(\frac{d_{\text{pred}} - 0.032}{0.04},\, 0,\, 1\right), & t \le t_c + 2, \\
+0.85 \cdot \mathbb{I}[d_{\text{pred}} > 0.026 \wedge d_{\text{obs}} < 0.025 \wedge \theta_{\text{obs}} < 0.049], & t > t_c + 2,
+\end{cases}
+\end{aligned}
+\end{equation}
+where $\hat{\mathbf{z}}_{t+1} = M_1(\mathbf{z}_t, \mathbf{u}_t)$, $\mathbf{z}^{\text{obs}}_{t+1}$ is the ALIF-estimated state, $t_c$ denotes the onset of the sensory heft window ($\phi_t = 1$), $d_{\text{pred}}$ is the FK end-effector position error (m) from $\hat{\mathbf{z}}_{t+1}$, and $d_{\text{obs}}$ (m) and $\theta_{\text{obs}}$ (rad) are the FK end-effector position and $\text{SO}(3)$ orientation errors decoded from $\mathbf{z}^{\text{obs}}_{t+1}$. Sensory correction activates only when predicted error exceeds $3.2\,\text{cm}$ during contact heft (or $2.6\,\text{cm}$ during post-contact recovery), absorbing unexpected payload inertia while leaving nominal $M_1$ trajectories undisturbed.
+
+\subsection{Decoupled Two-Phase Curriculum}
+\textbf{Phase 0: Grounded State Estimation (160 epochs).} $M_1$ is frozen. Modules optimize joint kinematics, Cartesian ($w_{\text{cart}}=40.0$) and $\text{SE}(3)$ rotation ($w_{\text{rot}}=0.5$) losses, decoded temporal smoothness ($\lambda_{\text{kin\_smooth}}=0.5$), and homeostasis ($\lambda_{\text{spike\_balance}}=0.25$).
+\textbf{Phase 1: Action-Conditioned Attractor Learning (240 epochs).} Phase 0 modules are frozen. $M_1$ unrolls up to $H=100$ steps across four irreversible latch stages: open-loop warmup, sensory fade-out, AR(1) MPPI noise ($\beta=0.90$, $\sigma=0.08$, $\alpha_{\text{target}}=0.25$), and DAgger closed-loop replay. Model selection relies strictly on closed-loop MPPI performance.
+
+\section{Experimental Setup}
+
+Evaluations utilize a Unity PhysX 4 Featherstone 6-DOF environment with procedural rigid payloads (Sphere, Box, Elongated Cylinder; $1.20\text{--}4.50\,\text{kg}$) across three workspace elevation planes (Low $1.04\,\text{m}$, Mid $1.14\,\text{m}$, High $1.26\,\text{m}$). Upon contact at $t_{\text{grasp}} = t_c + 7$, a rigid palm-latch (`FixedJoint') locks the payload to the end-effector, adding mass and rotational inertia throughout the $+10\,\text{cm}$ heft and transport phases. The dataset comprises 4{,}000 episodes ($20\,\text{Hz}$ frames over $100\,\text{Hz}$ physics sub-steps, $T=105$), partitioned strictly at the trajectory level (80\% train, 10\% validation, 10\% test). We benchmark SPWM ($317.9\text{k}$ active inference parameters; $392.1\text{k}$ total checkpoint parameters including $66.0\text{k}$ `LatentCritic' and $8.2\text{k}$ legacy `W\_vel') against parameter-matched Continuous RSSM ($380.5\text{k}$), Deep GRU ($338.9\text{k}$), Continuous ConvLSTM ($296.9\text{k}$), and an exact parameter-matched non-spiking ablation (`ANN-Rate', $317.9\text{k}$ active / $392.1\text{k}$ total) that replaces the 256 ALIF cells with continuous leaky rate units while preserving identical projections, SpatialSoftmax encoder, $(\mathbf{q}, \mathbf{p})$ factorization, and $M_1$ planner. For closed-loop control, we report both the \textit{latent-grounded} surrogate protocol and a \textit{physics-in-the-loop} protocol in which planned $M_1$ trajectories drive an external analytical 100\,Hz Featherstone articulated physics stepper with online dual-camera event rendering (matching the physical dynamics of the Unity PhysX 4 environment without stepping Unity batchmode online), with success evaluated strictly on the true physical joint state $(\mathbf{q}^*_{\text{phys}}, \mathbf{p}^*_{\text{phys}})$.
+
+\section{Results and Analysis}
+
+\subsection{Phase 0 Representation Quality \& ALIF Homeostasis}
+Evaluating Phase 0 grounded state estimation over 50 test episodes, firing-rate homeostasis reduces silent ALIF neurons from 44.92\% to 19.14\% and hyperactive neurons from 5.86\% to 2.34\% compared to unregularized SPWM-Base, establishing a 16.89\% full-trajectory grounded firing rate (12.27\% pre-rollout burn-in / sequence mean). Grounded joint acceleration ratio drops from $7.79\times$ to $3.88\times$, forward kinematic MAE improves from 0.1829 to 0.1079, direction flips decrease from 205.3 to 156.4, and end-effector rotation error drops from 0.049 to $0.043\,\text{rad}$.
+
+\subsection{Multi-Horizon Open-Loop Rollout Stability}
+Table~\ref{tab:rollout_horizons} compares multi-horizon open-loop rollout accuracy across all five frozen checkpoints on the $N=400$ unseen test trajectories (`[3600, 3999]`, $t_{\text{start}}=4$, $H=100$). SPWM achieves the lowest joint position and velocity MSE at $H=50$ and $H=100$. At $H=100$ ($5.0\,\text{s}$), SPWM records a position MSE of $0.00246 \pm 0.00290\,\text{rad}^2$---a $2.7\times$ reduction over Continuous RSSM ($0.00665 \pm 0.00551$) and $110\times$ below `ANN-Rate' ($0.27230 \pm 0.03540$)---and a velocity MSE of $0.01175 \pm 0.02031\,\text{rad}^2/\text{s}^2$. By contrast, Deep GRU suffers catastrophic exposure-bias collapse beyond $H=1$ (position MSE rising $196\times$ from $0.00369$ to $0.72347$), and ConvLSTM exhibits severe spatial drift ($0.16677$).
+
+\begin{table}[t]
+\centering
+\caption{\textbf{Multi-Horizon Open-Loop Rollout Benchmark ($N=400$ Test Trajectories, mean $\pm$ std).} Joint Position MSE ($\text{rad}^2$) and Joint Velocity MSE ($\text{rad}^2/\text{s}^2$) across horizons $H \in \{1, 10, 50, 100\}$. Active inference parameters are shown alongside total checkpoint parameters in parentheses.}
+\label{tab:rollout_horizons}
+\scriptsize
+\setlength{\tabcolsep}{3.5pt}
+\resizebox{\textwidth}{!}{%
+\begin{tabular}{lccccccccc}
+\toprule
+& & \multicolumn{4}{c}{Joint Position MSE ($\text{rad}^2$) $\downarrow$} & \multicolumn{4}{c}{Joint Velocity MSE ($\text{rad}^2/\text{s}^2$) $\downarrow$} \\
+\cmidrule(lr){3-6} \cmidrule(lr){7-10}
+Model & Params & $H=1$ & $H=10$ & $H=50$ & $H=100$ & $H=1$ & $H=10$ & $H=50$ & $H=100$ \\
+\midrule
+Continuous ConvLSTM & 296.9k & $0.08706 \pm 0.00553$ & $0.36942 \pm 0.07825$ & $0.32738 \pm 0.05865$ & $0.16677 \pm 0.02328$ & $0.28300 \pm 0.02208$ & $0.24780 \pm 0.34904$ & $0.13096 \pm 0.07675$ & $0.28547 \pm 0.03734$ \\
+Deep GRU & 338.9k & $0.00369 \pm 0.00025$ & $0.63870 \pm 0.10664$ & $0.61793 \pm 0.12957$ & $0.72347 \pm 0.02138$ & $0.01628 \pm 0.00257$ & $0.33267 \pm 0.33518$ & $0.07997 \pm 0.07979$ & $0.05155 \pm 0.02461$ \\
+Continuous RSSM & 380.5k & $\mathbf{0.00008 \pm 0.00001}$ & $\mathbf{0.00255 \pm 0.00443}$ & $0.00328 \pm 0.00721$ & $0.00665 \pm 0.00551$ & $\mathbf{0.00084 \pm 0.00007}$ & $0.11561 \pm 0.18011$ & $0.03428 \pm 0.05042$ & $0.01298 \pm 0.02120$ \\
+ANN-Rate & 317.9k (392.1k) & $0.00293 \pm 0.00029$ & $0.01323 \pm 0.02081$ & $0.02027 \pm 0.01632$ & $0.27230 \pm 0.03540$ & $0.00149 \pm 0.00013$ & $0.20825 \pm 0.38692$ & $0.06413 \pm 0.06771$ & $0.01777 \pm 0.02374$ \\
+\textbf{SPWM (Ours)} & 317.9k (392.1k) & $0.00016 \pm 0.00007$ & $0.00649 \pm 0.00591$ & $\mathbf{0.00264 \pm 0.00742}$ & $\mathbf{0.00246 \pm 0.00290}$ & $0.00136 \pm 0.00056$ & $\mathbf{0.07470 \pm 0.13030}$ & $\mathbf{0.02000 \pm 0.03500}$ & $\mathbf{0.01175 \pm 0.02031}$ \\
+\bottomrule
+\end{tabular}%
+}
+\end{table}
+
+On $N=400$ rollout evaluations (Figure~\ref{fig:rollout_handover}), Pure Open-Loop $M_1$ unrolling yields a $0.1115\,\text{rad}$ mean joint-space error over $h \in [1, 100]$ ($0.1116\,\text{rad}$ at $h=100$) at a 12.27\% ALIF spike rate, substantially below Continuous RSSM and `ANN-Rate'. The transient error bump around $h \approx 10$ reflects the contact-onset impulse before the slow ALIF adaptation pool ($\tau_{\text{adapt}} \approx 3.31\,\text{s}$) settles. Un-gated Phasic Sensory Handover degrades tracking ($0.1482\,\text{rad}$ mean), confirming that unconditional mid-trajectory sensory re-injection perturbs the autonomous $M_1$ attractor manifold and motivating our residual-gated online handover mechanism.
+
+\begin{figure}[t]
+\centering
+\includegraphics[width=0.62\textwidth]{fig2_rollout_open_vs_handover.pdf}
+\caption{\textbf{Multi-Horizon Rollout: Open-Loop vs.\ Phasic Handover \& Baselines ($N=400$, $H=100$).} Decoded joint-space error $\|\hat{\mathbf{q}}_h - \mathbf{q}^*_h\|_2$ (mean $\pm$ IQR) across 400 unseen test trajectories at 12.27\% measured ALIF spike rate. SPWM Pure Open-Loop ($0.1115\,\text{rad}$ mean) outperforms un-gated Phasic Sensory Handover ($0.1482\,\text{rad}$ mean), Continuous RSSM, and `ANN-Rate'.}\label{fig:rollout_handover}
+\end{figure}
+
+\begin{table}[t]
+\centering
+\caption{\textbf{50-Episode Closed-Loop Latent MPPI Benchmark: Continuous Baselines vs.\ 4-Stage SPWM Ablation.} All models run in the identical $K=256$, $H=10$, $N_{\text{iter}}=3$ MPPI loop across 50 unseen test trajectories. Block 1 reports both Latent-Grounded and Physics-in-the-Loop (PIL) grasp success.}
+\label{tab:mppi_ablation}
+\scriptsize
+\setlength{\tabcolsep}{3.5pt}
+\resizebox{\textwidth}{!}{%
+\begin{tabular}{lccccccc}
+\toprule
+Model / Ablation Stage & Params & Latent Succ. (\%) & PIL Succ. (\%) & Min Err.\ (cm) & Term.\ Err.\ (cm) & $|\Delta^2 q|$ ($\text{rad/step}^2$) & Latency (ms) \\
+\midrule
+\multicolumn{8}{l}{\textit{Block 1: External Closed-Loop Baselines (Matched Parameter Budget)}} \\
+Continuous RSSM & 380.5k & 46.0\% & 48.0\% & $1.26 \pm 0.87$ & $2.05 \pm 1.17$ & $0.01836 \pm 0.00466$ & 40.3 \\
+Deep GRU & 338.9k & 14.0\% & 0.0\% & $3.35 \pm 2.42$ & $7.39 \pm 6.23$ & $0.01930 \pm 0.01039$ & 49.2 \\
+ANN-Rate (Exact Param-Matched) & 317.9k (392.1k) & 0.0\% & 0.0\% & $3.87 \pm 1.85$ & $5.06 \pm 1.98$ & $0.00628 \pm 0.00144$ & 22.0 \\
+\midrule
+\multicolumn{8}{l}{\textit{Block 2: 4-Stage SPWM Architectural Ablation (Latent-Grounded)}} \\
+1.\ SPWM-Base (Phase 1 Warmup, Unsmoothed) & 317.9k (392.1k) & 70.0\% & --- & $1.36 \pm 1.32$ & $2.39 \pm 1.68$ & $0.00690 \pm 0.00131$ & 29.4 \\
+2.\ + Smooth MPPI Controls & 317.9k (392.1k) & 70.0\% & --- & $1.13 \pm 1.09$ & $2.11 \pm 1.78$ & $0.00646 \pm 0.00144$ & 28.2 \\
+3.\ + Phase 1 Curriculum (AR(1) / DAgger) & 317.9k (392.1k) & 76.0\% & --- & $0.97 \pm 1.01$ & $1.72 \pm 1.28$ & $\mathbf{0.00553 \pm 0.00132}$ & 22.5 \\
+4.\ + Residual Handover \& Lookahead (\textbf{SPWM}) & 317.9k (392.1k) & \textbf{96.0\%} & \textbf{88.0\%} & $\mathbf{0.67 \pm 0.46}$ & $\mathbf{1.21 \pm 0.70}$ & $0.00612 \pm 0.00231$ & \textbf{22.2} \\
+\bottomrule
+\end{tabular}%
+}
+\end{table}
+
+\subsection{Latent MPPI Closed-Loop Control \& Physics-in-the-Loop Verification}
+Across 50 unseen test episodes (Figure~\ref{fig:mppi_bench} and Table~\ref{tab:mppi_ablation}), SPWM achieves 96.0\% (48/50) grasp success in latent-grounded evaluation, more than doubling Continuous RSSM (46.0\%, $1.26 \pm 0.87\,\text{cm}$) and outperforming Deep GRU (14.0\%, $3.35 \pm 2.42\,\text{cm}$). Success rates stratify to 90.9\% (Low), 100.0\% (Mid), and 100.0\% (High) across elevation planes, and 88.2\% (Light), 100.0\% (Medium), and 100.0\% (Heavy) across payloads. Closed-loop smoothness averages $|\Delta^2 q| = 0.00612 \pm 0.00231\,\text{rad/step}^2$ ($3.0\times$ smoother than RSSM at $0.01836$ and $3.2\times$ smoother than Deep GRU at $0.01930$) at $22.2\,\text{ms}$ step latency. In the 4-stage ablation (Table~\ref{tab:mppi_ablation}, Block~2), unregularized SPWM-Base achieves 70.0\% with higher placement jitter ($1.36\,\text{cm}$), smooth MPPI controls tighten precision to $1.13\,\text{cm}$ ($70.0\%$), Phase 0/1 $\text{SE}(3)$ calibration and homeostasis raise success to 76.0\% ($0.97\,\text{cm}$), and Residual Handover with 2-stage lookahead locks in 96.0\% ($0.67\,\text{cm}$). Under the analytical 100\,Hz Featherstone physics-in-the-loop stepper with online dual-camera event rendering, SPWM retains \textbf{88.0\% (44/50)} grasp success ($0.88 \pm 0.81\,\text{cm}$ min error, $1.60 \pm 1.00\,\text{cm}$ terminal error, $22.1\,\text{ms}$ latency), maintaining a $+40.0\,\text{pp}$ margin over Continuous RSSM (48.0\%, $1.32 \pm 0.93\,\text{cm}$) while Deep GRU and `ANN-Rate' collapse to 0.0\% ($12.67\,\text{cm}$ and $7.36\,\text{cm}$ min error).
+
+\textbf{Spiking Thresholds vs.\ Continuous Rate Units (`ANN-Rate'):} Notably, `ANN-Rate' shares SPWM's exact parameter count ($317.9\text{k}$ active / $392.1\text{k}$ total), SpatialSoftmax frontend, $(\mathbf{q}, \mathbf{p})$ phase-space split, and smooth MPPI controller ($|\Delta^2 q| = 0.00628\,\text{rad/step}^2$), yet achieves **0.0\% grasp success** in both latent-grounded ($3.87 \pm 1.85\,\text{cm}$) and physics-in-the-loop ($7.36 \pm 3.04\,\text{cm}$) protocols. While continuous leaky rate activations $\mathbf{r}_t = \sigma(\mathbf{m}_t)$ fit single-step targets, they transmit sub-threshold sensory noise and small autoregressive residuals at every step, pushing $\mathbf{z}_t$ outside $M_1$'s basin of attraction. In SPWM, the discrete Heaviside firing threshold $\Theta(V_t - V_{\text{th},t})$ and homeostatic sparsity quantize and reject sub-threshold drift, keeping the state estimator locked onto the physical manifold.
+
+\begin{figure}[t]
+\centering
+\includegraphics[width=0.78\textwidth]{fig1_mppi_benchmark.pdf}
+\caption{\textbf{Closed-Loop Latent MPPI 50-Episode Benchmark (SPWM).} (a) Stratification across elevation planes (90.9\% Low, 100.0\% Mid/High), with Grasp Success Rate (\%) in blue and Min Placement Error (cm) in orange; (b) Minimum placement error vs.\ payload mass ($0.67 \pm 0.46\,\text{cm}$ overall); (c) Inference latency distribution ($22.2\,\text{ms}$ mean).}\label{fig:mppi_bench}
+\end{figure}
+
+\subsection{Zero-Shot Sim-to-Real Domain Gap \& Robustness}
+Evaluated strictly with zero retraining, SPWM exhibits strong invariance to sensor domain shifts: across 50 unseen trajectories, $H=100$ open-loop position MSE remains nearly unchanged under contrast threshold shifts ($\theta=0.05$: $0.00311$; $\theta=0.12$: $0.00366$ vs.\ nominal $0.00320\,\text{rad}^2$) and 20\% refractory bus dropout ($0.00341\,\text{rad}^2$). In closed-loop MPPI execution (20 episodes/condition, $H=20$ robustness horizon at $45.9\,\text{ms}$ step latency, Figure~\ref{fig:robustness}), SPWM retains 95.0\% grasp success under 1.0\% background Poisson noise ($1.19 \pm 1.07\,\text{cm}$ minimum error vs.\ $1.01 \pm 0.51\,\text{cm}$ nominal). Under unmodeled mechanical shifts, success drops to 70.0\% at $4.80\,\text{kg}$ payload extrapolation ($2.84 \pm 2.56\,\text{cm}$), 70.0\% at $0.80\times$ actuator friction ($2.69 \pm 2.47\,\text{cm}$), and 60.0\% at $1.20\times$ actuator friction ($2.65 \pm 2.26\,\text{cm}$), with degradation concentrated on high-elevation heavy grasps where gravitational and frictional torques exceed the learned dissipation bounds $\boldsymbol{\gamma}_t$.
+
+\begin{figure}[t]
+\centering
+\includegraphics[width=0.70\textwidth]{fig3_robustness_domain.pdf}
+\caption{\textbf{Zero-Shot Domain Gap \& Robustness Matrix.} Sensory noise (1.0\%) preserves 95\% success. Unmodeled mass ($4.80\,\text{kg}$) and actuator friction ($\pm 20\%$) expose mechanical transfer boundaries (60--70\% overall). Note that the ``Nominal Baseline'' row reports 100\% because it evaluates a stratified 20-episode robustness subset (whereas Figure~\ref{fig:mppi_bench} evaluates all 50 test episodes at 96.0\%).}\label{fig:robustness}
+\end{figure}
+
+\subsection{Neuromorphic Core vs.\ Full-System Energy Efficiency}
+Analytical energy profiling at the measured 12.27\% ALIF spike rate (Figure~\ref{fig:energy}a) estimates $12.34\,\text{nJ/step}$ ($8{,}229$ SOPs at $1.5\,\text{pJ/SOP}$ \cite{orchard2021loihi2}) for the recurrent SNN state-estimator core on Intel Loihi-2. This compares to $60.36\,\text{nJ/step}$ for the equivalent dense `ANN-Rate' core on Nvidia Jetson Orin GPU MACs ($0.9\,\text{pJ/MAC}$), providing a $4.9\times$ core energy reduction and remaining over an order of magnitude below Deep GRU ($269.57\,\text{nJ/step}$), Continuous RSSM ($328.55\,\text{nJ/step}$), and ConvLSTM ($2{,}123.37\,\text{nJ/step}$).
+
+For full-system transparency (Figure~\ref{fig:energy}b), we also profile complete end-to-end closed-loop step energy on Jetson Orin: the dual-stream Conv2D encoder + SpatialSoftmax consumes $794.42\,\text{nJ/step}$ ($882{,}688$ MACs), while the $K=256 \times H=10 \times N_{\text{iter}}=3$ ($7{,}680$) batched $M_1$ MPPI rollouts and kinematic decoding consume $1.0971\,\text{mJ/step}$ ($1.219\,\text{GMACs}$). Thus, total end-to-end closed-loop energy is $1.098\,\text{mJ/step}$ ($21.96\,\text{mW}$ at $20\,\text{Hz}$), demonstrating that while the SNN core reduces state-estimation power, full-system energy is dominated by dense batched MPPI planning on the edge GPU.
+
+\begin{figure}[t]
+\centering
+\includegraphics[width=0.78\textwidth]{fig4_energy_efficiency.pdf}
+\caption{\textbf{Recurrent Core vs.\ Full-System Closed-Loop Energy.} (a) Recurrent state-estimator core step energy (log scale): Intel Loihi-2 SOP execution ($12.34\,\text{nJ/step}$ at $1.5\,\text{pJ/SOP}$) achieves a $4.9\times$ reduction over dense Orin GPU MACs ($60.36\,\text{nJ/step}$). (b) Full end-to-end closed-loop step energy including perceptual encoder and $K=256 \times H=10 \times 3$ batched MPPI rollouts on Jetson Orin ($1.10\,\text{mJ/step}$ for SPWM).}\label{fig:energy}
+\end{figure}
+
+\section{Conclusion and Limitations}
+
+SPWM resolves velocity drift and control jitter in 3D articulated manipulation by pairing a sparse ALIF spiking state estimator---stabilized by firing-rate homeostasis and an Anti-Evanescence Stasis Gate---with a dissipative continuous phase-space surrogate ($M_1$), slew-clamped Latent MPPI control, and online residual-gated sensory handover. These mechanisms reduce $H=100$ open-loop position MSE by $2.7\times$ over Continuous RSSM, achieve $0.00612 \pm 0.00231\,\text{rad/step}^2$ closed-loop smoothness, and reach 96.0\% latent-grounded / 88.0\% physics-in-the-loop grasp success at $\approx 22.1\text{--}22.2\,\text{ms}$ step latency, while requiring $12.34\,\text{nJ/step}$ on Loihi-2 for recurrent state estimation ($1.098\,\text{mJ/step}$ end-to-end on Jetson Orin).
+
+\textbf{Limitations and Future Work:} Sensitivities remain on low-elevation light payloads (88.2\% Light, 90.9\% Low vs.\ 100.0\% Medium/Heavy) under slew-rate clamping, and physics-in-the-loop online event rendering exhibits a 2D-vs-3D visual domain gap relative to Unity renders. Un-gated sensory handover perturbations ($0.1482$ vs.\ $0.1115\,\text{rad}$ open-loop) and mechanical OOD degradation (70\% at $4.80\,\text{kg}$, 60--70\% under $\pm 20\%$ friction) establish the zero-shot transfer boundary. Future iterations will incorporate event-driven tactile feedback and online inertia adaptation.
+
+\clearpage
+\sloppy
+\bibliographystyle{corlabbrvnat}
+\bibliography{main}
+
+\appendix
+\section{Latent MPPI \& Training Hyperparameters}
+\begin{table}[ht]
+\centering
+\caption{\textbf{Canonical SPWM and Latent MPPI Hyperparameters.} Total checkpoint parameter count (392{,}141) includes a 66{,}049-parameter terminal value head (\texttt{LatentCritic}, $w_{\text{critic}}=0.0$ in zero-shot eval) and 8{,}192 legacy `W\_vel' parameters (317{,}900 active inference parameters; 326{,}092 excluding `LatentCritic' only).}
+\label{tab:hyperparams}
+\scriptsize
+\resizebox{\textwidth}{!}{%
+\begin{tabular}{llc}
+\toprule
+Category & Parameter & Value \\
+\midrule
+MPPI Planner & Samples $K$ / Horizon $H$ / Iterations $N_{\text{iter}}$ & $256$ / $10$ / $3$ \\
+MPPI Planner & Temperature $\lambda$ / Nominal Update $\gamma_{\text{nom}}$ & $0.20$ / $0.60$ \\
+MPPI Planner & AR(1) Noise $\beta$ / $\sigma$ (Shoulder / Elbow mult.) & $0.90$ / $0.08$ ($1.6\times$ / $1.4\times$) \\
+MPPI Planner & Slew-Rate Clamp $\|\Delta \mathbf{u}\|_\infty$ & $0.10$ norm.\ units/step \\
+MPPI Cost Weights & $w_{\text{pos}}$ / $w_{\text{rot}}$ / $w_{\text{progress}}$ & $80.0$ / $100.0$ / $50.0$ \\
+MPPI Cost Weights & $w_{\text{damping}}$ / $w_{\text{jerk}}$ / $w_{\text{accel}}$ / $w_{\text{limit}}$ & $12.0$ / $4.0$ / $15.0$ / $50.0$ \\
+MPPI Cost Weights & $w_{\text{critic}}$ (unused in zero-shot eval) & $0.0$ \\
+Residual Handover & Heft Threshold / Max Blend $w_t$ & $3.2\,\text{cm}$ / $0.40$ ($0.85$ recovery) \\
+\bottomrule
+\end{tabular}%
+}
+\end{table}
+
+\end{document}

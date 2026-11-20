@@ -9,6 +9,8 @@ A factual mapping of directory responsibilities and the configuration inventory 
 ```text
 ├── docs/                                # Technical specifications, contracts, and chronological iteration logs
 │   ├── Architecture.md                  # Comprehensive SPWM model and layer definitions
+│   ├── CORL_FINAL_BENCHMARK_SUMMARY.md  # Authoritative CoRL pre-submission LaTeX tables & diagnostic proofs
+│   ├── CORL_GROUNDED_AUDIT.md           # Historical Nov 17 leakage & PIL fidelity audit snapshot
 │   ├── DOSSIER.md                       # Project dossier and overview
 │   ├── FIGURE_METRICS.md                # Publication figure metrics and specifications
 │   ├── History.md                       # Chronological numerical metric logs across versions/iterations
@@ -18,8 +20,9 @@ A factual mapping of directory responsibilities and the configuration inventory 
 │   └── WORLD.md                         # Unity simulation and robotic physical setup specs
 ├── experiments/                         # Executable CLI benchmarks, optimization, and experiment runners
 │   ├── ablation.py                      # Component ablation experiment runner
+│   ├── benchmark_classical_and_bc.py    # 50-episode PIL benchmarks for Privileged PD Oracle and Reactive BC
 │   ├── benchmark_mppi_control.py        # Benchmark closed-loop MPPI trajectory tracking across elevation planes
-│   ├── benchmark_robustness_stress_test.py # Stress-testing models against event noise/sensor dropouts
+│   ├── benchmark_robustness_stress_test.py # Stress-testing models against event noise/sensor dropouts and OOD physics
 │   ├── evaluate.py                      # Standalone checkpoint evaluation runner
 │   ├── export_ghost_trajectory.py       # Exports ghost trajectory JSON for Unity playback
 │   ├── export_mppi_trajectory.py        # Exports closed-loop MPPI trajectory runs for Unity visualization
@@ -32,7 +35,12 @@ A factual mapping of directory responsibilities and the configuration inventory 
 │   └── train_multiseed.py               # Multi-seed training runner
 ├── scripts/                             # Utility scripts for AST CI verification, diagnostics, and figure generation
 │   ├── diagnostics/                     # Phase-specific diagnostic and kinematic validation tools
-│   │   └── eval_phase0_kinematics.py    # Phase 0 FK Cartesian & per-joint error diagnostic on benchmark trajectories
+│   │   ├── audit_spwm_seed_variance.py  # Inter-seed PIL checkpoint & internal module convergence audit
+│   │   ├── eval_phase0_kinematics.py    # Phase 0 FK Cartesian & per-joint error diagnostic on benchmark trajectories
+│   │   └── forensic_rssm_gru_failure.py # Episode-by-episode PIL failure-mode decomposition for RSSM & Deep GRU
+│   ├── aggregate_corl_final_verification.py # CoRL final multi-seed, ablation, w_t, and val25 aggregator
+│   ├── build_paper_context.py           # Lossless token-efficient PAPER_CONTEXT.md compiler
+│   ├── eval_table1_ssot.py              # Multi-seed Table 1 open-loop rollout evaluator (N=400, H=100)
 │   ├── figure_style.py                  # Shared publication figure styling utilities
 │   ├── generate_metrics_resumes.py      # Segmented metrics resume generator across experiment folders
 │   ├── json_compressor.py               # JSON compression utility for trajectory/telemetry artifacts
@@ -104,6 +112,7 @@ A factual mapping of directory responsibilities and the configuration inventory 
     ├── test_leakage.py                  # Data split and evaluation leakage tests
     ├── test_models_contracts.py         # Model component contract and forward pass tests
     ├── test_mppi.py                     # LatentMPPIController and MPPIStructuralScorer tests
+    ├── test_pil_integrity.py            # Physics-in-the-Loop payload timing & online/open-loop sensory integrity tests
     ├── test_training_phases.py          # Training phase strategy isolation and step tests
     ├── test_two_tiered_validation.py    # Two-tiered validation orchestration tests
     └── test_unified_rollout.py          # Unified action-conditioned latent rollout tests

@@ -57,7 +57,12 @@ from spwm.evaluation.robustness import (
     render_events_from_kinematics,
     simulate_perturbed_kinematics,
 )
-from experiments.benchmark_mppi_control import run_episode
+from experiments.benchmark_mppi_control import (
+    EpisodeResult,
+    run_episode,
+    summarize_handover_telemetry,
+)
+from spwm.models.ann_ablation import ANNWorldModel
 from spwm.models.kinematics import DifferentiableForwardKinematics, classify_elevation, compute_rot_error
 from spwm.models.rollout import ground_initial_state
 from spwm.models.world_model import SPWM
@@ -249,6 +254,7 @@ def evaluate_mppi_suite(
     device: torch.device,
     seed: int = 42,
     physics_in_loop: bool = False,
+    handover_dist_threshold: float = 0.026,
 ) -> List[MPPIPerturbationResult]:
     """Evaluates closed-loop Latent MPPI robustness across the 5 shifted conditions."""
     mppi_conditions = [
@@ -271,6 +277,7 @@ def evaluate_mppi_suite(
         successes: List[bool] = []
         planes: List[str] = []
         masses: List[float] = []
+        ep_results: List[EpisodeResult] = []
 
         for tid in episode_ids:
             gz_path = dataset_dir / f"trajectory_{tid:05d}.json.gz"
@@ -341,7 +348,9 @@ def evaluate_mppi_suite(
                 use_lookahead=True,
                 physics_in_loop=physics_in_loop,
                 physics_damping_scale=damping_scale,
+                handover_dist_threshold=handover_dist_threshold,
             )
+            ep_results.append(ep_res)
             min_errors.append(ep_res.min_placement_error_cm)
             term_errors.append(ep_res.terminal_placement_error_cm)
             final_vels.append(ep_res.terminal_angular_velocity)
@@ -384,6 +393,7 @@ def evaluate_mppi_suite(
                     "mean_terminal_error_cm": float(np.mean([term_errors[i] for i in indices])),
                 }
 
+        ho_stats = summarize_handover_telemetry(ep_results)
         res = MPPIPerturbationResult(
             condition_name=name,
             condition_description=desc,
@@ -396,12 +406,20 @@ def evaluate_mppi_suite(
             mean_latency_ms=mean_lat,
             elevation_plane_breakdown=plane_breakdown,
             mass_tier_breakdown=tier_breakdown,
+            episodes_with_handover_pct=ho_stats["episodes_with_w_gt_0_pct"],
+            phi1_steps_with_handover_pct=ho_stats["phi1_steps_with_w_gt_0_pct"],
+            mean_nonzero_handover_w=ho_stats["mean_nonzero_w"],
+            total_phi1_steps=ho_stats["total_phi1_steps"],
+            triggered_phi1_steps=ho_stats["triggered_phi1_steps"],
+            triggered_episodes=ho_stats["triggered_episodes"],
         )
         results.append(res)
         chronicle.log_info(
             f"  -> {name}: Success: {succ_rate:.1f}% ({int(sum(successes))}/{len(episode_ids)}) | "
             f"Accuracy: {mean_min_err:.2f} ± {std_min_err:.2f} cm | "
-            f"Term Err: {mean_term_err:.2f} cm | Latency: {mean_lat:.1f} ms"
+            f"Term Err: {mean_term_err:.2f} cm | Latency: {mean_lat:.1f} ms | "
+            f"w_t>0: ep={res.episodes_with_handover_pct:.1f}% step={res.phi1_steps_with_handover_pct:.1f}% "
+            f"(mean_w={res.mean_nonzero_handover_w:.3f})"
         )
 
     return results
@@ -556,15 +574,17 @@ def generate_markdown_report(
         "",
         "Batched closed-loop Latent MPPI controller ($K=256, H=20, N_{\\text{iter}}=3$) over 50 canonical test episodes:",
         "",
-        "| Perturbation Condition | Episodes | Grasp Success Rate (%) | Placement Accuracy (cm) | Terminal Error (cm) | Terminal Vel (rad/s) | MPPI Latency (ms) |",
-        "| :--- | :---: | :---: | :---: | :---: | :---: | :---: |",
+        "| Perturbation Condition | Episodes | Grasp Success Rate (%) | Placement Accuracy (cm) | Terminal Error (cm) | Terminal Vel (rad/s) | MPPI Latency (ms) | Ep w_t>0 (%) | Step w_t>0 (%) | Mean w_t>0 |",
+        "| :--- | :---: | :---: | :---: | :---: | :---: | :---: | :---: | :---: | :---: |",
     ])
 
     for m in mppi_results:
         lines.append(
             f"| **{m.condition_name}** | {m.episodes_evaluated} | **{m.grasp_success_rate_pct:.1f}%** | "
             f"**{m.min_placement_error_mean_cm:.2f} ± {m.min_placement_error_std_cm:.2f} cm** | "
-            f"{m.terminal_placement_error_mean_cm:.2f} cm | {m.terminal_velocity_mean:.2f} rad/s | {m.mean_latency_ms:.1f} ms |"
+            f"{m.terminal_placement_error_mean_cm:.2f} cm | {m.terminal_velocity_mean:.2f} rad/s | "
+            f"{m.mean_latency_ms:.1f} ms | {m.episodes_with_handover_pct:.1f}% | "
+            f"{m.phi1_steps_with_handover_pct:.1f}% | {m.mean_nonzero_handover_w:.3f} |"
         )
 
     lines.extend([
@@ -605,6 +625,26 @@ def main() -> None:
     parser.add_argument("--device", type=str, default="cpu")
     parser.add_argument("--physics-in-loop", action="store_true")
     parser.add_argument("--skip-sensor-suite", action="store_true")
+    parser.add_argument(
+        "--model-type",
+        type=str,
+        default="spwm",
+        choices=["spwm", "ann_rate"],
+        help="Model architecture to evaluate: 'spwm' (ALIF) or 'ann_rate' (continuous leaky rate).",
+    )
+    parser.add_argument(
+        "--split",
+        type=str,
+        default="test",
+        choices=["test", "val"],
+        help="Dataset split for evaluation ('test' [3600..3999] or 'val' [3200..3599]).",
+    )
+    parser.add_argument(
+        "--handover-dist-threshold",
+        type=float,
+        default=0.026,
+        help="Residual handover distance trigger threshold d_pred > tau (m, default: 0.026).",
+    )
     args = parser.parse_args()
 
     cfg = ExperimentConfig.load(args.config)
@@ -621,12 +661,15 @@ def main() -> None:
         train_split=cfg.data.train_split,
         val_split=cfg.data.val_split,
     )
-    test_ids_all = list(range(splits["test"][0], splits["test"][1]))
-    sensor_eval_ids = test_ids_all[: min(args.num_sensor_trajectories, len(test_ids_all))]
-    mppi_eval_ids = test_ids_all[: min(args.num_mppi_episodes, len(test_ids_all))]
+    split_ids_all = list(range(splits[args.split][0], splits[args.split][1]))
+    sensor_eval_ids = split_ids_all[: min(args.num_sensor_trajectories, len(split_ids_all))]
+    mppi_eval_ids = split_ids_all[: min(args.num_mppi_episodes, len(split_ids_all))]
 
-    chronicle.log_info(f"Loading strictly frozen SPWM checkpoint: {args.checkpoint} on {device}")
-    model = SPWM.from_config(cfg).to(device)
+    chronicle.log_info(f"Loading strictly frozen {args.model_type.upper()} checkpoint: {args.checkpoint} on {device}")
+    if args.model_type == "ann_rate":
+        model = ANNWorldModel.from_config(cfg).to(device)
+    else:
+        model = SPWM.from_config(cfg).to(device)
     ckpt = torch.load(args.checkpoint, map_location=device, weights_only=False)
     state_dict = ckpt["model_state"] if isinstance(ckpt, dict) and "model_state" in ckpt else ckpt
     model.load_state_dict(state_dict, strict=True)
@@ -680,6 +723,7 @@ def main() -> None:
             device=device,
             seed=cfg.project.seed,
             physics_in_loop=args.physics_in_loop,
+            handover_dist_threshold=args.handover_dist_threshold,
         )
     t_mppi = time.perf_counter() - t0_mppi
     chronicle.log_success(f"Suite 2 completed in {t_mppi:.1f}s")
@@ -691,6 +735,8 @@ def main() -> None:
         "benchmark_name": "Zero-Shot Sim-to-Real Domain Gap & Robustness Stress Test",
         "version": GLOBAL_VERSION.formatted,
         "checkpoint": str(args.checkpoint),
+        "split": args.split,
+        "handover_dist_threshold": float(args.handover_dist_threshold),
         "total_benchmark_time_sec": float(total_time),
         "sensor_benchmark_time_sec": float(t_sensor),
         "mppi_benchmark_time_sec": float(t_mppi),

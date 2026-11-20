@@ -975,3 +975,50 @@
   3. Reorganized Section 5 into 5.1–5.5 aligned with verified SSOT figures and tables.
 - **new results (if any)**: No runs made - manuscript notebook audit & synchronization only.
 - **verdict on change made**: Preserved.
+
+## SPWM-v0.12.4 — Iteration 8 (CoRL Grounded PIL Parity, Equalized Multi-Seed Training & SSOT Synchronization)
+- **version afflicted**: `SPWM-v0.12.4`
+- **iteration on version**: Iteration 8 (CoRL Grounded PIL Parity, Equalized Multi-Seed Training & SSOT Synchronization)
+- **changes made**:
+  1. Enforced rigid payload attachment at contact onset (`payload_attached=(t >= t_c)`) permanently across `experiments/benchmark_mppi_control.py`, `spwm/evaluation/mppi_scorer.py`, and `experiments/benchmark_classical_and_bc.py`, verified by `tests/test_pil_integrity.py`.
+  2. Patched `_BaselineModelWrapper` in `experiments/benchmark_mppi_control.py` so `ANN-Rate` uses the identical shared `_compute_residual_handover_weight` gate, `Continuous RSSM` applies posterior updates $q(s_t \mid h_t, \mathbf{e}_t)$, and `Deep GRU` consumes encoded `ev_online` during $\phi_t = 1$ in PIL mode (`Reactive BC` receives `ev_online` at every step).
+  3. Equalized `experiments/train_baselines.py` and `spwm/models/baselines.py` (`rollout_train`, SE(3) + smoothness + multi-step rollout supervision, `4,000` trajectories, 60 epochs, CosineAnnealingLR) and trained full multi-seed runs (`42, 101, 2024`) for `SPWM`, `ANN-Rate` (`160+240` epochs each), and `Continuous RSSM` (`60` epochs each), plus Seed `42` `Deep GRU`, `Continuous ConvLSTM`, and 50-epoch `Reactive BC`.
+  4. Regenerated SSOT JSONs, publication PDFs (`figures/fig1..4`, `heft_shock_timeseries`), `docs/FIGURE_METRICS.md`, `docs/DOSSIER.md`, `README.md`, `docs/CORL_FINAL_BENCHMARK_SUMMARY.md`, and `PAPER_CONTEXT.md` via `scripts/build_paper_context.py`.
+- **new results (if any)**:
+  - **Open-Loop ($N=400, H=100, t_{\text{start}}=4$)**: 3-seed `SPWM` `0.00240 ± 0.00037` pos / **`0.00971 ± 0.00177`** vel MSE (`2.2×` lower vel MSE than 3-seed `RSSM` `0.02101 ± 0.00044`, `11.5×` lower than `Deep GRU` `0.11191`).
+  - **Closed-Loop 50-Ep PIL (`t >= t_c`)**: Canonical `SPWM` Seed `42` **`86.0%`** (`43/50`, min `0.86 ± 0.80 cm`, term `1.57 ± 1.00 cm`, `23.3 ms/step`), 3-seed `SPWM` **`58.0 ± 27.1%`** vs 3-seed `ANN-Rate` `37.3 ± 9.5%`, 3-seed `RSSM` `0.0%`, `Deep GRU` `0.0%`, `Reactive BC` `0.0%`, and `Privileged PD (Oracle)` `96.0%`.
+  - **4-Stage PIL Ablation**: `62.0%` (`SPWM-Base`) → `62.0%` (`+ Smooth MPPI`) → `72.0%` (`+ Phase 1 Curriculum`) → **`86.0%`** (`+ Residual Handover & 2-Stage Lookahead`).
+  - **50-Ep PIL Robustness**: Nominal `86.0%`, Sensory Noise `1.0%` `72.0%`, Payload `4.80 kg` `78.0%`, Friction `0.80×` `70.0%`, Friction `1.20×` `76.0%`.
+  - **3-Seed Energy Audit**: `12.15 ± 0.19%` ALIF spike rate → `8,150 ± 129` SOPs/step = **`12.22 ± 0.19 nJ/step`** (`4.94 ± 0.08×` vs own GPU `60.36 nJ/step`).
+- **verdict on change made**: Preserved.
+
+## SPWM-v0.12.4 — Iteration 9 (CoRL Pre-Submission Audit: Seed 2024 Completion, Forensic Root-Cause Diagnostics & Table Symmetry)
+- **version afflicted**: `SPWM-v0.12.4`
+- **iteration on version**: Iteration 9 (CoRL Pre-Submission Audit: Seed 2024 Completion, Forensic Root-Cause Diagnostics & Table Symmetry)
+- **changes made**:
+  1. Resumed Seed `2024` Phase 1 (`train_m1`) cleanly via `BaseTrainer.load_checkpoint(..., strict=True)` through epoch `240` (and `260` with `classic_patience: false`), verifying `ClosedLoopBuffer` and `tier2_evaluator_state`. Re-ran `scripts/eval_table1_ssot.py` and `experiments/profile_energy_sops.py` (`11.93%` spike rate, `8,001` SOPs/step, `12.00 nJ/step` Loihi-2 core, `1.0979 mJ/step` end-to-end).
+  2. Added `scripts/diagnostics/forensic_rssm_gru_failure.py` and `scripts/diagnostics/audit_spwm_seed_variance.py` to decompose `Continuous RSSM` / `Deep GRU` `0.0%` PIL collapse and `SPWM` inter-seed PIL variance (`best_model.pt` vs. final `checkpoint.pt`, `||W_u||_2`, `gate_scale`, ALIF silent/hyperactive fractions, and PIL `w_t > 0` handover trigger rate).
+  3. Added `--model-type ann_rate` support to `experiments/benchmark_robustness_stress_test.py` and executed all 3 `ANN-Rate` seeds (`42, 101, 2024`) across all 5 PIL robustness conditions (`50` episodes `[3600, 3649]`, `t >= t_c`).
+  4. Updated `docs/CORL_FINAL_BENCHMARK_SUMMARY.md`, `docs/DOSSIER.md`, `README.md`, `docs/REPO_SKELETON.md`, and `PAPER_CONTEXT.md` with symmetric `Vel H=50`, 3-seed `ANN-Rate` robustness, full core + E2E energy accounting, and forensic root-cause diagnostics.
+- **new results (if any)**:
+  - **Forensic RSSM/GRU Failure**: `Continuous RSSM` (`141/150` = `94.0%`) and `Deep GRU` (`42/50` = `84.0%`) reach `<= 3.0 cm` pre-contact and collapse via Post-Contact Impulse Divergence + Terminal Velocity Violation (`7.17` / `5.75 rad/s` vs. `1.50 rad/s`), whereas `SPWM` Seed `42` absorbs the contact transient (`1.69 → 2.57 → 1.57 cm`, `0/50` velocity violations).
+  - **Tier 2 Checkpoint Selection Variance**: Seed `2024` final `checkpoint.pt` (ep `260`) reaches `52.0%` PIL success (`+20.0 pp` vs. `best_model.pt` `32.0%`), while Seeds `42` (`86.0% → 58.0%`) and `101` (`56.0% → 24.0%`) degrade at epoch `240`.
+  - **SPWM vs. ANN-Rate PIL Robustness**: Under `4.80 kg` OOD payload, `SPWM` retains `90.7%` of nominal success (`86.0% → 78.0%`, `-9.3%` rel) vs. `ANN-Rate` `-29.4%` rel on Seed `42` (`34.0% → 24.0%`) and `-28.6%` rel across 3 seeds (`37.3% → 26.7%`).
+- **verdict on change made**: Preserved; AST anti-fallback scan (`0` violations) and full `pytest` suite (`101/101`) passing.
+
+## SPWM-v0.12.4 — Iteration 10 (Final Pre-Submission Verification & Table Symmetry Pass)
+- **version afflicted**: `SPWM-v0.12.4`
+- **iteration on version**: Iteration 10 (Final Pre-Submission Verification & Table Symmetry Pass)
+- **changes made**:
+  1. **Handover Telemetry & Validation Sweep (`experiments/benchmark_mppi_control.py`, `experiments/benchmark_robustness_stress_test.py`, `spwm/evaluation/robustness.py`)**: Instrumented `EpisodeResult.handover_weights_phi1`, `summarize_handover_telemetry`, and `MPPIPerturbationResult` fields (`episodes_with_handover_pct`, `phi1_steps_with_handover_pct`, `mean_nonzero_handover_w`) plus `--split val` and `--handover-dist-threshold` CLI options. Ran 50-episode PIL robustness stress tests (`[3600, 3649]`, `t >= t_c`) across all 3 SPWM seeds (`42, 101, 2024`) and ran the validation handover threshold sweep (`[3200, 3249]`, $\tau \in \{0.026, 0.020, 0.015\}\,\text{m}$) on Seeds `42` and `2024`.
+  2. **Disentangled Stage 4 Ablation (`results/ablations/stage4a_lookahead_only_pil`)**: Evaluated `Stage 4a` (`+ 2-Stage SE(3) Lookahead` with `--disable-handover`, $w_t \equiv 0$) vs. `Stage 4b` (both enabled) on 50 PIL episodes (`[3600, 3649]`).
+  3. **Transparent Baseline PIL Modes (`experiments/benchmark_mppi_control.py`, `tests/test_pil_integrity.py`)**: Wired `use_handover=False` (`--disable-handover`) for `_BaselineModelWrapper` (`rssm`, `deep_gru`) to disable online `step_online` overwrites during $\phi_t=1$ (verified by new unit tests in `tests/test_pil_integrity.py`) and evaluated both Open-Loop PIL and Online Observation Update across all 3 seeds (`42, 101, 2024`) for `Continuous RSSM` and `Deep GRU`.
+  4. **Expanded `N=25` Validation Checkpoint Selection (`[3200, 3224]` $\to$ `[3600, 3649]`)**: Evaluated all 15 distinct saved checkpoints (`best_model.pt`, `checkpoint_phase_1..4.pt` across Seeds `42, 101, 2024`) strictly on `val` (`[3200, 3224]`) in PIL mode and evaluated the 3 `N=25`-selected winners on `test` (`[3600, 3649]`) with zero test peeking.
+  5. **SSOT Aggregation & Documentation Sync (`scripts/aggregate_corl_final_verification.py`, `scripts/run_ssot_benchmark_and_plot.py`, `scripts/build_paper_context.py`)**: Persisted all results into `results/ssot_eval_metrics.json` and `results/multiseed/multiseed_metrics.json`, and updated `docs/CORL_FINAL_BENCHMARK_SUMMARY.md`, `docs/FIGURE_METRICS.md`, `docs/DOSSIER.md`, `docs/CORL_GROUNDED_AUDIT.md`, `docs/REPO_SKELETON.md`, `README.md`, and `PAPER_CONTEXT.md`.
+- **new results (if any)**:
+  - **Stage 4 Disentanglement**: `Stage 4a` ($w_t \equiv 0$) achieves **`86.0%`** (`0.86 ± 0.80 cm` min, `1.57 ± 1.00 cm` term), identical to `Stage 4b` Full (`86.0%`), proving 100% of the `+14.0 pp` gain over Stage 3 (`72.0%`) comes from 2-Stage SE(3) Lookahead.
+  - **$w_t > 0$ Activation**: `0.0%` across all conditions on Seeds `42` and `101`, and `0.0%` on Nominal/Sensory Noise for Seed `2024`, activating selectively at `4.0%` episodes / `0.5%` $\phi_t=1$ steps on Seed `2024` under `4.80 kg` (`mean_w=0.165`), `0.80×` (`mean_w=0.229`), and `1.20×` (`mean_w=0.169`). Validation threshold sweep ($\tau \in \{0.026, 0.020, 0.015\}\,\text{m}$) confirms `0.0%` false triggers because post-contact bursts yield `dist_obs = 0.16–0.22 m` vs `dist_pred = 1.39–1.74 cm` median.
+  - **Table 2 Open-Loop vs. Online PIL (3 seeds)**: `Deep GRU`: `1.3 ± 2.3%` (Open-Loop PIL) vs `0.0 ± 0.0%` (Online Obs.); `Continuous RSSM`: `15.3 ± 4.6%` (Open-Loop PIL) vs `0.0 ± 0.0%` (Online Post.).
+  - **Table 4 Symmetric 3-Seed PIL Robustness (`SPWM`)**: `58.0 ± 27.1%` (Nominal), `55.3 ± 19.4%` (`1.0%` Noise, `-4.6%` rel), `39.3 ± 33.7%` (`4.80 kg`, `-32.2%` rel), `40.7 ± 27.3%` (`0.80×` Friction, `-29.9%` rel), `44.0 ± 28.0%` (`1.20×` Friction, `-24.1%` rel).
+  - **`N=6` vs. `N=25` Validation Selection**: `N=25` validation selection (`checkpoint_phase_4` Seed 42: `58.0%`, `checkpoint_phase_1` Seed 101: `62.0%`, `checkpoint_phase_2` Seed 2024: `62.0%`) reduces 3-seed test std `11.7×` from **`58.0 ± 27.1%`** to **`60.7 ± 2.3%`**.
+- **verdict on change made**: Preserved; AST anti-fallback scan (`0` violations) and full `pytest` suite (`101/101`) passing.

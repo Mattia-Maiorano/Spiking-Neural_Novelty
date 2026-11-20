@@ -326,7 +326,7 @@ Evaluated on the 400 held-out test set trajectories under the production `SPWM-v
 > **Multi-Horizon Stability (`SPWM-v0.12.4`)**: On the 400 held-out test trajectories (`results/spwm_v0_12_4_train_m1/metrics_spwm_v0_12_4.json`, `results/ssot_eval_metrics.json`), `SPWM-v0.12.4` achieves $0.0219\,\text{rad}$ one-step ($H=1$) position error and $0.1186\,\text{rad}$ at $H=100$ ($0.1115\,\text{rad}$ pure open-loop mean error over $h \in [1, 100]$ vs $0.1482\,\text{rad}$ with un-gated phasic sensory handover).
 
 ### 4.2 Active Perception Sensory Handover
-Unconditional mid-trajectory phasic sensory re-injection degrades $H=100$ rollout tracking ($0.1482\,\text{rad}$ vs.\ $0.1115\,\text{rad}$ pure open-loop) by perturbing $M_1$'s autonomous momentum manifold. Consequently, `SPWM-v0.12.4` employs **Residual-Gated Sensory Handover** strictly as an online closed-loop gate during `phase_flags == 1`, improving closed-loop grasp success from $76.0\%$ (`no_handover`) to $96.0\%$ (Latent-Grounded) / $\ge 90.0\%$ (Physics-in-the-Loop).
+Unconditional mid-trajectory phasic sensory re-injection degrades $H=100$ rollout tracking ($0.1482\,\text{rad}$ vs.\ $0.1115\,\text{rad}$ pure open-loop) by perturbing $M_1$'s autonomous momentum manifold. Consequently, `SPWM-v0.12.4` pairs **2-Stage SE(3) Lookahead** with **Residual-Gated Sensory Handover** strictly as an online closed-loop safety gate during `phase_flags == 1`. Disentangling Stage 4 in 50-episode Physics-in-the-Loop (PIL, `t >= t_c`) evaluation confirms that **2-Stage SE(3) Lookahead alone (`Stage 4a`, $w_t \equiv 0$)** drives the full `+14.0 pp` gain from `72.0%` (`Stage 3`) to **`86.0%` (`43/50`)** on canonical Seed `42`, while the residual gate enforces a `0.0%` false-trigger rate on nominal episodes across all 3 seeds (rejecting `dist_obs = 0.16–0.22 m` post-contact event bursts) and activates selectively only under mechanical OOD drift (Seed `2024`: `4.0%` of episodes / `0.5%` of $\phi_t=1$ steps).
 
 ### 4.3 Biological Plausibility Metrics
 - **Mean Firing Sparsity**: $\bar{s} = 0.1227$ ($12.27\%$ measured ALIF spike rate on `results/ssot_eval_metrics.json`; $16.89\%$ on `results/spwm_v0_12_4_train_m1/metrics_spwm_v0_12_4.json`). Meets the biophysical sparsity design target of $10.0\% - 17.0\%$, avoiding both silent network quiescence ($< 5\%$) and energetic saturation ($> 25\%$).
@@ -354,7 +354,7 @@ timeline
         SPWM-v0.6.0 : Dual-Camera Perception (Global + Wrist, C=4) : Depth Disambiguation
         SPWM-v0.7.2 : Anti-Fallback AST Enforcement : Zero-Lag Decoder Sweep (alpha=0.0)
         SPWM-v0.7.3 : Anthropomorphic Humanoid Rig : Continuous Soft-Fade Baseline
-        SPWM-v0.12.4 : SE(3) + Stasis Damping Gate : Deploy-Ready MPPI (96.0% Grasp)
+        SPWM-v0.12.4 : SE(3) + ALIF Homeostasis : Deploy-Ready PIL MPPI (86.0% Seed 42)
 ```
 
 ### 5.1 Chronological Milestone Progression
@@ -367,7 +367,7 @@ timeline
 7. **SPWM-v0.6.0 (Dual-Camera Active Perception, $C=4$)**: Added egocentric wrist-mounted event camera paired with static head observer, resolving axial wrist roll symmetry and elbow flex depth foreshortening.
 8. **SPWM-v0.7.2 (Anti-Fallback Enforcement & Zero-Lag Readout)**: Completely eliminated all silent fallbacks (`getattr`, ternary `hasattr`, `strict=False`). Conducted 9-combination grid sweep over decoder EMA smoothing factors, establishing optimal zero-lag filtering ($\alpha_{\text{pos}} = 0.0, \alpha_{\text{vel}} = 0.0$).
 9. **SPWM-v0.7.3**: Integrated anthropomorphic right humanoid arm kinematics, continuous soft-fade sensory handover, and procedural object variance ($1.20 - 4.50\,\text{kg}$).
-10. **SPWM-v0.12.4 (Production Baseline)**: Added Stasis Damping Gate (`stasis_sigma = 0.003`), direct momentum velocity slice (`v_p = p_next[:, :q_dim]`), active-perception soft-fade handover ($w_{\text{max}} = 0.60$, window `[t_contact-7, t_contact+7]`), $SE(3)$ supervision, and deploy-ready Latent MPPI (`96.0%` grasp success).
+10. **SPWM-v0.12.4 (Production Baseline)**: Added Stasis Damping Gate (`stasis_sigma = 0.003`), direct momentum velocity slice (`v_p = p_next[:, :q_dim]`), active-perception soft-fade handover, ALIF homeostasis ($\lambda_{\text{spike\_balance}} = 0.25$), $SE(3)$ supervision, and deploy-ready Latent MPPI (**`86.0%`** PIL grasp success on Seed `42`; **`58.0 ± 27.1%`** across 3 seeds).
 
 ### 5.2 Negative Ablations & Post-Mortem Log
 
@@ -418,197 +418,131 @@ flowchart TD
     RepoCurrent -.->|"Comparative Benchmarks Completed"| MissingPublication
 ```
 
-### 6.1 Missing Comparative Baselines [COMPLETED]
-- [x] **Current Repo State**: Benchmarked head-to-head against 3 non-spiking deep recurrent architectures (Continuous RSSM, Deep GRU, Continuous ConvLSTM) in `results/spwm_v0_12_4_train_m1/comparative_metrics_v0_12_4.json` (historical `results/baselines/` pruned during SSOT consolidation):
-  - **Baseline 1: Continuous RSSM (DreamerV3 style)**: Continuous RSSM with deterministic GRU state $h_t \in \mathbb{R}^{256}$ + stochastic Gaussian state $s_t \in \mathbb{R}^{32}$ (380.5k params).
-  - **Baseline 2: Deep GRU Predictor**: 2-layer action-conditioned GRU predictor matched to parameter budget (338.9k params).
-  - **Baseline 3: Continuous ConvLSTM**: Spatial-temporal ConvLSTM operating directly on 2D convolutional feature maps (296.9k params).
-  - **Comparative Metric Table (Empirical Benchmark)**:
+### 6.1 Comparative Baselines [COMPLETED — CoRL Final Grounded Parity]
+- [x] **Current Repo State**: Benchmarked head-to-head against 3 non-spiking deep recurrent architectures (Continuous RSSM across seeds `42, 101, 2024`, Deep GRU, Continuous ConvLSTM), Parameter-Matched `ANN-Rate` (across seeds `42, 101, 2024`), Reactive BC, and Privileged Jacobian-IK + PD under equalized SE(3) + multi-step rollout training (`4,000` trajectories, `results/spwm_v0_12_4_train_m1/comparative_metrics_v0_12_4.json`):
+  - **Continuous RSSM**: Deterministic GRU $h_t \in \mathbb{R}^{256}$ + stochastic $s_t \in \mathbb{R}^{32}$ (380.5k params, 3 seeds).
+  - **Deep GRU Predictor**: 2-layer action-conditioned GRU (338.9k params).
+  - **Continuous ConvLSTM**: Spatial-temporal ConvLSTM on 2D conv maps (296.9k params).
+  - **Open-Loop Multi-Horizon Table ($N=400$, $H=100$, $t_{\text{start}}=4$; multi-seed mean $\pm$ std over seeds `[42, 101, 2024]`):**
 
-| Model Architecture | Active (Total) Params | Latency (ms) | Pos MSE (H=1) | Pos MSE (H=10) | Pos MSE (H=50) | Pos MSE (H=100) | Vel MSE (H=1) | Vel MSE (H=10) | Vel MSE (H=50) | Vel MSE (H=100) |
+| Model Architecture | Active (Total) Params | Seeds | Pos MSE (H=1) | Pos MSE (H=10) | Pos MSE (H=50) | Pos MSE (H=100) | Vel MSE (H=1) | Vel MSE (H=10) | Vel MSE (H=50) | Vel MSE (H=100) |
 | :--- | :---: | :---: | :---: | :---: | :---: | :---: | :---: | :---: | :---: | :---: |
-| **SPWM-v0.12.4** | **317.9k (392.1k)** | 1.95 | 0.00016 | 0.00649 | **0.00264** | **0.00246** | **0.00229** | **0.01564** | **0.01105** | **0.01190** |
-| **Continuous RSSM** | 380.5k | 1.79 | **0.00008** | **0.00255** | 0.00328 | 0.00665 | 0.00279 | 0.02579 | 0.03695 | 0.04421 |
-| **Deep GRU** | 338.9k | 1.47 | 0.00369 | 0.63870 | 0.61793 | 0.72347 | 0.03892 | 0.24420 | 0.14594 | 0.14620 |
-| **Continuous ConvLSTM** | 296.9k | 0.95 | 0.08706 | 0.36942 | 0.32738 | 0.16677 | 0.05677 | 0.08846 | 0.16049 | 0.13878 |
+| **SPWM-v0.12.4** | **317.9k (392.1k)** | 3 | `0.00018 ± 0.00011` | `0.00348 ± 0.00265` | `0.00315 ± 0.00144` | `0.00240 ± 0.00037` | `0.00139 ± 0.00076` | `0.04507 ± 0.02601` | `0.02466 ± 0.01271` | **`0.00971 ± 0.00177`** |
+| **ANN-Rate** | 317.9k (392.1k) | 3 | `0.00028 ± 0.00012` | `0.00249 ± 0.00032` | `0.00341 ± 0.00264` | `0.00210 ± 0.00063` | `0.00193 ± 0.00069` | `0.03356 ± 0.00511` | `0.02440 ± 0.01698` | `0.01183 ± 0.00715` |
+| **Continuous RSSM** | 380.5k | 3 | **`0.00001 ± 0.00001`** | `0.00029 ± 0.00006` | `0.00166 ± 0.00002` | **`0.00145 ± 0.00009`** | **`0.00033 ± 0.00017`** | `0.01659 ± 0.00244` | `0.02262 ± 0.00088` | `0.02101 ± 0.00044` |
+| **Deep GRU** | 338.9k | 1 | `0.00003` | `0.00029` | `0.00173` | `0.00650` | `0.00097` | `0.00643` | `0.01605` | `0.11191` |
+| **Continuous ConvLSTM** | 296.9k | 1 | `0.00002` | **`0.00012`** | **`0.00150`** | `0.00707` | `0.00147` | **`0.00553`** | **`0.01095`** | `0.33696` |
 
 > **Key Empirical Takeaways**:
-> 1. **Long-Horizon Accuracy & Velocity Stability**: On the unified $t_{\text{start}}=4$, $H=100$ open-loop benchmark ($N=400$), `SPWM-v0.12.4` achieves **2.7x lower position MSE at H=100** ($0.00246$ vs $0.00665$) and **3.7x lower velocity MSE at H=100** ($0.01190$ vs $0.04421$) compared to Continuous RSSM, and over **12x lower** compared to Deep GRU ($0.14620$).
-> 2. **Bounded Attractor Dynamics**: Deep GRU collapses beyond $H=1$ due to exposure bias ($\text{MSE}_{\text{pos}}$ rises from $0.00369$ to $0.72347$). ConvLSTM exhibits notable drift ($\text{MSE}_{\text{pos}} = 0.16677$). SPWM's symplectic/dissipative phase-space factorization ($q, p$) prevents unbounded drift.
-> 3. **Comparative Metrics**: Consolidated in [`results/spwm_v0_12_4_train_m1/comparative_metrics_v0_12_4.json`](file:///Users/Mattia/Desktop/Studies/Temp/results/spwm_v0_12_4_train_m1/comparative_metrics_v0_12_4.json).
-
-### 6.2 Non-Spiking SNN Ablation (COMPLETED)
-- [x] **Current Repo State**: Evaluated direct apples-to-apples non-spiking continuous rate ablation (`ANNWorldModel`) vs. SNN-ALIF (`SPWM-v0.12.4`), maintaining exact parameter parity (**317.9k** active / **392.1k** total parameters), identical SpatialSoftmax keypoint frontend, symplectic/dissipative phase-space factorization ($q, p$), and identical loss formulation.
-- [x] **Ablation Implemented**: Constructed `ANNWorldModel` in `spwm/models/ann_ablation.py` by replacing the 256 ALIF spiking cells in `MultiTimescaleMemory` with identical continuous leaky rate units:
-  $$\mathbf{m}_t = \beta_{\text{mem}} \mathbf{m}_{t-1} + (1 - \beta_{\text{mem}}) \mathbf{I}_t, \quad \mathbf{r}_t = \sigma(\mathbf{m}_t)$$
-  using identical projection matrices (`input_proj`, `recurrent_proj`, `q_proj`, `action_proj`, `vel_proj`, `W_vel`, `fuse_spikes`, `fuse_mems`, `norm`).
-- [x] **Deliverable Generated**: Side-by-side production-regime performance table ($t_{\text{start}}=4$, $N=400$):
-
-| Model Architecture | Memory Dynamics | Active (Total) Params | Pos MSE (H=1) | Pos MSE (H=10) | Pos MSE (H=50) | Pos MSE (H=100) | Vel MSE (H=1) | Vel MSE (H=10) | Vel MSE (H=50) | Vel MSE (H=100) |
-| :--- | :---: | :---: | :---: | :---: | :---: | :---: | :---: | :---: | :---: | :---: |
-| **SPWM-v0.12.4 (SNN-ALIF)** | ALIF (Spiking, 12.27% rate) | **317.9k (392.1k)** | **0.00016** | **0.00649** | **0.00264** | **0.00246** | **0.00229** | **0.01564** | **0.01105** | **0.01190** |
-| **ANN-Rate (Continuous Leaky)** | Leaky Rate Units (Continuous) | **317.9k (392.1k)** | 0.00293 | 0.01323 | 0.02027 | 0.27230 | 0.01604 | 0.06808 | 0.06370 | 0.08826 |
-
-> **Key Empirical Takeaways**:
-> 1. **Open-Loop & Closed-Loop Superiority**: On the unified `v0.12.4` benchmark, `ANN-Rate` diverges at $H=100$ ($\text{MSE}_{\text{pos}} = 0.27230$ vs $0.00246$ for `SPWM`, **110x** worse) and collapses to **0.0%** closed-loop MPPI grasp success in PIL (vs **88.0%** for `SPWM`), driven by grounded state-estimator drift (`0.167 rad` at $t=4$ vs `0.022 rad` for SPWM) and rapid $M_1$ rollout divergence.
+> 1. **Lowest Long-Horizon Velocity Error**: With equalized SE(3) + multi-step rollout training, all baselines stabilize at $H \le 50$, but at $H=100$ `SPWM-v0.12.4` achieves **`0.00971 ± 0.00177` rad²/s²** velocity MSE (**`2.2x` lower** than `Continuous RSSM` `0.02101 ± 0.00044`, **`11.5x` lower** than `Deep GRU` `0.11191`, and **`34.7x` lower** than `ConvLSTM` `0.33696`).
 > 2. **Comparative Metrics**: Consolidated in [`results/spwm_v0_12_4_train_m1/comparative_metrics_v0_12_4.json`](file:///Users/Mattia/Desktop/Studies/Temp/results/spwm_v0_12_4_train_m1/comparative_metrics_v0_12_4.json).
 
+### 6.2 Non-Spiking SNN Ablation (COMPLETED)
+- [x] **Current Repo State**: Evaluated direct apples-to-apples non-spiking continuous rate ablation (`ANNWorldModel`) vs. SNN-ALIF (`SPWM-v0.12.4`) under identical full two-phase training (`160` Phase 0 + `240` Phase 1 epochs across seeds `42, 101, 2024`) and identical closed-loop causal residual-gated handover during PIL (`t >= t_c`).
+- [x] **Ablation Implemented**: Constructed `ANNWorldModel` in `spwm/models/ann_ablation.py` by replacing the 256 ALIF spiking cells in `MultiTimescaleMemory` with identical continuous leaky rate units (`317.9k` active / `392.1k` total parameters).
+- [x] **Side-by-Side 3-Seed Closed-Loop PIL Comparison (50 Episodes `[3600, 3649]`, `t >= t_c`)**:
+
+| Architecture | PIL Success (%) | Min Error (cm) | Terminal Error (cm) | Smoothness $\|\Delta^2 q\|$ | Jerk $\|\Delta^3 q\|$ | Flips |
+| :--- | :---: | :---: | :---: | :---: | :---: | :---: |
+| **SPWM-v0.12.4 (SNN-ALIF, $N=6$ Tier-2, 3 seeds)** | **`58.0 ± 27.1%`** *(Seed 42: **86.0%**)* | **`0.90 ± 0.04`** *(0.86)* | **`2.23 ± 0.68`** *(1.57)* | **`0.00860 ± 0.00304`** | **`0.00608 ± 0.00291`** | **`19.4 ± 7.6`** |
+| **SPWM-v0.12.4 (SNN-ALIF, $N=25$ Val-Sel., 3 seeds)** | **`60.7 ± 2.3%`** | **`0.88 ± 0.11`** | **`2.01 ± 0.12`** | **`0.00931 ± 0.00346`** | **`0.00663 ± 0.00321`** | **`21.1 ± 8.5`** |
+| **ANN-Rate (Leaky Rate, 3 seeds)** | `37.3 ± 9.5%` *(Seed 42: 34.0%)* | `1.07 ± 0.28` *(0.83)* | `2.98 ± 0.46` *(2.75)* | `0.01148 ± 0.00088` | `0.00938 ± 0.00107` | `26.0 ± 1.9` |
+
 ### 6.3 Computational & Energy Profiling (SOPs vs. FLOPs) [COMPLETED]
-- [x] **Current Repo State**: Profiled neuromorphic Synaptic Operations (SOPs) on Loihi-2 vs dense GPU MACs for `SPWM-v0.12.4` in [`results/energy_profiling/energy_profiling_metrics.json`](file:///Users/Mattia/Desktop/Studies/Temp/results/energy_profiling/energy_profiling_metrics.json), [`results/ssot_eval_metrics.json`](file:///Users/Mattia/Desktop/Studies/Temp/results/ssot_eval_metrics.json), and [`docs/FIGURE_METRICS.md`](file:///Users/Mattia/Desktop/Studies/Temp/docs/FIGURE_METRICS.md):
-  - **SPWM-v0.12.4 Recurrent Step Energy**: **`12.34 nJ/step`** on Loihi-2 SOPs vs **`60.36 nJ/step`** on own Jetson Orin GPU MACs (**`4.9x`** recurrent step efficiency advantage) at `12.27%` measured ALIF spike rate (`8,229` SOPs/step vs `67,072` recurrent MACs/step).
-  - **Comparative Energy & Operations Table (Empirical Benchmark)**:
+- [x] **Current Repo State**: Profiled neuromorphic Synaptic Operations (SOPs) on Loihi-2 vs dense GPU MACs across all 3 `SPWM-v0.12.4` seeds in [`results/energy_profiling/energy_profiling_metrics.json`](file:///Users/Mattia/Desktop/Studies/Temp/results/energy_profiling/energy_profiling_metrics.json) and `results/multiseed/seed_{101,2024}_energy/`:
+  - **SPWM-v0.12.4 Recurrent Step Energy (3-Seed Mean ± Std)**: **`12.22 ± 0.19 nJ/step`** on Loihi-2 SOPs (`8,150 ± 129` SOPs/step at **`12.15 ± 0.19%`** ALIF spike rate; Seed 42: `12.34 nJ`, `12.27%`, `8,229` SOPs) vs **`60.36 nJ/step`** on Jetson Orin GPU MACs (**`4.94 ± 0.08x`** recurrent step efficiency advantage).
 
 | Model Architecture | Memory Paradigm | Total Params | Spike Rate | SOPs / step | Recurrent MACs / step | E_neuro (nJ/step) | E_GPU (nJ/step) | Efficiency vs. Own GPU | Power @ 20Hz (mW) | E_cumul (H=100, μJ) |
 | :--- | :---: | :---: | :---: | :---: | :---: | :---: | :---: | :---: | :---: | :---: |
-| **SPWM-v0.12.4** | ALIF Spiking (2-tier) | **392.1k (317.9k act.)** | 12.27% | 8,229 | 67,072 | **12.34** | 60.36 | **4.9x** | **0.247** | **1.23** |
+| **SPWM-v0.12.4 (Seed 42)** | ALIF Spiking (2-tier) | **392.1k (317.9k act.)** | 12.27% | 8,229 | 67,072 | **12.34** | 60.36 | **4.89x** | **0.247** | **1.23** |
+| **SPWM-v0.12.4 (3-Seed Mean±Std)** | ALIF Spiking (2-tier) | **392.1k (317.9k act.)** | 12.15 ± 0.19% | 8,150 ± 129 | 67,072 | **12.22 ± 0.19** | 60.36 | **4.94 ± 0.08x** | **0.244 ± 0.004** | **1.22 ± 0.02** |
 | **ANN-Rate (Ablation)** | Continuous Leaky Rate | **392.1k (317.9k act.)** | — | — | 67,072 | — | 60.36 | 1.0x (Ref) | 1.207 | 6.04 |
 | **Continuous RSSM** | GRU + Gaussian Latent | **380.5k** | — | — | 365,056 | — | 328.55 | 1.0x (Ref) | 6.571 | 32.86 |
 | **Deep GRU** | 2-Layer Deep GRU | **338.9k** | — | — | 299,520 | — | 269.57 | 1.0x (Ref) | 5.391 | 26.96 |
 | **Continuous ConvLSTM** | Spatial ConvLSTM (2D) | **296.9k** | — | — | 2,359,296 | — | 2123.37 | 1.0x (Ref) | 42.467 | 212.34 |
 
-> **Key Empirical Takeaways**:
-> 1. **4.9x Recurrent Efficiency vs. Own GPU & 26.6x vs. RSSM**: On Loihi-2 SOPs, `SPWM-v0.12.4` consumes **$12.34\,\text{nJ}$ per recurrent step** ($0.247\,\text{mW}$ at $20\,\text{Hz}$, $1.23\,\mu\text{J}$ over $H=100$) vs. $60.36\,\text{nJ}$ on Jetson Orin GPU MACs ($4.9\times$) and $328.55\,\text{nJ}$ for Continuous RSSM ($26.6\times$).
-> 2. **Energy Profiling Artifacts**: Consolidated in [`results/energy_profiling/energy_profiling_metrics.json`](file:///Users/Mattia/Desktop/Studies/Temp/results/energy_profiling/energy_profiling_metrics.json), [`results/ssot_eval_metrics.json`](file:///Users/Mattia/Desktop/Studies/Temp/results/ssot_eval_metrics.json), and [`docs/FIGURE_METRICS.md`](file:///Users/Mattia/Desktop/Studies/Temp/docs/FIGURE_METRICS.md).
+- **Full End-to-End Closed-Loop Step Energy (Jetson Orin, Encoder `882,688` MACs + $K=256 \times H=10 \times N_{\text{iter}}=3 = 7,680$ MPPI Rollouts)**: `1.0979 mJ/step` (`21.96 mW` @ 20 Hz) for `SPWM` and `ANN-Rate` (`1.219 GMACs` MPPI), vs. `1.7490 mJ/step` (`34.98 mW`) for `Deep GRU` (`1.942 GMACs`), `2.1236 mJ/step` (`42.47 mW`) for `Continuous RSSM` (`2.358 GMACs`), and `100.1833 mJ/step` (`2003.67 mW`) for `Continuous ConvLSTM` (`111.312 GMACs`).
 
 ### 6.4 Statistical Significance & Multi-Seed Validation [COMPLETED]
-- [x] **Current Repo State**: Evaluated statistical significance across $N = 3$ random initializations (`seed = 42, 101, 2024`) by passing **every seed through the complete, identical two-phase training pipeline** (Phase 0 Representation grounding $\to$ Phase 1 M1 Latent Predictor training) over the canonical 4,000 trajectories dataset (`results/multiseed/`).
-- [x] **Statistical Multi-Seed Performance Table (Full Two-Phase Pipeline)**:
+- [x] **Current Repo State**: Evaluated across $N = 3$ seeds (`42, 101, 2024`) in `results/multiseed/multiseed_metrics.json` (full `160` Phase 0 + `240` Phase 1 training budget across all 3 seeds; Seed `2024` resumed cleanly via `BaseTrainer.load_checkpoint(..., strict=True)` through epoch `240`/`260` with Tier 2 score monotonically drifting from `2.67` to `2.98`, confirming `best_model.pt` locked at epoch `130`):
 
-| Run / Metric | Latency (ms) | Spike Rate | Pos MSE (H=1) | Pos MSE (H=10) | Pos MSE (H=50) | Pos MSE (H=100) | Vel MSE (H=1) | Vel MSE (H=10) | Vel MSE (H=50) | Vel MSE (H=100) | Drift Ratio (H=100) |
-| :--- | :---: | :---: | :---: | :---: | :---: | :---: | :---: | :---: | :---: | :---: | :---: |
-| **Seed 42** | 2.61 | 14.6% | 0.10635 | 0.02117 | 0.01425 | 0.01728 | 0.00027 | 0.01118 | 0.01262 | 0.01153 | **-0.8375** |
-| **Seed 101** | 2.74 | 22.7% | 0.02513 | 0.01080 | 0.01600 | 0.01970 | 0.00441 | 0.02746 | 0.02744 | 0.02337 | **-0.2161** |
-| **Seed 2024** | 2.76 | 25.1% | 0.01534 | 0.00875 | 0.01078 | 0.01067 | 0.00452 | 0.02692 | 0.03177 | 0.02709 | **-0.3043** |
-| **Mean ± Std (N=3)** | **2.70 ± 0.09** | **20.8 ± 5.5%** | **0.0489 ± 0.0500** | **0.0136 ± 0.0067** | **0.0137 ± 0.0027** | **0.0159 ± 0.0047** | **0.0031 ± 0.0024** | **0.0219 ± 0.0092** | **0.0239 ± 0.0100** | **0.0207 ± 0.0081** | **-0.4527 ± 0.3362** |
+| Seed | OL Pos MSE (H=1) | OL Pos MSE (H=10) | OL Pos MSE (H=50) | OL Pos MSE (H=100) | OL Vel MSE (H=100) | PIL Success (50 ep) | PIL Min Err (cm) | PIL Term Err (cm) | Energy (nJ/step) |
+| :--- | :---: | :---: | :---: | :---: | :---: | :---: | :---: | :---: | :---: |
+| **Seed 42** | 0.00016 | 0.00649 | 0.00264 | 0.00246 | 0.01175 | **86.0%** | 0.86 ± 0.80 | 1.57 ± 1.00 | 12.34 |
+| **Seed 101** | 0.00030 | 0.00148 | 0.00477 | 0.00274 | 0.00871 | **56.0%** | 0.90 ± 0.65 | 2.19 ± 1.19 | 12.33 |
+| **Seed 2024** | 0.00009 | 0.00246 | 0.00203 | 0.00201 | 0.00867 | **32.0%** | 0.94 ± 0.64 | 2.93 ± 1.81 | 12.00 |
+| **Mean ± Std (N=3)** | **0.00018 ± 0.00011** | **0.00348 ± 0.00265** | **0.00315 ± 0.00144** | **0.00240 ± 0.00037** | **0.00971 ± 0.00177** | **58.0 ± 27.1%** | **0.90 ± 0.04** | **2.23 ± 0.68** | **12.22 ± 0.19** |
 
-> **Key Empirical Takeaways**:
-> 1. **Multi-Seed Stability Progression**: Under the two-phase pipeline, the relative drift metric $(\text{MSE}_{100} - \text{MSE}_1) / \text{MSE}_1$ yields: **Seed 42 ($-0.8375$)**, **Seed 101 ($-0.2161$)**, and **Seed 2024 ($-0.3043$)**, aggregating to **$-0.4527 \pm 0.3362$**. This ratio reflects the initial pose alignment transient at $H=1$ ($0.0489 \pm 0.0500$) rapidly settling into a stable rollout manifold ($H=10$: $0.0136 \pm 0.0067$, $H=50$: $0.0137 \pm 0.0027$, $H=100$: $0.0159 \pm 0.0047$).
-> 2. **Negligible Multi-Seed Variance across Extended Horizons ($H=50, 100$)**: At $H=50$, position MSE is tightly constrained to **$0.0137 \pm 0.0027$** (relative standard deviation $< 20\%$). At $H=100$, position MSE across all initializations remains below $0.02$ at **$0.0159 \pm 0.0047$**, while velocity MSE is stabilized at **$0.0207 \pm 0.0081$**.
-> 3. **Validation of Two-Phase Inductive Bias**: Passing all seeds through Phase 0 eliminates the ungrounded latent space issue, confirming that representation grounding is an indispensable prerequisite for symplectic predictor stability.
-> 4. **Statistical Validation Artifacts**: Summarized above; historical `results/multiseed/` pruned during SSOT consolidation.
+### 6.5 Closed-Loop Physics-in-the-Loop (PIL) Downstream Control Benchmark [COMPLETED]
+- [x] **Strict Causal Zero-Leakage Protocol**: All closed-loop benchmarks below use **Physics-in-the-Loop (PIL)** (`ArticulatedArmPhysicsStepper` with `payload_attached = (t >= t_c)` at contact onset and causal `OnlineEventCameraStream`) with zero `z_gt_next` leakage. Continuous recurrent baselines (`Continuous RSSM`, `Deep GRU`) are evaluated under **both** Open-Loop PIL (no sensory overwrite during $\phi_t=1$) and Online Observation Update during $\phi_t=1$.
 
-### 6.5 Closed-Loop Downstream Control Task [COMPLETED]
-- [x] **Current Repo State**: Downstream closed-loop latent control is fully implemented, verified, and benchmarked without requiring external physics engines or simulator rollout steps (`results/mppi_benchmark/`):
-  - **Differentiable Forward Kinematics (FK)**: Extracted exact kinematic link offsets, rotation axes, and end-effector tip geometry directly from Unity simulation specifications (`sim/Assets/Scripts/ArticulatedRobotRig.cs`). Implemented PyTorch `DifferentiableForwardKinematics` in [`spwm/models/kinematics.py`](file:///Users/Mattia/Desktop/Studies/Temp/spwm/models/kinematics.py), converting decoded joint coordinates $\hat{\mathbf{q}}_t \in \mathbb{R}^6$ to batched $4 \times 4$ transformation matrices and computing Cartesian 3D end-effector tip positions $(x, y, z)$.
-  - **Latent MPPI Controller**: Implemented `LatentMPPIController` in [`spwm/evaluation/mppi_controller.py`](file:///Users/Mattia/Desktop/Studies/Temp/spwm/evaluation/mppi_controller.py). Evaluates $K = 256$ candidate trajectories over a planning horizon $H = 10$ with action space $\mathbf{u}_\tau \in [-1.0, 1.0]^6$. Performs "mental simulation" (blind autoregressive unroll) entirely inside the isolated symplectic `LatentPredictor` ($M_1$):
-    $$\mathbf{z}_{\tau+1} = M_1(\mathbf{z}_\tau, \mathbf{u}_\tau), \quad \hat{\mathbf{y}}_\tau = \text{Decoder}(\mathbf{z}_\tau)$$
-    conditioned on sensory-grounded initial latent state $\mathbf{z}_t$ without calling visual encoders or spiking dynamics during the rollout.
-  - **Trajectory Cost Formulation**:
-    $$\mathcal{C}(\tau) = \sum_{h=1}^H \left[ w_{\text{pos}} \|\mathbf{x}_{\text{ee}}(h) - \mathbf{x}_{\text{target}}\|_2 + w_{\text{vel}} \|\hat{\mathbf{p}}_h\|_2 + w_{\text{act}} \|\mathbf{u}_h - \mathbf{u}_{h-1}\|_2 \right]$$
-    with weights $w_{\text{pos}} = 1.0$, $w_{\text{vel}} = 0.1$, $w_{\text{act}} = 0.05$, and importance sampling temperature $\lambda = 0.15$.
-  - **Benchmark Execution**: Evaluated closed-loop control across 50 unseen test partition episodes with variable payload masses ($1.20 - 4.50\,\text{kg}$) across 3 vertical elevation planes (Low: $1.04\,\text{m}$, Mid: $1.14\,\text{m}$, High: $1.26\,\text{m}$).
-  - **Comparative Metric Table (Empirical Latent MPPI Benchmark)**:
+| Method / Model | PIL Success (%) | Min Err (cm) | Term Err (cm) | $|\Delta^2 q|$ ($\text{rad/step}^2$) | $|\Delta^3 q|$ | Flips | Latency (ms) |
+| :--- | :---: | :---: | :---: | :---: | :---: | :---: | :---: |
+| *Privileged Jacobian-IK + PD (Oracle)* | *96.0%* | *0.01 ± 0.03* | *0.43 ± 0.73* | *0.00771* | *0.00497* | *10.46* | *22.7* |
+| **SPWM-v0.12.4 (Seed 42)** | **86.0%** | **0.86 ± 0.80** | **1.57 ± 1.00** | **0.00587** | **0.00354** | **14.02** | **36.7** |
+| **SPWM-v0.12.4 ($N=6$ Tier-2, 3 seeds)** | **58.0 ± 27.1%** | **0.90 ± 0.04** | **2.23 ± 0.68** | **0.00860** | **0.00608** | **19.37** | **27.5** |
+| **SPWM-v0.12.4 ($N=25$ Val-Sel., 3 seeds)** | **60.7 ± 2.3%** | **0.88 ± 0.11** | **2.01 ± 0.12** | **0.00931** | **0.00663** | **21.14** | **35.5** |
+| **ANN-Rate (3-Seed Mean ± Std)** | 37.3 ± 9.5% | 1.07 ± 0.28 | 2.98 ± 0.46 | 0.01148 | 0.00938 | 26.00 | 24.6 |
+| **Continuous RSSM (Open-Loop PIL, 3 seeds)** | 15.3 ± 4.6% | 1.31 ± 0.02 | 2.88 ± 0.10 | 0.01998 | 0.02059 | 36.23 | 52.4 |
+| **Continuous RSSM (Online Post., 3 seeds)** | 0.0 ± 0.0% | 1.53 ± 0.06 | 22.43 ± 0.58 | 0.03119 | 0.02875 | 36.13 | 35.1 |
+| **Deep GRU (Open-Loop PIL, 3 seeds)** | 1.3 ± 2.3% | 10.57 ± 7.83 | 16.72 ± 11.31 | 0.00777 | 0.00622 | 14.67 | 67.4 |
+| **Deep GRU (Online Obs., 3 seeds)** | 0.0 ± 0.0% | 6.03 ± 4.00 | 10.87 ± 3.97 | 0.01654 | 0.01350 | 19.67 | 60.3 |
+| **Reactive BC (50 ep, Seed 42)** | 0.0% | 13.13 ± 6.27 | 15.66 ± 8.15 | 0.00140 | 0.00135 | 13.98 | 1.9 |
 
-| Metric | Target / Specification | Observed Empirical Result (`SPWM-v0.12.4`) | Status |
-| :--- | :---: | :---: | :---: |
-| **Grasp Success Rate (%)** | $> 80.0\%$ | **96.0%** (48 / 50 episodes) | **VERIFIED** |
-| **Minimum Placement Distance (Mean Error)** | $< 3.0\,\text{cm}$ | **0.67 ± 0.46 cm** | **VERIFIED** |
-| **Final Terminal Error (Mean Error)** | — | **1.21 cm** | **BOUNDED** |
-| **MPPI Inference Latency (ms / step)** | $< 50.0\,\text{ms}$ | **22.2 ms** ($K=256, H=10, N_{\text{iter}}=3$) | **REAL-TIME (45 Hz)** |
-
-#### Stratification by Vertical Elevation Plane
-
-| Elevation Plane | Episodes | Mean Mass (kg) | Grasp Success Rate (%) | Placement Accuracy (cm) | Mean Terminal Error (cm) |
-| :--- | :---: | :---: | :---: | :---: | :---: |
-| **Low Plane (1.04m)** | 22 | 2.77 | **86.4%** | **1.58 cm** | 3.56 cm |
-| **Mid Plane (1.14m)** | 18 | 2.85 | **61.1%** | **3.27 cm** | 8.29 cm |
-| **High Plane (1.26m)** | 10 | 2.91 | **100.0%** | **1.48 cm** | 10.82 cm |
-
-#### Stratification by Payload Mass Tier
-
-| Mass Tier | Mass Range | Episodes | Grasp Success Rate (%) | Placement Accuracy (cm) | Mean Terminal Error (cm) |
-| :--- | :---: | :---: | :---: | :---: | :---: |
-| **Light** | $1.20 - 2.30\,\text{kg}$ | 17 | **94.1%** | **1.76 cm** | 6.78 cm |
-| **Medium** | $2.30 - 3.40\,\text{kg}$ | 17 | **88.2%** | **1.51 cm** | 6.50 cm |
-| **Heavy** | $3.40 - 4.50\,\text{kg}$ | 16 | **56.3%** | **3.30 cm** | 6.88 cm |
-
-> **Key Empirical Takeaways**:
-> 1. **Latent Space Mental Simulation Supports Downstream Closed-Loop Control**: Without querying the Unity physics engine or executing costly image renders during planning, the agent successfully executes multi-step path integral optimization directly over the latent trajectory unroll $M_1(\mathbf{z}, \mathbf{u})$, validating that SPWM's latent manifold is topologically grounded to physical dynamics.
-> 2. **High Payload Generalization Under Active Perception**: The controller achieves an **80.0% grasp success rate** (minimum placement distance of **$2.17 \pm 1.80\,\text{cm}$**, mean terminal error $6.72\,\text{cm}$) across unseen test trajectories. For light ($1.2 - 2.3\,\text{kg}$) and medium ($2.3 - 3.4\,\text{kg}$) payloads, grasp success reaches **94.1%** and **88.2%** respectively, confirming that Phase 0 active perception heft estimation accurately embeds inertial mass into the initial latent state $\mathbf{z}_t$.
-> 3. **Real-Time Control Budget Compliance**: On a standard CPU, full path integral optimization with $K=256$ candidate trajectories, horizon $H=20$, and 3 refinement iterations executes in **$38.9\,\text{ms}$ per control step**, meeting the $25\,\text{Hz}$ real-time robotic control requirement with zero AST fallbacks.
-> 4. **Benchmark Artifacts**: Saved to [`results/mppi_benchmark/mppi_benchmark_metrics.json`](file:///Users/Mattia/Desktop/Studies/Temp/results/mppi_benchmark/mppi_benchmark_metrics.json), [`results/mppi_benchmark/mppi_benchmark_table.md`](file:///Users/Mattia/Desktop/Studies/Temp/results/mppi_benchmark/mppi_benchmark_table.md), and [`results/mppi_benchmark/mppi_benchmark_results.png`](file:///Users/Mattia/Desktop/Studies/Temp/results/mppi_benchmark/mppi_benchmark_results.png).
+#### Stratification by Elevation Plane & Payload Mass (SPWM Seed 42 PIL, `50` Episodes)
+- **Elevation:** Low (`86.4%`, `0.86 cm`, `n=22`), Mid (`77.8%`, `1.05 cm`, `n=18`), High (`100.0%`, `0.50 cm`, `n=10`).
+- **Mass Tier:** Light `1.20–2.30 kg` (`82.4%`, `0.68 cm`, `n=17`), Medium `2.30–3.40 kg` (`100.0%`, `0.77 cm`, `n=17`), Heavy `3.40–4.50 kg` (`75.0%`, `1.14 cm`, `n=16`).
+- **Disentangled 5-Stage SPWM Architectural Ablation (50-Ep PIL, `t >= t_c`):**
+  - Stage 1 (`SPWM-Base`, unsmoothed MPPI): `62.0%` succ, `1.27 ± 1.14 cm` min, `2.51 ± 1.59 cm` term, `|\Delta^2 q|=0.00710`
+  - Stage 2 (`+ Smooth MPPI`): `62.0%` succ, `1.09 ± 0.98 cm` min, `2.26 ± 1.79 cm` term, `|\Delta^2 q|=0.00729`
+  - Stage 3 (`+ Phase 1 Curriculum`, no handover/lookahead): `72.0%` succ, `0.98 ± 0.97 cm` min, `1.85 ± 1.31 cm` term, `|\Delta^2 q|=0.00600`
+  - Stage 4a (`+ 2-Stage SE(3) Lookahead`, Handover disabled $w_t \equiv 0$): **`86.0%`** succ, **`0.86 ± 0.80 cm`** min, **`1.57 ± 1.00 cm`** term, **`|\Delta^2 q|=0.00587`**
+  - Stage 4b (`+ Residual Handover & 2-Stage Lookahead (Full)`): **`86.0%`** succ, **`0.86 ± 0.80 cm`** min, **`1.57 ± 1.00 cm`** term, **`|\Delta^2 q|=0.00587`** (`w_t > 0` nominal rate `0.0%`)
 
 ### 6.6 Zero-Shot Sim-to-Real Domain Gap & Robustness Stress Test [COMPLETED]
-- [x] **Current Repo State**: Evaluated empirical zero-shot sim-to-real transfer and robustness stress tests strictly without retraining or fine-tuning (`torch.no_grad()`, `model.eval()`) on frozen production checkpoint `results/spwm_v0_12_4_train_m1/model.pt` (`results/robustness_benchmark/robustness_metrics.json`):
+- [x] **Current Repo State**: Evaluated strictly without retraining (`torch.no_grad()`, `model.eval()`) on frozen Seed 42 checkpoint `results/spwm_v0_12_4_train_m1/model.pt` (`results/robustness_benchmark/robustness_metrics.json`):
 
-#### 1. Neuromorphic Visual Stream Perturbations (Sensor Domain Gap)
-Evaluated autonomous tracking error across the full held-out test split (400 trajectories) across horizons $H \in \{1, 10, 50, 100\}$ under 7 sensory perturbation conditions:
+#### 1. Neuromorphic Visual Stream Perturbations ($N=400$ Open-Loop Test Split)
 
-| Perturbation Condition | Spike Rate | Pos MSE (H=1) | Pos MSE (H=10) | Pos MSE (H=50) | Pos MSE (H=100) | Vel MSE (H=100) | Drift Ratio (H=100)* | Status |
+| Perturbation Condition | Spike Rate | Pos MSE (H=1) | Pos MSE (H=10) | Pos MSE (H=50) | Pos MSE (H=100) | Vel MSE (H=100) | Drift Ratio ($L_2$) | Status |
 | :--- | :---: | :---: | :---: | :---: | :---: | :---: | :---: | :---: |
-| **Nominal Baseline ($\theta = 0.08$)** | 14.6% | 0.10635 | 0.02117 | 0.01425 | 0.01728 | 0.01153 | **+0.3432** | BOUNDED |
-| **Threshold Shift ($\theta = 0.05$, Hypersensitive)** | 14.3% | 0.08997 | 0.01732 | 0.01364 | 0.01694 | 0.01193 | **+0.3707** | BOUNDED |
-| **Threshold Shift ($\theta = 0.12$, Hyposensitive)** | 15.3% | 0.12759 | 0.02620 | 0.01632 | 0.01983 | 0.01190 | **+0.3355** | BOUNDED |
-| **Background Activity (0.5% Poisson Flip)** | 14.3% | 0.50225 | 0.07066 | 0.07673 | 0.04694 | 0.02880 | **+0.2436** | BOUNDED |
-| **Background Activity (1.0% Poisson Flip)** | 14.2% | 0.52888 | 0.07616 | 0.09218 | 0.05485 | 0.03542 | **+0.2564** | BOUNDED |
-| **Refractory Period Dropout (10%)** | 14.7% | 0.11683 | 0.02353 | 0.01458 | 0.01734 | 0.01151 | **+0.3280** | BOUNDED |
-| **Refractory Period Dropout (20%)** | 14.9% | 0.12782 | 0.02608 | 0.01509 | 0.01753 | 0.01157 | **+0.3155** | BOUNDED |
+| **Nominal Baseline ($\theta = 0.08$)** | 16.89% | 0.00008 | 0.00025 | 0.00184 | 0.00253 | 0.02197 | 4.6278 | BOUNDED |
+| **Threshold Shift ($\theta = 0.05$)** | 16.24% | 0.00010 | 0.00027 | 0.00173 | 0.00245 | 0.02187 | 4.1182 | BOUNDED |
+| **Threshold Shift ($\theta = 0.12$)** | 18.29% | 0.00010 | 0.00027 | 0.00234 | 0.00295 | 0.02440 | 4.5747 | BOUNDED |
+| **Background Activity (0.5%)** | 16.50% | 0.01740 | 0.01506 | 0.01007 | 0.00703 | 0.06218 | 0.5619 | BOUNDED |
+| **Background Activity (1.0%)** | 16.08% | 0.02794 | 0.02713 | 0.01592 | 0.01055 | 0.08352 | 0.5351 | BOUNDED |
+| **Refractory Dropout (10%)** | 17.12% | 0.00009 | 0.00026 | 0.00192 | 0.00259 | 0.02227 | 4.4305 | BOUNDED |
+| **Refractory Dropout (20%)** | 17.36% | 0.00011 | 0.00027 | 0.00203 | 0.00268 | 0.02267 | 4.2126 | BOUNDED |
 
-> \* *Note on Evaluator Drift Ratio*: In this suite, Drift Ratio is computed via `RolloutEvaluator` as the $L_2$ position error ratio $\text{MAE}_{100} / \text{MAE}_1 = 0.2740 / 0.7983 = +0.3432$. Values $< 1.0$ indicate bounded multi-horizon error relative to the initial step.
+#### 2. Downstream PIL Robustness Under Perturbed Execution Conditions (`50` Test Episodes `[3600, 3649]`, `t >= t_c`, Seeds `42, 101, 2024`)
 
-#### 2. Downstream Latent MPPI Robustness Under Perturbed Execution Conditions
-Batched closed-loop Latent MPPI controller ($K=256, H=10, N_{\text{iter}}=3$) evaluated over 20 canonical test episodes per condition (`results/robustness_benchmark/robustness_metrics.json`):
+| Perturbation Condition | Episodes | SPWM (Seed 42) Succ / Term | SPWM (3-Seed Mean ± Std) Succ / Term | ANN-Rate (3-Seed Mean ± Std) Succ / Min / Term | SPWM Step $w_t>0$ |
+| :--- | :---: | :---: | :---: | :---: | :---: |
+| **Nominal Baseline** | 50 | **86.0%** / **1.57 cm** | **58.0 ± 27.1%** / **2.23 ± 0.68 cm** | 37.3 ± 9.5% / 1.07 cm / 2.98 cm | `0.00 ± 0.00%` |
+| **Sensory Noise Injection (1.0%)** | 50 | **72.0%** (-16.3% rel) / **1.86 cm** | **55.3 ± 19.4%** (-4.6% rel) / **2.34 ± 0.63 cm** | 30.0 ± 3.5% (-19.6% rel) / 1.04 cm / 3.36 cm | `0.00 ± 0.00%` |
+| **Payload Extrapolation (4.80 kg)** | 50 | **78.0%** (-9.3% rel) / **1.78 cm** | **39.3 ± 33.7%** (-32.2% rel) / **2.50 ± 0.62 cm** | 26.7 ± 16.2% (-28.6% rel) / 1.36 cm / 3.64 cm | `0.17 ± 0.29%` *(Seed 2024: 4.0% ep, mean w=0.165)* |
+| **Actuator Drift (0.80x Friction)** | 50 | **70.0%** (-18.6% rel) / **2.07 cm** | **40.7 ± 27.3%** (-29.9% rel) / **2.61 ± 0.54 cm** | 30.7 ± 14.0% (-17.9% rel) / 1.42 cm / 3.74 cm | `0.17 ± 0.29%` *(Seed 2024: 4.0% ep, mean w=0.229)* |
+| **Actuator Drift (1.20x Friction)** | 50 | **76.0%** (-11.6% rel) / **1.97 cm** | **44.0 ± 28.0%** (-24.1% rel) / **2.53 ± 0.56 cm** | 33.3 ± 16.7% (-10.7% rel) / 1.34 cm / 3.51 cm | `0.17 ± 0.29%` *(Seed 2024: 4.0% ep, mean w=0.169)* |
 
-| Perturbation Condition | Episodes | Grasp Success Rate (%) | Mean Error (cm) |
-| :--- | :---: | :---: | :---: |
-| **Nominal Baseline** | 20 | **100.0%** | **1.01 cm** |
-| **Sensory Noise Injection (1.0%)** | 20 | **95.0%** | **1.19 cm** |
-| **Payload Extrapolation (4.80 kg)** | 20 | **70.0%** | **2.84 cm** |
-| **Actuator Drift (0.80x Friction)** | 20 | **70.0%** | **2.69 cm** |
-| **Actuator Drift (1.20x Friction)** | 20 | **60.0%** | **2.65 cm** |
-
-#### Stratification of Downstream Performance Across Shifted Conditions
-
-| Perturbation Condition | Low Plane Succ (%) | Mid Plane Succ (%) | High Plane Succ (%) | Light Mass Succ (%) | Med Mass Succ (%) | Heavy Mass Succ (%) |
-| :--- | :---: | :---: | :---: | :---: | :---: | :---: |
-| **Nominal Baseline** | 81.8% | 55.6% | 90.0% | 82.4% | 82.4% | 56.2% |
-| **Sensory Noise Injection (1.0%)** | 86.4% | 55.6% | 100.0% | 94.1% | 82.4% | 56.2% |
-| **Payload Extrapolation (4.80 kg)** | 4.5% | 27.8% | 30.0% | 23.5% | 23.5% | 6.2% |
-| **Actuator Drift (0.80x Friction)** | 0.0% | 33.3% | 30.0% | 23.5% | 23.5% | 6.2% |
-| **Actuator Drift (1.20x Friction)** | 4.5% | 22.2% | 20.0% | 11.8% | 17.6% | 12.5% |
-
-> **Key Empirical Takeaways**:
-> 1. **Extreme Robustness to Sensor Domain Discrepancies**: The model exhibits remarkable invariance to threshold shifts ($\theta \in [0.05, 0.12]$) and refractory dropout ($10\% - 20\%$). At $H=100$, position MSE under 20% refractory event loss remains virtually identical to nominal ($0.01753$ vs $0.01728$), proving that the SpatialSoftmax bottleneck and ALIF multi-timescale temporal filtering effectively discard sensor timing jitter and pixel dead time.
-> 2. **Downstream Control Immune to 1.0% Background Activity Noise**: In closed-loop Latent MPPI reaching, injecting 1.0% dark-current Poisson flip noise achieves a **78.0% grasp success rate** and **$2.16 \pm 1.74\,\text{cm}$ placement accuracy** (matching the nominal baseline of $74.0\%$ and $2.21\,\text{cm}$). Because mental simulation occurs in latent space $M_1(\mathbf{z}_\tau, \mathbf{u}_\tau)$, sensory noise during the initial observation phase is suppressed.
-> 3. **Vulnerability to Physical Dynamics Mismatch (Sim-to-Real Friction & Inertia Boundary)**: When physical dynamics drift outside the training distribution—such as unmodeled heavy payloads ($4.80\,\text{kg}$) or $\pm 20\%$ actuator friction drift—grasp success drops to $14\% - 18\%$ and placement errors increase to $\sim 5.0\,\text{cm}$ (exceeding the strict $3.0\,\text{cm}$ grasp bounding box). This establishes the exact empirical boundary of zero-shot transfer: while SPWM is immune to visual domain gaps, mechanical and inertial shifts require online closed-loop sensory re-grounding or adaptive gain scheduling.
-> 4. **Benchmark Artifacts**: Saved to [`results/robustness_benchmark/robustness_metrics.json`](file:///Users/Mattia/Desktop/Studies/Temp/results/robustness_benchmark/robustness_metrics.json), [`results/robustness_benchmark/robustness_table.md`](file:///Users/Mattia/Desktop/Studies/Temp/results/robustness_benchmark/robustness_table.md), [`results/robustness_benchmark/robustness_sensor_curves.png`](file:///Users/Mattia/Desktop/Studies/Temp/results/robustness_benchmark/robustness_sensor_curves.png), and [`results/robustness_benchmark/robustness_mppi_bars.png`](file:///Users/Mattia/Desktop/Studies/Temp/results/robustness_benchmark/robustness_mppi_bars.png).
+### 6.7 Forensic Failure-Mode & Inter-Seed Variance Diagnostics [COMPLETED]
+- **Why `Continuous RSSM` and `Deep GRU` Fail in PIL (`Open-Loop` vs. `Online Observation`):**
+  - Under **Online Observation Update** during $\phi_t=1$ (`scripts/diagnostics/forensic_rssm_gru_failure.py`, `results/diagnostics/forensic_rssm_gru_failure.json`), `141/150` (`94.0%`) of `Continuous RSSM` episodes (3 seeds) and `42/50` (`84.0%`) of `Deep GRU` (Seed 42) episodes reach $\le 3.0\,\text{cm}$ pre-contact and collapse via **Post-Contact Impulse Divergence + Terminal Velocity Failure** (`7.17` / `5.75 rad/s` vs. $\tau_{\text{vel}} = 1.50\,\text{rad/s}$), yielding `0.0 ± 0.0%` across all 3 seeds for both baselines.
+  - Under **Open-Loop PIL** (`--disable-handover`, no online sensory overwrite during $\phi_t=1$), `Continuous RSSM` improves only to `15.3 ± 4.6%` (`18.0% / 10.0% / 18.0%`, `36.23` flips) and `Deep GRU` scores `1.3 ± 2.3%` (`4.0% / 0.0% / 0.0%`), confirming `SPWM`'s structural superiority regardless of baseline sensory mode.
+- **Inter-Seed PIL Variance Resolution (`N=6` Tier-2 vs. `N=25` Validation `[3200, 3224]`):**
+  - Representation convergence is uniform across seeds (ALIF spike rate `11.93–12.27%`, `0.0%` hyperactive neurons, `softplus(gate_scale)` `49.04–49.07`, open-loop `H=100` Pos MSE `0.00201–0.00274`).
+  - Evaluating all 5 saved checkpoints per seed strictly on the held-out `N=25` validation split (`[3200, 3224]`) selects `checkpoint_phase_4.pt` (Seed 42, `92.0%` val $\to$ `58.0%` test), `checkpoint_phase_1.pt` (Seed 101, `68.0%` val $\to$ `62.0%` test), and `checkpoint_phase_2.pt` (Seed 2024, `80.0%` val $\to$ `62.0%` test), reducing 3-seed test std **`11.7×`** from **`58.0 ± 27.1%`** (`N=6` Tier-2) to **`60.7 ± 2.3%`** (`N=25` Val-Selected) with zero test-set peeking.
 
 ---
 
-## 7. Concrete Next Steps & Action Plan Prior to Submission
+## 7. CoRL Submission Summary & Artifact Index
 
-To transition this technical dossier into a submission-ready manuscript:
-
-```mermaid
-flowchart LR
-    Step1["Step 1: Comparative Baselines [DONE]\n(RSSM, Deep GRU, ConvLSTM)"] --> Step2["Step 2: Non-Spiking ANN Ablation [DONE]\n(Exact Param-Matched Leaky Rate)"]
-    Step2 --> Step3["Step 3: Neuromorphic Energy Profiling [DONE]\n(SOPs vs FLOPs / Loihi-2 vs Orin)"]
-    Step3 --> Step4["Step 4: Multi-Seed Statistical Validation [DONE]\n(Seeds 42, 101, 2024 Two-Phase Pipeline)"]
-    Step4 --> Step5["Step 5: Latent MPC Planning Experiment [DONE]\n(Latent MPPI in latent space)"]
-    Step5 --> Step6["Step 6: Sim-to-Real Domain Gap Benchmark [DONE]\n(Sensor noise, payload & friction drift)"]
-```
-
-1. **Comparative Baseline Benchmarks [COMPLETED]**: Trained and benchmarked Continuous RSSM, Deep GRU, and Continuous ConvLSTM under matched parameter budgets (`results/spwm_v0_12_4_train_m1/comparative_metrics_v0_12_4.json`).
-2. **Rate-Based ANN Ablation [COMPLETED]**: Evaluated exact parameter-matched `ANNWorldModel` with continuous leaky rate units, proving SNN ALIF threshold dynamics prevent compounding drift (`results/spwm_v0_12_4_train_m1/comparative_metrics_v0_12_4.json`).
-3. **Neuromorphic SOP & Energy Profiling [COMPLETED]**: Computed active Synaptic Operations (SOPs) on Loihi-2 (`12.34 nJ/step`) vs own GPU MACs (`60.36 nJ/step`), proving a `4.9x` recurrent step energy efficiency advantage (`results/energy_profiling/energy_profiling_metrics.json`, `results/ssot_eval_metrics.json`, `docs/FIGURE_METRICS.md`).
-4. **Multi-Seed Statistical Verification [COMPLETED]**: Executed the full two-phase pipeline across seeds 42, 101, and 2024, confirming negative drift and low variance across extended horizons.
-5. **Benchmark Latent MPC Closed-Loop Controller [COMPLETED]**: Implemented differentiable forward kinematics and a Model Predictive Path Integral (MPPI) controller operating directly on SPWM's latent space ($M_1$), achieving `96.0%` (`48/50`) grasp success rate, `0.67 ± 0.46 cm` accuracy, `1.21 cm` terminal error, and `22.2 ms` step latency across `1.20 - 4.50 kg` payloads (`results/mppi_benchmark/mppi_benchmark_metrics.json`).
+1. **Comparative Baselines & ANN Ablation**: Synchronized in [`results/spwm_v0_12_4_train_m1/comparative_metrics_v0_12_4.json`](file:///Users/Mattia/Desktop/Studies/Temp/results/spwm_v0_12_4_train_m1/comparative_metrics_v0_12_4.json).
+2. **Neuromorphic SOP & Energy Profiling**: Synchronized in [`results/energy_profiling/energy_profiling_metrics.json`](file:///Users/Mattia/Desktop/Studies/Temp/results/energy_profiling/energy_profiling_metrics.json) and `results/multiseed/seed_{101,2024}_energy/`.
+3. **Multi-Seed Statistical Verification**: Synchronized in [`results/multiseed/multiseed_metrics.json`](file:///Users/Mattia/Desktop/Studies/Temp/results/multiseed/multiseed_metrics.json).
+4. **Closed-Loop PIL MPPI & Robustness SSOT**: Synchronized in [`results/mppi_benchmark/mppi_benchmark_metrics.json`](file:///Users/Mattia/Desktop/Studies/Temp/results/mppi_benchmark/mppi_benchmark_metrics.json), [`results/robustness_benchmark/robustness_metrics.json`](file:///Users/Mattia/Desktop/Studies/Temp/results/robustness_benchmark/robustness_metrics.json), [`results/ssot_eval_metrics.json`](file:///Users/Mattia/Desktop/Studies/Temp/results/ssot_eval_metrics.json), [`docs/FIGURE_METRICS.md`](file:///Users/Mattia/Desktop/Studies/Temp/docs/FIGURE_METRICS.md), and [`docs/CORL_FINAL_BENCHMARK_SUMMARY.md`](file:///Users/Mattia/Desktop/Studies/Temp/docs/CORL_FINAL_BENCHMARK_SUMMARY.md).
 
 ---
 
-## 8. SPWM-v0.12.4 Deploy-Ready Smoothness & SE(3) Upgrade Addendum
+## 8. SPWM-v0.12.4 Architecture & Training Specification
 
-To prepare SPWM for physical robot arm deployment (suppressing high-frequency joint jitter, enforcing slew-rate limits, and improving end-effector orientation accuracy), `SPWM-v0.12.4` (`392,141` parameters) introduced coordinated upgrades across Phase 0, Phase 1, and the Latent MPPI controller:
-
-- **Phase 0 Representation (`160` epochs, best `val_loss=1.28173 @ Epoch 159`)**:
-  - Added ALIF firing-rate homeostasis ($\lambda_{\text{spike\_balance}} = 0.25$, target $0.12$), reducing silent neurons from `44.92%` (`v0.12.20`) to `19.14%` and hyperactive neurons from `5.86%` to `2.34%` at `mean_spike_rate = 0.1684`.
-  - Added SE(3) end-effector rotation supervision (`ee_rot_weight = 0.5`, `cartesian_weight = 40.0`), decoded temporal kinematic smoothness (`lambda_kinematic_smooth = 0.5`), and cosine LR decay (`1.0x -> 0.20x`).
-  - On 50-episode grounded evaluation vs `v0.12.20`: acceleration ratio dropped `7.79x -> 3.88x`, `kin_fwd_mae` improved `0.1829 -> 0.1079`, direction flips dropped `205.3 -> 156.4`, and rotation error improved `0.049 -> 0.043 rad` (`p90: 0.100 -> 0.082`).
-- **Phase 1 Predictor $M_1$ (`240` epochs across 4-Phase Latch Curriculum, best `mppi_score = 2.86639 @ Epoch 200`)**:
-  - Matched AR(1) training noise ($\beta = 0.90$, $\sigma = 0.08$, shoulder $1.6\times$, elbow $1.4\times$) to `MPPIConfig`, added SE(3) + temporal smoothness to `compute_m1_loss`, and tightened Latch thresholds (`0.10` / `0.095`).
-  - `rollout_mae = 0.05500 rad` (vs `0.08184` in `v0.12.20`), `rollout_score = 0.38069`, `drift_ratio = 2.69x` (vs `2.84x`), `H=100` position MSE `0.003501` (`0.11864 rad` MAE), Tier 2 Ep 240 `succ = 100.0%`, `rot = 0.0104 rad`.
-- **Deploy-Ready Latent MPPI Controller (`50`-episode benchmark, `results/mppi_benchmark/`)**:
-  - Receding-horizon `nominal_actions` warm-start, 2-stage $SE(3)$ horizon lookahead (`t_c -> t_grasp`), residual-gated active perception, `max_action_delta = 0.10` (normalized action units/step) slew-rate clamping, `w_pos = 80.0`, `w_rot = 100.0`, `w_damping = 12.0`, `w_jerk = 4.0`, `w_joint_accel = 15.0`, `w_joint_limit = 50.0`, `w_critic = 0.0`.
-  - **Grasp Success Rate**: **`96.0%`** (48/50 episodes; Low `90.9%`, Mid `100.0%`, High `100.0%`; Light `88.2%`, Medium `100.0%`, Heavy `100.0%`), **`0.67 ± 0.46 cm`** minimum placement accuracy (`0.670 ± 0.459 cm`), **`1.207 cm`** terminal error, **`22.70 ms`** step latency.
-  - **Closed-Loop Ghost Rollout (`traj 3622`)**: `mean_ddq = 0.00426 rad/step^2` (`-64.7%` vs `0.01208` in `v0.12.20`), `mean_dddq = 0.00524` (`-68.8%` vs `0.01682`), `flips = 74` (`-41.7%` vs `127`), `mean_latent_error = 1.17 cm`.
-6. **Sim-to-Real Gap Analysis & Robustness Stress Test [COMPLETED]**: Formally evaluated visual sensor domain gaps (threshold shifts, thermal Poisson flip noise, refractory dropout) and physical dynamics perturbations (out-of-distribution 4.80 kg payload mass, loose/stiff actuator friction drift) across 400 test trajectories and 50 closed-loop MPPI episodes with zero retraining (`results/robustness_benchmark/`).
+`SPWM-v0.12.4` (`392,141` total / `317,900` active inference parameters) integrates ALIF firing-rate homeostasis ($\lambda_{\text{spike\_balance}} = 0.25$, target $0.12$), SE(3) end-effector supervision (`ee_rot_weight = 0.5`, `cartesian_weight = 40.0`), decoded kinematic smoothness (`lambda_kinematic_smooth = 0.5`), 4-phase Latch/DAgger/AR(1) curriculum training, and receding-horizon Latent MPPI control (`horizon = 10`, `num_samples = 256`, `num_iterations = 3`, `max_action_delta = 0.10`, 2-stage SE(3) lookahead, and causal residual-gated active perception during $\phi_t = 1$). Under full 50-episode Physics-in-the-Loop (`t >= t_c`) evaluation, canonical Seed `42` achieves **`86.0%`** grasp success (`0.86 ± 0.80 cm` min placement error, `1.57 ± 1.00 cm` terminal error), `N=25` validation-selected 3-seed SPWM achieves **`60.7 ± 2.3%`** (`58.0 ± 27.1%` under `N=6` Tier-2), disentangled ablation advances monotonically (`62.0% → 62.0% → 72.0% → 86.0%`), 3-seed OOD PIL robustness yields `55.3% / 39.3% / 40.7% / 44.0%` (`70.0%–78.0%` on Seed `42`), and Loihi-2 recurrent core energy averages **`12.22 ± 0.19 nJ/step`** across 3 seeds.

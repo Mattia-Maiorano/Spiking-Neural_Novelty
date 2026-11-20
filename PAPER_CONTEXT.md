@@ -4,32 +4,232 @@
 
 ## 1. SSOT Metrics & Benchmark Data
 
+### `docs/CORL_FINAL_BENCHMARK_SUMMARY.md`
+> CoRL final grounded multi-seed, 50-episode PIL, ablation, robustness, and energy summary + LaTeX tables
+
+# SPWM-v0.12.4 — CoRL Final Grounded Benchmark Summary
+
+All closed-loop control metrics below are evaluated under strict **Physics-in-the-Loop (PIL)** execution (`ArticulatedArmPhysicsStepper`, rigid payload attached at contact onset $t \ge t_c$, causal `OnlineEventCameraStream`, and **zero** ground-truth `z_gt_next` leakage) across `50` unseen test episodes (`[3600, 3649]`) under identical MPPI settings ($K=256, H=10, N_{\text{iter}}=3$, slew clamp $0.10$). All learned world-model baselines are evaluated across Seeds `42, 101, 2024`, and both **Open-Loop PIL** (no online sensory overwrite during $\phi_t=1$) and **Online Observation Update** during $\phi_t=1$ are reported transparently for `Continuous RSSM` and `Deep GRU`.
+
+---
+
+## 1. Publication-Ready LaTeX Tables
+
+### Table 1: Multi-Horizon Open-Loop Rollout ($N=400$, $H=100$, $t_{\text{start}}=4$; Symmetric Horizons, Multi-Seed Mean $\pm$ Std)
+
+```latex
+\begin{table}[t]
+\centering
+\caption{\textbf{Multi-Horizon Open-Loop Rollout ($N=400$, $H=100$, $t_{\text{start}}=4$).} Symmetric Position and Velocity MSE horizons ($H \in \{1, 10, 50, 100\}$). Mean $\pm$ seed std across 3 seeds ($42, 101, 2024$) with full $160+240$ training budget for SPWM, ANN-Rate, and Continuous RSSM; single seed ($42$) for Deep GRU and Continuous ConvLSTM.}
+\label{tab:open_loop_rollout}
+\resizebox{\textwidth}{!}{%
+\begin{tabular}{lccccccccc}
+\toprule
+\textbf{Model Architecture} & \textbf{Params (Act.)} & \textbf{Pos H=1} & \textbf{Pos H=10} & \textbf{Pos H=50} & \textbf{Pos H=100} & \textbf{Vel H=1} & \textbf{Vel H=10} & \textbf{Vel H=50} & \textbf{Vel H=100} \\
+\midrule
+Continuous ConvLSTM & 296.9k & 0.00002 & \textbf{0.00012} & \textbf{0.00150} & 0.00707 & 0.00147 & \textbf{0.00553} & \textbf{0.01095} & 0.33696 \\
+Deep GRU & 338.9k & 0.00003 & 0.00029 & 0.00173 & 0.00650 & 0.00097 & 0.00643 & 0.01605 & 0.11191 \\
+Continuous RSSM (3 seeds) & 380.5k & \textbf{0.00001 $\pm$ 0.00001} & 0.00029 $\pm$ 0.00006 & 0.00166 $\pm$ 0.00002 & \textbf{0.00145 $\pm$ 0.00009} & \textbf{0.00033 $\pm$ 0.00017} & 0.01659 $\pm$ 0.00244 & 0.02262 $\pm$ 0.00088 & 0.02101 $\pm$ 0.00044 \\
+ANN-Rate (Leaky, 3 seeds) & 392.1k (317.9k) & 0.00028 $\pm$ 0.00012 & 0.00249 $\pm$ 0.00032 & 0.00341 $\pm$ 0.00264 & 0.00210 $\pm$ 0.00063 & 0.00193 $\pm$ 0.00069 & 0.03356 $\pm$ 0.00511 & 0.02440 $\pm$ 0.01698 & 0.01183 $\pm$ 0.00715 \\
+\textbf{SPWM-v0.12.4 (3 seeds)} & \textbf{392.1k (317.9k)} & 0.00018 $\pm$ 0.00011 & 0.00348 $\pm$ 0.00265 & 0.00315 $\pm$ 0.00144 & 0.00240 $\pm$ 0.00037 & 0.00139 $\pm$ 0.00076 & 0.04507 $\pm$ 0.02601 & 0.02466 $\pm$ 0.01271 & \textbf{0.00971 $\pm$ 0.00177} \\
+\bottomrule
+\end{tabular}%
+}
+\end{table}
+```
+
+### Table 2: Closed-Loop Physics-in-the-Loop (PIL) Benchmark (`50` Test Episodes `[3600, 3649]`, $t \ge t_c$)
+
+```latex
+\begin{table}[t]
+\centering
+\caption{\textbf{Closed-Loop Physics-in-the-Loop (PIL) Manipulation Benchmark (`50` Test Episodes, Payload Attached at Contact Onset $t \ge t_c$).} Continuous recurrent baselines (RSSM, Deep GRU) are reported under \textit{both} Open-Loop PIL (no sensory overwrite during $\phi_t=1$) and Online Observation Update during $\phi_t=1$. SPWM is reported under original $N=6$ Tier-2 checkpoint selection, expanded $N=25$ validation-split (`[3200, 3224]`) selection, and Canonical Seed $42$.}
+\label{tab:pil_control}
+\resizebox{\textwidth}{!}{%
+\begin{tabular}{lccccccc}
+\toprule
+\textbf{Method} & \textbf{PIL Success (\%)} & \textbf{Min Err (cm)} & \textbf{Term Err (cm)} & $|\Delta^2 q|$ ($\text{rad/step}^2$) & $|\Delta^3 q|$ & \textbf{Flips} & \textbf{Latency (ms)} \\
+\midrule
+\textit{Privileged Jacobian-IK + PD (Oracle)} & \textit{96.0} & \textit{0.01 $\pm$ 0.03} & \textit{0.43 $\pm$ 0.73} & \textit{0.00771} & \textit{0.00497} & \textit{10.46} & \textit{22.7} \\
+\midrule
+Reactive BC (50 ep, Seed 42) & 0.0 & 13.13 $\pm$ 6.27 & 15.66 $\pm$ 8.15 & 0.00140 & 0.00135 & 13.98 & 1.9 \\
+Deep GRU (Open-Loop PIL, 3 seeds) & 1.3 $\pm$ 2.3 & 10.57 $\pm$ 7.83 & 16.72 $\pm$ 11.31 & 0.00777 & 0.00622 & 14.67 & 67.4 \\
+Deep GRU (Online Obs., 3 seeds) & 0.0 $\pm$ 0.0 & 6.03 $\pm$ 4.00 & 10.87 $\pm$ 3.97 & 0.01654 & 0.01350 & 19.67 & 60.3 \\
+Continuous RSSM (Open-Loop PIL, 3 seeds) & 15.3 $\pm$ 4.6 & 1.31 $\pm$ 0.02 & 2.88 $\pm$ 0.10 & 0.01998 & 0.02059 & 36.23 & 52.4 \\
+Continuous RSSM (Online Post., 3 seeds) & 0.0 $\pm$ 0.0 & 1.53 $\pm$ 0.06 & 22.43 $\pm$ 0.58 & 0.03119 & 0.02875 & 36.13 & 35.1 \\
+ANN-Rate (3 seeds) & 37.3 $\pm$ 9.5 & 1.07 $\pm$ 0.28 & 2.98 $\pm$ 0.46 & 0.01148 & 0.00938 & 26.00 & 24.6 \\
+\textbf{SPWM-v0.12.4 ($N=6$ Tier-2, 3 seeds)} & \textbf{58.0 $\pm$ 27.1} & \textbf{0.90 $\pm$ 0.04} & \textbf{2.23 $\pm$ 0.68} & \textbf{0.00860} & \textbf{0.00608} & \textbf{19.37} & \textbf{27.5} \\
+\textbf{SPWM-v0.12.4 ($N=25$ Val-Sel., 3 seeds)} & \textbf{60.7 $\pm$ 2.3} & \textbf{0.88 $\pm$ 0.11} & \textbf{2.01 $\pm$ 0.12} & \textbf{0.00931} & \textbf{0.00663} & \textbf{21.14} & \textbf{35.5} \\
+\textbf{SPWM-v0.12.4 (Canonical Seed 42)} & \textbf{86.0} & \textbf{0.86 $\pm$ 0.80} & \textbf{1.57 $\pm$ 1.00} & \textbf{0.00587} & \textbf{0.00354} & \textbf{14.02} & \textbf{36.7} \\
+\bottomrule
+\end{tabular}%
+}
+\end{table}
+```
+
+> **Note on Single-Seed vs. 3-Seed Deep GRU:** On Canonical Seed 42 alone, `Deep GRU (Open-Loop PIL)` scores `4.0%` (`min=1.68 cm`, `term=5.67 cm`) and `Deep GRU (Online Obs.)` scores `0.0%` (`min=1.88 cm`, `term=14.96 cm`).
+
+### Table 3: Disentangled 5-Stage SPWM Architectural Ablation in PIL (`50` Test Episodes `[3600, 3649]`, $t \ge t_c$)
+
+```latex
+\begin{table}[t]
+\centering
+\caption{\textbf{Disentangled SPWM Architectural Ablation in PIL (`50` Episodes `[3600, 3649]`, $t \ge t_c$).} Stage 4a isolates `+ 2-Stage SE(3) Lookahead` with Residual Handover strictly disabled ($w_t \equiv 0$); Stage 4b enables both.}
+\label{tab:spwm_ablation}
+\begin{tabular}{lcccccc}
+\toprule
+\textbf{Ablation Stage} & \textbf{PIL Success (\%)} & \textbf{Min Err (cm)} & \textbf{Term Err (cm)} & $|\Delta^2 q|$ & $|\Delta^3 q|$ & \textbf{Flips} \\
+\midrule
+1. SPWM-Base (Phase 1 Warmup, Unsmoothed MPPI) & 62.0 & 1.27 $\pm$ 1.14 & 2.51 $\pm$ 1.59 & 0.00710 & 0.00499 & 16.04 \\
+2. + Smooth MPPI Controls & 62.0 & 1.09 $\pm$ 0.98 & 2.26 $\pm$ 1.79 & 0.00729 & 0.00451 & 15.34 \\
+3. + Phase 1 Curriculum (4-Stage, No Handover/Lookahead) & 72.0 & 0.98 $\pm$ 0.97 & 1.85 $\pm$ 1.31 & 0.00600 & 0.00366 & 14.24 \\
+4a. + 2-Stage SE(3) Lookahead (Handover Disabled, $w_t \equiv 0$) & 86.0 & 0.86 $\pm$ 0.80 & 1.57 $\pm$ 1.00 & 0.00587 & 0.00354 & 14.02 \\
+\textbf{4b. + Residual Handover \& 2-Stage Lookahead (Full)} & \textbf{86.0} & \textbf{0.86 $\pm$ 0.80} & \textbf{1.57 $\pm$ 1.00} & 0.00587 & 0.00354 & 14.02 \\
+\bottomrule
+\end{tabular}
+\end{table}
+```
+
+### Table 4: Symmetric 3-Seed Zero-Shot Sim-to-Real PIL Robustness Stress Test — SPWM vs. ANN-Rate (`50` Test Episodes, $t \ge t_c$)
+
+```latex
+\begin{table}[t]
+\centering
+\caption{\textbf{Zero-Shot Physical \& Sensory Robustness Stress Test in PIL (`50` Test Episodes `[3600, 3649]`, $t \ge t_c$).} Completely symmetric 3-seed comparison ($42, 101, 2024$) of frozen SPWM-v0.12.4 vs. parameter-matched ANN-Rate, alongside Canonical Seed $42$. Relative success retention ($\Delta_{\text{rel}}$) is computed against each model's Nominal Baseline.}
+\label{tab:pil_robustness}
+\resizebox{\textwidth}{!}{%
+\begin{tabular}{lccccccc}
+\toprule
+\textbf{Perturbation Condition} & \multicolumn{2}{c}{\textbf{SPWM-v0.12.4 (Seed 42)}} & \multicolumn{2}{c}{\textbf{SPWM-v0.12.4 (3-Seed Mean $\pm$ Std)}} & \multicolumn{3}{c}{\textbf{ANN-Rate (3-Seed Mean $\pm$ Std)}} \\
+\cmidrule(lr){2-3} \cmidrule(lr){4-5} \cmidrule(lr){6-8}
+ & \textbf{Succ (\%)} & \textbf{Term Err (cm)} & \textbf{Succ (\%)} & \textbf{Term Err (cm)} & \textbf{Succ (\%)} & \textbf{Min Err (cm)} & \textbf{Term Err (cm)} \\
+\midrule
+Nominal Baseline & \textbf{86.0} & \textbf{1.57} & \textbf{58.0 $\pm$ 27.1} & \textbf{2.23 $\pm$ 0.68} & 37.3 $\pm$ 9.5 & 1.07 $\pm$ 0.28 & 2.98 $\pm$ 0.46 \\
+Sensory Noise Injection (1.0\%) & \textbf{72.0 (-16.3\% rel)} & \textbf{1.86} & \textbf{55.3 $\pm$ 19.4 (-4.6\% rel)} & \textbf{2.34 $\pm$ 0.63} & 30.0 $\pm$ 3.5 (-19.6\% rel) & 1.04 $\pm$ 0.18 & 3.36 $\pm$ 0.53 \\
+Payload Extrapolation (4.80 kg) & \textbf{78.0 (-9.3\% rel)} & \textbf{1.78} & \textbf{39.3 $\pm$ 33.7 (-32.2\% rel)} & \textbf{2.50 $\pm$ 0.62} & 26.7 $\pm$ 16.2 (-28.6\% rel) & 1.36 $\pm$ 0.20 & 3.64 $\pm$ 0.80 \\
+Actuator Drift (0.80$\times$ Friction) & \textbf{70.0 (-18.6\% rel)} & \textbf{2.07} & \textbf{40.7 $\pm$ 27.3 (-29.9\% rel)} & \textbf{2.61 $\pm$ 0.54} & 30.7 $\pm$ 14.0 (-17.9\% rel) & 1.42 $\pm$ 0.22 & 3.74 $\pm$ 0.83 \\
+Actuator Drift (1.20$\times$ Friction) & \textbf{76.0 (-11.6\% rel)} & \textbf{1.97} & \textbf{44.0 $\pm$ 28.0 (-24.1\% rel)} & \textbf{2.53 $\pm$ 0.56} & 33.3 $\pm$ 16.7 (-10.7\% rel) & 1.34 $\pm$ 0.21 & 3.51 $\pm$ 1.21 \\
+\bottomrule
+\end{tabular}%
+}
+\end{table}
+```
+
+### Table 5: Recurrent State-Estimator Core vs. Full End-to-End Closed-Loop Step Energy Audit
+
+```latex
+\begin{table}[t]
+\centering
+\caption{\textbf{Recurrent State-Estimator Core vs. Full End-to-End Closed-Loop Step Energy.} Panel (a) isolates the recurrent state-estimator core (Loihi-2 SOPs at $1.5\,\text{pJ/SOP}$ vs. Jetson Orin GPU MACs at $0.9\,\text{pJ/MAC}$; 3-seed SPWM spike rate: $12.15 \pm 0.19\%$, $8,150 \pm 129$ SOPs/step). Panel (b) reports full end-to-end closed-loop step energy on Jetson Orin including the shared dual-stream Conv2D + SpatialSoftmax encoder ($882{,}688$ MACs, $794.4\,\text{nJ}$) and $K=256 \times H=10 \times N_{\text{iter}}=3 = 7{,}680$ batched MPPI rollouts ($1.219\,\text{GMACs}$ for SPWM/ANN-Rate).}
+\label{tab:energy_audit}
+\resizebox{\textwidth}{!}{%
+\begin{tabular}{lccccccc}
+\toprule
+\textbf{Model Architecture} & \textbf{Core Ops / Step} & \textbf{Core Energy (nJ)} & \textbf{Core Power @ 20Hz} & \textbf{Core vs. GPU} & \textbf{MPPI Rollout MACs} & \textbf{E2E Step Energy (mJ)} & \textbf{E2E Power @ 20Hz} \\
+\midrule
+\textbf{SPWM-v0.12.4 (Loihi-2 Core + Orin, 3 seeds)} & \textbf{8,150 $\pm$ 129 SOPs} & \textbf{12.22 $\pm$ 0.19} & \textbf{0.244 $\pm$ 0.004 mW} & \textbf{4.94 $\pm$ 0.08$\times$} & \textbf{1.219 G} & \textbf{1.0979} & \textbf{21.96 mW} \\
+ANN-Rate (Orin GPU) & 67,072 MACs & 60.36 & 1.207 mW & 1.00$\times$ (Ref) & 1.219 G & 1.0979 & 21.96 mW \\
+Deep GRU (Orin GPU) & 299,520 MACs & 269.57 & 5.391 mW & 1.00$\times$ & 1.942 G & 1.7490 & 34.98 mW \\
+Continuous RSSM (Orin GPU) & 365,056 MACs & 328.55 & 6.571 mW & 1.00$\times$ & 2.358 G & 2.1236 & 42.47 mW \\
+Continuous ConvLSTM (Orin GPU) & 2,359,296 MACs & 2123.37 & 42.467 mW & 1.00$\times$ & 111.312 G & 100.1833 & 2003.67 mW \\
+\bottomrule
+\end{tabular}%
+}
+\end{table}
+```
+
+---
+
+## 2. Residual-Gated Handover ($w_t > 0$) Telemetry & Validation Threshold Sweep
+
+### 2.1 $w_t > 0$ Activation Across All 5 PIL Robustness Conditions (`[3600, 3649]`, Seeds `42, 101, 2024`)
+
+| Perturbation Condition | Seed 42 (Ep% / Step% / Mean $w$) | Seed 101 (Ep% / Step% / Mean $w$) | Seed 2024 (Ep% / Step% / Mean $w$) | 3-Seed Mean Step $w_t > 0$ |
+| :--- | :---: | :---: | :---: | :---: |
+| **Nominal Baseline** | `0.0% / 0.0% / 0.000` | `0.0% / 0.0% / 0.000` | `0.0% / 0.0% / 0.000` | `0.00 ± 0.00%` |
+| **Sensory Noise Injection (1.0%)** | `0.0% / 0.0% / 0.000` | `0.0% / 0.0% / 0.000` | `0.0% / 0.0% / 0.000` | `0.00 ± 0.00%` |
+| **Payload Extrapolation (4.80 kg)** | `0.0% / 0.0% / 0.000` | `0.0% / 0.0% / 0.000` | `4.0% / 0.5% / 0.165` | `0.17 ± 0.29%` |
+| **Actuator Drift (0.80x Friction)** | `0.0% / 0.0% / 0.000` | `0.0% / 0.0% / 0.000` | `4.0% / 0.5% / 0.229` | `0.17 ± 0.29%` |
+| **Actuator Drift (1.20x Friction)** | `0.0% / 0.0% / 0.000` | `0.0% / 0.0% / 0.000` | `4.0% / 0.5% / 0.169` | `0.17 ± 0.29%` |
+
+### 2.2 Handover Trigger Threshold Sweep on Held-Out Validation Split (`[3200, 3249]`, $d_{\text{pred}} > \tau$)
+
+| Seed & Threshold $\tau$ | Nominal (Succ / Ep $w_t>0$) | 1.0% Noise (Succ / Ep $w_t>0$) | 4.80 kg Payload (Succ / Ep $w_t>0$) | 0.80$\times$ Friction (Succ / Ep $w_t>0$) | 1.20$\times$ Friction (Succ / Ep $w_t>0$) |
+| :--- | :---: | :---: | :---: | :---: | :---: |
+| **seed42 ($\tau=0.026 m$)** | `78.0% / 0.0%` | `78.0% / 0.0%` | `66.0% / 0.0%` | `70.0% / 0.0%` | `72.0% / 0.0%` |
+| **seed42 ($\tau=0.020 m$)** | `78.0% / 0.0%` | `78.0% / 0.0%` | `66.0% / 0.0%` | `70.0% / 0.0%` | `72.0% / 0.0%` |
+| **seed42 ($\tau=0.015 m$)** | `78.0% / 0.0%` | `78.0% / 0.0%` | `66.0% / 0.0%` | `70.0% / 0.0%` | `72.0% / 0.0%` |
+| **seed2024 ($\tau=0.026 m$)** | `46.0% / 0.0%` | `36.0% / 0.0%` | `42.0% / 0.0%` | `38.0% / 0.0%` | `38.0% / 0.0%` |
+| **seed2024 ($\tau=0.020 m$)** | `46.0% / 0.0%` | `36.0% / 0.0%` | `42.0% / 0.0%` | `38.0% / 0.0%` | `38.0% / 0.0%` |
+| **seed2024 ($\tau=0.015 m$)** | `46.0% / 0.0%` | `36.0% / 0.0%` | `42.0% / 0.0%` | `38.0% / 0.0%` | `38.0% / 0.0%` |
+
+**Scientific Takeaway (Task 1):**
+1. Disentangling Table 3 Stage 4 proves that **100% of the `+14.0 pp` nominal PIL jump (`72.0% -> 86.0%`)** comes from `2-Stage SE(3) Lookahead` (`Stage 4a` with $w_t \equiv 0$ achieves `86.0%`, identical to `Stage 4b` Full).
+2. Because post-contact event bursts (`ev_online` at $t \ge t_c$) yield raw sensory decoded distances of `dist_obs = 0.16–0.22 m` and `rot_obs = 0.39–0.64 rad` while `M1` predicts within `dist_pred = 1.39–1.74 cm` median, the residual gate's quality checks (`dist_obs < 0.025 and rot_obs < 0.049`, or `dist_obs < dist_pred` at $t \le t_c+2$) reject corrupted sensory bursts (`0.0%` false triggers on nominal episodes across all 3 seeds and across $\tau \in \{0.026, 0.020, 0.015\}\,\text{m}$), activating selectively only when heavy OOD dynamics degrade `z_pred` beyond `z_obs` (e.g., Seed `2024`: `4.0%` of episodes / `0.5%` of $\phi_t=1$ steps across `4.80 kg`, `0.80x`, and `1.20x` friction).
+
+---
+
+## 3. Diagnostic Proof: $N=6$ Tier-2 vs. $N=25$ Validation Checkpoint Selection (`[3200, 3224]` $\to$ `[3600, 3649]`)
+
+| Seed | Checkpoint | Epoch | Val $N=25$ Succ (%) | Test $N=50$ Succ (%) | Test Min Err (cm) | Test Term Err (cm) | Selection Policy |
+| :--- | :--- | :---: | :---: | :---: | :---: | :---: | :--- |
+| Seed 42 | `best_model.pt` | `200` | `80.0%` | — | — | — | Val-Only |
+| Seed 42 | `checkpoint_phase_1.pt` | `181` | `60.0%` | — | — | — | Val-Only |
+| Seed 42 | `checkpoint_phase_2.pt` | `188` | `52.0%` | — | — | — | Val-Only |
+| Seed 42 | `checkpoint_phase_3.pt` | `200` | `88.0%` | — | — | — | Val-Only |
+| Seed 42 | `checkpoint_phase_4.pt` | `240` | `92.0%` | **58.0%** | 1.00 | 2.12 | N=25 Val-Sel. |
+| Seed 101 | `best_model.pt` | `80` | `56.0%` | — | — | — | Val-Only |
+| Seed 101 | `checkpoint_phase_1.pt` | `96` | `68.0%` | **62.0%** | 0.85 | 2.02 | N=25 Val-Sel. |
+| Seed 101 | `checkpoint_phase_2.pt` | `104` | `52.0%` | — | — | — | Val-Only |
+| Seed 101 | `checkpoint_phase_3.pt` | `124` | `4.0%` | — | — | — | Val-Only |
+| Seed 101 | `checkpoint_phase_4.pt` | `240` | `40.0%` | — | — | — | Val-Only |
+| Seed 2024 | `best_model.pt` | `130` | `48.0%` | — | — | — | Val-Only |
+| Seed 2024 | `checkpoint_phase_1.pt` | `94` | `64.0%` | — | — | — | Val-Only |
+| Seed 2024 | `checkpoint_phase_2.pt` | `102` | `80.0%` | **62.0%** | 0.79 | 1.89 | N=25 Val-Sel. |
+| Seed 2024 | `checkpoint_phase_3.pt` | `122` | `40.0%` | — | — | — | Val-Only |
+| Seed 2024 | `checkpoint_phase_4.pt` | `260` | `60.0%` | — | — | — | Val-Only |
+
+- **Original `N=6` Tier-2 Selection (`[3200..3205]`):** `58.0 ± 27.1%` (`86.0%`, `56.0%`, `32.0%`)
+- **Expanded `N=25` Validation Selection (`[3200..3224]`):** **`60.7 ± 2.3%`** (`58.0%`, `62.0%`, `62.0%`) — an **`11.7×` reduction in inter-seed test std** (`27.1% → 2.3%`) with higher mean success and zero test-set peeking.
+
+---
+
+## 4. SSOT & Zero-Leakage Verification Sign-Off
+
+- **Zero Test-Time State Leakage:** All PIL benchmarks executed strictly under `ArticulatedArmPhysicsStepper` (`payload_attached=(t >= t_c)`) and causal `OnlineEventCameraStream` with zero `z_gt_next` access (`tests/test_leakage.py` and `tests/test_pil_integrity.py` PASSED).
+- **Strict Validation/Test Isolation:** Handover threshold sweeps and `N=25` checkpoint selection used exclusively validation split `[3200, 3599]` trajectories; test evaluation used `[3600, 3999]`.
+- **Synchronized Artifacts:**
+  - SSOT Master Metrics: [ssot_eval_metrics.json](file:///Users/Mattia/Desktop/Studies/Temp/results/ssot_eval_metrics.json)
+  - Multi-Seed Summary: [multiseed_metrics.json](file:///Users/Mattia/Desktop/Studies/Temp/results/multiseed/multiseed_metrics.json)
+  - Nominal PIL Benchmark (Seed 42): [mppi_benchmark_metrics.json](file:///Users/Mattia/Desktop/Studies/Temp/results/mppi_benchmark/mppi_benchmark_metrics.json)
+  - PIL Robustness (Seeds 42, 101, 2024): [robustness_metrics.json](file:///Users/Mattia/Desktop/Studies/Temp/results/robustness_benchmark/robustness_metrics.json), [seed101](file:///Users/Mattia/Desktop/Studies/Temp/results/robustness_benchmark_pil_spwm_seed101/robustness_metrics.json), [seed2024](file:///Users/Mattia/Desktop/Studies/Temp/results/robustness_benchmark_pil_spwm_seed2024/robustness_metrics.json)
+
 ### `docs/FIGURE_METRICS.md`
-> Master SSOT summary table
+> Master SSOT figure & 50-episode PIL summary table
 
 # Master Figure Metrics & Critical Analysis (SPWM)
 
 **Model**: `SPWM`
-**Generated**: `{ts}`
+**Generated**: `2026-11-20 14:39:03 UTC`
 **Generated By**: `scripts/run_ssot_benchmark_and_plot.py`
 
 ---
 
 ## 1. Closed-Loop Latent MPPI Benchmark (`figures/fig1_mppi_benchmark.png`)
 - **Evaluated Episodes**: `50`
-- **Grasp Success Rate**: **`96.0%` (`48 / 50`)**
-- **Min Placement Error**: **`0.67 ± 0.46 cm`**
-- **Mean Terminal Error**: `1.21 cm`
-- **MPPI Step Latency**: **`21.9 ms / step`**
+- **Grasp Success Rate**: **`86.0%` (`43 / 50`)**
+- **Min Placement Error**: **`0.86 ± 0.80 cm`**
+- **Mean Terminal Error**: `1.57 cm`
+- **MPPI Step Latency**: **`36.7 ms / step`**
 
 | Stratification | Episodes | Success Rate | Min Placement Error (cm) |
 | :--- | :---: | :---: | :---: |
-| Low Plane | 22 | `90.9%` | `0.82 cm` |
-| Mid Plane | 18 | `100.0%` | `0.65 cm` |
-| High Plane | 10 | `100.0%` | `0.38 cm` |
-| Light (1.20 - 2.30 kg) | 17 | `88.2%` | `0.62 cm` |
-| Medium (2.30 - 3.40 kg) | 17 | `100.0%` | `0.74 cm` |
-| Heavy (3.40 - 4.50 kg) | 16 | `100.0%` | `0.65 cm` |
+| Low Plane | 22 | `86.4%` | `0.86 cm` |
+| Mid Plane | 18 | `77.8%` | `1.05 cm` |
+| High Plane | 10 | `100.0%` | `0.50 cm` |
+| Light (1.20 - 2.30 kg) | 17 | `82.4%` | `0.68 cm` |
+| Medium (2.30 - 3.40 kg) | 17 | `100.0%` | `0.77 cm` |
+| Heavy (3.40 - 4.50 kg) | 16 | `75.0%` | `1.14 cm` |
 
 ## 2. Multi-Horizon Rollout: Open-Loop vs. Phasic Handover (`figures/fig2_rollout_open_vs_handover.png`)
 Evaluated on `400` unseen test trajectories (`H=100`):
@@ -51,11 +251,11 @@ Evaluated on `400` unseen test trajectories (`H=100`):
 
 | Perturbation Condition | Overall Success | Min Placement Error | Terminal Error |
 | :--- | :---: | :---: | :---: |
-| Nominal Baseline | `100.0%` | `1.01 cm` | `1.81 cm` |
-| Sensory Noise Injection (1.0%) | `95.0%` | `1.19 cm` | `2.31 cm` |
-| Payload Extrapolation (4.80 kg) | `70.0%` | `2.84 cm` | `4.37 cm` |
-| Actuator Drift (0.80x Friction) | `70.0%` | `2.69 cm` | `3.70 cm` |
-| Actuator Drift (1.20x Friction) | `60.0%` | `2.65 cm` | `4.56 cm` |
+| Nominal Baseline | `86.0%` | `0.86 cm` | `1.57 cm` |
+| Sensory Noise Injection (1.0%) | `72.0%` | `0.98 cm` | `1.86 cm` |
+| Payload Extrapolation (4.80 kg) | `78.0%` | `1.25 cm` | `1.78 cm` |
+| Actuator Drift (0.80x Friction) | `70.0%` | `1.32 cm` | `2.07 cm` |
+| Actuator Drift (1.20x Friction) | `76.0%` | `1.32 cm` | `1.97 cm` |
 
 ## 4. Recurrent Step Energy (`figures/fig4_energy_efficiency.png`)
 - **SPWM (Loihi-2 SOPs @ `12.27%` spike rate)**: `12.34 nJ/step` (**`4.9x`** vs own GPU MACs)
@@ -69,77 +269,901 @@ Evaluated on `400` unseen test trajectories (`H=100`):
 - **Mechanical OOD Gap**: Check Section 3 above for exact degradation under 4.80 kg payload and 0.80x/1.20x friction drift.
 - **Architectural Baselines**: Energy comparison uses measured spike sparsity for `SPWM` and analytical MAC counts for baselines (no stale Nov 4 checkpoints loaded).
 
+## 6. Symmetric 3-Seed PIL Benchmark & Open-Loop vs. Online Baseline Transparency
+
+| Method (50 Test Episodes `[3600, 3649]`) | PIL Success (%) | Min Err (cm) | Term Err (cm) | Flips |
+| :--- | :---: | :---: | :---: | :---: |
+| Deep GRU (Open-Loop PIL, 3 seeds) | `1.3 ± 2.3%` | `10.57 ± 7.83` | `16.72 ± 11.31` | `14.67` |
+| Deep GRU (Online Obs., 3 seeds) | `0.0 ± 0.0%` | `6.03 ± 4.00` | `10.87 ± 3.97` | `19.67` |
+| Continuous RSSM (Open-Loop PIL, 3 seeds) | `15.3 ± 4.6%` | `1.31 ± 0.02` | `2.88 ± 0.10` | `36.23` |
+| Continuous RSSM (Online Post., 3 seeds) | `0.0 ± 0.0%` | `1.53 ± 0.06` | `22.43 ± 0.58` | `36.13` |
+| ANN-Rate (3 seeds) | `37.3 ± 9.5%` | `1.07 ± 0.28` | `2.98 ± 0.46` | `26.00` |
+| SPWM-v0.12.4 (N=6 Tier-2, 3 seeds) | `58.0 ± 27.1%` | `0.90 ± 0.04` | `2.23 ± 0.68` | `19.37` |
+| SPWM-v0.12.4 (N=25 Val-Sel., 3 seeds) | `60.7 ± 2.3%` | `0.88 ± 0.11` | `2.01 ± 0.12` | `21.14` |
+
+## 7. Disentangled PIL Ablation & $w_t > 0$ Residual Handover Telemetry
+
+| Ablation Stage | PIL Success (%) | Min Err (cm) | Term Err (cm) |
+| :--- | :---: | :---: | :---: |
+| 1. SPWM-Base (Phase 1 Warmup, Unsmoothed MPPI) | `62.0%` | `1.27 ± 1.14` | `2.51 ± 1.59` |
+| 2. + Smooth MPPI Controls | `62.0%` | `1.09 ± 0.98` | `2.26 ± 1.79` |
+| 3. + Phase 1 Curriculum (4-Stage, No Handover/Lookahead) | `72.0%` | `0.98 ± 0.97` | `1.85 ± 1.31` |
+| 4a. + 2-Stage SE(3) Lookahead (Handover Disabled, $w_t \equiv 0$) | `86.0%` | `0.86 ± 0.80` | `1.57 ± 1.00` |
+| 4b. + Residual Handover & 2-Stage Lookahead (Full) | `86.0%` | `0.86 ± 0.80` | `1.57 ± 1.00` |
+
+## 8. Symmetric 3-Seed PIL Robustness & $w_t > 0$ Activation (`42, 101, 2024`)
+
+| Perturbation Condition | SPWM 3-Seed Succ (%) | SPWM Step $w_t>0$ (%) | ANN-Rate 3-Seed Succ (%) |
+| :--- | :---: | :---: | :---: |
+| Nominal Baseline | `58.0 ± 27.1%` (`+0.0%` rel) | `0.00 ± 0.00%` | `37.3 ± 9.5%` (`+0.0%` rel) |
+| Sensory Noise Injection (1.0%) | `55.3 ± 19.4%` (`-4.6%` rel) | `0.00 ± 0.00%` | `30.0 ± 3.5%` (`-19.6%` rel) |
+| Payload Extrapolation (4.80 kg) | `39.3 ± 33.7%` (`-32.2%` rel) | `0.17 ± 0.29%` | `26.7 ± 16.2%` (`-28.6%` rel) |
+| Actuator Drift (0.80x Friction) | `40.7 ± 27.3%` (`-29.9%` rel) | `0.17 ± 0.29%` | `30.7 ± 14.0%` (`-17.9%` rel) |
+| Actuator Drift (1.20x Friction) | `44.0 ± 28.0%` (`-24.1%` rel) | `0.17 ± 0.29%` | `33.3 ± 16.7%` (`-10.7%` rel) |
+
 ### `results/spwm_v0_12_4_train_m1/comparative_metrics_v0_12_4.json`
-> Baseline comparison (SPWM vs. Continuous RSSM, Deep GRU, Continuous ConvLSTM)
+> Multi-seed N=400 open-loop baseline comparison (SPWM, ANN-Rate, RSSM across 3 seeds + Deep GRU, ConvLSTM)
 
 ```yaml
 SPWM-v0.12.4:
   n_test: 400
-  position_mse_per_horizon: {1:0.00015687845007050782,5:0.0020792167633771896,10:0.006488359998911619,25:0.002526428084820509,50:0.002635047771036625,100:0.0024581069592386484}
-  position_mse_std_per_horizon: {1:7.380892202490941e-05,5:0.00048825654084794223,10:0.005912567488849163,25:0.0019791650120168924,50:0.007415277883410454,100:0.002898908220231533}
-  velocity_mse_per_horizon: {1:0.0013571062590926886,5:0.05235695838928223,10:0.07470371574163437,25:0.03928713873028755,50:0.01999685727059841,100:0.011747471988201141}
-  velocity_mse_std_per_horizon: {1:0.0005559915443882346,5:0.028355369344353676,10:0.13030092418193817,25:0.07005384564399719,50:0.03499726951122284,100:0.0203139279037714}
-  position_error_per_horizon: {1:0.029773293063044548,5:0.11091844737529755,10:0.18621589243412018,25:0.11596996337175369,50:0.10377092659473419,100:0.11163192987442017}
-  position_error_std_per_horizon: {1:0.007404169999063015,5:0.01313008926808834,10:0.06522116810083389,25:0.04134652391076088,50:0.07100620120763779,100:0.04782211408019066}
-  overall_l2_mean: 0.11145036667585373
+  seeds: [42,101,2024]
+  parameter_count: 392141
+  per_seed:
+    42:
+      n_test: 400
+      position_mse_per_horizon: {1:0.00015687845007050782,5:0.0020792167633771896,10:0.006488359998911619,25:0.002526428084820509,50:0.002635047771036625,100:0.0024581069592386484}
+      position_mse_std_per_horizon: {1:7.380892202490941e-05,5:0.00048825654084794223,10:0.005912567488849163,25:0.0019791650120168924,50:0.007415277883410454,100:0.002898908220231533}
+      velocity_mse_per_horizon: {1:0.0013571062590926886,5:0.05235695838928223,10:0.07470371574163437,25:0.03928713873028755,50:0.01999685727059841,100:0.011747471988201141}
+      velocity_mse_std_per_horizon: {1:0.0005559915443882346,5:0.028355369344353676,10:0.13030092418193817,25:0.07005384564399719,50:0.03499726951122284,100:0.0203139279037714}
+      position_error_per_horizon: {1:0.029773293063044548,5:0.11091844737529755,10:0.18621589243412018,25:0.11596996337175369,50:0.10377092659473419,100:0.11163192987442017}
+      position_error_std_per_horizon: {1:0.007404169999063015,5:0.01313008926808834,10:0.06522116810083389,25:0.04134652391076088,50:0.07100620120763779,100:0.04782211408019066}
+      overall_l2_mean: 0.11145036667585373
+      curve_l2_mean: [0.029773293063044548,0.050943732261657715,0.0694747120141983,0.08839104324579239,0.11091842502355576,0.13780221343040466,0.16399258375167847,0.1815030425786972,0.18704365193843842,0.1862158328294754,0.18566682934761047,0.18405292928218842,0.17932210862636566,0.17349916696548462,0.1672763228416443,0.1608705073595047,0.15358270704746246,0.14490999281406403,0.1363014280796051,0.12909653782844543,0.12362727522850037,0.11972808837890625,0.11753828823566437,0.1165211871266365,0.1159699335694313,0.11564317345619202,0.11539418995380402,0.11538257449865341,0.11532190442085266,0.11522750556468964,0.11492013931274414,0.11434490978717804,0.11361837387084961,0.11278533190488815,0.11203490197658539,0.11129018664360046,0.110580675303936,0.11005494743585587,0.10947441309690475,0.10889815539121628,0.10819628089666367,0.10736408829689026,0.10660341382026672,0.10608332604169846,0.10566526651382446,0.10527226328849792,0.1049216017127037,0.10457690060138702,0.10416756570339203,0.1037709042429924,0.10346436500549316,0.10337063670158386,0.10360246896743774,0.10405252128839493,0.10464460402727127,0.1052316352725029,0.10584589093923569,0.10640781372785568,0.10695965588092804,0.10726359486579895,0.10728471726179123,0.10700049251317978,0.10646244883537292,0.10588253289461136,0.10546524077653885,0.10542401671409607,0.10532966256141663,0.10512605309486389,0.104812853038311,0.10426167398691177,0.10346218943595886,0.10215451568365097,0.10054737329483032,0.09872634708881378,0.09687754511833191,0.09513633698225021,0.09349039196968079,0.09200796484947205,0.09077796339988708,0.08987804502248764,0.08930744230747223,0.08895017951726913,0.08870480209589005,0.08853450417518616,0.08850858360528946,0.08873715996742249,0.08926960825920105,0.09014730155467987,0.09130968153476715,0.09264545142650604,0.09404744952917099,0.0954543873667717,0.09681116789579391,0.0981278121471405,0.09945985674858093,0.10092268884181976,0.10273744910955429,0.10508394986391068,0.10807770490646362,0.11163196712732315]
+      curve_l2_q25: [0.02418188378214836,0.04567704722285271,0.06356161087751389,0.08150790631771088,0.10323502123355865,0.1262536346912384,0.14727847278118134,0.1584264487028122,0.15536509454250336,0.14956873655319214,0.1456349790096283,0.14184843003749847,0.1292610913515091,0.11995430290699005,0.11374010890722275,0.10681220144033432,0.09909381717443466,0.09388910979032516,0.09162658452987671,0.09065213799476624,0.08755099773406982,0.08756190538406372,0.08479989320039749,0.08799444139003754,0.09005386382341385,0.09020231664180756,0.09062648564577103,0.08981894701719284,0.09002521634101868,0.0868510901927948,0.08429233729839325,0.0836835652589798,0.0824483335018158,0.08040601015090942,0.08030581474304199,0.07910536229610443,0.07994438707828522,0.07748156785964966,0.07809378951787949,0.07631292939186096,0.07542622089385986,0.07479224354028702,0.07388124614953995,0.07398474216461182,0.07215038686990738,0.07094414532184601,0.07133544981479645,0.07061903178691864,0.06940420717000961,0.07008630037307739,0.07016012072563171,0.06934629380702972,0.0711706280708313,0.0707891657948494,0.07164794206619263,0.07330648601055145,0.0729539692401886,0.07322145253419876,0.07386495172977448,0.07504188269376755,0.07543125748634338,0.07677724957466125,0.07613738626241684,0.07753583788871765,0.07773175090551376,0.07676748931407928,0.07657727599143982,0.07582847028970718,0.07529428601264954,0.07495700567960739,0.07451340556144714,0.07442523539066315,0.07374760508537292,0.0731559544801712,0.0720655620098114,0.07118524610996246,0.06973353028297424,0.06915608048439026,0.06889288127422333,0.06734035909175873,0.06694740056991577,0.06701298803091049,0.06639609485864639,0.0661369189620018,0.06590918451547623,0.06688971817493439,0.06725241243839264,0.06829902529716492,0.06985847651958466,0.07033969461917877,0.07075491547584534,0.07271713018417358,0.07260537892580032,0.07261520624160767,0.07316749542951584,0.07275650650262833,0.07283641397953033,0.07333727180957794,0.07595354318618774,0.07957030832767487]
+      curve_l2_q75: [0.034978218376636505,0.056788939982652664,0.07592301815748215,0.09600119292736053,0.11982263624668121,0.148398295044899,0.17623081803321838,0.1945151388645172,0.1995457112789154,0.1977941244840622,0.19582737982273102,0.19316044449806213,0.18706178665161133,0.18558591604232788,0.19795067608356476,0.2016545534133911,0.1934921145439148,0.17840851843357086,0.16444751620292664,0.15170827507972717,0.14338824152946472,0.1383947879076004,0.13898776471614838,0.1367250382900238,0.13474488258361816,0.13561207056045532,0.13406044244766235,0.13343654572963715,0.13474959135055542,0.13010606169700623,0.13032756745815277,0.13053463399410248,0.13128319382667542,0.1298547089099884,0.12724623084068298,0.12781772017478943,0.1257426142692566,0.12586036324501038,0.1256319135427475,0.12389302253723145,0.12436303496360779,0.12179112434387207,0.12037302553653717,0.11990264058113098,0.11713168025016785,0.11632630228996277,0.1137358546257019,0.11422622203826904,0.10990928113460541,0.11078011989593506,0.10951422154903412,0.11053813993930817,0.11167839169502258,0.11137203127145767,0.1111529991030693,0.11056137830018997,0.11067964881658554,0.11162015050649643,0.11224442720413208,0.11193743348121643,0.10881629586219788,0.10633069276809692,0.10497108101844788,0.1049499660730362,0.10366843640804291,0.10430885851383209,0.10363071411848068,0.10382680594921112,0.1041797548532486,0.10438516736030579,0.10449538379907608,0.10305618494749069,0.10159837454557419,0.10002902895212173,0.0980919897556305,0.09744185954332352,0.09610909968614578,0.09600912034511566,0.09620500355958939,0.09556256979703903,0.0965682864189148,0.09527552872896194,0.0955197885632515,0.09612056612968445,0.09667248278856277,0.09796690940856934,0.09943855553865433,0.10062514990568161,0.10258600115776062,0.10414493083953857,0.10640185326337814,0.10827697813510895,0.11016464978456497,0.11279815435409546,0.11581233143806458,0.1171855628490448,0.12172946333885193,0.1247154027223587,0.12768083810806274,0.13074742257595062]
+      parameter_count: 392141
+      active_inference_params: 317900
+    101:
+      n_test: 400
+      position_mse_per_horizon: {1:0.0003022114688064903,5:0.0007039911579340696,10:0.0014849373837932944,25:0.002334464807063341,50:0.004773399326950312,100:0.0027366611175239086}
+      position_mse_std_per_horizon: {1:0.0001610179024282843,5:0.000287990813376382,10:0.002266738098114729,25:0.0029588211327791214,50:0.008498414419591427,100:0.002922333311289549}
+      velocity_mse_per_horizon: {1:0.0006355720688588917,5:0.028187384828925133,10:0.026028921827673912,25:0.05330432578921318,50:0.039045095443725586,100:0.008709450252354145}
+      velocity_mse_std_per_horizon: {1:0.0003107062366325408,5:0.05764496326446533,10:0.033079687505960464,25:0.10820354521274567,50:0.04812313988804817,100:0.018667807802557945}
+      position_error_per_horizon: {1:0.040972862392663956,5:0.06406641751527786,10:0.0811016857624054,25:0.10541189461946487,50:0.14444534480571747,100:0.11924396455287933}
+      position_error_std_per_horizon: {1:0.011597124859690666,5:0.010928923264145851,10:0.048292238265275955,25:0.05380633845925331,50:0.088181272149086,100:0.04691314697265625}
+      overall_l2_mean: 0.11936638504266739
+      curve_l2_mean: [0.04097284749150276,0.048630427569150925,0.047982364892959595,0.05449967086315155,0.06406639516353607,0.06887251138687134,0.07037930935621262,0.07690698653459549,0.07720477133989334,0.0811016857624054,0.08710882067680359,0.08103204518556595,0.08067528903484344,0.081471748650074,0.08317293971776962,0.08891712874174118,0.09533265233039856,0.09921182692050934,0.10266103595495224,0.10465338826179504,0.10506565868854523,0.1043521985411644,0.10338154435157776,0.10340525954961777,0.10541191697120667,0.10955735296010971,0.11634419113397598,0.12366588413715363,0.1292857676744461,0.13517162203788757,0.14016516506671906,0.14309115707874298,0.1450527459383011,0.14636534452438354,0.14682316780090332,0.14616264402866364,0.14492224156856537,0.14388532936573029,0.14283306896686554,0.14163337647914886,0.14056296646595,0.14011681079864502,0.14047645032405853,0.14106836915016174,0.1416243016719818,0.14223746955394745,0.14306943118572235,0.1438082605600357,0.14404012262821198,0.14444535970687866,0.1458127498626709,0.14824706315994263,0.15004044771194458,0.15100634098052979,0.1520134061574936,0.15341654419898987,0.15506994724273682,0.1563708335161209,0.15682068467140198,0.15706342458724976,0.1571761965751648,0.15640702843666077,0.1547890156507492,0.15295815467834473,0.15144295990467072,0.1494150310754776,0.14654117822647095,0.14326901733875275,0.13878370821475983,0.13434533774852753,0.1299455463886261,0.12516261637210846,0.12098479270935059,0.11662372946739197,0.11230256408452988,0.10847455263137817,0.10494914650917053,0.10225875675678253,0.10037616640329361,0.09967388212680817,0.09985426068305969,0.10092516243457794,0.10239679366350174,0.10379341244697571,0.10518789291381836,0.10690902918577194,0.10894813388586044,0.1110227033495903,0.11295216530561447,0.11485613137483597,0.11689567565917969,0.11895854026079178,0.12072498351335526,0.12196436524391174,0.12254275381565094,0.12243806570768356,0.12179262936115265,0.12080536037683487,0.11980734020471573,0.11924394965171814]
+      curve_l2_q25: [0.03250741586089134,0.04055394232273102,0.04250919073820114,0.05018458887934685,0.05861694738268852,0.058719247579574585,0.05162852257490158,0.0486564002931118,0.04813934117555618,0.05084918066859245,0.055994730442762375,0.05155554786324501,0.04870648682117462,0.045392654836177826,0.04391692206263542,0.04567359387874603,0.048919662833213806,0.04941921681165695,0.051012810319662094,0.0533885732293129,0.05757906287908554,0.06001395359635353,0.06400541961193085,0.06539051979780197,0.06877566874027252,0.0690845176577568,0.07007907330989838,0.07373254746198654,0.07377094030380249,0.07501916587352753,0.07605437934398651,0.07542125135660172,0.07391267269849777,0.07442323863506317,0.07400914281606674,0.07340028882026672,0.07606038451194763,0.07740136235952377,0.07699435204267502,0.0757865458726883,0.07583902776241302,0.07517863065004349,0.07720182836055756,0.07578183710575104,0.07565755397081375,0.0759425163269043,0.07919011265039444,0.08013825118541718,0.07950405776500702,0.08397497981786728,0.08391553163528442,0.08594615757465363,0.08345894515514374,0.08315222710371017,0.08268439769744873,0.08317984640598297,0.08041946589946747,0.08407500386238098,0.08513862639665604,0.08405416458845139,0.08434665203094482,0.08475447446107864,0.0862656980752945,0.08799862861633301,0.09035150706768036,0.09111933410167694,0.09074477851390839,0.0890524834394455,0.08796101808547974,0.08477328717708588,0.08169376850128174,0.079465851187706,0.07512563467025757,0.07250513881444931,0.07005419582128525,0.06847880780696869,0.0664040744304657,0.06497754156589508,0.06402590125799179,0.0639352798461914,0.064520463347435,0.0654643103480339,0.06696335971355438,0.06855316460132599,0.070815809071064,0.07328331470489502,0.07625096291303635,0.07955586910247803,0.08203928172588348,0.08419544994831085,0.08756040036678314,0.0906951054930687,0.09385237097740173,0.09627972543239594,0.09668398648500443,0.0961935967206955,0.09505638480186462,0.09497466683387756,0.09328244626522064,0.09291389584541321]
+      curve_l2_q75: [0.04972991719841957,0.055236607789993286,0.05272743105888367,0.05821100249886513,0.06604094803333282,0.06757736206054688,0.0681806206703186,0.08742452412843704,0.08808335661888123,0.09339259564876556,0.10288523882627487,0.0876614972949028,0.09538991004228592,0.10073699057102203,0.11356557905673981,0.12679846584796906,0.13077262043952942,0.13569065928459167,0.13583268225193024,0.13401539623737335,0.13294798135757446,0.12979772686958313,0.12725688517093658,0.12722760438919067,0.12823274731636047,0.12851397693157196,0.1339235007762909,0.1446610391139984,0.15282614529132843,0.16387127339839935,0.16639375686645508,0.17378027737140656,0.17729125916957855,0.18343006074428558,0.18618042767047882,0.18899351358413696,0.1872260868549347,0.1906617134809494,0.19132116436958313,0.18861909210681915,0.1857784390449524,0.18289516866207123,0.1823655366897583,0.18026268482208252,0.1835450977087021,0.1844027042388916,0.18729227781295776,0.18866221606731415,0.1862790286540985,0.18590377271175385,0.1875440925359726,0.19348514080047607,0.19832979142665863,0.19723553955554962,0.20282167196273804,0.20019854605197906,0.20026902854442596,0.20564404129981995,0.20788685977458954,0.20667684078216553,0.20630168914794922,0.2012256681919098,0.19432947039604187,0.18807673454284668,0.1848210245370865,0.17601263523101807,0.1737760752439499,0.17421954870224,0.1673009693622589,0.15903528034687042,0.15870288014411926,0.1522885113954544,0.1486351191997528,0.14621798694133759,0.13646458089351654,0.13204611837863922,0.12527677416801453,0.11945419758558273,0.11535979807376862,0.11605769395828247,0.1163351833820343,0.11956220865249634,0.12070093303918839,0.12392379343509674,0.12555302679538727,0.12459474802017212,0.1257094442844391,0.12704122066497803,0.12898148596286774,0.13082726299762726,0.13104265928268433,0.13057675957679749,0.13317380845546722,0.13443408906459808,0.13617682456970215,0.13559560477733612,0.13440343737602234,0.13353140652179718,0.13167308270931244,0.13232040405273438]
+      parameter_count: 392141
+      active_inference_params: 317900
+    2024:
+      n_test: 400
+      position_mse_per_horizon: {1:8.75631085364148e-05,5:0.0006210815627127886,10:0.002461647614836693,25:0.0017300095641985536,50:0.002026821719482541,100:0.002009366638958454}
+      position_mse_std_per_horizon: {1:7.439988985424861e-05,5:0.00025316045503132045,10:0.004423991311341524,25:0.0014237076975405216,50:0.00675568263977766,100:0.0028823448810726404}
+      velocity_mse_per_horizon: {1:0.0021625349763780832,5:0.04693954437971115,10:0.034473713487386703,25:0.01722436025738716,50:0.01493775099515915,100:0.008667011745274067}
+      velocity_mse_std_per_horizon: {1:0.0015680588549003005,5:0.02672167681157589,10:0.05292689800262451,25:0.06946571916341782,50:0.03426194563508034,100:0.018376773223280907}
+      position_error_per_horizon: {1:0.021432053297758102,5:0.06007310748100281,10:0.098426952958107,25:0.09677165001630783,50:0.08652535080909729,100:0.09818258136510849}
+      position_error_std_per_horizon: {1:0.008126846514642239,5:0.010849472135305405,10:0.07128828018903732,25:0.03186384588479996,50:0.0683688148856163,100:0.04915667697787285}
+      overall_l2_mean: 0.08790452033281326
+      curve_l2_mean: [0.021432064473628998,0.030940957367420197,0.04192980378866196,0.05101213976740837,0.0600731186568737,0.07445144653320312,0.09110533446073532,0.09926898032426834,0.09944499284029007,0.09842698276042938,0.09915661066770554,0.09976634383201599,0.09958755224943161,0.09879253059625626,0.09671840816736221,0.09401373565196991,0.09217559546232224,0.09151539206504822,0.09148741513490677,0.09196250885725021,0.09294717758893967,0.09422244876623154,0.09540285915136337,0.0962909385561943,0.09677167981863022,0.09695729613304138,0.09695394337177277,0.09702262282371521,0.09717518836259842,0.09744575619697571,0.09747783839702606,0.09711499512195587,0.09649709612131119,0.09585520625114441,0.09538117051124573,0.09500434994697571,0.09477697312831879,0.09461123496294022,0.09427622705698013,0.09383954852819443,0.09316999465227127,0.09233413636684418,0.09143620729446411,0.09080412238836288,0.09026128053665161,0.08971187472343445,0.08907637745141983,0.08834093809127808,0.08747363835573196,0.08652535080909729,0.0856902226805687,0.08500228077173233,0.08460228890180588,0.08424986153841019,0.08400610089302063,0.08378324657678604,0.08370611071586609,0.08365900814533234,0.08371409773826599,0.08366451412439346,0.08346258103847504,0.08313390612602234,0.08270569145679474,0.08238270878791809,0.08232539892196655,0.08274868875741959,0.08319231867790222,0.08351732045412064,0.08372201770544052,0.08374352753162384,0.08366478979587555,0.08329729735851288,0.08289235085248947,0.08256752789020538,0.08248627930879593,0.0827319547533989,0.08321595191955566,0.08391588181257248,0.08484233170747757,0.08598781377077103,0.08727657049894333,0.08855776488780975,0.08966568857431412,0.09047755599021912,0.09099116176366806,0.0912979394197464,0.0914657711982727,0.09160096943378448,0.0917380154132843,0.09187410026788712,0.09199133515357971,0.09213229268789291,0.09232395142316818,0.09258327633142471,0.09291087090969086,0.09332364052534103,0.09393181651830673,0.09485320001840591,0.09623980522155762,0.09818253666162491]
+      curve_l2_q25: [0.015498905442655087,0.024717820808291435,0.03585927188396454,0.04572675749659538,0.055315688252449036,0.060900501906871796,0.06561881303787231,0.06548632681369781,0.061938464641571045,0.05969446897506714,0.060987070202827454,0.062407661229372025,0.06362974643707275,0.06525819003582001,0.06328015774488449,0.06395599246025085,0.06512613594532013,0.06651968508958817,0.06859006732702255,0.06941583752632141,0.0701713114976883,0.07145524024963379,0.07311172038316727,0.07417897135019302,0.0747128576040268,0.07593070715665817,0.0762840211391449,0.07594531029462814,0.07410571724176407,0.07332514226436615,0.07134845852851868,0.0698552280664444,0.06906865537166595,0.06497547030448914,0.06421426683664322,0.06580201536417007,0.06471775472164154,0.06498667597770691,0.06523842364549637,0.0650990903377533,0.06463169306516647,0.06219343841075897,0.05959281325340271,0.05814574286341667,0.05881882458925247,0.05782599374651909,0.05703023076057434,0.05717135965824127,0.055388133972883224,0.05501432716846466,0.05438612401485443,0.05238000303506851,0.05132746696472168,0.05125906318426132,0.04918723553419113,0.04834024980664253,0.04916540905833244,0.04817953333258629,0.04933788999915123,0.04914432018995285,0.04931003600358963,0.049756016582250595,0.05065782740712166,0.05023585259914398,0.050400298088788986,0.05074867606163025,0.051390696316957474,0.052359793335199356,0.05208117887377739,0.05227772146463394,0.05298853665590286,0.053046878427267075,0.05371962487697601,0.05401007831096649,0.05450211465358734,0.05580129474401474,0.05741836875677109,0.058268509805202484,0.060341499745845795,0.062326256185770035,0.06388892233371735,0.06532284617424011,0.06664977967739105,0.06723639369010925,0.06871815770864487,0.06945175677537918,0.07024890184402466,0.06999903917312622,0.07048308849334717,0.06962516903877258,0.06859228014945984,0.06802499294281006,0.06770095229148865,0.06731553375720978,0.06724008917808533,0.06667717546224594,0.06554042547941208,0.06491898000240326,0.06515618413686752,0.06684660911560059]
+      curve_l2_q75: [0.025374628603458405,0.035816702991724014,0.046994227916002274,0.05611596256494522,0.06425561010837555,0.07375462353229523,0.0844850242137909,0.09341475367546082,0.0999329537153244,0.09425720572471619,0.1024552658200264,0.10926555842161179,0.11206367611885071,0.11415525525808334,0.11671680957078934,0.11369575560092926,0.11022305488586426,0.1099800169467926,0.10797414928674698,0.10985719412565231,0.11095203459262848,0.11338196694850922,0.11433461308479309,0.11581109464168549,0.11546257138252258,0.11540766060352325,0.11346930265426636,0.11370491236448288,0.11390945315361023,0.11412681639194489,0.11396092176437378,0.11360447853803635,0.11389864981174469,0.1147192120552063,0.11358556896448135,0.11375358700752258,0.11323516070842743,0.11264461278915405,0.11189301311969757,0.10911186039447784,0.10852266848087311,0.10598836839199066,0.10590509325265884,0.10370621085166931,0.1049627959728241,0.1033305749297142,0.10177259147167206,0.0998019203543663,0.10002736747264862,0.10047617554664612,0.0982658863067627,0.09711238741874695,0.09525200724601746,0.09489644318819046,0.0953739732503891,0.09288013726472855,0.09306342899799347,0.09274895489215851,0.09304951876401901,0.09309489279985428,0.09026522189378738,0.08927927911281586,0.08745555579662323,0.08787752687931061,0.08589904755353928,0.08505725115537643,0.08592118322849274,0.08730357885360718,0.08848626911640167,0.08881126344203949,0.08844342082738876,0.08931232243776321,0.08962893486022949,0.08977437019348145,0.09023341536521912,0.09099763631820679,0.09002768248319626,0.08994069695472717,0.09178996086120605,0.09326902776956558,0.09495523571968079,0.09548457711935043,0.09682148694992065,0.09828221052885056,0.09971140325069427,0.09999817609786987,0.09989237785339355,0.0994998961687088,0.09935472160577774,0.1019904613494873,0.10362684726715088,0.10517384856939316,0.10777708888053894,0.11229884624481201,0.11219097673892975,0.11277663707733154,0.11151605099439621,0.11315646767616272,0.11366723477840424,0.11610586196184158]
+      parameter_count: 392141
+      active_inference_params: 317900
+  position_mse_per_horizon: {1:0.00018221767580447099,5:0.0011347631613413494,10:0.0034783149991805353,25:0.0021969674853608012,50:0.0031450896058231592,100:0.0024013782385736704}
+  position_mse_std_per_horizon: {1:0.0001030755714358141,5:0.0003431359364185482,10:0.004201098966101806,25:0.0021205646141121783,50:0.007556458314259847,100:0.002901195470864574}
+  position_mse_seed_std_per_horizon: {1:0.00010954467998152894,5:0.0008189706679996508,10:0.0026521253541566974,25:0.0004156317481905645,50:0.001442577257336728,100:0.000366950848819243}
+  velocity_mse_per_horizon: {1:0.001385071101443221,5:0.04249462919930617,10:0.045068783685564995,25:0.036605274925629296,50:0.02465990123649438,100:0.009707977995276451}
+  velocity_mse_std_per_horizon: {1:0.0008115855453070253,5:0.03757400314013163,10:0.07210250323017438,25:0.08257437000672023,50:0.03912745167811712,100:0.01911950297653675}
+  velocity_mse_seed_std_per_horizon: {1:0.000763865468875661,5:0.012683060543225525,10:0.026009623700082144,25:0.01818887773598169,50:0.012712159468845796,100:0.0017663810650883683}
+  position_error_per_horizon: {1:0.03072606958448887,5:0.07835265745719273,10:0.12191484371821086,25:0.10605116933584213,50:0.11158054073651631,100:0.10968615859746933}
+  position_error_std_per_horizon: {1:0.009042713791131973,5:0.011636161555846533,10:0.06160056218504906,25:0.042338902751604714,50:0.07585209608078003,100:0.04796397934357325}
+  position_error_seed_std_per_horizon: {1:0.00980518446260704,5:0.028273390953333897,10:0.056356098785534485,25:0.009615108582107753,50:0.029739266650756064,100:0.010664660559163815}
+  active_inference_params: 317900
+  overall_l2_mean: 0.10624042401711146
+  overall_l2_seed_std: 0.016365202706835866
   curve_l2_mean: [0.029773293063044548,0.050943732261657715,0.0694747120141983,0.08839104324579239,0.11091842502355576,0.13780221343040466,0.16399258375167847,0.1815030425786972,0.18704365193843842,0.1862158328294754,0.18566682934761047,0.18405292928218842,0.17932210862636566,0.17349916696548462,0.1672763228416443,0.1608705073595047,0.15358270704746246,0.14490999281406403,0.1363014280796051,0.12909653782844543,0.12362727522850037,0.11972808837890625,0.11753828823566437,0.1165211871266365,0.1159699335694313,0.11564317345619202,0.11539418995380402,0.11538257449865341,0.11532190442085266,0.11522750556468964,0.11492013931274414,0.11434490978717804,0.11361837387084961,0.11278533190488815,0.11203490197658539,0.11129018664360046,0.110580675303936,0.11005494743585587,0.10947441309690475,0.10889815539121628,0.10819628089666367,0.10736408829689026,0.10660341382026672,0.10608332604169846,0.10566526651382446,0.10527226328849792,0.1049216017127037,0.10457690060138702,0.10416756570339203,0.1037709042429924,0.10346436500549316,0.10337063670158386,0.10360246896743774,0.10405252128839493,0.10464460402727127,0.1052316352725029,0.10584589093923569,0.10640781372785568,0.10695965588092804,0.10726359486579895,0.10728471726179123,0.10700049251317978,0.10646244883537292,0.10588253289461136,0.10546524077653885,0.10542401671409607,0.10532966256141663,0.10512605309486389,0.104812853038311,0.10426167398691177,0.10346218943595886,0.10215451568365097,0.10054737329483032,0.09872634708881378,0.09687754511833191,0.09513633698225021,0.09349039196968079,0.09200796484947205,0.09077796339988708,0.08987804502248764,0.08930744230747223,0.08895017951726913,0.08870480209589005,0.08853450417518616,0.08850858360528946,0.08873715996742249,0.08926960825920105,0.09014730155467987,0.09130968153476715,0.09264545142650604,0.09404744952917099,0.0954543873667717,0.09681116789579391,0.0981278121471405,0.09945985674858093,0.10092268884181976,0.10273744910955429,0.10508394986391068,0.10807770490646362,0.11163196712732315]
   curve_l2_q25: [0.02418188378214836,0.04567704722285271,0.06356161087751389,0.08150790631771088,0.10323502123355865,0.1262536346912384,0.14727847278118134,0.1584264487028122,0.15536509454250336,0.14956873655319214,0.1456349790096283,0.14184843003749847,0.1292610913515091,0.11995430290699005,0.11374010890722275,0.10681220144033432,0.09909381717443466,0.09388910979032516,0.09162658452987671,0.09065213799476624,0.08755099773406982,0.08756190538406372,0.08479989320039749,0.08799444139003754,0.09005386382341385,0.09020231664180756,0.09062648564577103,0.08981894701719284,0.09002521634101868,0.0868510901927948,0.08429233729839325,0.0836835652589798,0.0824483335018158,0.08040601015090942,0.08030581474304199,0.07910536229610443,0.07994438707828522,0.07748156785964966,0.07809378951787949,0.07631292939186096,0.07542622089385986,0.07479224354028702,0.07388124614953995,0.07398474216461182,0.07215038686990738,0.07094414532184601,0.07133544981479645,0.07061903178691864,0.06940420717000961,0.07008630037307739,0.07016012072563171,0.06934629380702972,0.0711706280708313,0.0707891657948494,0.07164794206619263,0.07330648601055145,0.0729539692401886,0.07322145253419876,0.07386495172977448,0.07504188269376755,0.07543125748634338,0.07677724957466125,0.07613738626241684,0.07753583788871765,0.07773175090551376,0.07676748931407928,0.07657727599143982,0.07582847028970718,0.07529428601264954,0.07495700567960739,0.07451340556144714,0.07442523539066315,0.07374760508537292,0.0731559544801712,0.0720655620098114,0.07118524610996246,0.06973353028297424,0.06915608048439026,0.06889288127422333,0.06734035909175873,0.06694740056991577,0.06701298803091049,0.06639609485864639,0.0661369189620018,0.06590918451547623,0.06688971817493439,0.06725241243839264,0.06829902529716492,0.06985847651958466,0.07033969461917877,0.07075491547584534,0.07271713018417358,0.07260537892580032,0.07261520624160767,0.07316749542951584,0.07275650650262833,0.07283641397953033,0.07333727180957794,0.07595354318618774,0.07957030832767487]
   curve_l2_q75: [0.034978218376636505,0.056788939982652664,0.07592301815748215,0.09600119292736053,0.11982263624668121,0.148398295044899,0.17623081803321838,0.1945151388645172,0.1995457112789154,0.1977941244840622,0.19582737982273102,0.19316044449806213,0.18706178665161133,0.18558591604232788,0.19795067608356476,0.2016545534133911,0.1934921145439148,0.17840851843357086,0.16444751620292664,0.15170827507972717,0.14338824152946472,0.1383947879076004,0.13898776471614838,0.1367250382900238,0.13474488258361816,0.13561207056045532,0.13406044244766235,0.13343654572963715,0.13474959135055542,0.13010606169700623,0.13032756745815277,0.13053463399410248,0.13128319382667542,0.1298547089099884,0.12724623084068298,0.12781772017478943,0.1257426142692566,0.12586036324501038,0.1256319135427475,0.12389302253723145,0.12436303496360779,0.12179112434387207,0.12037302553653717,0.11990264058113098,0.11713168025016785,0.11632630228996277,0.1137358546257019,0.11422622203826904,0.10990928113460541,0.11078011989593506,0.10951422154903412,0.11053813993930817,0.11167839169502258,0.11137203127145767,0.1111529991030693,0.11056137830018997,0.11067964881658554,0.11162015050649643,0.11224442720413208,0.11193743348121643,0.10881629586219788,0.10633069276809692,0.10497108101844788,0.1049499660730362,0.10366843640804291,0.10430885851383209,0.10363071411848068,0.10382680594921112,0.1041797548532486,0.10438516736030579,0.10449538379907608,0.10305618494749069,0.10159837454557419,0.10002902895212173,0.0980919897556305,0.09744185954332352,0.09610909968614578,0.09600912034511566,0.09620500355958939,0.09556256979703903,0.0965682864189148,0.09527552872896194,0.0955197885632515,0.09612056612968445,0.09667248278856277,0.09796690940856934,0.09943855553865433,0.10062514990568161,0.10258600115776062,0.10414493083953857,0.10640185326337814,0.10827697813510895,0.11016464978456497,0.11279815435409546,0.11581233143806458,0.1171855628490448,0.12172946333885193,0.1247154027223587,0.12768083810806274,0.13074742257595062]
-  parameter_count: 392141
-  active_inference_params: 317900
 ANN-Rate:
   n_test: 400
-  position_mse_per_horizon: {1:0.002930886810645461,5:0.0021045664325356483,10:0.01323183998465538,25:0.030852124094963074,50:0.02026786096394062,100:0.2723047137260437}
-  position_mse_std_per_horizon: {1:0.0002938470570370555,5:0.00034310886985622346,10:0.02080666832625866,25:0.022028174251317978,50:0.016315225511789322,100:0.03539876267313957}
-  velocity_mse_per_horizon: {1:0.0014859512448310852,5:0.042178649455308914,10:0.20824527740478516,25:0.10850631445646286,50:0.06412730365991592,100:0.017772473394870758}
-  velocity_mse_std_per_horizon: {1:0.00012685140245594084,5:0.07686012983322144,10:0.38691651821136475,25:0.13084232807159424,50:0.06770799309015274,100:0.023736460134387016}
-  position_error_per_horizon: {1:0.13244862854480743,5:0.11198370903730392,10:0.2398206740617752,25:0.40317994356155396,50:0.32501381635665894,100:1.2756316661834717}
-  position_error_std_per_horizon: {1:0.006533006206154823,5:0.009329983033239841,10:0.1479090303182602,25:0.15019546449184418,50:0.12638509273529053,100:0.0811934769153595}
-  overall_l2_mean: 0.574105978012085
-  curve_l2_mean: [0.1324486881494522,0.11368212848901749,0.10640175640583038,0.10605226457118988,0.11198364943265915,0.12561874091625214,0.14670903980731964,0.17393627762794495,0.20560197532176971,0.2398206740617752,0.2745973467826843,0.3078465759754181,0.3379792869091034,0.36376437544822693,0.3844083845615387,0.3999934494495392,0.410953164100647,0.41777297854423523,0.42114540934562683,0.42168816924095154,0.42005616426467896,0.4167933166027069,0.4126082956790924,0.40797287225723267,0.40317997336387634,0.3984278738498688,0.3938068747520447,0.38930875062942505,0.3847656548023224,0.3804124593734741,0.3761977255344391,0.3721255362033844,0.36829012632369995,0.36479130387306213,0.36177700757980347,0.3592887222766876,0.357331782579422,0.35581448674201965,0.3544646203517914,0.35318705439567566,0.3518960475921631,0.3504164218902588,0.34867656230926514,0.34661662578582764,0.3441028296947479,0.3412134647369385,0.3377942144870758,0.3338879346847534,0.3295667767524719,0.32501381635665894,0.3206295371055603,0.3167691230773926,0.3142198324203491,0.31380656361579895,0.31685781478881836,0.32501065731048584,0.34006252884864807,0.363251268863678,0.3952282965183258,0.43538135290145874,0.48210200667381287,0.5332112312316895,0.5866230130195618,0.6406225562095642,0.6937782168388367,0.7449581027030945,0.7928611636161804,0.8366866111755371,0.8758329153060913,0.9096470475196838,0.9376261234283447,0.9593603014945984,0.9749437570571899,0.9846298694610596,0.9890097975730896,0.9887915253639221,0.9847671985626221,0.9778606295585632,0.9690635800361633,0.9593784213066101,0.9498263597488403,0.9414016604423523,0.9350507259368896,0.931626558303833,0.9318089485168457,0.9361087083816528,0.944751501083374,0.9576472640037537,0.9744628071784973,0.9946213364601135,1.017431616783142,1.042198657989502,1.068326473236084,1.0954002141952515,1.1231898069381714,1.1516320705413818,1.180832028388977,1.211006999015808,1.2424876689910889,1.2756319046020508]
-  curve_l2_q25: [0.12786360085010529,0.10940014570951462,0.10234962403774261,0.10188797861337662,0.1069459468126297,0.11538737267255783,0.12603765726089478,0.13895173370838165,0.15180635452270508,0.16397112607955933,0.17642980813980103,0.19043473899364471,0.20487871766090393,0.21091991662979126,0.22152632474899292,0.23573040962219238,0.24162650108337402,0.254354327917099,0.263675332069397,0.26419663429260254,0.2634335458278656,0.2658081650733948,0.27836206555366516,0.2821657657623291,0.286953330039978,0.2890271842479706,0.291111558675766,0.2922378480434418,0.2894870936870575,0.2955079674720764,0.29151785373687744,0.2782492935657501,0.267848938703537,0.2620915174484253,0.25648605823516846,0.2481279820203781,0.24293094873428345,0.23511084914207458,0.23014238476753235,0.22562335431575775,0.22375723719596863,0.22390292584896088,0.22462047636508942,0.22441288828849792,0.22656118869781494,0.23002400994300842,0.22836074233055115,0.2305493950843811,0.23345984518527985,0.23137202858924866,0.22753603756427765,0.2258661389350891,0.225784569978714,0.2288145273923874,0.2400738149881363,0.24088452756404877,0.23766690492630005,0.25382012128829956,0.29318082332611084,0.3325224816799164,0.37401282787323,0.42376938462257385,0.47277510166168213,0.5221951007843018,0.5672262907028198,0.6096811294555664,0.6453693509101868,0.6776254177093506,0.7075799107551575,0.7354710102081299,0.7564699649810791,0.7724021077156067,0.7924296855926514,0.8059443235397339,0.8176618218421936,0.8332110047340393,0.8459579348564148,0.8529538512229919,0.8561058044433594,0.8614081144332886,0.8643771409988403,0.8616423606872559,0.8660805225372314,0.8653864860534668,0.8716568946838379,0.8719659447669983,0.8809021711349487,0.8918444514274597,0.9017736911773682,0.9249129295349121,0.9480189085006714,0.9755198955535889,1.007645606994629,1.0377521514892578,1.068028450012207,1.0975674390792847,1.1262314319610596,1.1587584018707275,1.1913844347000122,1.2266182899475098]
-  curve_l2_q75: [0.13646763563156128,0.11709946393966675,0.10990984737873077,0.11059440672397614,0.11808661371469498,0.13172194361686707,0.14955225586891174,0.1723838448524475,0.19796666502952576,0.22714903950691223,0.2597038149833679,0.293803334236145,0.3285995423793793,0.36156949400901794,0.3948984146118164,0.43544596433639526,0.48163044452667236,0.5140711665153503,0.5482343435287476,0.5734362006187439,0.5789936780929565,0.5517941117286682,0.524683952331543,0.5059534311294556,0.48905280232429504,0.47574177384376526,0.46306756138801575,0.4590069353580475,0.4512351155281067,0.43951356410980225,0.43089815974235535,0.4220389723777771,0.41595637798309326,0.41130614280700684,0.401300847530365,0.3994500935077667,0.39657458662986755,0.4032433032989502,0.41459667682647705,0.4244203269481659,0.4236336350440979,0.41608861088752747,0.41014426946640015,0.4008389711380005,0.3954855799674988,0.3943777084350586,0.3859332203865051,0.38495180010795593,0.386186808347702,0.3780951201915741,0.39394551515579224,0.3985034227371216,0.39460209012031555,0.3808685839176178,0.38099342584609985,0.3739956021308899,0.3935094475746155,0.43061956763267517,0.4781915247440338,0.5294651389122009,0.5823224782943726,0.6370984315872192,0.6906836628913879,0.7234792113304138,0.7811586856842041,0.8490060567855835,0.912442147731781,0.9768036603927612,1.022803783416748,1.0538477897644043,1.0743680000305176,1.1008539199829102,1.1217975616455078,1.122727394104004,1.1159038543701172,1.0924930572509766,1.0677539110183716,1.0415855646133423,1.017794132232666,0.9954580068588257,0.9772069454193115,0.9727376699447632,0.9746900796890259,0.9814119338989258,0.9866242408752441,0.9913781881332397,1.0011169910430908,1.0163495540618896,1.03301203250885,1.0531926155090332,1.0768872499465942,1.0991398096084595,1.1211659908294678,1.146012544631958,1.171892523765564,1.1980475187301636,1.224199652671814,1.2512574195861816,1.278676152229309,1.310065507888794]
+  seeds: [42,101,2024]
   parameter_count: 392141
+  per_seed:
+    42:
+      n_test: 400
+      position_mse_per_horizon: {1:0.00013674570072907954,5:0.0011123945005238056,10:0.002159136813133955,25:0.0011364539386704564,50:0.001849682186730206,100:0.001811641501262784}
+      position_mse_std_per_horizon: {1:3.5051074519287795e-05,5:0.0004620733961928636,10:0.00108297448605299,25:0.001763601670973003,50:0.0071600633673369884,100:0.0028153385501354933}
+      velocity_mse_per_horizon: {1:0.0024848710745573044,5:0.025722002610564232,10:0.02801252342760563,25:0.017590845003724098,50:0.014915362931787968,100:0.009254482574760914}
+      velocity_mse_std_per_horizon: {1:0.0003200853243470192,5:0.06381455063819885,10:0.04584721103310585,25:0.06683516502380371,50:0.03246651217341423,100:0.01921427622437477}
+      position_error_per_horizon: {1:0.028403006494045258,5:0.0790843591094017,10:0.10914812982082367,25:0.07186909765005112,50:0.07561712712049484,100:0.09217879921197891}
+      position_error_std_per_horizon: {1:0.0037072135601192713,5:0.020494651049375534,10:0.03227239474654198,25:0.0406639501452446,50:0.07334945350885391,100:0.0487126000225544}
+      overall_l2_mean: 0.07817552983760834
+      curve_l2_mean: [0.028402993455529213,0.05409229174256325,0.06919767707586288,0.07416556030511856,0.0790843591094017,0.0878472700715065,0.09656296670436859,0.10067830234766006,0.1020779237151146,0.10914812982082367,0.11117352545261383,0.10601089149713516,0.10027242451906204,0.09265705198049545,0.08792710304260254,0.08330740034580231,0.07834500819444656,0.07513298094272614,0.07268580794334412,0.07121405750513077,0.07048943638801575,0.0699843242764473,0.07024625688791275,0.07103260606527328,0.07186911255121231,0.07283908873796463,0.07377299666404724,0.07496389746665955,0.07631167769432068,0.07760873436927795,0.07856328785419464,0.07912985235452652,0.07931079715490341,0.07924097031354904,0.07928299158811569,0.07933448255062103,0.07926910370588303,0.07924263179302216,0.07901707291603088,0.07876311987638474,0.07827514410018921,0.07765324413776398,0.07717940956354141,0.07693558931350708,0.07675628364086151,0.07660053670406342,0.07645636796951294,0.07628099620342255,0.07592596858739853,0.07561714947223663,0.07536737620830536,0.07527463883161545,0.07539671659469604,0.07562102377414703,0.07572361081838608,0.07570267468690872,0.07563478499650955,0.07550754398107529,0.07540243119001389,0.0750468298792839,0.07449661940336227,0.07387328147888184,0.07321488112211227,0.0727459192276001,0.07271791994571686,0.07326419651508331,0.0738634467124939,0.07443109154701233,0.07493837177753448,0.07527387142181396,0.07547730207443237,0.07534337788820267,0.07509634643793106,0.07475726306438446,0.07443652302026749,0.07422575354576111,0.07407048344612122,0.07402627915143967,0.07415244728326797,0.07442715018987656,0.07473479956388474,0.07499084621667862,0.07517151534557343,0.07530569285154343,0.075480155646801,0.0758022665977478,0.07630369812250137,0.07703898847103119,0.07799171656370163,0.0790792927145958,0.08018292486667633,0.08123725652694702,0.08216797560453415,0.08296094834804535,0.08365557342767715,0.08437445759773254,0.08537574857473373,0.08690201491117477,0.08917172253131866,0.09217877686023712]
+      curve_l2_q25: [0.025688745081424713,0.0517529658973217,0.06582773476839066,0.06946137547492981,0.06982161849737167,0.07347680628299713,0.07758424431085587,0.07654827833175659,0.07615315169095993,0.0839645117521286,0.0856681764125824,0.08373668789863586,0.07903014123439789,0.06812075525522232,0.06539769470691681,0.060212716460227966,0.05562014505267143,0.05183684080839157,0.04982618987560272,0.04733149707317352,0.0451623797416687,0.04393559694290161,0.043220147490501404,0.04377090558409691,0.04441813752055168,0.045465223491191864,0.04610028490424156,0.04609829932451248,0.0469626858830452,0.047558873891830444,0.04737984389066696,0.04693424329161644,0.04714300483465195,0.047332197427749634,0.04776688665151596,0.04760952293872833,0.04753852263092995,0.047342609614133835,0.04805628955364227,0.047483399510383606,0.047179535031318665,0.046427953988313675,0.044934358447790146,0.044367603957653046,0.04315820336341858,0.04316725581884384,0.041933320462703705,0.04202969744801521,0.04313062131404877,0.04104733094573021,0.041153665632009506,0.04191537946462631,0.04235341399908066,0.042520519345998764,0.04089833050966263,0.04149852320551872,0.04167407751083374,0.041788697242736816,0.041652269661426544,0.04189186170697212,0.041234664618968964,0.04103300720453262,0.041546013206243515,0.04106965661048889,0.04186272248625755,0.04361831396818161,0.044556453824043274,0.044056959450244904,0.04459691420197487,0.04600435122847557,0.04677724093198776,0.04649851843714714,0.04706789553165436,0.04737219586968422,0.048247821629047394,0.04891939461231232,0.05002482980489731,0.05077916011214256,0.051292967051267624,0.053736940026283264,0.053761158138513565,0.05310306325554848,0.05243781954050064,0.05203860253095627,0.05201371759176254,0.051209457218647,0.05156080424785614,0.05117755010724068,0.05187275633215904,0.05312029644846916,0.054139476269483566,0.05515177547931671,0.05655680224299431,0.05725458264350891,0.05733560398221016,0.057014767080545425,0.05715153366327286,0.058652881532907486,0.05937575921416283,0.06200525537133217]
+      curve_l2_q75: [0.030848084017634392,0.0568077489733696,0.07301976531744003,0.08181136846542358,0.09329673647880554,0.10683343559503555,0.11842299997806549,0.12626716494560242,0.1294131577014923,0.13687501847743988,0.13900557160377502,0.1323055922985077,0.12427413463592529,0.11480254679918289,0.10740269720554352,0.10009858012199402,0.09046373516321182,0.08680496364831924,0.0834229364991188,0.0830121785402298,0.08478143066167831,0.08581989258527756,0.08464576303958893,0.08663273602724075,0.08694306761026382,0.08552728593349457,0.08661364018917084,0.09050130844116211,0.09363279491662979,0.0964195504784584,0.09766033291816711,0.09766631573438644,0.09828822314739227,0.09566336870193481,0.09244328737258911,0.09387047588825226,0.08968652784824371,0.09100281447172165,0.09253418445587158,0.09094621241092682,0.0890679806470871,0.08840598165988922,0.08570457249879837,0.08603780716657639,0.08672039210796356,0.08579102903604507,0.08533994853496552,0.0850599855184555,0.08378507196903229,0.08354295045137405,0.08368957787752151,0.08443000912666321,0.08500698208808899,0.08575280010700226,0.08399265259504318,0.08330803364515305,0.08047395944595337,0.08058642596006393,0.08071506023406982,0.07909595966339111,0.07704782485961914,0.07479239255189896,0.07399509847164154,0.07332340627908707,0.07415328919887543,0.0736687034368515,0.07459498941898346,0.07657839357852936,0.07800287008285522,0.07916605472564697,0.07914764434099197,0.08006235212087631,0.08028841018676758,0.08072361350059509,0.07881306111812592,0.07789904624223709,0.07924868166446686,0.07942206412553787,0.07897322624921799,0.07970607280731201,0.08017571270465851,0.08156496286392212,0.08328864723443985,0.08187296986579895,0.08239028602838516,0.08291680365800858,0.08383144438266754,0.08661171793937683,0.08856142312288284,0.08987045288085938,0.09065719693899155,0.0910019725561142,0.0916810929775238,0.09279067814350128,0.0929693877696991,0.09498428553342819,0.09680746495723724,0.09994266927242279,0.10333787649869919,0.10428255796432495]
+      parameter_count: 392141
+      active_inference_params: 317900
+    101:
+      n_test: 400
+      position_mse_per_horizon: {1:0.0003403051814530045,5:0.0033553973771631718,10:0.0025252627674490213,25:0.0046305786818265915,50:0.006457539740949869,100:0.002824246184900403}
+      position_mse_std_per_horizon: {1:6.417715485440567e-05,5:0.0010157969081774354,10:0.0018206920940428972,25:0.0061861989088356495,50:0.009928937070071697,100:0.00308819068595767}
+      velocity_mse_per_horizon: {1:0.002158749382942915,5:0.03554815426468849,10:0.03806614503264427,25:0.033490099012851715,50:0.043996404856443405,100:0.019914178177714348}
+      velocity_mse_std_per_horizon: {1:0.00024094675609376281,5:0.03244440630078316,10:0.05103874206542969,25:0.08034590631723404,50:0.057198453694581985,100:0.022594958543777466}
+      position_error_per_horizon: {1:0.044996242970228195,5:0.13943637907505035,10:0.11689078062772751,25:0.14385952055454254,50:0.1678421050310135,100:0.11790895462036133}
+      position_error_std_per_horizon: {1:0.00414357939735055,5:0.02626550942659378,10:0.03857618197798729,25:0.08418971300125122,50:0.10283125936985016,100:0.05516299232840538}
+      overall_l2_mean: 0.14079783856868744
+      curve_l2_mean: [0.044996246695518494,0.09009227901697159,0.12582136690616608,0.1365877240896225,0.13943630456924438,0.14295902848243713,0.13923326134681702,0.13789193332195282,0.13515906035900116,0.11689074337482452,0.11509647965431213,0.12678176164627075,0.13809238374233246,0.1437377631664276,0.1405201554298401,0.1362462192773819,0.12744727730751038,0.12263883650302887,0.12350621819496155,0.12647409737110138,0.129033163189888,0.1320408582687378,0.13506437838077545,0.1386549025774002,0.14385947585105896,0.14965493977069855,0.1543615311384201,0.1580079048871994,0.16130952537059784,0.16489218175411224,0.1676536351442337,0.16934062540531158,0.17075413465499878,0.17130722105503082,0.17090953886508942,0.16977867484092712,0.16859449446201324,0.1681908816099167,0.1683841496706009,0.1684175729751587,0.16822969913482666,0.16813020408153534,0.16805244982242584,0.16835695505142212,0.16878440976142883,0.16887466609477997,0.16902346909046173,0.1691710650920868,0.16875997185707092,0.1678421050310135,0.1665489822626114,0.16499115526676178,0.16350874304771423,0.16195523738861084,0.15984441339969635,0.15752235054969788,0.15596981346607208,0.15531615912914276,0.15493786334991455,0.15434163808822632,0.1535956710577011,0.15354543924331665,0.15476709604263306,0.15664084255695343,0.15826231241226196,0.15964919328689575,0.16085542738437653,0.16188187897205353,0.16186374425888062,0.16063641011714935,0.15915024280548096,0.15728072822093964,0.15430542826652527,0.1503312736749649,0.14586743712425232,0.14097055792808533,0.1356242150068283,0.1305416077375412,0.12553788721561432,0.12070140242576599,0.11664393544197083,0.11332474648952484,0.1103086769580841,0.10747028142213821,0.10516456514596939,0.10330644249916077,0.10173887014389038,0.10055416822433472,0.09984520822763443,0.09961187094449997,0.09983135014772415,0.10055682808160782,0.10174404084682465,0.1032819151878357,0.10502516478300095,0.10689015686511993,0.10895559936761856,0.11135158687829971,0.11427972465753555,0.11790889501571655]
+      curve_l2_q25: [0.042230941355228424,0.0886874794960022,0.12429475784301758,0.13392163813114166,0.13294613361358643,0.12569496035575867,0.11720659583806992,0.11218549311161041,0.10737130045890808,0.09014671295881271,0.08317360281944275,0.0862022414803505,0.09352557361125946,0.09582576900720596,0.08978646993637085,0.08756929636001587,0.0842319130897522,0.08360063284635544,0.08419688045978546,0.08526439964771271,0.08692747354507446,0.08910037577152252,0.09075013548135757,0.09159624576568604,0.09219774603843689,0.09146899729967117,0.08866826444864273,0.0891435295343399,0.0862768217921257,0.08424358069896698,0.08517336845397949,0.08703143894672394,0.08744355291128159,0.08504471182823181,0.0875864028930664,0.08921733498573303,0.09038302302360535,0.09120875597000122,0.09373091161251068,0.09592925012111664,0.09934984892606735,0.10187219083309174,0.1044459268450737,0.10392707586288452,0.10350161790847778,0.10442278534173965,0.10521921515464783,0.10194255411624908,0.10339448601007462,0.10275362432003021,0.1035756915807724,0.10156652331352234,0.10264202207326889,0.10169702768325806,0.10252727568149567,0.10072600841522217,0.10157205164432526,0.10351119935512543,0.10590684413909912,0.10867023468017578,0.10711356997489929,0.10826641321182251,0.1092955619096756,0.10959033668041229,0.10979266464710236,0.11063317954540253,0.10699643939733505,0.10734963417053223,0.10662618279457092,0.10208214819431305,0.0973905697464943,0.09295889735221863,0.08805093169212341,0.08149166405200958,0.07834170013666153,0.07615483552217484,0.0764310285449028,0.0760079100728035,0.07590123265981674,0.07574083656072617,0.07478676736354828,0.07515350729227066,0.07348845154047012,0.07164742052555084,0.06885208934545517,0.0664033517241478,0.06377128511667252,0.06173379719257355,0.05986718088388443,0.059725843369960785,0.060642339289188385,0.061406757682561874,0.06312713772058487,0.06378006935119629,0.06606774032115936,0.06893105804920197,0.07136708498001099,0.07273192703723907,0.07313640415668488,0.07593478262424469]
+      curve_l2_q75: [0.047020237892866135,0.0915711373090744,0.12770390510559082,0.1431444138288498,0.1553322970867157,0.16837061941623688,0.16786505281925201,0.16659300029277802,0.1626996546983719,0.13770125806331635,0.12869304418563843,0.1363067924976349,0.14544884860515594,0.15537667274475098,0.16669976711273193,0.16534991562366486,0.1534145474433899,0.15135055780410767,0.15662603080272675,0.166617751121521,0.16381365060806274,0.16628974676132202,0.16140833497047424,0.16335584223270416,0.17289093136787415,0.18036551773548126,0.18433202803134918,0.18406794965267181,0.18375496566295624,0.18703076243400574,0.19894737005233765,0.22280815243721008,0.22483383119106293,0.2242210954427719,0.22950556874275208,0.23931755125522614,0.2368118315935135,0.23640330135822296,0.23013180494308472,0.22650833427906036,0.22564095258712769,0.22320044040679932,0.22118018567562103,0.2236270010471344,0.22103555500507355,0.2131897658109665,0.212509423494339,0.21154063940048218,0.20790481567382812,0.20203891396522522,0.20406590402126312,0.19799841940402985,0.18984685838222504,0.1889243870973587,0.17902100086212158,0.1751176118850708,0.1730288714170456,0.17132773995399475,0.16950349509716034,0.16852426528930664,0.16790179908275604,0.16505801677703857,0.16515175998210907,0.16889555752277374,0.17533011734485626,0.17974768579006195,0.18854305148124695,0.1921793669462204,0.19841712713241577,0.20263010263442993,0.2069268524646759,0.2116396725177765,0.2069082260131836,0.19567954540252686,0.18908703327178955,0.1835533082485199,0.17600788176059723,0.16597667336463928,0.15806829929351807,0.14572544395923615,0.13938766717910767,0.1284654587507248,0.1295188069343567,0.12618917226791382,0.12549929320812225,0.12358081340789795,0.12154737114906311,0.1206100657582283,0.12099342048168182,0.12597493827342987,0.1264778971672058,0.12777520716190338,0.12907320261001587,0.13262945413589478,0.13530884683132172,0.13732202351093292,0.1396312713623047,0.14232216775417328,0.1468854695558548,0.15164609253406525]
+      parameter_count: 392141
+      active_inference_params: 317900
+    2024:
+      n_test: 400
+      position_mse_per_horizon: {1:0.0003630616411101073,5:0.0004629870527423918,10:0.002794234547764063,25:0.0016201403923332691,50:0.001924700103700161,100:0.0016555727925151587}
+      position_mse_std_per_horizon: {1:0.00014821764489170164,5:0.000246340234298259,10:0.004740727134048939,25:0.0016990993171930313,50:0.007449111435562372,100:0.0027561141178011894}
+      velocity_mse_per_horizon: {1:0.0011599470162764192,5:0.021739115938544273,10:0.03459526598453522,25:0.017695391550660133,50:0.014275645837187767,100:0.006328371819108725}
+      velocity_mse_std_per_horizon: {1:0.00018507367349229753,5:0.050173837691545486,10:0.03210411220788956,25:0.0676126778125763,50:0.03091936558485031,100:0.018771804869174957}
+      position_error_per_horizon: {1:0.04558508098125458,5:0.05123930051922798,10:0.10651859641075134,25:0.09089435636997223,50:0.0784277692437172,100:0.08420246839523315}
+      position_error_std_per_horizon: {1:0.010018536821007729,5:0.012347341515123844,10:0.0736151784658432,25:0.03819761052727699,50:0.0734662190079689,100:0.053323354572057724}
+      overall_l2_mean: 0.08049140870571136
+      curve_l2_mean: [0.04558509215712547,0.046727899461984634,0.05108608305454254,0.05150367319583893,0.05123932287096977,0.05627255514264107,0.06741151958703995,0.08238615095615387,0.09770159423351288,0.10651856660842896,0.10616517812013626,0.10570859163999557,0.10516355186700821,0.1030050590634346,0.10053101181983948,0.09924838691949844,0.09695343673229218,0.09444159269332886,0.0926087498664856,0.09180374443531036,0.0912294089794159,0.09091147780418396,0.09110718965530396,0.09110216051340103,0.09089432656764984,0.09107436239719391,0.09148965030908585,0.0916314423084259,0.09141930937767029,0.09101584553718567,0.09033447504043579,0.08913739025592804,0.08780588209629059,0.08664378523826599,0.0859365463256836,0.08563630282878876,0.08539730310440063,0.08514612168073654,0.08477149158716202,0.08429870754480362,0.08377156406641006,0.08329521119594574,0.08285999298095703,0.08246038109064102,0.08211715519428253,0.08167550712823868,0.08099670708179474,0.08019383251667023,0.07929962873458862,0.0784277692437172,0.07777015119791031,0.07738103717565536,0.07718577980995178,0.077088862657547,0.07703642547130585,0.0768657997250557,0.0767262876033783,0.07672150433063507,0.07686689496040344,0.07702487707138062,0.07705602049827576,0.07687952369451523,0.07652352750301361,0.07611867785453796,0.07577702403068542,0.07572972774505615,0.07551100850105286,0.07511945068836212,0.07469571381807327,0.07419823855161667,0.07364340126514435,0.07278931885957718,0.07188624143600464,0.07101883739233017,0.07032987475395203,0.06992726773023605,0.06972682476043701,0.0697220116853714,0.0699535384774208,0.07042504101991653,0.07106899470090866,0.07181685417890549,0.07262520492076874,0.07346834987401962,0.07434048503637314,0.07526587694883347,0.07620806992053986,0.07717278599739075,0.07811351865530014,0.07896420359611511,0.0797041580080986,0.08036798238754272,0.08095376193523407,0.0814410150051117,0.08179677277803421,0.08201371878385544,0.08220022171735764,0.08248694241046906,0.08308754861354828,0.08420249819755554]
+      curve_l2_q25: [0.0385672003030777,0.04008703678846359,0.04482712969183922,0.04541432112455368,0.043723177164793015,0.04048691689968109,0.039130762219429016,0.04343385249376297,0.056973740458488464,0.06634166836738586,0.06503923237323761,0.06433194130659103,0.06525729596614838,0.06380096077919006,0.06406402587890625,0.06410785019397736,0.06593109667301178,0.06608256697654724,0.06484154611825943,0.06370552629232407,0.06558939069509506,0.06486289948225021,0.06448284536600113,0.06348314881324768,0.061481840908527374,0.06156906485557556,0.06191134452819824,0.06254757940769196,0.0626317709684372,0.06155179440975189,0.06213000416755676,0.06048693135380745,0.05921904370188713,0.057032063603401184,0.05523332953453064,0.05505526438355446,0.05439531058073044,0.05473849177360535,0.05383038893342018,0.053433213382959366,0.052337102591991425,0.0508723109960556,0.05051840841770172,0.04961686581373215,0.04943898320198059,0.048887595534324646,0.048121701925992966,0.04817608743906021,0.04700346291065216,0.04681684821844101,0.04724687337875366,0.04727211594581604,0.04703887924551964,0.045801375061273575,0.04530475661158562,0.04453067481517792,0.04478707164525986,0.04423632472753525,0.04338372126221657,0.04311174899339676,0.04465007036924362,0.045441076159477234,0.045984528958797455,0.04580964520573616,0.045852527022361755,0.04522307962179184,0.045597758144140244,0.04476150870323181,0.044788409024477005,0.043976787477731705,0.04365428909659386,0.04430495202541351,0.04423728957772255,0.043967828154563904,0.04421411082148552,0.0441209115087986,0.043759092688560486,0.044110145419836044,0.04427691549062729,0.04480654001235962,0.04404401406645775,0.04428847134113312,0.044920727610588074,0.04482389986515045,0.045071013271808624,0.04601734131574631,0.04660153388977051,0.04735402390360832,0.04795714095234871,0.04829072952270508,0.04930131882429123,0.049101412296295166,0.04963154345750809,0.049724280834198,0.04916819930076599,0.048704348504543304,0.04779021814465523,0.04620051011443138,0.044817112386226654,0.045552097260951996]
+      curve_l2_q75: [0.05385419353842735,0.05418040230870247,0.05736549571156502,0.05844096839427948,0.05740810185670853,0.05610096827149391,0.057677242904901505,0.06882047653198242,0.08761050552129745,0.10122160613536835,0.10661271959543228,0.114897221326828,0.1218862384557724,0.11916647851467133,0.12744739651679993,0.12675674259662628,0.12367430329322815,0.12075503170490265,0.11477090418338776,0.11464056372642517,0.11264678835868835,0.11039391905069351,0.11403142660856247,0.11391258239746094,0.11475257575511932,0.11511333286762238,0.1125544011592865,0.11428965628147125,0.11090659350156784,0.1117180734872818,0.10835850983858109,0.10661079734563828,0.10329154133796692,0.1022881492972374,0.10326588153839111,0.10350625216960907,0.10126980394124985,0.10009917616844177,0.10006764531135559,0.10050441324710846,0.09918425977230072,0.09697847068309784,0.09561675786972046,0.09603627026081085,0.09431266784667969,0.09277940541505814,0.09220002591609955,0.09152229130268097,0.08910305798053741,0.08580594509840012,0.08295691013336182,0.08410394936800003,0.08446596562862396,0.08340476453304291,0.0823148638010025,0.0822933092713356,0.08097124099731445,0.08078822493553162,0.08093845099210739,0.07962813973426819,0.07876890897750854,0.0776529461145401,0.07688891887664795,0.07610198855400085,0.07599785923957825,0.07421621680259705,0.07446284592151642,0.07484348118305206,0.07363546639680862,0.07377512753009796,0.0726773738861084,0.07339629530906677,0.07295563817024231,0.07403690367937088,0.074435755610466,0.07376805692911148,0.07452782988548279,0.0764060765504837,0.07752460986375809,0.07938003540039062,0.08100545406341553,0.08347000926733017,0.08511745929718018,0.08759275078773499,0.09032522886991501,0.09171367436647415,0.09206241369247437,0.09200254082679749,0.09279236197471619,0.09513454884290695,0.09823369234800339,0.1008501648902893,0.10153841227293015,0.10396142303943634,0.10607093572616577,0.10668398439884186,0.10856656730175018,0.11108756810426712,0.11221890151500702,0.11258179694414139]
+      parameter_count: 392141
+      active_inference_params: 317900
+  position_mse_per_horizon: {1:0.0002800375077640638,5:0.0016435929768097897,10:0.0024928780427823463,25:0.0024623910042767725,50:0.0034106406771267452,100:0.0020971534928927817}
+  position_mse_std_per_horizon: {1:8.248195808846503e-05,5:0.0005747368462228527,10:0.0025481312380482755,25:0.0032162999656672278,50:0.008179370624323687,100:0.002886547784631451}
+  position_mse_seed_std_per_horizon: {1:0.0001246148891045717,5:0.001517609382255656,10:0.0003187849760055765,25:0.001893215914832058,50:0.0026389585731517837,100:0.0006344975945901646}
+  velocity_mse_per_horizon: {1:0.0019345224912588794,5:0.027669757604599,10:0.033557978148261704,25:0.022925445189078648,50:0.02439580454180638,100:0.011832344190527996}
+  velocity_mse_std_per_horizon: {1:0.0002487019179776932,5:0.04881093154350916,10:0.04299668843547503,25:0.07159791638453801,50:0.040194777150948845,100:0.020193679879109066}
+  velocity_mse_seed_std_per_horizon: {1:0.0006903363051937698,5:0.00710758025004435,10:0.005106447041318032,25:0.009149407921130264,50:0.016977631136613044,100:0.007150353941303618}
+  position_error_per_horizon: {1:0.039661443481842674,5:0.08992001290122668,10:0.11085250228643417,25:0.10220765819152196,50:0.10729566713174184,100:0.09809674074252446}
+  position_error_std_per_horizon: {1:0.0059564432594925165,5:0.01970250066369772,10:0.04815458506345749,25:0.05435042455792427,50:0.08321564396222432,100:0.052399648974339165}
+  position_error_seed_std_per_horizon: {1:0.009754536642350632,5:0.04508591477687565,10:0.005392051138840468,25:0.03730480325736876,50:0.052453582184670444,100:0.017615286752715828}
   active_inference_params: 317900
+  overall_l2_mean: 0.09982159237066905
+  overall_l2_seed_std: 0.035505357174564434
+  curve_l2_mean: [0.028402993455529213,0.05409229174256325,0.06919767707586288,0.07416556030511856,0.0790843591094017,0.0878472700715065,0.09656296670436859,0.10067830234766006,0.1020779237151146,0.10914812982082367,0.11117352545261383,0.10601089149713516,0.10027242451906204,0.09265705198049545,0.08792710304260254,0.08330740034580231,0.07834500819444656,0.07513298094272614,0.07268580794334412,0.07121405750513077,0.07048943638801575,0.0699843242764473,0.07024625688791275,0.07103260606527328,0.07186911255121231,0.07283908873796463,0.07377299666404724,0.07496389746665955,0.07631167769432068,0.07760873436927795,0.07856328785419464,0.07912985235452652,0.07931079715490341,0.07924097031354904,0.07928299158811569,0.07933448255062103,0.07926910370588303,0.07924263179302216,0.07901707291603088,0.07876311987638474,0.07827514410018921,0.07765324413776398,0.07717940956354141,0.07693558931350708,0.07675628364086151,0.07660053670406342,0.07645636796951294,0.07628099620342255,0.07592596858739853,0.07561714947223663,0.07536737620830536,0.07527463883161545,0.07539671659469604,0.07562102377414703,0.07572361081838608,0.07570267468690872,0.07563478499650955,0.07550754398107529,0.07540243119001389,0.0750468298792839,0.07449661940336227,0.07387328147888184,0.07321488112211227,0.0727459192276001,0.07271791994571686,0.07326419651508331,0.0738634467124939,0.07443109154701233,0.07493837177753448,0.07527387142181396,0.07547730207443237,0.07534337788820267,0.07509634643793106,0.07475726306438446,0.07443652302026749,0.07422575354576111,0.07407048344612122,0.07402627915143967,0.07415244728326797,0.07442715018987656,0.07473479956388474,0.07499084621667862,0.07517151534557343,0.07530569285154343,0.075480155646801,0.0758022665977478,0.07630369812250137,0.07703898847103119,0.07799171656370163,0.0790792927145958,0.08018292486667633,0.08123725652694702,0.08216797560453415,0.08296094834804535,0.08365557342767715,0.08437445759773254,0.08537574857473373,0.08690201491117477,0.08917172253131866,0.09217877686023712]
+  curve_l2_q25: [0.025688745081424713,0.0517529658973217,0.06582773476839066,0.06946137547492981,0.06982161849737167,0.07347680628299713,0.07758424431085587,0.07654827833175659,0.07615315169095993,0.0839645117521286,0.0856681764125824,0.08373668789863586,0.07903014123439789,0.06812075525522232,0.06539769470691681,0.060212716460227966,0.05562014505267143,0.05183684080839157,0.04982618987560272,0.04733149707317352,0.0451623797416687,0.04393559694290161,0.043220147490501404,0.04377090558409691,0.04441813752055168,0.045465223491191864,0.04610028490424156,0.04609829932451248,0.0469626858830452,0.047558873891830444,0.04737984389066696,0.04693424329161644,0.04714300483465195,0.047332197427749634,0.04776688665151596,0.04760952293872833,0.04753852263092995,0.047342609614133835,0.04805628955364227,0.047483399510383606,0.047179535031318665,0.046427953988313675,0.044934358447790146,0.044367603957653046,0.04315820336341858,0.04316725581884384,0.041933320462703705,0.04202969744801521,0.04313062131404877,0.04104733094573021,0.041153665632009506,0.04191537946462631,0.04235341399908066,0.042520519345998764,0.04089833050966263,0.04149852320551872,0.04167407751083374,0.041788697242736816,0.041652269661426544,0.04189186170697212,0.041234664618968964,0.04103300720453262,0.041546013206243515,0.04106965661048889,0.04186272248625755,0.04361831396818161,0.044556453824043274,0.044056959450244904,0.04459691420197487,0.04600435122847557,0.04677724093198776,0.04649851843714714,0.04706789553165436,0.04737219586968422,0.048247821629047394,0.04891939461231232,0.05002482980489731,0.05077916011214256,0.051292967051267624,0.053736940026283264,0.053761158138513565,0.05310306325554848,0.05243781954050064,0.05203860253095627,0.05201371759176254,0.051209457218647,0.05156080424785614,0.05117755010724068,0.05187275633215904,0.05312029644846916,0.054139476269483566,0.05515177547931671,0.05655680224299431,0.05725458264350891,0.05733560398221016,0.057014767080545425,0.05715153366327286,0.058652881532907486,0.05937575921416283,0.06200525537133217]
+  curve_l2_q75: [0.030848084017634392,0.0568077489733696,0.07301976531744003,0.08181136846542358,0.09329673647880554,0.10683343559503555,0.11842299997806549,0.12626716494560242,0.1294131577014923,0.13687501847743988,0.13900557160377502,0.1323055922985077,0.12427413463592529,0.11480254679918289,0.10740269720554352,0.10009858012199402,0.09046373516321182,0.08680496364831924,0.0834229364991188,0.0830121785402298,0.08478143066167831,0.08581989258527756,0.08464576303958893,0.08663273602724075,0.08694306761026382,0.08552728593349457,0.08661364018917084,0.09050130844116211,0.09363279491662979,0.0964195504784584,0.09766033291816711,0.09766631573438644,0.09828822314739227,0.09566336870193481,0.09244328737258911,0.09387047588825226,0.08968652784824371,0.09100281447172165,0.09253418445587158,0.09094621241092682,0.0890679806470871,0.08840598165988922,0.08570457249879837,0.08603780716657639,0.08672039210796356,0.08579102903604507,0.08533994853496552,0.0850599855184555,0.08378507196903229,0.08354295045137405,0.08368957787752151,0.08443000912666321,0.08500698208808899,0.08575280010700226,0.08399265259504318,0.08330803364515305,0.08047395944595337,0.08058642596006393,0.08071506023406982,0.07909595966339111,0.07704782485961914,0.07479239255189896,0.07399509847164154,0.07332340627908707,0.07415328919887543,0.0736687034368515,0.07459498941898346,0.07657839357852936,0.07800287008285522,0.07916605472564697,0.07914764434099197,0.08006235212087631,0.08028841018676758,0.08072361350059509,0.07881306111812592,0.07789904624223709,0.07924868166446686,0.07942206412553787,0.07897322624921799,0.07970607280731201,0.08017571270465851,0.08156496286392212,0.08328864723443985,0.08187296986579895,0.08239028602838516,0.08291680365800858,0.08383144438266754,0.08661171793937683,0.08856142312288284,0.08987045288085938,0.09065719693899155,0.0910019725561142,0.0916810929775238,0.09279067814350128,0.0929693877696991,0.09498428553342819,0.09680746495723724,0.09994266927242279,0.10333787649869919,0.10428255796432495]
 Continuous RSSM:
   n_test: 400
-  position_mse_per_horizon: {1:8.031888137338683e-05,5:0.000612006988376379,10:0.0025547349359840155,25:0.003332036780193448,50:0.003277330659329891,100:0.006651862990111113}
-  position_mse_std_per_horizon: {1:5.246050932328217e-06,5:0.0005123727605678141,10:0.0044344086199998856,25:0.0029497460927814245,50:0.007214794866740704,100:0.005510537885129452}
-  velocity_mse_per_horizon: {1:0.0008433815091848373,5:0.024499928578734398,10:0.11560821533203125,25:0.03605498746037483,50:0.03427539020776749,100:0.012984352186322212}
-  velocity_mse_std_per_horizon: {1:6.993273564148694e-05,5:0.05448732525110245,10:0.18010543286800385,25:0.08201160281896591,50:0.05041569098830223,100:0.02120378240942955}
-  position_error_per_horizon: {1:0.02194073237478733,5:0.05754854157567024,10:0.09786485880613327,25:0.13114739954471588,50:0.11840398609638214,100:0.18529583513736725}
-  position_error_std_per_horizon: {1:0.0007193715428002179,5:0.018979128450155258,10:0.07583456486463547,25:0.05284486711025238,50:0.07512976229190826,100:0.07467688620090485}
-  overall_l2_mean: 0.12462914735078812
-  curve_l2_mean: [0.02194073423743248,0.03847472742199898,0.04928217828273773,0.054812896996736526,0.057548534125089645,0.06060779467225075,0.06663629412651062,0.076273113489151,0.08748422563076019,0.09786487370729446,0.10579976439476013,0.11066369712352753,0.11342453956604004,0.11580265313386917,0.11880400031805038,0.12239488959312439,0.1256840080022812,0.12821000814437866,0.12997178733348846,0.13106176257133484,0.13156506419181824,0.13167168200016022,0.13170026242733002,0.13162407279014587,0.13114745914936066,0.1303400844335556,0.12933363020420074,0.1282157450914383,0.12684749066829681,0.12554405629634857,0.12410794198513031,0.12258093059062958,0.12128999084234238,0.1202646791934967,0.11971332877874374,0.1194939911365509,0.1194104477763176,0.11951792985200882,0.11965849995613098,0.11975502222776413,0.11966609209775925,0.119547538459301,0.11927022784948349,0.11915010213851929,0.11915231496095657,0.1190892681479454,0.11896765977144241,0.11887062340974808,0.1186513677239418,0.11840401589870453,0.11819519847631454,0.11824681609869003,0.1184672936797142,0.11879826337099075,0.11913390457630157,0.11922500282526016,0.11906614154577255,0.1186443641781807,0.11797044426202774,0.11703164875507355,0.11599187552928925,0.11483954638242722,0.11384708434343338,0.11326679587364197,0.11313000321388245,0.11352939903736115,0.11380687355995178,0.11393072456121445,0.11420436203479767,0.11490252614021301,0.1164160668849945,0.1187429130077362,0.12198274582624435,0.12561295926570892,0.129195898771286,0.13247810304164886,0.1352437138557434,0.13748031854629517,0.1392873376607895,0.14082343876361847,0.14227935671806335,0.14389465749263763,0.14587998390197754,0.14837366342544556,0.1514613926410675,0.15515775978565216,0.15923340618610382,0.16339029371738434,0.16728341579437256,0.17062029242515564,0.1732296496629715,0.1751091629266739,0.1763446182012558,0.1770952194929123,0.17758044600486755,0.17807792127132416,0.1789184808731079,0.18036006391048431,0.1825435757637024,0.18529576063156128]
-  curve_l2_q25: [0.021390844136476517,0.0383576825261116,0.04851439595222473,0.05071914196014404,0.04706273972988129,0.04197908192873001,0.04027848690748215,0.043480757623910904,0.04912574961781502,0.05616878718137741,0.06372210383415222,0.06979795545339584,0.07573577761650085,0.07954645156860352,0.08359777927398682,0.08690115809440613,0.0896521657705307,0.09143602102994919,0.09033144265413284,0.0895589292049408,0.08845125138759613,0.08794733881950378,0.08724023401737213,0.08574635535478592,0.08429718017578125,0.08245972543954849,0.0814254954457283,0.08102741092443466,0.07916544377803802,0.07698146253824234,0.07342192530632019,0.0714278444647789,0.07047833502292633,0.06868384033441544,0.06873096525669098,0.0686011090874672,0.06712411344051361,0.0673823431134224,0.06772341579198837,0.06916824728250504,0.07000128924846649,0.06971064954996109,0.06965885311365128,0.07075686752796173,0.0740543007850647,0.07497403770685196,0.07533054798841476,0.0755477175116539,0.07463168352842331,0.0732998177409172,0.07408463954925537,0.07589876651763916,0.0756855383515358,0.07646592706441879,0.07637475430965424,0.0746120736002922,0.0753679871559143,0.07602805644273758,0.07403749227523804,0.07375673949718475,0.06967233121395111,0.06872311234474182,0.06770073622465134,0.0662018209695816,0.06439995765686035,0.062381282448768616,0.06321144849061966,0.06332346051931381,0.06426449120044708,0.06556128710508347,0.06727355718612671,0.07068058103322983,0.07406012713909149,0.0778973251581192,0.0828942283987999,0.08649352192878723,0.09124670922756195,0.09283547103404999,0.09601934999227524,0.09722732752561569,0.10055646300315857,0.10296991467475891,0.10315738618373871,0.107060506939888,0.11079193651676178,0.11611685156822205,0.11750242114067078,0.12226009368896484,0.1236494779586792,0.1250787377357483,0.1261855959892273,0.12738460302352905,0.1255154013633728,0.12626372277736664,0.12673252820968628,0.1276974380016327,0.12885485589504242,0.1309880167245865,0.1340906172990799,0.13697762787342072]
-  curve_l2_q75: [0.02249544858932495,0.03859300911426544,0.04927235096693039,0.054811302572488785,0.05778910964727402,0.060164280235767365,0.06390587985515594,0.07098499685525894,0.08081839978694916,0.09516832232475281,0.1121765673160553,0.1275036633014679,0.14046616852283478,0.14547240734100342,0.1432504653930664,0.1531846523284912,0.15277589857578278,0.15683184564113617,0.1567021906375885,0.15379594266414642,0.15362770855426788,0.15179497003555298,0.15557049214839935,0.15748649835586548,0.15843713283538818,0.15886062383651733,0.1595173329114914,0.15840165317058563,0.1551944464445114,0.15612494945526123,0.15152320265769958,0.15090173482894897,0.15066392719745636,0.14871223270893097,0.1499682515859604,0.15022726356983185,0.1484890580177307,0.14991655945777893,0.14961791038513184,0.1486961394548416,0.14842882752418518,0.1462341696023941,0.14474284648895264,0.14096322655677795,0.1406102478504181,0.14093920588493347,0.14196471869945526,0.14220190048217773,0.14076250791549683,0.14223839342594147,0.1419505774974823,0.1420893669128418,0.1408163458108902,0.14338675141334534,0.14568379521369934,0.1437789499759674,0.13902628421783447,0.13978032767772675,0.1418401449918747,0.14019453525543213,0.13925856351852417,0.13589924573898315,0.13523361086845398,0.13378643989562988,0.13542121648788452,0.13538485765457153,0.13884830474853516,0.13901355862617493,0.14336076378822327,0.13965432345867157,0.14289413392543793,0.14597725868225098,0.14549018442630768,0.15062649548053741,0.15812231600284576,0.16030895709991455,0.1632370799779892,0.16718754172325134,0.16819719970226288,0.17029358446598053,0.17076349258422852,0.17391513288021088,0.17600707709789276,0.17868268489837646,0.18138255178928375,0.18553465604782104,0.19096754491329193,0.19990484416484833,0.20585882663726807,0.21034042537212372,0.21517153084278107,0.2199818193912506,0.22306792438030243,0.2235550880432129,0.21700701117515564,0.21544615924358368,0.21499155461788177,0.2151428461074829,0.21484586596488953,0.21630859375]
+  seeds: [42,101,2024]
   parameter_count: 380460
+  per_seed:
+    42:
+      n_test: 400
+      position_mse_per_horizon: {1:1.1047115549445152e-05,5:7.782228931318969e-05,10:0.00028833484975621104,25:0.0007284767343662679,50:0.0016406875802204013,100:0.0013894009171053767}
+      position_mse_std_per_horizon: {1:2.053100843113498e-06,5:0.0001476785691920668,10:0.0004684661980718374,25:0.0013536920305341482,50:0.006870720069855452,100:0.0028218142688274384}
+      velocity_mse_per_horizon: {1:0.0003805967280641198,5:0.01757270097732544,10:0.01381716225296259,25:0.018773185089230537,50:0.021656889468431473,100:0.02137739583849907}
+      velocity_mse_std_per_horizon: {1:0.00019588667782954872,5:0.04108833894133568,10:0.028213253244757652,25:0.06905478984117508,50:0.03594775125384331,100:0.02421518974006176}
+      position_error_per_horizon: {1:0.008107590489089489,5:0.017933493480086327,10:0.03429557383060455,25:0.05653560161590576,50:0.0694904774427414,100:0.0757109522819519}
+      position_error_std_per_horizon: {1:0.0007413943530991673,5:0.012055021710693836,10:0.023533442988991737,25:0.03427223116159439,50:0.07081806659698486,100:0.0510319322347641}
+      overall_l2_mean: 0.059326786547899246
+      curve_l2_mean: [0.008107587695121765,0.008698863908648491,0.009274079464375973,0.011939478106796741,0.017933497205376625,0.025027725845575333,0.030777525156736374,0.033932026475667953,0.03474843129515648,0.03429556265473366,0.03364067152142525,0.03363863006234169,0.03468073904514313,0.036500368267297745,0.038451068103313446,0.04049065709114075,0.04211186245083809,0.04355691745877266,0.04502175375819206,0.046581268310546875,0.048257455229759216,0.05017600581049919,0.05233413353562355,0.054575204849243164,0.05653561279177666,0.058538731187582016,0.06042276695370674,0.06232533976435661,0.06390896439552307,0.0653163269162178,0.06629958003759384,0.0668264627456665,0.06720654666423798,0.06754063069820404,0.06802953034639359,0.06853357702493668,0.06906825304031372,0.06960294395685196,0.06999396532773972,0.0703246146440506,0.07046444714069366,0.07042954862117767,0.0702747032046318,0.07028694450855255,0.07033053040504456,0.07020033150911331,0.07003451138734818,0.06987554579973221,0.06967595964670181,0.069490447640419,0.06935132294893265,0.06941309571266174,0.06961546093225479,0.06979136914014816,0.06993559002876282,0.06985041499137878,0.06951801478862762,0.0689489096403122,0.06837626546621323,0.0677192285656929,0.06699876487255096,0.06630528718233109,0.06576260924339294,0.06545061618089676,0.0653633177280426,0.06557390093803406,0.06558526307344437,0.06543806940317154,0.06528177112340927,0.06504087895154953,0.064705990254879,0.0640246644616127,0.06323449313640594,0.062481533735990524,0.061911746859550476,0.06154850125312805,0.06130773574113846,0.06124681979417801,0.06142561882734299,0.06190451234579086,0.0626421794295311,0.06355459243059158,0.06454749405384064,0.06553637236356735,0.06649858504533768,0.06746737658977509,0.06841041892766953,0.06931281834840775,0.07012094557285309,0.07075084745883942,0.07113517820835114,0.07133308053016663,0.07139123976230621,0.07140205055475235,0.07148651778697968,0.07176679372787476,0.07237637788057327,0.07332336902618408,0.07451117783784866,0.0757109522819519]
+      curve_l2_q25: [0.007531081326305866,0.007973164319992065,0.008334442973136902,0.009506259113550186,0.012442094273865223,0.016259603202342987,0.019733412191271782,0.02121257595717907,0.021603060886263847,0.020913004875183105,0.019735341891646385,0.019686726853251457,0.01958119496703148,0.019923191517591476,0.02055930905044079,0.02129511907696724,0.022245492786169052,0.023323513567447662,0.0247721616178751,0.02597140334546566,0.027621163055300713,0.029701760038733482,0.031040456146001816,0.03320404514670372,0.033541254699230194,0.03512135148048401,0.037134602665901184,0.03852836415171623,0.04033579304814339,0.0412699356675148,0.04198050498962402,0.04239725321531296,0.042862050235271454,0.04287435859441757,0.042239781469106674,0.04185037314891815,0.042503662407398224,0.0429297611117363,0.04220300167798996,0.042381733655929565,0.04243086278438568,0.04253331571817398,0.04184791445732117,0.0418037474155426,0.04199760779738426,0.041892096400260925,0.0415274016559124,0.04142031446099281,0.04063216224312782,0.03978312760591507,0.03984016925096512,0.04012942686676979,0.03987332433462143,0.039595827460289,0.04010400176048279,0.03987946733832359,0.04006662964820862,0.039988961070775986,0.0391034297645092,0.038615353405475616,0.038523878902196884,0.03839297220110893,0.03833802044391632,0.03726113587617874,0.03753310814499855,0.037809934467077255,0.037545446306467056,0.03781828656792641,0.037699244916439056,0.03719589114189148,0.03705110028386116,0.03630928695201874,0.03541330620646477,0.034684304147958755,0.03384719789028168,0.0335569903254509,0.03316663205623627,0.033655088394880295,0.033291153609752655,0.032646141946315765,0.033042147755622864,0.03332486376166344,0.03375932574272156,0.033674318343400955,0.03394240885972977,0.034950464963912964,0.03518466651439667,0.03568192198872566,0.03573102504014969,0.03546694666147232,0.03545527532696724,0.035181447863578796,0.034760378301143646,0.03504454717040062,0.03495309129357338,0.036451153457164764,0.03809649869799614,0.04031354933977127,0.04238855093717575,0.04462912306189537]
+      curve_l2_q75: [0.008622560650110245,0.009332895278930664,0.01000148057937622,0.011800278909504414,0.016323281452059746,0.022414125502109528,0.027764281257987022,0.0309610553085804,0.03329320251941681,0.034828487783670425,0.03702164441347122,0.038892507553100586,0.041251108050346375,0.04387499764561653,0.04761146754026413,0.04893859475851059,0.05284933000802994,0.057085081934928894,0.05840647220611572,0.060034267604351044,0.061835892498493195,0.0656394511461258,0.06692539155483246,0.06913094222545624,0.06864503026008606,0.07035452127456665,0.07331973314285278,0.07418011873960495,0.07534347474575043,0.07496266812086105,0.07668988406658173,0.07538587599992752,0.07484788447618484,0.07454381138086319,0.07524140924215317,0.07530339807271957,0.07470536977052689,0.07503669708967209,0.07615570724010468,0.07633020728826523,0.07565461844205856,0.07545334100723267,0.07504944503307343,0.074581578373909,0.07515255361795425,0.07679711282253265,0.07544480264186859,0.07543947547674179,0.07144632935523987,0.07104543596506119,0.07183923572301865,0.07231198251247406,0.07335963845252991,0.0724094957113266,0.0722615122795105,0.07229390740394592,0.07097683101892471,0.06775696575641632,0.06712447851896286,0.06618022918701172,0.06467961519956589,0.06440296769142151,0.06320817023515701,0.06248552352190018,0.0623408704996109,0.06235852837562561,0.06215332821011543,0.06296248733997345,0.06267869472503662,0.06230478733778,0.06292521953582764,0.06291763484477997,0.06275173276662827,0.06361745297908783,0.06466547399759293,0.06479378044605255,0.06650646030902863,0.0671820193529129,0.06908835470676422,0.07128438353538513,0.07409913837909698,0.07589136064052582,0.07937632501125336,0.0815962627530098,0.08327256143093109,0.08605019003152847,0.08659800887107849,0.08840642124414444,0.08991304785013199,0.09154067188501358,0.09298127144575119,0.09192179143428802,0.0916917622089386,0.09109526127576828,0.09069494903087616,0.09025762975215912,0.08865728974342346,0.0885014683008194,0.08832694590091705,0.08750899136066437]
+      parameter_count: 380460
+    101:
+      n_test: 400
+      position_mse_per_horizon: {1:1.7164862583740614e-05,5:6.777956878067926e-05,10:0.00022151265875436366,25:0.0007767981151118875,50:0.0016678088577464223,100:0.0014034160412847996}
+      position_mse_std_per_horizon: {1:3.7905515455349814e-06,5:8.066420559771359e-05,10:0.000395934417610988,25:0.0013947284314781427,50:0.0069656213745474815,100:0.002801139373332262}
+      velocity_mse_per_horizon: {1:0.00013509478594642133,5:0.018448902294039726,10:0.018411124125123024,25:0.020938100293278694,50:0.023396410048007965,100:0.020521879196166992}
+      velocity_mse_std_per_horizon: {1:7.221417763503268e-05,5:0.036811571568250656,10:0.035231467336416245,25:0.0705331489443779,50:0.03783918544650078,100:0.025686632841825485}
+      position_error_per_horizon: {1:0.010088545270264149,5:0.01842462830245495,10:0.029895668849349022,25:0.05928172543644905,50:0.07097908109426498,100:0.07551394402980804}
+      position_error_std_per_horizon: {1:0.0011001903330907226,5:0.008198203518986702,10:0.020864441990852356,25:0.0338595025241375,50:0.07048988342285156,100:0.05213578790426254}
+      overall_l2_mean: 0.06078660115599632
+      curve_l2_mean: [0.010088544338941574,0.010285843163728714,0.011017674580216408,0.013395359739661217,0.0184246227145195,0.023833855986595154,0.0277547650039196,0.02951379306614399,0.02987598441541195,0.02989567071199417,0.030260581523180008,0.03146184980869293,0.03367283567786217,0.03648529201745987,0.03913629427552223,0.04164757579565048,0.04369450733065605,0.04556206241250038,0.047415927052497864,0.04930795729160309,0.05122777074575424,0.05328356847167015,0.05543414130806923,0.05753772705793381,0.05928175523877144,0.06104864180088043,0.06272725015878677,0.06446466594934464,0.06593985855579376,0.06726392358541489,0.06818872690200806,0.06870774179697037,0.06913170218467712,0.0695488229393959,0.07015739381313324,0.0707760900259018,0.0714103952050209,0.0720134750008583,0.0724351555109024,0.07278791069984436,0.07292770594358444,0.07285710424184799,0.07263945043087006,0.07260996848344803,0.07259132713079453,0.07236257940530777,0.0720568522810936,0.07173125445842743,0.07134716212749481,0.07097908109426498,0.07071644067764282,0.0706806406378746,0.07081800699234009,0.07093837112188339,0.0710826888680458,0.0709848552942276,0.07067769765853882,0.07018387317657471,0.06984611600637436,0.0694831982254982,0.06910871714353561,0.06883116066455841,0.06869637221097946,0.06874360889196396,0.06893671303987503,0.06928632408380508,0.06932582706212997,0.06914424151182175,0.06892439723014832,0.06863264739513397,0.06828267872333527,0.06763502955436707,0.06691581010818481,0.06620999425649643,0.06560912728309631,0.06513924896717072,0.06473536789417267,0.06444820016622543,0.06434565037488937,0.06448467075824738,0.06483800709247589,0.06533490121364594,0.06588531285524368,0.0664292424917221,0.06696036458015442,0.06753599643707275,0.06814524531364441,0.06880193948745728,0.06947041302919388,0.07007554173469543,0.07054007053375244,0.07086852192878723,0.07109798491001129,0.07132383435964584,0.07162369042634964,0.0720662996172905,0.07275980710983276,0.0736730545759201,0.07466825842857361,0.07551398128271103]
+      curve_l2_q25: [0.009334898553788662,0.0094731654971838,0.010298391804099083,0.012011070735752583,0.014556827954947948,0.017366455867886543,0.018807100132107735,0.02035561017692089,0.020165370777249336,0.019191019237041473,0.018371742218732834,0.01736077480018139,0.017109930515289307,0.017830632627010345,0.019236523658037186,0.021410789340734482,0.023405829444527626,0.02583860605955124,0.028125571087002754,0.02978524938225746,0.03143925592303276,0.03298622742295265,0.0343935489654541,0.03612491488456726,0.03738704323768616,0.03921139985322952,0.04090677201747894,0.042130932211875916,0.043754942715168,0.045584049075841904,0.04576773941516876,0.04499319568276405,0.04609997197985649,0.04578300938010216,0.04508489370346069,0.04532748460769653,0.046609681099653244,0.04702078551054001,0.04678923636674881,0.04643669351935387,0.04641472175717354,0.04553959518671036,0.04462708160281181,0.0460556335747242,0.045188505202531815,0.0449054092168808,0.0447816401720047,0.04374488443136215,0.04367683082818985,0.04361053183674812,0.042842522263526917,0.042903877794742584,0.04239063709974289,0.041931189596652985,0.0423661544919014,0.041119396686553955,0.041040435433387756,0.040820732712745667,0.040664270520210266,0.040661100298166275,0.0400007963180542,0.0403754822909832,0.039927978068590164,0.03944891691207886,0.03985984995961189,0.03981093317270279,0.03898053243756294,0.039099425077438354,0.038809243589639664,0.038997478783130646,0.03974830359220505,0.0393441803753376,0.03865424171090126,0.03799382969737053,0.03796999901533127,0.03829077631235123,0.03856237232685089,0.03882193565368652,0.03781146556138992,0.03730817884206772,0.03651026263833046,0.036238040775060654,0.035806555300951004,0.036333732306957245,0.03607780486345291,0.03555184230208397,0.03572111576795578,0.035980962216854095,0.03569943457841873,0.03511756658554077,0.03444211930036545,0.03450734540820122,0.0342763215303421,0.034196868538856506,0.03442708030343056,0.03481927141547203,0.035863399505615234,0.03709409013390541,0.0393441803753376,0.040982697159051895]
+      curve_l2_q75: [0.01073444727808237,0.010946344584226608,0.012049959041178226,0.01512337289750576,0.019830526784062386,0.024785490706562996,0.028445910662412643,0.02961636520922184,0.028896672651171684,0.027403350919485092,0.031033817678689957,0.03481559827923775,0.03969107195734978,0.04379834607243538,0.0469011515378952,0.05124550312757492,0.05483821779489517,0.05677811801433563,0.0600840300321579,0.0613580122590065,0.06374992430210114,0.06634273380041122,0.06717447936534882,0.07084891945123672,0.07185253500938416,0.07340461015701294,0.07448837906122208,0.07416316866874695,0.07642967998981476,0.075322225689888,0.07711305469274521,0.07660697400569916,0.07558573782444,0.07718323171138763,0.07593122124671936,0.07801105827093124,0.07627685368061066,0.07642114907503128,0.07708358764648438,0.07690972089767456,0.07692422717809677,0.07654613256454468,0.0762995034456253,0.07568221539258957,0.07554872334003448,0.07567588984966278,0.07686668634414673,0.07571721076965332,0.0747050791978836,0.07286228984594345,0.07144677639007568,0.07186058163642883,0.07204599678516388,0.07125724852085114,0.07187892496585846,0.07161471992731094,0.0698077529668808,0.06944213062524796,0.06929438561201096,0.06817148625850677,0.06813312321901321,0.06701669096946716,0.06740853935480118,0.06706515699625015,0.0676698312163353,0.06757757067680359,0.06783325970172882,0.0680779293179512,0.06744495034217834,0.06768307089805603,0.06734026223421097,0.0673188641667366,0.06740090250968933,0.06876907497644424,0.06828505545854568,0.06790676712989807,0.0679883137345314,0.06821272522211075,0.06910717487335205,0.07107429206371307,0.07224243879318237,0.07433605939149857,0.07623586058616638,0.07819932699203491,0.08048951625823975,0.08171596378087997,0.08416202664375305,0.08541485667228699,0.08447176218032837,0.0853925421833992,0.08727199584245682,0.08794819563627243,0.08810940384864807,0.08794232457876205,0.08868084102869034,0.08845709264278412,0.09058965742588043,0.08997458219528198,0.09059584140777588,0.09161719679832458]
+      parameter_count: 380460
+    2024:
+      n_test: 400
+      position_mse_per_horizon: {1:4.571777935780119e-06,5:8.018337393878028e-05,10:0.0003485319030005485,25:0.0007857485325075686,50:0.001678152708336711,100:0.0015463936142623425}
+      position_mse_std_per_horizon: {1:2.52110021392582e-06,5:0.00012637331383302808,10:0.0005819029756821692,25:0.0013973700115457177,50:0.0068669975735247135,100:0.002907962305471301}
+      velocity_mse_per_horizon: {1:0.00046038630534894764,5:0.019562184810638428,10:0.017530547454953194,25:0.021769993007183075,50:0.022802336141467094,100:0.021133780479431152}
+      velocity_mse_std_per_horizon: {1:0.00017367077816743404,5:0.03632776811718941,10:0.036588169634342194,25:0.07024458795785904,50:0.03677477687597275,100:0.024696551263332367}
+      position_error_per_horizon: {1:0.00506953289732337,5:0.019116872921586037,10:0.03827961906790733,25:0.05953555926680565,50:0.07115690410137177,100:0.08037069439888}
+      position_error_std_per_horizon: {1:0.0013154877815395594,5:0.010753855109214783,10:0.025017237290740013,25:0.03420538455247879,50:0.07075035572052002,100:0.05309344083070755}
+      overall_l2_mean: 0.062049590051174164
+      curve_l2_mean: [0.005069531966000795,0.004908975213766098,0.006227485369890928,0.011192373000085354,0.019116874784231186,0.02755681239068508,0.034309271723032,0.038015853613615036,0.038844235241413116,0.03827960044145584,0.03768029808998108,0.03766752406954765,0.038376033306121826,0.039619192481040955,0.04107964038848877,0.0429428294301033,0.04482366889715195,0.04676855728030205,0.048703040927648544,0.050608180463314056,0.05240835249423981,0.054250773042440414,0.05614902451634407,0.058006707578897476,0.059535540640354156,0.06114688515663147,0.06269615888595581,0.06433916091918945,0.0657092034816742,0.06687725335359573,0.06761318445205688,0.06794918328523636,0.06820628046989441,0.06852223724126816,0.069081149995327,0.06967435032129288,0.07030393928289413,0.07093147933483124,0.0714065283536911,0.07180126011371613,0.07199282199144363,0.07202187180519104,0.07191110402345657,0.07197877764701843,0.07207407057285309,0.07196246087551117,0.0717955082654953,0.0716296136379242,0.07140367478132248,0.07115693390369415,0.07095561176538467,0.07095688581466675,0.07109904289245605,0.07120964676141739,0.07134648412466049,0.07123316079378128,0.07086421549320221,0.07024049013853073,0.06969309598207474,0.06910798698663712,0.0684984028339386,0.06796184182167053,0.06757907569408417,0.06740733981132507,0.06741683930158615,0.06763812154531479,0.06760574132204056,0.0674017071723938,0.06720241904258728,0.06696555018424988,0.06669995933771133,0.06616432219743729,0.06558191031217575,0.06505315750837326,0.06468901038169861,0.06452769041061401,0.064510278403759,0.06469117850065231,0.06513242423534393,0.06592594087123871,0.06700929254293442,0.06824707239866257,0.06953910738229752,0.07078748941421509,0.07196438312530518,0.07310609519481659,0.07416880130767822,0.07513486593961716,0.0759667381644249,0.07660592347383499,0.07701092958450317,0.07720964401960373,0.07726962864398956,0.07730462402105331,0.07740946859121323,0.07764814794063568,0.07811494171619415,0.07879777997732162,0.07960836589336395,0.08037068694829941]
+      curve_l2_q25: [0.004066551104187965,0.0040334658697247505,0.005754569545388222,0.009584629908204079,0.013938461430370808,0.018553614616394043,0.022277139127254486,0.023840120062232018,0.02460578642785549,0.02470465749502182,0.02428922802209854,0.02380649372935295,0.023807194083929062,0.02355719543993473,0.023772159591317177,0.02419227361679077,0.025224808603525162,0.02681795321404934,0.028588121756911278,0.030230998992919922,0.031876906752586365,0.0334191732108593,0.03454535827040672,0.036065857857465744,0.037089332938194275,0.038604699075222015,0.04030938073992729,0.041658464819192886,0.042304590344429016,0.04303717613220215,0.043585002422332764,0.04336119443178177,0.04296206682920456,0.04291653633117676,0.04232959449291229,0.04244561493396759,0.04287324100732803,0.04399971663951874,0.043641138821840286,0.043694254010915756,0.042921386659145355,0.0429641455411911,0.04303561896085739,0.04412125051021576,0.04365304857492447,0.04320921003818512,0.04304295778274536,0.04295359179377556,0.0425260066986084,0.04251904785633087,0.042241841554641724,0.04194233566522598,0.04225063696503639,0.04192780703306198,0.04207104817032814,0.04135608673095703,0.041682712733745575,0.04021969810128212,0.040414728224277496,0.040240053087472916,0.03949691727757454,0.039144083857536316,0.03973039239645004,0.03961316496133804,0.03956020995974541,0.04027348756790161,0.03896162658929825,0.03863350301980972,0.038736358284950256,0.03907814994454384,0.038526084274053574,0.03762831911444664,0.0366373136639595,0.036173202097415924,0.0357808843255043,0.03532785922288895,0.03532633185386658,0.035285331308841705,0.0360289141535759,0.03526869788765907,0.03520706295967102,0.03558417409658432,0.035614658147096634,0.036103256046772,0.03598800301551819,0.035841621458530426,0.03659699857234955,0.03662829101085663,0.036526814103126526,0.036575980484485626,0.03688238561153412,0.037391409277915955,0.037410393357276917,0.03809792548418045,0.03892138600349426,0.03994122892618179,0.041854407638311386,0.04331049695611,0.045829541981220245,0.04756541922688484]
+      curve_l2_q75: [0.005864206701517105,0.005502348765730858,0.006707940250635147,0.01196235604584217,0.019977178424596786,0.028098639100790024,0.03479757905006409,0.038978494703769684,0.04023384302854538,0.038853082805871964,0.036647308617830276,0.037083230912685394,0.04140476882457733,0.04342940077185631,0.047530509531497955,0.0500408336520195,0.053493931889534,0.05862390995025635,0.0590645894408226,0.060460325330495834,0.06280781328678131,0.06528928130865097,0.06742778420448303,0.06885872781276703,0.07037124782800674,0.07207221537828445,0.07339373975992203,0.07437393069267273,0.07689239829778671,0.07661904394626617,0.07823903113603592,0.07616159319877625,0.0757768452167511,0.07716699689626694,0.07949445396661758,0.07774301618337631,0.07806319743394852,0.07763514667749405,0.0771780014038086,0.07727358490228653,0.07685190439224243,0.0765673816204071,0.07551170885562897,0.0745185911655426,0.07612928003072739,0.07608431577682495,0.07643134891986847,0.07559187710285187,0.07540085166692734,0.0738663375377655,0.0718141719698906,0.07291330397129059,0.0732608288526535,0.07285494357347488,0.07297296077013016,0.07223202288150787,0.07174184173345566,0.06984268128871918,0.06842304766178131,0.06864039599895477,0.06729813665151596,0.06621648371219635,0.0652829185128212,0.06521019339561462,0.06565161049365997,0.06564453989267349,0.06578771770000458,0.0665445476770401,0.06621738523244858,0.06680759787559509,0.06689111143350601,0.06801870465278625,0.06835998594760895,0.06856605410575867,0.06894031167030334,0.07041102647781372,0.0708928033709526,0.07191711664199829,0.07492570579051971,0.0773291364312172,0.08084848523139954,0.08397465199232101,0.08606356382369995,0.0869181901216507,0.08964314311742783,0.09030958265066147,0.09228497743606567,0.09448376297950745,0.09591290354728699,0.09842764586210251,0.09758272022008896,0.09606470167636871,0.09648073464632034,0.09649094194173813,0.0964965969324112,0.09688510000705719,0.09655719995498657,0.09505068510770798,0.09533607959747314,0.09465479850769043]
+      parameter_count: 380460
+  position_mse_per_horizon: {1:1.0927918689655295e-05,5:7.526174401088308e-05,10:0.0002861264705037077,25:0.000763674460661908,50:0.0016622163821011782,100:0.0014464035242175062}
+  position_mse_std_per_horizon: {1:2.7882508675247664e-06,5:0.00011823869620760281,10:0.0004821011971216649,25:0.0013819301578526695,50:0.0069011130059758825,100:0.002843638649210334}
+  position_mse_seed_std_per_horizon: {1:6.297388439362177e-06,5:6.58641706726098e-06,10:6.353841205452143e-05,25:3.0808885815237175e-05,50:1.9348534675133935e-05,100:8.687703670603642e-05}
+  velocity_mse_per_horizon: {1:0.0003253592731198296,5:0.018527929360667866,10:0.016586277944346268,25:0.02049375946323077,50:0.022618545219302177,100:0.02101101850469907}
+  velocity_mse_std_per_horizon: {1:0.0001472572112106718,5:0.03807589287559191,10:0.03334429673850536,25:0.06994417558113734,50:0.03685390452543894,100:0.024866124615073204}
+  velocity_mse_seed_std_per_horizon: {1:0.00016953473234220445,5:0.0009970934954648544,10:0.0024382073542281698,25:0.0015470273120444626,50:0.0008842043253655836,100:0.0004407721159021721}
+  position_error_per_horizon: {1:0.007755222885559003,5:0.01849166490137577,10:0.034156953915953636,25:0.05845096210638682,50:0.07054215421279271,100:0.07719853023687999}
+  position_error_std_per_horizon: {1:0.0010523574892431498,5:0.010335693446298441,10:0.023138374090194702,25:0.03411237274607023,50:0.07068610191345215,100:0.052087053656578064}
+  position_error_seed_std_per_horizon: {1:0.0025279919889007797,5:0.0005945310377408356,10:0.004193693709293677,25:0.0016635991884255824,50:0.0009151083416532209,100:0.0027489401895750957}
+  overall_l2_mean: 0.06072099258502325
+  overall_l2_seed_std: 0.0013625869120171337
+  curve_l2_mean: [0.008107587695121765,0.008698863908648491,0.009274079464375973,0.011939478106796741,0.017933497205376625,0.025027725845575333,0.030777525156736374,0.033932026475667953,0.03474843129515648,0.03429556265473366,0.03364067152142525,0.03363863006234169,0.03468073904514313,0.036500368267297745,0.038451068103313446,0.04049065709114075,0.04211186245083809,0.04355691745877266,0.04502175375819206,0.046581268310546875,0.048257455229759216,0.05017600581049919,0.05233413353562355,0.054575204849243164,0.05653561279177666,0.058538731187582016,0.06042276695370674,0.06232533976435661,0.06390896439552307,0.0653163269162178,0.06629958003759384,0.0668264627456665,0.06720654666423798,0.06754063069820404,0.06802953034639359,0.06853357702493668,0.06906825304031372,0.06960294395685196,0.06999396532773972,0.0703246146440506,0.07046444714069366,0.07042954862117767,0.0702747032046318,0.07028694450855255,0.07033053040504456,0.07020033150911331,0.07003451138734818,0.06987554579973221,0.06967595964670181,0.069490447640419,0.06935132294893265,0.06941309571266174,0.06961546093225479,0.06979136914014816,0.06993559002876282,0.06985041499137878,0.06951801478862762,0.0689489096403122,0.06837626546621323,0.0677192285656929,0.06699876487255096,0.06630528718233109,0.06576260924339294,0.06545061618089676,0.0653633177280426,0.06557390093803406,0.06558526307344437,0.06543806940317154,0.06528177112340927,0.06504087895154953,0.064705990254879,0.0640246644616127,0.06323449313640594,0.062481533735990524,0.061911746859550476,0.06154850125312805,0.06130773574113846,0.06124681979417801,0.06142561882734299,0.06190451234579086,0.0626421794295311,0.06355459243059158,0.06454749405384064,0.06553637236356735,0.06649858504533768,0.06746737658977509,0.06841041892766953,0.06931281834840775,0.07012094557285309,0.07075084745883942,0.07113517820835114,0.07133308053016663,0.07139123976230621,0.07140205055475235,0.07148651778697968,0.07176679372787476,0.07237637788057327,0.07332336902618408,0.07451117783784866,0.0757109522819519]
+  curve_l2_q25: [0.007531081326305866,0.007973164319992065,0.008334442973136902,0.009506259113550186,0.012442094273865223,0.016259603202342987,0.019733412191271782,0.02121257595717907,0.021603060886263847,0.020913004875183105,0.019735341891646385,0.019686726853251457,0.01958119496703148,0.019923191517591476,0.02055930905044079,0.02129511907696724,0.022245492786169052,0.023323513567447662,0.0247721616178751,0.02597140334546566,0.027621163055300713,0.029701760038733482,0.031040456146001816,0.03320404514670372,0.033541254699230194,0.03512135148048401,0.037134602665901184,0.03852836415171623,0.04033579304814339,0.0412699356675148,0.04198050498962402,0.04239725321531296,0.042862050235271454,0.04287435859441757,0.042239781469106674,0.04185037314891815,0.042503662407398224,0.0429297611117363,0.04220300167798996,0.042381733655929565,0.04243086278438568,0.04253331571817398,0.04184791445732117,0.0418037474155426,0.04199760779738426,0.041892096400260925,0.0415274016559124,0.04142031446099281,0.04063216224312782,0.03978312760591507,0.03984016925096512,0.04012942686676979,0.03987332433462143,0.039595827460289,0.04010400176048279,0.03987946733832359,0.04006662964820862,0.039988961070775986,0.0391034297645092,0.038615353405475616,0.038523878902196884,0.03839297220110893,0.03833802044391632,0.03726113587617874,0.03753310814499855,0.037809934467077255,0.037545446306467056,0.03781828656792641,0.037699244916439056,0.03719589114189148,0.03705110028386116,0.03630928695201874,0.03541330620646477,0.034684304147958755,0.03384719789028168,0.0335569903254509,0.03316663205623627,0.033655088394880295,0.033291153609752655,0.032646141946315765,0.033042147755622864,0.03332486376166344,0.03375932574272156,0.033674318343400955,0.03394240885972977,0.034950464963912964,0.03518466651439667,0.03568192198872566,0.03573102504014969,0.03546694666147232,0.03545527532696724,0.035181447863578796,0.034760378301143646,0.03504454717040062,0.03495309129357338,0.036451153457164764,0.03809649869799614,0.04031354933977127,0.04238855093717575,0.04462912306189537]
+  curve_l2_q75: [0.008622560650110245,0.009332895278930664,0.01000148057937622,0.011800278909504414,0.016323281452059746,0.022414125502109528,0.027764281257987022,0.0309610553085804,0.03329320251941681,0.034828487783670425,0.03702164441347122,0.038892507553100586,0.041251108050346375,0.04387499764561653,0.04761146754026413,0.04893859475851059,0.05284933000802994,0.057085081934928894,0.05840647220611572,0.060034267604351044,0.061835892498493195,0.0656394511461258,0.06692539155483246,0.06913094222545624,0.06864503026008606,0.07035452127456665,0.07331973314285278,0.07418011873960495,0.07534347474575043,0.07496266812086105,0.07668988406658173,0.07538587599992752,0.07484788447618484,0.07454381138086319,0.07524140924215317,0.07530339807271957,0.07470536977052689,0.07503669708967209,0.07615570724010468,0.07633020728826523,0.07565461844205856,0.07545334100723267,0.07504944503307343,0.074581578373909,0.07515255361795425,0.07679711282253265,0.07544480264186859,0.07543947547674179,0.07144632935523987,0.07104543596506119,0.07183923572301865,0.07231198251247406,0.07335963845252991,0.0724094957113266,0.0722615122795105,0.07229390740394592,0.07097683101892471,0.06775696575641632,0.06712447851896286,0.06618022918701172,0.06467961519956589,0.06440296769142151,0.06320817023515701,0.06248552352190018,0.0623408704996109,0.06235852837562561,0.06215332821011543,0.06296248733997345,0.06267869472503662,0.06230478733778,0.06292521953582764,0.06291763484477997,0.06275173276662827,0.06361745297908783,0.06466547399759293,0.06479378044605255,0.06650646030902863,0.0671820193529129,0.06908835470676422,0.07128438353538513,0.07409913837909698,0.07589136064052582,0.07937632501125336,0.0815962627530098,0.08327256143093109,0.08605019003152847,0.08659800887107849,0.08840642124414444,0.08991304785013199,0.09154067188501358,0.09298127144575119,0.09192179143428802,0.0916917622089386,0.09109526127576828,0.09069494903087616,0.09025762975215912,0.08865728974342346,0.0885014683008194,0.08832694590091705,0.08750899136066437]
 Deep GRU:
   n_test: 400
-  position_mse_per_horizon: {1:0.003691522404551506,5:0.17826126515865326,10:0.6387024521827698,25:0.8983099460601807,50:0.6179310083389282,100:0.7234734892845154}
-  position_mse_std_per_horizon: {1:0.0002547152107581496,5:0.009631749242544174,10:0.10663652420043945,25:0.16150565445423126,50:0.1295667588710785,100:0.02137700282037258}
-  velocity_mse_per_horizon: {1:0.01628410816192627,5:0.3446088135242462,10:0.33266526460647583,25:0.20744910836219788,50:0.07997483015060425,100:0.05155301094055176}
-  velocity_mse_std_per_horizon: {1:0.0025708875618875027,5:0.1025913655757904,10:0.33518439531326294,25:0.10524584352970123,50:0.07978938519954681,100:0.02461450733244419}
-  position_error_per_horizon: {1:0.1487376093864441,5:1.033803105354309,10:1.949607253074646,25:2.3113439083099365,50:1.9146051406860352,100:2.0832433700561523}
-  position_error_std_per_horizon: {1:0.005124498624354601,5:0.02861243672668934,10:0.17676597833633423,25:0.2180585265159607,50:0.20462946593761444,100:0.03062797337770462}
-  overall_l2_mean: 1.9220539331436157
-  curve_l2_mean: [0.14873762428760529,0.3178147077560425,0.5340090990066528,0.7798031568527222,1.0338035821914673,1.2765581607818604,1.4948962926864624,1.6814502477645874,1.8310185670852661,1.9496077299118042,2.0445425510406494,2.1218395233154297,2.184699058532715,2.2350683212280273,2.2752885818481445,2.306413173675537,2.3294663429260254,2.345426559448242,2.3548357486724854,2.3584513664245605,2.3570396900177,2.3513410091400146,2.3416025638580322,2.3281452655792236,2.3113439083099365,2.291750907897949,2.2699358463287354,2.2465660572052,2.222257614135742,2.197633981704712,2.1732630729675293,2.1495208740234375,2.1268067359924316,2.105375289916992,2.085390567779541,2.066941022872925,2.0501527786254883,2.0350003242492676,2.0213468074798584,2.0090384483337402,1.9979314804077148,1.987697958946228,1.9781081676483154,1.9689881801605225,1.9601048231124878,1.9513421058654785,1.9424885511398315,1.933435320854187,1.924159288406372,1.9146043062210083,1.904853343963623,1.894904375076294,1.884933352470398,1.8749560117721558,1.8651258945465088,1.8555241823196411,1.8462562561035156,1.837336778640747,1.8288425207138062,1.8208006620407104,1.8131821155548096,1.8060476779937744,1.799471378326416,1.7936701774597168,1.7889093160629272,1.7854936122894287,1.7835116386413574,1.7830533981323242,1.7841683626174927,1.7867059707641602,1.7904648780822754,1.7951927185058594,1.8008733987808228,1.807477593421936,1.8151168823242188,1.8238952159881592,1.8339115381240845,1.8452717065811157,1.858055591583252,1.872277021408081,1.8878892660140991,1.9047698974609375,1.922714114189148,1.9414482116699219,1.9606040716171265,1.9797879457473755,1.998552680015564,2.016435146331787,2.0330185890197754,2.0479259490966797,2.0608530044555664,2.0715770721435547,2.079960584640503,2.085972785949707,2.089677095413208,2.0912346839904785,2.0909223556518555,2.089127540588379,2.0863687992095947,2.0832433700561523]
-  curve_l2_q25: [0.1455404907464981,0.3134908676147461,0.528805136680603,0.7735838294029236,1.0258468389511108,1.2666834592819214,1.4784643650054932,1.6527498960494995,1.784144639968872,1.8832439184188843,1.9546334743499756,2.0108654499053955,2.045363426208496,2.0777902603149414,2.1131317615509033,2.1438424587249756,2.168163776397705,2.1848068237304688,2.2021398544311523,2.2189223766326904,2.2373239994049072,2.241600513458252,2.239755153656006,2.2355217933654785,2.216160297393799,2.180799961090088,2.1551671028137207,2.117480754852295,2.089216709136963,2.0438144207000732,2.007584810256958,1.9701206684112549,1.9446399211883545,1.9192590713500977,1.9033443927764893,1.8796144723892212,1.8654371500015259,1.8585224151611328,1.8562140464782715,1.8514074087142944,1.8450353145599365,1.8389177322387695,1.8341920375823975,1.8299428224563599,1.8274943828582764,1.8228517770767212,1.8181918859481812,1.812841773033142,1.8096320629119873,1.8026002645492554,1.7966521978378296,1.7923786640167236,1.7844269275665283,1.778937578201294,1.7708700895309448,1.7585161924362183,1.7500313520431519,1.7453007698059082,1.7372967004776,1.727577567100525,1.7174272537231445,1.694271445274353,1.7050470113754272,1.7023885250091553,1.7102735042572021,1.7087929248809814,1.71195650100708,1.7151585817337036,1.7205390930175781,1.724134922027588,1.729623556137085,1.7369850873947144,1.743190050125122,1.747466802597046,1.7546980381011963,1.7681338787078857,1.7781225442886353,1.7865722179412842,1.8066319227218628,1.8263148069381714,1.839902639389038,1.8562244176864624,1.8693714141845703,1.8914273977279663,1.9145832061767578,1.9413506984710693,1.966432809829712,1.9893324375152588,2.011563777923584,2.031557559967041,2.0426626205444336,2.0506093502044678,2.0566651821136475,2.062995195388794,2.065547466278076,2.0663223266601562,2.0651280879974365,2.062899589538574,2.0599136352539062,2.0568361282348633]
-  curve_l2_q75: [0.15186330676078796,0.3215426206588745,0.5388240814208984,0.7886189818382263,1.0520035028457642,1.308521032333374,1.5469586849212646,1.7565693855285645,1.9289146661758423,2.071913719177246,2.1899847984313965,2.28836727142334,2.368175506591797,2.4312052726745605,2.478586196899414,2.51285982131958,2.536660671234131,2.550109624862671,2.552241802215576,2.5480542182922363,2.5402748584747314,2.5262229442596436,2.5099081993103027,2.4931957721710205,2.472503900527954,2.451281785964966,2.434798240661621,2.4112906455993652,2.39432430267334,2.3737919330596924,2.354612350463867,2.334232807159424,2.311196804046631,2.2898876667022705,2.2668747901916504,2.2485768795013428,2.230052947998047,2.214341878890991,2.202488422393799,2.1916255950927734,2.181851863861084,2.170422315597534,2.1575024127960205,2.1507630348205566,2.1420648097991943,2.1297953128814697,2.1189746856689453,2.1077399253845215,2.0967907905578613,2.0856575965881348,2.071007013320923,2.0602974891662598,2.045375347137451,2.035810708999634,2.022830009460449,2.0099711418151855,1.9962214231491089,1.9850064516067505,1.9709641933441162,1.9569426774978638,1.9415653944015503,1.923218846321106,1.910408854484558,1.8966281414031982,1.8821511268615723,1.8677607774734497,1.8600349426269531,1.8487119674682617,1.8475180864334106,1.8544068336486816,1.8592681884765625,1.864903450012207,1.869393229484558,1.8775765895843506,1.885404109954834,1.896881341934204,1.908057451248169,1.917492389678955,1.9308685064315796,1.9441527128219604,1.9592534303665161,1.9747462272644043,1.9891414642333984,2.002998113632202,2.015575647354126,2.0290753841400146,2.040735960006714,2.0517349243164062,2.063149929046631,2.0734565258026123,2.0852227210998535,2.096453905105591,2.1054396629333496,2.110165596008301,2.1141152381896973,2.11586856842041,2.1158432960510254,2.1145434379577637,2.1118736267089844,2.108729600906372]
+  position_mse_per_horizon: {1:3.21011793857906e-05,5:0.00017152960936073214,10:0.00028984053642489016,25:0.0008172226953320205,50:0.0017294100252911448,100:0.006496428977698088}
+  position_mse_std_per_horizon: {1:2.8276434022700414e-05,5:0.0001391393452649936,10:0.0005705562070943415,25:0.0014763829531148076,50:0.006650533992797136,100:0.004695885349065065}
+  velocity_mse_per_horizon: {1:0.0009749674936756492,5:0.021451838314533234,10:0.00642559165135026,25:0.014466039836406708,50:0.016050860285758972,100:0.1119101420044899}
+  velocity_mse_std_per_horizon: {1:0.0006495529087260365,5:0.03300777077674866,10:0.012833000160753727,25:0.06817463040351868,50:0.03229528293013573,100:0.04311258718371391}
+  position_error_per_horizon: {1:0.012598514556884766,5:0.029743056744337082,10:0.03474962338805199,25:0.05916468799114227,50:0.07322502881288528,100:0.18705406785011292}
+  position_error_std_per_horizon: {1:0.005821040365844965,5:0.012021996080875397,10:0.02305443026125431,25:0.0374549925327301,50:0.07081351429224014,100:0.06316130608320236}
+  overall_l2_mean: 0.08097754418849945
+  curve_l2_mean: [0.012598513625562191,0.015258174389600754,0.018540317192673683,0.023242034018039703,0.029743051156401634,0.035310760140419006,0.036781471222639084,0.03499768301844597,0.033886536955833435,0.03474961966276169,0.036513566970825195,0.03852149099111557,0.04043563827872276,0.04227655753493309,0.044075436890125275,0.04597121849656105,0.047567762434482574,0.04910867288708687,0.05064649507403374,0.052038855850696564,0.053308576345443726,0.0545850470662117,0.056038178503513336,0.05763979256153107,0.05916464701294899,0.06073261424899101,0.06223465874791145,0.0637972429394722,0.06521273404359818,0.06665307283401489,0.06778464466333389,0.06857061386108398,0.06925177574157715,0.0699581652879715,0.07088908553123474,0.07184896618127823,0.07263633608818054,0.0733795240521431,0.07398912310600281,0.07454218715429306,0.07495933771133423,0.07521489262580872,0.07536837458610535,0.07557374238967896,0.07561132311820984,0.07538516819477081,0.0749349519610405,0.07437577098608017,0.07376529276371002,0.07322505116462708,0.0727975144982338,0.07236179709434509,0.07193849980831146,0.07155062258243561,0.07122836261987686,0.07084067165851593,0.07051444053649902,0.07024618983268738,0.07013006508350372,0.0700749009847641,0.07014402002096176,0.07033330947160721,0.07075053453445435,0.07139717042446136,0.07219433784484863,0.07325345277786255,0.07417044043540955,0.07498987019062042,0.07583870738744736,0.07663854956626892,0.07739612460136414,0.07791205495595932,0.0784645527601242,0.0791497677564621,0.08008213341236115,0.08133723586797714,0.08285705745220184,0.08472613990306854,0.08710132539272308,0.09025368839502335,0.0941532626748085,0.09881401807069778,0.10428806394338608,0.11056151241064072,0.1175689697265625,0.12521392107009888,0.13329635560512543,0.1416066437959671,0.14990799129009247,0.1579163819551468,0.16534607112407684,0.17196553945541382,0.1775631308555603,0.18200549483299255,0.18522663414478302,0.18724702298641205,0.18822167813777924,0.18834953010082245,0.187879741191864,0.18705400824546814]
+  curve_l2_q25: [0.007814190350472927,0.009621464647352695,0.012138556689023972,0.015988187864422798,0.02219351939857006,0.025246135890483856,0.024631569162011147,0.022894054651260376,0.021371478214859962,0.022099267691373825,0.023139623925089836,0.024555858224630356,0.025378622114658356,0.026140375062823296,0.026956671848893166,0.02737623080611229,0.02843179553747177,0.029858360067009926,0.030763253569602966,0.0319182388484478,0.03231259435415268,0.03301651030778885,0.0332363024353981,0.03471849858760834,0.03588606044650078,0.03697602450847626,0.038165509700775146,0.039297573268413544,0.03959067165851593,0.04063885286450386,0.03986559808254242,0.040519751608371735,0.04047613590955734,0.04185201972723007,0.043050769716501236,0.04423215985298157,0.045153312385082245,0.04456302523612976,0.04337433725595474,0.0434490330517292,0.0428270660340786,0.04323691874742508,0.04306699335575104,0.04313129931688309,0.043424151837825775,0.04425211250782013,0.04394292086362839,0.043596889823675156,0.04270421713590622,0.042005639523267746,0.041321150958538055,0.03904299437999725,0.03890739381313324,0.03841600939631462,0.03799830377101898,0.038167554885149,0.038002848625183105,0.037842974066734314,0.0376444049179554,0.03774796426296234,0.03751777857542038,0.03766368329524994,0.03812972083687782,0.03864658623933792,0.038913361728191376,0.03837711736559868,0.03852317854762077,0.03979966789484024,0.040145162492990494,0.041197728365659714,0.04153407737612724,0.0423765666782856,0.0426647774875164,0.04444355517625809,0.04486236721277237,0.04691271111369133,0.049202609807252884,0.0526985339820385,0.05720309913158417,0.06302781403064728,0.06731417030096054,0.070578932762146,0.0754261314868927,0.08202967792749405,0.08858603239059448,0.09708546847105026,0.10661950707435608,0.11378888040781021,0.12146133184432983,0.12940704822540283,0.13696178793907166,0.1431354582309723,0.1464204490184784,0.1492474526166916,0.15063375234603882,0.15108564496040344,0.15113630890846252,0.1509472131729126,0.15022709965705872,0.14962612092494965]
+  curve_l2_q75: [0.01685800589621067,0.020589575171470642,0.024869918823242188,0.030288394540548325,0.03746037185192108,0.042246270924806595,0.04299652576446533,0.03988674655556679,0.03853175416588783,0.03953024744987488,0.04138602316379547,0.04447632655501366,0.04620887711644173,0.04910838603973389,0.05090256780385971,0.05427185446023941,0.0575750470161438,0.06033802777528763,0.06168169528245926,0.06302661448717117,0.0656195729970932,0.06759962439537048,0.06899873912334442,0.06884945929050446,0.07051171362400055,0.0714266374707222,0.07257422059774399,0.07337737828493118,0.07676693052053452,0.07688277214765549,0.08003126084804535,0.07950164377689362,0.08141788095235825,0.08113089203834534,0.08087874948978424,0.07963314652442932,0.08133117854595184,0.08176763355731964,0.08150479942560196,0.08350490033626556,0.08379247784614563,0.08301997184753418,0.08338889479637146,0.0824420154094696,0.08159865438938141,0.08204267919063568,0.080550916492939,0.08076902478933334,0.08064620941877365,0.08027041703462601,0.07880128175020218,0.07848658412694931,0.07923521846532822,0.07741406559944153,0.07734540104866028,0.07721991837024689,0.07652778923511505,0.0750190019607544,0.0736950933933258,0.07464390248060226,0.07488957047462463,0.07439583539962769,0.07446567714214325,0.07508321851491928,0.07615771889686584,0.07804906368255615,0.07860258221626282,0.08003031462430954,0.08253457397222519,0.08519819378852844,0.08725057542324066,0.09024398028850555,0.08985589444637299,0.09140077233314514,0.09231948852539062,0.09313605725765228,0.09358931332826614,0.0956636294722557,0.09913890808820724,0.10422002524137497,0.10748392343521118,0.11313218623399734,0.11759956181049347,0.12598420679569244,0.13540957868099213,0.14278632402420044,0.15007731318473816,0.1583637297153473,0.16547897458076477,0.17529703676700592,0.18754206597805023,0.19772717356681824,0.20869538187980652,0.21410878002643585,0.2164696305990219,0.21992480754852295,0.22305196523666382,0.22642993927001953,0.22624681890010834,0.22422750294208527]
   parameter_count: 338868
 Continuous ConvLSTM:
   n_test: 400
-  position_mse_per_horizon: {1:0.08706480264663696,5:0.29681503772735596,10:0.3694196343421936,25:0.20415860414505005,50:0.32737788558006287,100:0.16676917672157288}
-  position_mse_std_per_horizon: {1:0.005530837923288345,5:0.012335360050201416,10:0.07824789732694626,25:0.06890866905450821,50:0.058646298944950104,100:0.02328493632376194}
-  velocity_mse_per_horizon: {1:0.28299713134765625,5:0.7414321899414062,10:0.24780356884002686,25:0.36738571524620056,50:0.1309562772512436,100:0.2854663133621216}
-  velocity_mse_std_per_horizon: {1:0.022076638415455818,5:0.20650191605091095,10:0.34904173016548157,25:0.16489580273628235,50:0.07674886286258698,100:0.03733928129076958}
-  position_error_per_horizon: {1:0.7224055528640747,5:1.3342033624649048,10:1.4787040948867798,25:1.0912234783172607,50:1.3959797620773315,100:0.9979214668273926}
-  position_error_std_per_horizon: {1:0.02278432622551918,5:0.028137151151895523,10:0.17306679487228394,25:0.18488703668117523,50:0.12453063577413559,100:0.0690503641963005}
-  overall_l2_mean: 1.1906989812850952
-  curve_l2_mean: [0.7224055528640747,0.8902094960212708,1.037355899810791,1.1887513399124146,1.3342039585113525,1.4423800706863403,1.4956953525543213,1.5057380199432373,1.4953478574752808,1.478703498840332,1.4578570127487183,1.4322749376296997,1.4032576084136963,1.371936321258545,1.3409860134124756,1.3120312690734863,1.285542607307434,1.260890245437622,1.236849069595337,1.2126215696334839,1.1879990100860596,1.163254976272583,1.1385576725006104,1.1143500804901123,1.0912234783172607,1.0699741840362549,1.0513217449188232,1.0359089374542236,1.0241241455078125,1.0162992477416992,1.012552261352539,1.0128049850463867,1.01704740524292,1.0251574516296387,1.0369422435760498,1.0520904064178467,1.0703089237213135,1.0912160873413086,1.114374041557312,1.139363408088684,1.1657845973968506,1.1931360960006714,1.2209938764572144,1.2489519119262695,1.2765417098999023,1.303397536277771,1.3290915489196777,1.3532813787460327,1.3756799697875977,1.395979642868042,1.4139807224273682,1.4294549226760864,1.4423003196716309,1.452386498451233,1.4596858024597168,1.4641520977020264,1.465796947479248,1.4646345376968384,1.4607237577438354,1.454105019569397,1.4448474645614624,1.433066964149475,1.4189773797988892,1.4029650688171387,1.3854622840881348,1.3669211864471436,1.3474448919296265,1.3272074460983276,1.3063126802444458,1.284605860710144,1.2618590593338013,1.2377725839614868,1.2123634815216064,1.1857271194458008,1.1582096815109253,1.130204200744629,1.1021274328231812,1.074476957321167,1.0477731227874756,1.0225286483764648,0.9992514848709106,0.9784298539161682,0.9605053067207336,0.9458577632904053,0.9347575902938843,0.9273794293403625,0.9237096905708313,0.9235298037528992,0.9264478087425232,0.9318861365318298,0.9391511678695679,0.9475104808807373,0.9562514424324036,0.9647652506828308,0.9725921154022217,0.979454755783081,0.985278308391571,0.990139901638031,0.9942587018013,0.9979214668273926]
-  curve_l2_q25: [0.7062212228775024,0.8746094703674316,1.0233738422393799,1.1755179166793823,1.326448917388916,1.4313105344772339,1.4774798154830933,1.4780097007751465,1.4535795450210571,1.4180233478546143,1.37552809715271,1.3252100944519043,1.2666304111480713,1.2060894966125488,1.1506783962249756,1.099078893661499,1.0538618564605713,1.0237213373184204,1.0051794052124023,0.9942341446876526,0.9888585209846497,0.9772351980209351,0.9683862328529358,0.9620378017425537,0.9569007158279419,0.9524176120758057,0.9447564482688904,0.9352272152900696,0.9417515993118286,0.9464821815490723,0.9567753672599792,0.9600884914398193,0.968403160572052,0.9790680408477783,0.9829479455947876,0.9893265962600708,0.9923490285873413,1.002446174621582,1.017599105834961,1.0299357175827026,1.0465455055236816,1.0702157020568848,1.0916078090667725,1.12062668800354,1.154320240020752,1.1859791278839111,1.2078602313995361,1.2415771484375,1.2738146781921387,1.2969834804534912,1.3246915340423584,1.3435075283050537,1.3539808988571167,1.3648120164871216,1.3737716674804688,1.384972095489502,1.3818130493164062,1.378800868988037,1.3599507808685303,1.3552581071853638,1.3280364274978638,1.293067216873169,1.2634155750274658,1.2304096221923828,1.2001668214797974,1.172871708869934,1.139840841293335,1.1088471412658691,1.0889755487442017,1.063079595565796,1.0454514026641846,1.0295912027359009,1.0097358226776123,0.9896495342254639,0.9734419584274292,0.956832230091095,0.9431282877922058,0.9263002276420593,0.909635066986084,0.9016546010971069,0.8855817317962646,0.8759238719940186,0.8639558553695679,0.8571306467056274,0.8551037311553955,0.8525969982147217,0.8555083274841309,0.8553526401519775,0.8605200052261353,0.8688226938247681,0.878515362739563,0.8869343996047974,0.8956303596496582,0.9045658707618713,0.9130586981773376,0.9202143549919128,0.9262357354164124,0.9313309788703918,0.9359321594238281,0.9394979476928711]
-  curve_l2_q75: [0.7386312484741211,0.9064944386482239,1.0511658191680908,1.2014838457107544,1.3515790700912476,1.4726648330688477,1.545451045036316,1.57724928855896,1.5919997692108154,1.6022452116012573,1.6073060035705566,1.605129599571228,1.594217300415039,1.5765806436538696,1.5537536144256592,1.5298707485198975,1.5053825378417969,1.481326699256897,1.4567087888717651,1.4298341274261475,1.4001071453094482,1.3683329820632935,1.3344013690948486,1.2988632917404175,1.261120319366455,1.2228775024414062,1.1842249631881714,1.1461995840072632,1.1104260683059692,1.0841625928878784,1.0753711462020874,1.0686510801315308,1.0667195320129395,1.0618760585784912,1.0685970783233643,1.0843294858932495,1.0994242429733276,1.1321157217025757,1.180004596710205,1.2274991273880005,1.276214838027954,1.3118762969970703,1.34454345703125,1.3658560514450073,1.3854496479034424,1.399472951889038,1.435126543045044,1.4700000286102295,1.4883311986923218,1.5050456523895264,1.512782096862793,1.5298668146133423,1.5404061079025269,1.5448029041290283,1.552366852760315,1.5594735145568848,1.5677447319030762,1.5700969696044922,1.5730905532836914,1.5749084949493408,1.5743423700332642,1.5762836933135986,1.571498155593872,1.5682373046875,1.5618685483932495,1.556005835533142,1.5453366041183472,1.5366742610931396,1.5292624235153198,1.507851004600525,1.4685863256454468,1.4325129985809326,1.4155628681182861,1.3755767345428467,1.3218544721603394,1.2743221521377563,1.2301021814346313,1.1755900382995605,1.1265857219696045,1.073392391204834,1.039544701576233,1.0282613039016724,1.0148916244506836,1.004384994506836,0.9933577179908752,0.9864977598190308,0.9836106300354004,0.9844931364059448,0.9907791614532471,0.9997259974479675,1.0060170888900757,1.0118608474731445,1.0170432329177856,1.0236022472381592,1.0306025743484497,1.036991834640503,1.0419566631317139,1.04494309425354,1.0511937141418457,1.0554136037826538]
+  position_mse_per_horizon: {1:2.1441708668135107e-05,5:7.792786345817149e-05,10:0.00011915400682482868,25:0.0005929369363002479,50:0.0014975055819377303,100:0.0070694806054234505}
+  position_mse_std_per_horizon: {1:7.309350621653721e-06,5:6.898444553371519e-05,10:0.0001360190217383206,25:0.0013037155149504542,50:0.006751906592398882,100:0.004279767628759146}
+  velocity_mse_per_horizon: {1:0.0014696833677589893,5:0.01790624111890793,10:0.005532163195312023,25:0.012077036313712597,50:0.010949527844786644,100:0.33696478605270386}
+  velocity_mse_std_per_horizon: {1:0.00039774991455487907,5:0.03252099081873894,10:0.00845268089324236,25:0.06773145496845245,50:0.030475839972496033,100:0.2892436981201172}
+  position_error_per_horizon: {1:0.011174989864230156,5:0.020498191937804222,10:0.024150032550096512,25:0.04663147032260895,50:0.06240079924464226,100:0.19661499559879303}
+  position_error_std_per_horizon: {1:0.0019416138529777527,5:0.006884132046252489,10:0.011476059444248676,25:0.03719042241573334,50:0.07135245203971863,100:0.06131419911980629}
+  overall_l2_mean: 0.06597094982862473
+  curve_l2_mean: [0.011174994520843029,0.012042036280035973,0.01443552691489458,0.017500868067145348,0.020498182624578476,0.021310806274414062,0.020565588027238846,0.021205374971032143,0.022967524826526642,0.024150045588612556,0.024516183882951736,0.024949219077825546,0.026285680010914803,0.028364524245262146,0.030501186847686768,0.032273806631565094,0.03339214250445366,0.034676793962717056,0.03613998368382454,0.037844106554985046,0.03972066938877106,0.04154765605926514,0.043331246823072433,0.0450793020427227,0.04663148522377014,0.04822834953665733,0.04971938207745552,0.05125514045357704,0.05258331447839737,0.05388814955949783,0.05481310933828354,0.055385150015354156,0.055821023881435394,0.05629447102546692,0.05709781497716904,0.058017853647470474,0.05881661921739578,0.05966746434569359,0.06044695898890495,0.06126915290951729,0.06192292273044586,0.06230604648590088,0.06256699562072754,0.06291200965642929,0.06323806941509247,0.06333784759044647,0.06323898583650589,0.06305358558893204,0.06275155395269394,0.06240081787109375,0.062160566449165344,0.062108177691698074,0.0622650682926178,0.06249019131064415,0.06273999810218811,0.0628221333026886,0.0628344938158989,0.06280059367418289,0.062872976064682,0.06291487067937851,0.06296313554048538,0.06303594261407852,0.06318947672843933,0.06347059458494186,0.06378131359815598,0.06423491984605789,0.06440916657447815,0.06430461257696152,0.06415984034538269,0.0639825090765953,0.0637296736240387,0.06313662230968475,0.062484949827194214,0.061857547610998154,0.06139730289578438,0.06127776950597763,0.06141214817762375,0.0617896169424057,0.062487974762916565,0.06368053704500198,0.06556401401758194,0.06816024333238602,0.07155437767505646,0.07578963041305542,0.08099126070737839,0.08719971030950546,0.09429249912500381,0.10222319513559341,0.1108214482665062,0.11986123770475388,0.12912219762802124,0.13840486109256744,0.1475297212600708,0.15630219876766205,0.1645827293395996,0.17229579389095306,0.1794155091047287,0.18586070835590363,0.19157622754573822,0.1966150850057602]
+  curve_l2_q25: [0.009833129122853279,0.010758273303508759,0.013283619657158852,0.01570872962474823,0.01714543253183365,0.016837768256664276,0.015808772295713425,0.015543938614428043,0.016716239973902702,0.017579250037670135,0.017777778208255768,0.016720665618777275,0.016725953668355942,0.017037972807884216,0.017331210896372795,0.01736113429069519,0.016791505739092827,0.01682026870548725,0.017166072502732277,0.017936432734131813,0.018573729321360588,0.01929551362991333,0.019927844405174255,0.020038869231939316,0.0211661234498024,0.022316675633192062,0.02395901083946228,0.024909893050789833,0.02557767927646637,0.02668934501707554,0.027532657608389854,0.027772005647420883,0.028711918741464615,0.029223356395959854,0.0289594866335392,0.029934661462903023,0.030316773802042007,0.031389959156513214,0.03160780668258667,0.031620435416698456,0.032050326466560364,0.03161490336060524,0.032776135951280594,0.03333061560988426,0.03366544842720032,0.03368096798658371,0.033055394887924194,0.03299317881464958,0.032334838062524796,0.03177057206630707,0.03161175549030304,0.03196222335100174,0.03209872171282768,0.03225778788328171,0.03272994980216026,0.03264808654785156,0.032329022884368896,0.03212696686387062,0.03229958191514015,0.03227371349930763,0.03268927335739136,0.033167362213134766,0.03393799439072609,0.03478199988603592,0.03520913049578667,0.03574232757091522,0.036027900874614716,0.03570816293358803,0.03667859733104706,0.038083355873823166,0.03855827450752258,0.03804157301783562,0.03743710741400719,0.03715921938419342,0.036280982196331024,0.036378610879182816,0.03630409017205238,0.03594471514225006,0.03614545986056328,0.03732176870107651,0.039269618690013885,0.041191279888153076,0.04373405873775482,0.048853978514671326,0.05364612489938736,0.0593610480427742,0.06577001512050629,0.07310430705547333,0.08149212598800659,0.09046413004398346,0.09762122482061386,0.10378028452396393,0.11048278957605362,0.11838661879301071,0.1260734349489212,0.13335299491882324,0.14146995544433594,0.14728763699531555,0.15219640731811523,0.158975750207901]
+  curve_l2_q75: [0.012447676621377468,0.013363772071897984,0.015635773539543152,0.019114866852760315,0.022028185427188873,0.022444844245910645,0.021469227969646454,0.021697554737329483,0.02428925782442093,0.02647428959608078,0.02918153628706932,0.02993505820631981,0.029217882081866264,0.030611759051680565,0.03208623081445694,0.035104285925626755,0.03713863715529442,0.0406099297106266,0.04331076890230179,0.045834559947252274,0.04983978345990181,0.05376612767577171,0.05646521970629692,0.05892810970544815,0.060530971735715866,0.06101080775260925,0.06277523189783096,0.06375271081924438,0.06556684523820877,0.06629437953233719,0.06644044816493988,0.06751911342144012,0.06732741743326187,0.06795438379049301,0.06932401657104492,0.06846349686384201,0.069176584482193,0.06888626515865326,0.06911268830299377,0.07017932832241058,0.07026572525501251,0.06961970031261444,0.06910116970539093,0.0687602087855339,0.06860695034265518,0.06791669130325317,0.06730496138334274,0.06692463159561157,0.0668257623910904,0.06621240824460983,0.06483574211597443,0.06652463972568512,0.06753331422805786,0.06403781473636627,0.06433472782373428,0.06505073606967926,0.06519804149866104,0.06441941112279892,0.06383206695318222,0.06350776553153992,0.0652681291103363,0.06402671337127686,0.0635308101773262,0.0631193071603775,0.06232646852731705,0.06276586651802063,0.06329290568828583,0.06246981769800186,0.06200810894370079,0.06171587482094765,0.06155461072921753,0.06183331832289696,0.060780834406614304,0.06188236176967621,0.06334898620843887,0.0645117312669754,0.06501104682683945,0.066200390458107,0.0684833973646164,0.07127930223941803,0.0732201561331749,0.07558955997228622,0.07943040132522583,0.08390167355537415,0.09107397496700287,0.09991734474897385,0.11109901964664459,0.12169697135686874,0.1302212029695511,0.13809168338775635,0.1500256061553955,0.16216638684272766,0.17342667281627655,0.184728741645813,0.19388610124588013,0.20224247872829437,0.21095040440559387,0.21967104077339172,0.2265009731054306,0.23259736597537994]
   parameter_count: 296892
+```
+
+### `results/multiseed/multiseed_metrics.json`
+> 3-seed (42, 101, 2024) SPWM, ANN-Rate, and Continuous RSSM open-loop, 50-ep PIL, and energy summary
+
+```yaml
+seeds: [42,101,2024]
+open_loop_spwm:
+  position_mse_per_horizon: {1:0.00018221767580447099,5:0.0011347631613413494,10:0.0034783149991805353,25:0.0021969674853608012,50:0.0031450896058231592,100:0.0024013782385736704}
+  position_mse_seed_std_per_horizon: {1:0.00010954467998152894,5:0.0008189706679996508,10:0.0026521253541566974,25:0.0004156317481905645,50:0.001442577257336728,100:0.000366950848819243}
+  velocity_mse_per_horizon: {1:0.001385071101443221,5:0.04249462919930617,10:0.045068783685564995,25:0.036605274925629296,50:0.02465990123649438,100:0.009707977995276451}
+  velocity_mse_seed_std_per_horizon: {1:0.000763865468875661,5:0.012683060543225525,10:0.026009623700082144,25:0.01818887773598169,50:0.012712159468845796,100:0.0017663810650883683}
+  per_seed:
+    42:
+      position_mse_per_horizon: {1:0.00015687845007050782,5:0.0020792167633771896,10:0.006488359998911619,25:0.002526428084820509,50:0.002635047771036625,100:0.0024581069592386484}
+      velocity_mse_per_horizon: {1:0.0013571062590926886,5:0.05235695838928223,10:0.07470371574163437,25:0.03928713873028755,50:0.01999685727059841,100:0.011747471988201141}
+    101:
+      position_mse_per_horizon: {1:0.0003022114688064903,5:0.0007039911579340696,10:0.0014849373837932944,25:0.002334464807063341,50:0.004773399326950312,100:0.0027366611175239086}
+      velocity_mse_per_horizon: {1:0.0006355720688588917,5:0.028187384828925133,10:0.026028921827673912,25:0.05330432578921318,50:0.039045095443725586,100:0.008709450252354145}
+    2024:
+      position_mse_per_horizon: {1:8.75631085364148e-05,5:0.0006210815627127886,10:0.002461647614836693,25:0.0017300095641985536,50:0.002026821719482541,100:0.002009366638958454}
+      velocity_mse_per_horizon: {1:0.0021625349763780832,5:0.04693954437971115,10:0.034473713487386703,25:0.01722436025738716,50:0.01493775099515915,100:0.008667011745274067}
+pil_50ep_mean_std:
+  SPWM-v0.12.4:
+    grasp_success_rate_pct: [58.0,27.055498516937366]
+    terminal_placement_accuracy_cm: [0.8992845916748048,0.0417493623118023]
+    terminal_error_cm: [2.231203550299009,0.6846823009200784]
+    mean_joint_accel_rad_s2: [0.008598180722134809,0.003043671174468545]
+    mean_joint_jerk_rad_s3: [0.00608342978792886,0.0029084716855952435]
+    mean_direction_flips: [19.373333333333335,7.574545090850891]
+    mppi_inference_latency_ms: [23.067443259943843,0.23469874288645293]
+  ANN-Rate:
+    grasp_success_rate_pct: [37.333333333333336,9.451631252505218]
+    terminal_placement_accuracy_cm: [1.0678065086901187,0.2828632725018437]
+    terminal_error_cm: [2.9846295044819513,0.4621451582711122]
+    mean_joint_accel_rad_s2: [0.011481044394895437,0.0008839583251549979]
+    mean_joint_jerk_rad_s3: [0.009379258422801892,0.0010705614356774748]
+    mean_direction_flips: [26.0,1.94648400969543]
+    mppi_inference_latency_ms: [24.616702500178565,0.07683415875005363]
+  Continuous RSSM:
+    grasp_success_rate_pct: [0.0,0.0]
+    terminal_placement_accuracy_cm: [1.5289842367172242,0.06375312364798832]
+    terminal_error_cm: [22.434701797167463,0.5797279333300245]
+    mean_joint_accel_rad_s2: [0.031191026711215573,0.0008520616038234162]
+    mean_joint_jerk_rad_s3: [0.02875449779753884,0.00014085841965964314]
+    mean_direction_flips: [36.126666666666665,0.4518111699961975]
+    mppi_inference_latency_ms: [35.14400501011499,0.7717180625877539]
+  SPWM-v0.12.4 (N=25 Val-Selected):
+    grasp_success_rate_pct: [60.666666666666664,2.3094010767585074]
+    terminal_placement_accuracy_cm: [0.8798704931139946,0.10505539807183523]
+    terminal_error_cm: [2.006662103931109,0.11581144347528279]
+    mean_joint_accel_rad_s2: [0.009308865414932371,0.0034586698705177275]
+    mean_joint_jerk_rad_s3: [0.006634432549277941,0.003263484407032791]
+    mean_direction_flips: [21.14,8.549807015365904]
+    mppi_inference_latency_ms: [35.50311868491241,1.4903537737959471]
+  Continuous RSSM (Open-Loop PIL):
+    grasp_success_rate_pct: [15.333333333333334,4.618802153517006]
+    terminal_placement_accuracy_cm: [1.3101576902468999,0.015239180448274645]
+    terminal_error_cm: [2.8772510814666745,0.10043628738006709]
+    mean_joint_accel_rad_s2: [0.019980563490341108,0.00044725536859862214]
+    mean_joint_jerk_rad_s3: [0.020594383161514997,0.0002908916650769286]
+    mean_direction_flips: [36.23333333333333,0.9737213838328386]
+    mppi_inference_latency_ms: [52.36163894086636,2.3005863220714606]
+  Continuous RSSM (Online Posterior):
+    grasp_success_rate_pct: [0.0,0.0]
+    terminal_placement_accuracy_cm: [1.5289842367172242,0.06375312364798832]
+    terminal_error_cm: [22.434701797167463,0.5797279333300245]
+    mean_joint_accel_rad_s2: [0.031191026711215573,0.0008520616038234162]
+    mean_joint_jerk_rad_s3: [0.02875449779753884,0.00014085841965964314]
+    mean_direction_flips: [36.126666666666665,0.4518111699961975]
+    mppi_inference_latency_ms: [35.14400501011499,0.7717180625877539]
+  Deep GRU (Open-Loop PIL):
+    grasp_success_rate_pct: [1.3333333333333333,2.3094010767585034]
+    terminal_placement_accuracy_cm: [10.56911430199941,7.8332178543025]
+    terminal_error_cm: [16.720466453234355,11.307909064116105]
+    mean_joint_accel_rad_s2: [0.007771262118282417,0.006861198470924401]
+    mean_joint_jerk_rad_s3: [0.006221064189837005,0.007792868260752681]
+    mean_direction_flips: [14.666666666666666,14.897212267177151]
+    mppi_inference_latency_ms: [67.4003965856917,1.6174098859533237]
+  Deep GRU (Online Observation):
+    grasp_success_rate_pct: [0.0,0.0]
+    terminal_placement_accuracy_cm: [6.027755393187205,4.003672646431791]
+    terminal_error_cm: [10.87074866215388,3.973647019419447]
+    mean_joint_accel_rad_s2: [0.016541417293871444,0.009718487664175204]
+    mean_joint_jerk_rad_s3: [0.013497935300692918,0.009453182248594585]
+    mean_direction_flips: [19.673333333333336,10.000986617995913]
+    mppi_inference_latency_ms: [60.30913028220712,18.88364182181519]
+energy_spwm_mean_std:
+  spike_rate_pct: [12.151117412707743,0.192861046198146]
+  sops_per_step: [8150.0,129.11622671066561]
+  energy_neuro_nj: [12.224996206577009,0.1940336413590309]
+  speedup_vs_own_gpu: [4.938654535978057,0.07910719976272344]
+robustness_pil_3seed:
+  SPWM-v0.12.4 (5 items):
+    - [0]
+      condition_name: Nominal Baseline
+      grasp_success_rate_pct: [58.0,27.055498516937366]
+      delta_rel_pct: 0.0
+      min_placement_error_mean_cm: [0.8992845916748048,0.0417493623118023]
+      terminal_placement_error_mean_cm: [2.231203550299009,0.6846823009200784]
+      terminal_velocity_mean: [0.42377924611171086,0.0838157235336139]
+      episodes_with_handover_pct: [0.0,0.0]
+      phi1_steps_with_handover_pct: [0.0,0.0]
+      mean_nonzero_handover_w_when_active: 0.0
+      per_seed:
+        42:
+          grasp_success_rate_pct: 86.0
+          min_placement_error_mean_cm: 0.8552020224928856
+          terminal_placement_error_mean_cm: 1.5668222349882126
+          terminal_velocity_mean: 0.32701518952846526
+          mean_latency_ms: 36.05713042749771
+          episodes_with_handover_pct: 0.0
+          phi1_steps_with_handover_pct: 0.0
+          mean_nonzero_handover_w: 0.0
+          delta_rel_pct: 0.0
+        101:
+          grasp_success_rate_pct: 56.00000000000001
+          min_placement_error_mean_cm: 0.9044275161623955
+          terminal_placement_error_mean_cm: 2.1922635650634765
+          terminal_velocity_mean: 0.4737779149413109
+          mean_latency_ms: 35.94414352529596
+          episodes_with_handover_pct: 0.0
+          phi1_steps_with_handover_pct: 0.0
+          mean_nonzero_handover_w: 0.0
+          delta_rel_pct: 0.0
+        2024:
+          grasp_success_rate_pct: 32.0
+          min_placement_error_mean_cm: 0.938224236369133
+          terminal_placement_error_mean_cm: 2.934524850845337
+          terminal_velocity_mean: 0.47054463386535644
+          mean_latency_ms: 36.51248038936411
+          episodes_with_handover_pct: 0.0
+          phi1_steps_with_handover_pct: 0.0
+          mean_nonzero_handover_w: 0.0
+          delta_rel_pct: 0.0
+    - [1]
+      condition_name: Sensory Noise Injection (1.0%)
+      grasp_success_rate_pct: [55.333333333333336,19.42506971244462]
+      delta_rel_pct: -4.597701149425283
+      min_placement_error_mean_cm: [0.8995885254442691,0.0864853745399293]
+      terminal_placement_error_mean_cm: [2.342214393814405,0.6310488458771016]
+      terminal_velocity_mean: [0.3995537382364273,0.12232065703258524]
+      episodes_with_handover_pct: [0.0,0.0]
+      phi1_steps_with_handover_pct: [0.0,0.0]
+      mean_nonzero_handover_w_when_active: 0.0
+      per_seed:
+        42:
+          grasp_success_rate_pct: 72.0
+          min_placement_error_mean_cm: 0.9837424418330193
+          terminal_placement_error_mean_cm: 1.8598396837711335
+          terminal_velocity_mean: 0.2989905294775963
+          mean_latency_ms: 34.990572020690095
+          episodes_with_handover_pct: 0.0
+          phi1_steps_with_handover_pct: 0.0
+          mean_nonzero_handover_w: 0.0
+          delta_rel_pct: -16.27906976744186
+        101:
+          grasp_success_rate_pct: 60.0
+          min_placement_error_mean_cm: 0.9040766698122025
+          terminal_placement_error_mean_cm: 2.1104232871532442
+          terminal_velocity_mean: 0.5357284384965897
+          mean_latency_ms: 36.52126013849798
+          episodes_with_handover_pct: 0.0
+          phi1_steps_with_handover_pct: 0.0
+          mean_nonzero_handover_w: 0.0
+          delta_rel_pct: 7.14285714285713
+        2024:
+          grasp_success_rate_pct: 34.0
+          min_placement_error_mean_cm: 0.8109464646875858
+          terminal_placement_error_mean_cm: 3.056380210518837
+          terminal_velocity_mean: 0.36394224673509595
+          mean_latency_ms: 36.52111676256183
+          episodes_with_handover_pct: 0.0
+          phi1_steps_with_handover_pct: 0.0
+          mean_nonzero_handover_w: 0.0
+          delta_rel_pct: 6.25
+    - [2]
+      condition_name: Payload Extrapolation (4.80 kg)
+      grasp_success_rate_pct: [39.333333333333336,33.724372986511305]
+      delta_rel_pct: -32.183908045977006
+      min_placement_error_mean_cm: [1.1808227265874545,0.1475518910933885]
+      terminal_placement_error_mean_cm: [2.5032857662439345,0.6239346910373739]
+      terminal_velocity_mean: [0.5195224117239315,0.1069074967853979]
+      episodes_with_handover_pct: [1.3333333333333333,2.3094010767585034]
+      phi1_steps_with_handover_pct: [0.16666666666666666,0.2886751345948129]
+      mean_nonzero_handover_w_when_active: 0.16452792689204215
+      per_seed:
+        42:
+          grasp_success_rate_pct: 78.0
+          min_placement_error_mean_cm: 1.245790022313595
+          terminal_placement_error_mean_cm: 1.7834283006191254
+          terminal_velocity_mean: 0.43445359870791433
+          mean_latency_ms: 37.20313749923503
+          episodes_with_handover_pct: 0.0
+          phi1_steps_with_handover_pct: 0.0
+          mean_nonzero_handover_w: 0.0
+          delta_rel_pct: -9.30232558139535
+        101:
+          grasp_success_rate_pct: 24.0
+          min_placement_error_mean_cm: 1.2847428852319718
+          terminal_placement_error_mean_cm: 2.837750395536423
+          terminal_velocity_mean: 0.6395273652672767
+          mean_latency_ms: 36.43832626988797
+          episodes_with_handover_pct: 0.0
+          phi1_steps_with_handover_pct: 0.0
+          mean_nonzero_handover_w: 0.0
+          delta_rel_pct: -57.14285714285715
+        2024:
+          grasp_success_rate_pct: 16.0
+          min_placement_error_mean_cm: 1.011935272216797
+          terminal_placement_error_mean_cm: 2.8886786025762556
+          terminal_velocity_mean: 0.4845862711966038
+          mean_latency_ms: 36.41863351428478
+          episodes_with_handover_pct: 4.0
+          phi1_steps_with_handover_pct: 0.5
+          mean_nonzero_handover_w: 0.16452792689204215
+          delta_rel_pct: -50.0
+    - [3]
+      condition_name: Actuator Drift (0.80x Friction)
+      grasp_success_rate_pct: [40.666666666666664,27.30079363925769]
+      delta_rel_pct: -29.88505747126437
+      min_placement_error_mean_cm: [1.1887371614575386,0.11060501933302767]
+      terminal_placement_error_mean_cm: [2.6100856752196946,0.5422566355658548]
+      terminal_velocity_mean: [0.45519848535458246,0.09270916234318358]
+      episodes_with_handover_pct: [1.3333333333333333,2.3094010767585034]
+      phi1_steps_with_handover_pct: [0.16666666666666666,0.2886751345948129]
+      mean_nonzero_handover_w_when_active: 0.22864747449755668
+      per_seed:
+        42:
+          grasp_success_rate_pct: 70.0
+          min_placement_error_mean_cm: 1.3162081634998322
+          terminal_placement_error_mean_cm: 2.0683961123228074
+          terminal_velocity_mean: 0.3934475040435791
+          mean_latency_ms: 36.6571082404878
+          episodes_with_handover_pct: 0.0
+          phi1_steps_with_handover_pct: 0.0
+          mean_nonzero_handover_w: 0.0
+          delta_rel_pct: -18.6046511627907
+        101:
+          grasp_success_rate_pct: 36.0
+          min_placement_error_mean_cm: 1.1181585595011712
+          terminal_placement_error_mean_cm: 2.6089533033967016
+          terminal_velocity_mean: 0.5618044257164001
+          mean_latency_ms: 36.38057136931481
+          episodes_with_handover_pct: 0.0
+          phi1_steps_with_handover_pct: 0.0
+          mean_nonzero_handover_w: 0.0
+          delta_rel_pct: -35.71428571428572
+        2024:
+          grasp_success_rate_pct: 16.0
+          min_placement_error_mean_cm: 1.1318447613716125
+          terminal_placement_error_mean_cm: 3.152907609939575
+          terminal_velocity_mean: 0.41034352630376814
+          mean_latency_ms: 36.43481188892321
+          episodes_with_handover_pct: 4.0
+          phi1_steps_with_handover_pct: 0.5
+          mean_nonzero_handover_w: 0.22864747449755668
+          delta_rel_pct: -50.0
+    - [4]
+      condition_name: Actuator Drift (1.20x Friction)
+      grasp_success_rate_pct: [44.0,28.0]
+      delta_rel_pct: -24.137931034482758
+      min_placement_error_mean_cm: [1.2160442214210827,0.10678522747967399]
+      terminal_placement_error_mean_cm: [2.5337881688276926,0.5567605187409086]
+      terminal_velocity_mean: [0.4324431197345257,0.07896359786568626]
+      episodes_with_handover_pct: [1.3333333333333333,2.3094010767585034]
+      phi1_steps_with_handover_pct: [0.16666666666666666,0.2886751345948129]
+      mean_nonzero_handover_w_when_active: 0.16903226852416992
+      per_seed:
+        42:
+          grasp_success_rate_pct: 76.0
+          min_placement_error_mean_cm: 1.3224645945429803
+          terminal_placement_error_mean_cm: 1.9732722735404968
+          terminal_velocity_mean: 0.3801573750376701
+          mean_latency_ms: 36.835968496259994
+          episodes_with_handover_pct: 0.0
+          phi1_steps_with_handover_pct: 0.0
+          mean_nonzero_handover_w: 0.0
+          delta_rel_pct: -11.627906976744185
+        101:
+          grasp_success_rate_pct: 32.0
+          min_placement_error_mean_cm: 1.2167702281475068
+          terminal_placement_error_mean_cm: 2.5413764929771423
+          terminal_velocity_mean: 0.5232767987251282
+          mean_latency_ms: 36.59299420893834
+          episodes_with_handover_pct: 0.0
+          phi1_steps_with_handover_pct: 0.0
+          mean_nonzero_handover_w: 0.0
+          delta_rel_pct: -42.85714285714287
+        2024:
+          grasp_success_rate_pct: 24.0
+          min_placement_error_mean_cm: 1.1088978415727615
+          terminal_placement_error_mean_cm: 3.086715739965439
+          terminal_velocity_mean: 0.39389518544077873
+          mean_latency_ms: 36.48604587311423
+          episodes_with_handover_pct: 4.0
+          phi1_steps_with_handover_pct: 0.5
+          mean_nonzero_handover_w: 0.16903226852416992
+          delta_rel_pct: -25.0
+  ANN-Rate (5 items):
+    - [0]
+      condition_name: Nominal Baseline
+      grasp_success_rate_pct: [37.333333333333336,9.451631252505218]
+      delta_rel_pct: 0.0
+      min_placement_error_mean_cm: [1.0678065086901187,0.2828632725018437]
+      terminal_placement_error_mean_cm: [2.9846295044819513,0.4621451582711122]
+      terminal_velocity_mean: [0.49538074051340425,0.11216522852158058]
+      episodes_with_handover_pct: [0.0,0.0]
+      phi1_steps_with_handover_pct: [0.0,0.0]
+      mean_nonzero_handover_w_when_active: 0.0
+      per_seed:
+        42:
+          grasp_success_rate_pct: 34.0
+          min_placement_error_mean_cm: 0.8320508192479611
+          terminal_placement_error_mean_cm: 2.7538758546113966
+          terminal_velocity_mean: 0.5869238513708115
+          mean_latency_ms: 29.43750379663485
+          episodes_with_handover_pct: 0.0
+          phi1_steps_with_handover_pct: 0.0
+          mean_nonzero_handover_w: 0.0
+          delta_rel_pct: 0.0
+        101:
+          grasp_success_rate_pct: 30.0
+          min_placement_error_mean_cm: 1.3814548110961915
+          terminal_placement_error_mean_cm: 3.5167109155654908
+          terminal_velocity_mean: 0.5289560982584953
+          mean_latency_ms: 26.53065752230858
+          episodes_with_handover_pct: 0.0
+          phi1_steps_with_handover_pct: 0.0
+          mean_nonzero_handover_w: 0.0
+          delta_rel_pct: 0.0
+        2024:
+          grasp_success_rate_pct: 48.0
+          min_placement_error_mean_cm: 0.9899138957262039
+          terminal_placement_error_mean_cm: 2.6833017432689665
+          terminal_velocity_mean: 0.3702622719109058
+          mean_latency_ms: 25.199068654014535
+          episodes_with_handover_pct: 0.0
+          phi1_steps_with_handover_pct: 0.0
+          mean_nonzero_handover_w: 0.0
+          delta_rel_pct: 0.0
+    - [1]
+      condition_name: Sensory Noise Injection (1.0%)
+      grasp_success_rate_pct: [30.0,3.4641016151377544]
+      delta_rel_pct: -19.64285714285715
+      min_placement_error_mean_cm: [1.0367476403713225,0.17609975464908534]
+      terminal_placement_error_mean_cm: [3.362126860022545,0.529625351794463]
+      terminal_velocity_mean: [0.5011851574977239,0.1012983853840122]
+      episodes_with_handover_pct: [0.0,0.0]
+      phi1_steps_with_handover_pct: [0.0,0.0]
+      mean_nonzero_handover_w_when_active: 0.0
+      per_seed:
+        42:
+          grasp_success_rate_pct: 32.0
+          min_placement_error_mean_cm: 0.8365792346000671
+          terminal_placement_error_mean_cm: 3.0554915750026703
+          terminal_velocity_mean: 0.5730594700574875
+          mean_latency_ms: 31.393095565214775
+          episodes_with_handover_pct: 0.0
+          phi1_steps_with_handover_pct: 0.0
+          mean_nonzero_handover_w: 0.0
+          delta_rel_pct: -5.882352941176471
+        101:
+          grasp_success_rate_pct: 26.0
+          min_placement_error_mean_cm: 1.1058386087417602
+          terminal_placement_error_mean_cm: 3.9736847394704817
+          terminal_velocity_mean: 0.5451662424206734
+          mean_latency_ms: 26.004011596295314
+          episodes_with_handover_pct: 0.0
+          phi1_steps_with_handover_pct: 0.0
+          mean_nonzero_handover_w: 0.0
+          delta_rel_pct: -13.333333333333334
+        2024:
+          grasp_success_rate_pct: 32.0
+          min_placement_error_mean_cm: 1.1678250777721404
+          terminal_placement_error_mean_cm: 3.0572042655944824
+          terminal_velocity_mean: 0.38532976001501085
+          mean_latency_ms: 25.061606960452693
+          episodes_with_handover_pct: 0.0
+          phi1_steps_with_handover_pct: 0.0
+          mean_nonzero_handover_w: 0.0
+          delta_rel_pct: -33.333333333333336
+    - [2]
+      condition_name: Payload Extrapolation (4.80 kg)
+      grasp_success_rate_pct: [26.666666666666668,16.165807537309522]
+      delta_rel_pct: -28.571428571428573
+      min_placement_error_mean_cm: [1.359116240243117,0.19601864522317206]
+      terminal_placement_error_mean_cm: [3.6378836290041607,0.7955281178345174]
+      terminal_velocity_mean: [0.6115619068592787,0.10662950140954822]
+      episodes_with_handover_pct: [0.0,0.0]
+      phi1_steps_with_handover_pct: [0.0,0.0]
+      mean_nonzero_handover_w_when_active: 0.0
+      per_seed:
+        42:
+          grasp_success_rate_pct: 24.0
+          min_placement_error_mean_cm: 1.1392030370235444
+          terminal_placement_error_mean_cm: 3.5584317278862
+          terminal_velocity_mean: 0.6400154614448548
+          mean_latency_ms: 29.94859264750354
+          episodes_with_handover_pct: 0.0
+          phi1_steps_with_handover_pct: 0.0
+          mean_nonzero_handover_w: 0.0
+          delta_rel_pct: -29.41176470588235
+        101:
+          grasp_success_rate_pct: 12.0
+          min_placement_error_mean_cm: 1.4226837638020515
+          terminal_placement_error_mean_cm: 4.470156444311142
+          terminal_velocity_mean: 0.7010783076286315
+          mean_latency_ms: 25.1213509093544
+          episodes_with_handover_pct: 0.0
+          phi1_steps_with_handover_pct: 0.0
+          mean_nonzero_handover_w: 0.0
+          delta_rel_pct: -60.0
+        2024:
+          grasp_success_rate_pct: 44.0
+          min_placement_error_mean_cm: 1.5154619199037551
+          terminal_placement_error_mean_cm: 2.88506271481514
+          terminal_velocity_mean: 0.4935919515043497
+          mean_latency_ms: 25.066311646045065
+          episodes_with_handover_pct: 0.0
+          phi1_steps_with_handover_pct: 0.0
+          mean_nonzero_handover_w: 0.0
+          delta_rel_pct: -8.333333333333334
+    - [3]
+      condition_name: Actuator Drift (0.80x Friction)
+      grasp_success_rate_pct: [30.666666666666668,14.047538337136984]
+      delta_rel_pct: -17.857142857142858
+      min_placement_error_mean_cm: [1.4180172796050707,0.21795292848457692]
+      terminal_placement_error_mean_cm: [3.740554449160894,0.8331617947215637]
+      terminal_velocity_mean: [0.5717242361605167,0.13817699362402994]
+      episodes_with_handover_pct: [0.0,0.0]
+      phi1_steps_with_handover_pct: [0.0,0.0]
+      mean_nonzero_handover_w_when_active: 0.0
+      per_seed:
+        42:
+          grasp_success_rate_pct: 32.0
+          min_placement_error_mean_cm: 1.1665561926364898
+          terminal_placement_error_mean_cm: 3.536238695383072
+          terminal_velocity_mean: 0.643540482223034
+          mean_latency_ms: 25.223359415711226
+          episodes_with_handover_pct: 0.0
+          phi1_steps_with_handover_pct: 0.0
+          mean_nonzero_handover_w: 0.0
+          delta_rel_pct: -5.882352941176471
+        101:
+          grasp_success_rate_pct: 16.0
+          min_placement_error_mean_cm: 1.5526343488693237
+          terminal_placement_error_mean_cm: 4.656868257522583
+          terminal_velocity_mean: 0.6592045310139656
+          mean_latency_ms: 25.066783458762252
+          episodes_with_handover_pct: 0.0
+          phi1_steps_with_handover_pct: 0.0
+          mean_nonzero_handover_w: 0.0
+          delta_rel_pct: -46.666666666666664
+        2024:
+          grasp_success_rate_pct: 44.0
+          min_placement_error_mean_cm: 1.5348612973093987
+          terminal_placement_error_mean_cm: 3.028556394577026
+          terminal_velocity_mean: 0.4124276952445507
+          mean_latency_ms: 24.790206348217293
+          episodes_with_handover_pct: 0.0
+          phi1_steps_with_handover_pct: 0.0
+          mean_nonzero_handover_w: 0.0
+          delta_rel_pct: -8.333333333333334
+    - [4]
+      condition_name: Actuator Drift (1.20x Friction)
+      grasp_success_rate_pct: [33.333333333333336,16.65332799572906]
+      delta_rel_pct: -10.714285714285714
+      min_placement_error_mean_cm: [1.3353092057506244,0.20851366158174045]
+      terminal_placement_error_mean_cm: [3.510111181139946,1.2144949894390102]
+      terminal_velocity_mean: [0.5205225745340188,0.10602974885015383]
+      episodes_with_handover_pct: [0.0,0.0]
+      phi1_steps_with_handover_pct: [0.0,0.0]
+      mean_nonzero_handover_w_when_active: 0.0
+      per_seed:
+        42:
+          grasp_success_rate_pct: 28.000000000000004
+          min_placement_error_mean_cm: 1.101568892300129
+          terminal_placement_error_mean_cm: 2.80165857732296
+          terminal_velocity_mean: 0.6022750130295753
+          mean_latency_ms: 25.216824718118666
+          episodes_with_handover_pct: 0.0
+          phi1_steps_with_handover_pct: 0.0
+          mean_nonzero_handover_w: 0.0
+          delta_rel_pct: -17.647058823529402
+        101:
+          grasp_success_rate_pct: 20.0
+          min_placement_error_mean_cm: 1.40215890198946
+          terminal_placement_error_mean_cm: 4.912464030981064
+          terminal_velocity_mean: 0.5585748782753944
+          mean_latency_ms: 25.116685864205966
+          episodes_with_handover_pct: 0.0
+          phi1_steps_with_handover_pct: 0.0
+          mean_nonzero_handover_w: 0.0
+          delta_rel_pct: -33.333333333333336
+        2024:
+          grasp_success_rate_pct: 52.0
+          min_placement_error_mean_cm: 1.5021998229622842
+          terminal_placement_error_mean_cm: 2.816210935115814
+          terminal_velocity_mean: 0.40071783229708674
+          mean_latency_ms: 25.06705994109404
+          episodes_with_handover_pct: 0.0
+          phi1_steps_with_handover_pct: 0.0
+          mean_nonzero_handover_w: 0.0
+          delta_rel_pct: 8.333333333333334
+```
+
+### `results/energy_profiling/energy_profiling_metrics.json`
+> Neuromorphic SOPs (Loihi-2) vs. GPU MACs (Jetson Orin) profiling across SPWM and baselines
+
+```yaml
+SPWM:
+  paradigm: Hybrid SNN-ALIF + M1
+  memory_type: ALIF Spiking (2-tier)
+  params: 392141
+  spike_rate: 0.12268746128449073
+  sops_per_step: 8229
+  recurrent_macs: 67072
+  recurrent_flops: 134144
+  energy_neuro_nj: 12.343340104910045
+  energy_gpu_nj: 60.364799999999995
+  energy_ratio_vs_gpu: 4.890475307893975
+  power_20hz_mw: 0.2468668020982009
+  cumulative_energy_h100_uj: 1.2343340104910043
+  encoder_macs: 882688
+  encoder_energy_nj: 794.4191999999999
+  mppi_rollout_macs: 1218969600
+  mppi_rollout_energy_nj: 1097072.64
+  e2e_step_energy_nj: 1097879.4025401047
+  e2e_step_energy_mj: 1.0978794025401046
+  e2e_all_gpu_energy_mj: 1.0979274239999999
+  e2e_power_20hz_mw: 21.957588050802094
+ANN-Rate:
+  paradigm: Continuous ANN
+  memory_type: Continuous Leaky Rate
+  params: 392141
+  spike_rate: 0.0
+  sops_per_step: 0
+  recurrent_macs: 67072
+  recurrent_flops: 134144
+  energy_neuro_nj: null
+  energy_gpu_nj: 60.364799999999995
+  energy_ratio_vs_gpu: 1.0
+  power_20hz_mw: 1.207296
+  cumulative_energy_h100_uj: 6.036479999999999
+  encoder_macs: 882688
+  encoder_energy_nj: 794.4191999999999
+  mppi_rollout_macs: 1218969600
+  mppi_rollout_energy_nj: 1097072.64
+  e2e_step_energy_nj: 1097927.4239999999
+  e2e_step_energy_mj: 1.0979274239999999
+  e2e_all_gpu_energy_mj: 1.0979274239999999
+  e2e_power_20hz_mw: 21.958548479999997
+Continuous RSSM:
+  paradigm: Continuous ANN
+  memory_type: GRU + Gaussian Latent
+  params: 380460
+  spike_rate: 0.0
+  sops_per_step: 0
+  recurrent_macs: 365056
+  recurrent_flops: 730112
+  energy_neuro_nj: null
+  energy_gpu_nj: 328.55039999999997
+  energy_ratio_vs_gpu: 1.0
+  power_20hz_mw: 6.571008
+  cumulative_energy_h100_uj: 32.855039999999995
+  encoder_macs: 882688
+  encoder_energy_nj: 794.4191999999999
+  mppi_rollout_macs: 2358312960
+  mppi_rollout_energy_nj: 2122481.664
+  e2e_step_energy_nj: 2123604.6336
+  e2e_step_energy_mj: 2.1236046336
+  e2e_all_gpu_energy_mj: 2.1236046336
+  e2e_power_20hz_mw: 42.472092671999995
+Deep GRU:
+  paradigm: Continuous ANN
+  memory_type: 2-Layer Deep GRU
+  params: 338868
+  spike_rate: 0.0
+  sops_per_step: 0
+  recurrent_macs: 299520
+  recurrent_flops: 599040
+  energy_neuro_nj: null
+  energy_gpu_nj: 269.568
+  energy_ratio_vs_gpu: 1.0
+  power_20hz_mw: 5.39136
+  cumulative_energy_h100_uj: 26.956799999999998
+  encoder_macs: 882688
+  encoder_energy_nj: 794.4191999999999
+  mppi_rollout_macs: 1942179840
+  mppi_rollout_energy_nj: 1747961.856
+  e2e_step_energy_nj: 1749025.8432
+  e2e_step_energy_mj: 1.7490258432
+  e2e_all_gpu_energy_mj: 1.7490258432
+  e2e_power_20hz_mw: 34.980516864
+Continuous ConvLSTM:
+  paradigm: Continuous ANN
+  memory_type: Spatial ConvLSTM (2D)
+  params: 296892
+  spike_rate: 0.0
+  sops_per_step: 0
+  recurrent_macs: 2359296
+  recurrent_flops: 4718592
+  energy_neuro_nj: null
+  energy_gpu_nj: 2123.3664
+  energy_ratio_vs_gpu: 1.0
+  power_20hz_mw: 42.467327999999995
+  cumulative_energy_h100_uj: 212.33664
+  encoder_macs: 882688
+  encoder_energy_nj: 794.4191999999999
+  mppi_rollout_macs: 111311585280
+  mppi_rollout_energy_nj: 100180426.752
+  e2e_step_energy_nj: 100183344.53760001
+  e2e_step_energy_mj: 100.18334453760001
+  e2e_all_gpu_energy_mj: 100.18334453760001
+  e2e_power_20hz_mw: 2003.6668907520004
+```
+
+### `results/baselines/classical_and_bc_pil/classical_bc_pil_metrics.json`
+> 50-episode PIL benchmarks for Privileged Fixed-Gain PD and Reactive BC
+
+```yaml
+fixed_gain_pd_pil:
+  model_label: fixed_pd
+  episodes_evaluated: 50
+  grasp_success_rate_pct: 96.0
+  terminal_placement_accuracy_cm: 0.011748063395862119
+  placement_accuracy_std_cm: 0.02977501137910883
+  terminal_error_cm: 0.429177088290453
+  terminal_error_std_cm: 0.7286152381204417
+  mean_joint_accel_rad_s2: 0.007706445837393403
+  std_joint_accel_rad_s2: 0.0038599028083092187
+  mean_joint_jerk_rad_s3: 0.004971938964445144
+  std_joint_jerk_rad_s3: 0.0029003430699155184
+  mean_direction_flips: 10.46
+  mppi_inference_latency_ms: 22.683568809901676
+reactive_bc_pil:
+  model_label: bc
+  episodes_evaluated: 50
+  grasp_success_rate_pct: 0.0
+  terminal_placement_accuracy_cm: 13.129227232933044
+  placement_accuracy_std_cm: 6.274945649634276
+  terminal_error_cm: 15.657341589927674
+  terminal_error_std_cm: 8.150904676156873
+  mean_joint_accel_rad_s2: 0.0014032347162719816
+  std_joint_accel_rad_s2: 0.0007124819846246704
+  mean_joint_jerk_rad_s3: 0.001350532578653656
+  std_joint_jerk_rad_s3: 0.0007350296402323977
+  mean_direction_flips: 13.98
+  mppi_inference_latency_ms: 1.8653048771781349
+  parameter_count: 322210
 ```
 
 ### `results/spwm_v0_12_4_train_m1/metrics_spwm_v0_12_4.json`
@@ -1073,262 +2097,1567 @@ energy:
   rssm_gpu_nj: 328.55039999999997
   convlstm_gpu_nj: 2123.3664
   speedup_vs_own_gpu: 4.890475307893975
+corl_final_verification:
+  pil_3seed_comparison:
+    spwm_n6_tier2:
+      mean_std:
+        grasp_success_rate_pct: [58.0,27.055498516937366]
+        terminal_placement_accuracy_cm: [0.8992845916748048,0.0417493623118023]
+        terminal_error_cm: [2.231203550299009,0.6846823009200784]
+        mean_joint_accel_rad_s2: [0.008598180722134809,0.003043671174468545]
+        mean_joint_jerk_rad_s3: [0.00608342978792886,0.0029084716855952435]
+        mean_direction_flips: [19.373333333333335,7.574545090850891]
+        mppi_inference_latency_ms: [27.510263026675336,7.919433452921299]
+      per_seed:
+        42:
+          checkpoint: results/spwm_v0_12_4_train_m1/model.pt
+          evaluation_protocol: physics_in_loop
+          episodes_evaluated: 50
+          overall_metrics:
+            grasp_success_rate_pct: 86.0
+            terminal_placement_accuracy_cm: 0.8552020224928856
+            placement_accuracy_std_cm: 0.7991095820631844
+            terminal_error_cm: 1.5668222349882126
+            terminal_error_std_cm: 1.004804437956763
+            mppi_inference_latency_ms: 36.65447710343201
+            mean_joint_accel_rad_s2: 0.0058662799885496495
+            std_joint_accel_rad_s2: 0.0014419035578661795
+            mean_joint_jerk_rad_s3: 0.003542280187830329
+            std_joint_jerk_rad_s3: 0.000713988545542795
+            mean_direction_flips: 14.02
+            std_direction_flips: 7.643271550847844
+          handover_telemetry:
+            episodes_evaluated: 50
+            triggered_episodes: 0
+            episodes_with_w_gt_0_pct: 0.0
+            total_phi1_steps: 400
+            triggered_phi1_steps: 0
+            phi1_steps_with_w_gt_0_pct: 0.0
+            mean_nonzero_w: 0.0
+        101:
+          checkpoint: results/multiseed/seed_101_m1/model.pt
+          evaluation_protocol: physics_in_loop
+          episodes_evaluated: 50
+          overall_metrics:
+            grasp_success_rate_pct: 56.00000000000001
+            terminal_placement_accuracy_cm: 0.9044275161623955
+            placement_accuracy_std_cm: 0.6471105496304267
+            terminal_error_cm: 2.1922635650634765
+            terminal_error_std_cm: 1.1926734087904072
+            mppi_inference_latency_ms: 23.008426210175344
+            mean_joint_accel_rad_s2: 0.011878934735432268
+            std_joint_accel_rad_s2: 0.00374689697219965
+            mean_joint_jerk_rad_s3: 0.009255616161972284
+            std_joint_jerk_rad_s3: 0.0022864994051547106
+            mean_direction_flips: 28.04
+            std_direction_flips: 7.623542483648924
+          handover_telemetry: null
+        2024:
+          checkpoint: results/multiseed/seed_2024_m1/model.pt
+          evaluation_protocol: physics_in_loop
+          episodes_evaluated: 50
+          overall_metrics:
+            grasp_success_rate_pct: 32.0
+            terminal_placement_accuracy_cm: 0.938224236369133
+            placement_accuracy_std_cm: 0.6394334407237005
+            terminal_error_cm: 2.934524850845337
+            terminal_error_std_cm: 1.8091352151209616
+            mppi_inference_latency_ms: 22.86788576641866
+            mean_joint_accel_rad_s2: 0.008049327442422509
+            std_joint_accel_rad_s2: 0.0032349260861896404
+            mean_joint_jerk_rad_s3: 0.005452393013983965
+            std_joint_jerk_rad_s3: 0.0021297406964725127
+            mean_direction_flips: 16.06
+            std_direction_flips: 4.6364210335128115
+          handover_telemetry: null
+    spwm_n25_val:
+      mean_std:
+        grasp_success_rate_pct: [60.666666666666664,2.3094010767585074]
+        terminal_placement_accuracy_cm: [0.8798704931139946,0.10505539807183523]
+        terminal_error_cm: [2.006662103931109,0.11581144347528279]
+        mean_joint_accel_rad_s2: [0.009308865414932371,0.0034586698705177275]
+        mean_joint_jerk_rad_s3: [0.006634432549277941,0.003263484407032791]
+        mean_direction_flips: [21.14,8.549807015365904]
+        mppi_inference_latency_ms: [35.50311868491241,1.4903537737959471]
+      per_seed:
+        42:
+          checkpoint: results/spwm_v0_12_4_train_m1/checkpoint_phase_4.pt
+          evaluation_protocol: physics_in_loop
+          episodes_evaluated: 50
+          overall_metrics:
+            grasp_success_rate_pct: 57.99999999999999
+            terminal_placement_accuracy_cm: 0.9966417002677918
+            placement_accuracy_std_cm: 0.7168366082198878
+            terminal_error_cm: 2.117010636925697
+            terminal_error_std_cm: 1.2261713068281301
+            mppi_inference_latency_ms: 36.37386128397549
+            mean_joint_accel_rad_s2: 0.005460824174806475
+            std_joint_accel_rad_s2: 0.0014449158194058374
+            mean_joint_jerk_rad_s3: 0.003033191980794072
+            std_joint_jerk_rad_s3: 0.0006583887773716086
+            mean_direction_flips: 11.82
+            std_direction_flips: 6.098163658020339
+          handover_telemetry:
+            episodes_evaluated: 50
+            triggered_episodes: 0
+            episodes_with_w_gt_0_pct: 0.0
+            total_phi1_steps: 400
+            triggered_phi1_steps: 0
+            phi1_steps_with_w_gt_0_pct: 0.0
+            mean_nonzero_w: 0.0
+        101:
+          checkpoint: results/multiseed/seed_101_m1/checkpoint_phase_1.pt
+          evaluation_protocol: physics_in_loop
+          episodes_evaluated: 50
+          overall_metrics:
+            grasp_success_rate_pct: 62.0
+            terminal_placement_accuracy_cm: 0.8499453981220723
+            placement_accuracy_std_cm: 0.5894733005655424
+            terminal_error_cm: 2.0169071877002716
+            terminal_error_std_cm: 1.1516123596745238
+            mppi_inference_latency_ms: 36.35324723590614
+            mean_joint_accel_rad_s2: 0.012158537823706865
+            std_joint_accel_rad_s2: 0.0038326392576793562
+            mean_joint_jerk_rad_s3: 0.00939610967412591
+            std_joint_jerk_rad_s3: 0.0024506745164746524
+            mean_direction_flips: 28.62
+            std_direction_flips: 8.126229137798171
+          handover_telemetry:
+            episodes_evaluated: 50
+            triggered_episodes: 0
+            episodes_with_w_gt_0_pct: 0.0
+            total_phi1_steps: 400
+            triggered_phi1_steps: 0
+            phi1_steps_with_w_gt_0_pct: 0.0
+            mean_nonzero_w: 0.0
+        2024:
+          checkpoint: results/multiseed/seed_2024_m1/checkpoint_phase_2.pt
+          evaluation_protocol: physics_in_loop
+          episodes_evaluated: 50
+          overall_metrics:
+            grasp_success_rate_pct: 62.0
+            terminal_placement_accuracy_cm: 0.7930243809521198
+            placement_accuracy_std_cm: 0.5496822026263848
+            terminal_error_cm: 1.8860684871673583
+            terminal_error_std_cm: 1.187425109721587
+            mppi_inference_latency_ms: 33.78224753485561
+            mean_joint_accel_rad_s2: 0.01030723424628377
+            std_joint_accel_rad_s2: 0.003965905046145654
+            mean_joint_jerk_rad_s3: 0.007473995992913842
+            std_joint_jerk_rad_s3: 0.0027093614883279904
+            mean_direction_flips: 22.98
+            std_direction_flips: 5.540721974616666
+          handover_telemetry:
+            episodes_evaluated: 50
+            triggered_episodes: 0
+            episodes_with_w_gt_0_pct: 0.0
+            total_phi1_steps: 400
+            triggered_phi1_steps: 0
+            phi1_steps_with_w_gt_0_pct: 0.0
+            mean_nonzero_w: 0.0
+    ann_rate:
+      mean_std:
+        grasp_success_rate_pct: [37.333333333333336,9.451631252505218]
+        terminal_placement_accuracy_cm: [1.0678065086901187,0.2828632725018437]
+        terminal_error_cm: [2.9846295044819513,0.4621451582711122]
+        mean_joint_accel_rad_s2: [0.011481044394895437,0.0008839583251549979]
+        mean_joint_jerk_rad_s3: [0.009379258422801892,0.0010705614356774748]
+        mean_direction_flips: [26.0,1.94648400969543]
+        mppi_inference_latency_ms: [24.616702500178565,0.07683415875005363]
+      per_seed:
+        42:
+          checkpoint: results/ann_ablation/seed_42_m1/model.pt
+          evaluation_protocol: physics_in_loop
+          episodes_evaluated: 50
+          overall_metrics:
+            grasp_success_rate_pct: 34.0
+            terminal_placement_accuracy_cm: 0.8320508192479611
+            placement_accuracy_std_cm: 0.4655940325677702
+            terminal_error_cm: 2.7538758546113966
+            terminal_error_std_cm: 1.6488538132409942
+            mppi_inference_latency_ms: 24.528368778591304
+            mean_joint_accel_rad_s2: 0.012113787466660142
+            std_joint_accel_rad_s2: 0.004143865865535021
+            mean_joint_jerk_rad_s3: 0.00986627260223031
+            std_joint_jerk_rad_s3: 0.0032970702130067234
+            mean_direction_flips: 28.24
+            std_direction_flips: 7.061331319234355
+          handover_telemetry: null
+        101:
+          checkpoint: results/ann_ablation/seed_101_m1/model.pt
+          evaluation_protocol: physics_in_loop
+          episodes_evaluated: 50
+          overall_metrics:
+            grasp_success_rate_pct: 30.0
+            terminal_placement_accuracy_cm: 1.3814548110961915
+            placement_accuracy_std_cm: 1.0088033363029787
+            terminal_error_cm: 3.5167109155654908
+            terminal_error_std_cm: 1.908053762203449
+            mppi_inference_latency_ms: 24.66803547384716
+            mean_joint_accel_rad_s2: 0.011858293414115905
+            std_joint_accel_rad_s2: 0.0038084789794641236
+            mean_joint_jerk_rad_s3: 0.010119730336591602
+            std_joint_jerk_rad_s3: 0.0028768772037011977
+            mean_direction_flips: 25.04
+            std_direction_flips: 6.483702645865247
+          handover_telemetry: null
+        2024:
+          checkpoint: results/ann_ablation/seed_2024_m1/model.pt
+          evaluation_protocol: physics_in_loop
+          episodes_evaluated: 50
+          overall_metrics:
+            grasp_success_rate_pct: 48.0
+            terminal_placement_accuracy_cm: 0.9899138957262039
+            placement_accuracy_std_cm: 0.6084400484165465
+            terminal_error_cm: 2.6833017432689665
+            terminal_error_std_cm: 1.3172601917506164
+            mppi_inference_latency_ms: 24.65370324809723
+            mean_joint_accel_rad_s2: 0.010471052303910256
+            std_joint_accel_rad_s2: 0.004437141968405458
+            mean_joint_jerk_rad_s3: 0.008151772329583765
+            std_joint_jerk_rad_s3: 0.0029226110981672468
+            mean_direction_flips: 24.72
+            std_direction_flips: 6.318354216091402
+          handover_telemetry: null
+    rssm_open_loop:
+      mean_std:
+        grasp_success_rate_pct: [15.333333333333334,4.618802153517006]
+        terminal_placement_accuracy_cm: [1.3101576902468999,0.015239180448274645]
+        terminal_error_cm: [2.8772510814666745,0.10043628738006709]
+        mean_joint_accel_rad_s2: [0.019980563490341108,0.00044725536859862214]
+        mean_joint_jerk_rad_s3: [0.020594383161514997,0.0002908916650769286]
+        mean_direction_flips: [36.23333333333333,0.9737213838328386]
+        mppi_inference_latency_ms: [52.36163894086636,2.3005863220714606]
+      per_seed:
+        42:
+          checkpoint: results/baselines/continuous_rssm/model.pt
+          evaluation_protocol: physics_in_loop
+          episodes_evaluated: 50
+          overall_metrics:
+            grasp_success_rate_pct: 18.0
+            terminal_placement_accuracy_cm: 1.3266203773021699
+            placement_accuracy_std_cm: 0.7567385234666243
+            terminal_error_cm: 2.989941152334213
+            terminal_error_std_cm: 2.314479426505856
+            mppi_inference_latency_ms: 53.49043995589559
+            mean_joint_accel_rad_s2: 0.020397072955965996
+            std_joint_accel_rad_s2: 0.005150112805367512
+            mean_joint_jerk_rad_s3: 0.020926078390330075
+            std_joint_jerk_rad_s3: 0.004612915595826576
+            mean_direction_flips: 36.48
+            std_direction_flips: 8.70457351051733
+          handover_telemetry:
+            episodes_evaluated: 50
+            triggered_episodes: 0
+            episodes_with_w_gt_0_pct: 0.0
+            total_phi1_steps: 400
+            triggered_phi1_steps: 0
+            phi1_steps_with_w_gt_0_pct: 0.0
+            mean_nonzero_w: 0.0
+        101:
+          checkpoint: results/multiseed_rssm/seed_101/continuous_rssm/model.pt
+          evaluation_protocol: physics_in_loop
+          episodes_evaluated: 50
+          overall_metrics:
+            grasp_success_rate_pct: 10.0
+            terminal_placement_accuracy_cm: 1.29654419362545
+            placement_accuracy_std_cm: 0.7349282199575204
+            terminal_error_cm: 2.7971750795841217
+            terminal_error_std_cm: 1.2842201852756545
+            mppi_inference_latency_ms: 53.87979782665941
+            mean_joint_accel_rad_s2: 0.02003674639388919
+            std_joint_accel_rad_s2: 0.005475541541558765
+            mean_joint_jerk_rad_s3: 0.020382691603153945
+            std_joint_jerk_rad_s3: 0.0051559219643164565
+            mean_direction_flips: 35.16
+            std_direction_flips: 8.398476052237097
+          handover_telemetry:
+            episodes_evaluated: 50
+            triggered_episodes: 0
+            episodes_with_w_gt_0_pct: 0.0
+            total_phi1_steps: 400
+            triggered_phi1_steps: 0
+            phi1_steps_with_w_gt_0_pct: 0.0
+            mean_nonzero_w: 0.0
+        2024:
+          checkpoint: results/multiseed_rssm/seed_2024/continuous_rssm/model.pt
+          evaluation_protocol: physics_in_loop
+          episodes_evaluated: 50
+          overall_metrics:
+            grasp_success_rate_pct: 18.0
+            terminal_placement_accuracy_cm: 1.3073084998130797
+            placement_accuracy_std_cm: 0.7205506123520404
+            terminal_error_cm: 2.8446370124816895
+            terminal_error_std_cm: 1.6639887935850126
+            mppi_inference_latency_ms: 49.71467904004407
+            mean_joint_accel_rad_s2: 0.019507871121168138
+            std_joint_accel_rad_s2: 0.0060982226813745795
+            mean_joint_jerk_rad_s3: 0.02047437949106097
+            std_joint_jerk_rad_s3: 0.0055033501945377225
+            mean_direction_flips: 37.06
+            std_direction_flips: 8.598627797503507
+          handover_telemetry:
+            episodes_evaluated: 50
+            triggered_episodes: 0
+            episodes_with_w_gt_0_pct: 0.0
+            total_phi1_steps: 400
+            triggered_phi1_steps: 0
+            phi1_steps_with_w_gt_0_pct: 0.0
+            mean_nonzero_w: 0.0
+    rssm_online:
+      mean_std:
+        grasp_success_rate_pct: [0.0,0.0]
+        terminal_placement_accuracy_cm: [1.5289842367172242,0.06375312364798832]
+        terminal_error_cm: [22.434701797167463,0.5797279333300245]
+        mean_joint_accel_rad_s2: [0.031191026711215573,0.0008520616038234162]
+        mean_joint_jerk_rad_s3: [0.02875449779753884,0.00014085841965964314]
+        mean_direction_flips: [36.126666666666665,0.4518111699961975]
+        mppi_inference_latency_ms: [35.14400501011499,0.7717180625877539]
+      per_seed:
+        42:
+          checkpoint: results/baselines/continuous_rssm/model.pt
+          evaluation_protocol: physics_in_loop
+          episodes_evaluated: 50
+          overall_metrics:
+            grasp_success_rate_pct: 0.0
+            terminal_placement_accuracy_cm: 1.4853565365076065
+            placement_accuracy_std_cm: 0.8072306821662141
+            terminal_error_cm: 23.064797267913818
+            terminal_error_std_cm: 10.191853322128246
+            mppi_inference_latency_ms: 35.43504671945729
+            mean_joint_accel_rad_s2: 0.031375364810228346
+            std_joint_accel_rad_s2: 0.007305338172597787
+            mean_joint_jerk_rad_s3: 0.02885244209319353
+            std_joint_jerk_rad_s3: 0.0060618628680671055
+            mean_direction_flips: 36.08
+            std_direction_flips: 8.728894546275605
+          handover_telemetry: null
+        101:
+          checkpoint: results/multiseed_rssm/seed_101/continuous_rssm/model.pt
+          evaluation_protocol: physics_in_loop
+          episodes_evaluated: 50
+          overall_metrics:
+            grasp_success_rate_pct: 0.0
+            terminal_placement_accuracy_cm: 1.6021491199731828
+            placement_accuracy_std_cm: 1.2447488731995244
+            terminal_error_cm: 22.315407094955443
+            terminal_error_std_cm: 10.553710423116314
+            mppi_inference_latency_ms: 35.727881036909295
+            mean_joint_accel_rad_s2: 0.03193583052605391
+            std_joint_accel_rad_s2: 0.008043311584610484
+            mean_joint_jerk_rad_s3: 0.028817981332540512
+            std_joint_jerk_rad_s3: 0.006339214528534832
+            mean_direction_flips: 35.7
+            std_direction_flips: 7.867019766086774
+          handover_telemetry: null
+        2024:
+          checkpoint: results/multiseed_rssm/seed_2024/continuous_rssm/model.pt
+          evaluation_protocol: physics_in_loop
+          episodes_evaluated: 50
+          overall_metrics:
+            grasp_success_rate_pct: 0.0
+            terminal_placement_accuracy_cm: 1.4994470536708833
+            placement_accuracy_std_cm: 0.9216384459318591
+            terminal_error_cm: 21.923901028633118
+            terminal_error_std_cm: 11.209971466939866
+            mppi_inference_latency_ms: 34.269087273978386
+            mean_joint_accel_rad_s2: 0.030261884797364472
+            std_joint_accel_rad_s2: 0.008483142166426698
+            mean_joint_jerk_rad_s3: 0.02859306996688247
+            std_joint_jerk_rad_s3: 0.006732266722885297
+            mean_direction_flips: 36.6
+            std_direction_flips: 8.12403840463596
+          handover_telemetry: null
+    deep_gru_open_loop:
+      mean_std:
+        grasp_success_rate_pct: [1.3333333333333333,2.3094010767585034]
+        terminal_placement_accuracy_cm: [10.56911430199941,7.8332178543025]
+        terminal_error_cm: [16.720466453234355,11.307909064116105]
+        mean_joint_accel_rad_s2: [0.007771262118282417,0.006861198470924401]
+        mean_joint_jerk_rad_s3: [0.006221064189837005,0.007792868260752681]
+        mean_direction_flips: [14.666666666666666,14.897212267177151]
+        mppi_inference_latency_ms: [67.4003965856917,1.6174098859533237]
+      per_seed:
+        42:
+          checkpoint: results/baselines/deep_gru/model.pt
+          evaluation_protocol: physics_in_loop
+          episodes_evaluated: 50
+          overall_metrics:
+            grasp_success_rate_pct: 4.0
+            terminal_placement_accuracy_cm: 1.676134810447693
+            placement_accuracy_std_cm: 0.8117443861694015
+            terminal_error_cm: 5.672766432762146
+            terminal_error_std_cm: 2.2391999765559203
+            mppi_inference_latency_ms: 65.53380835354476
+            mean_joint_accel_rad_s2: 0.015632247226312755
+            std_joint_accel_rad_s2: 0.004271736979986495
+            mean_joint_jerk_rad_s3: 0.015213804496452212
+            std_joint_jerk_rad_s3: 0.003654658887291699
+            mean_direction_flips: 31.64
+            std_direction_flips: 6.492333940887515
+          handover_telemetry:
+            episodes_evaluated: 50
+            triggered_episodes: 0
+            episodes_with_w_gt_0_pct: 0.0
+            total_phi1_steps: 400
+            triggered_phi1_steps: 0
+            phi1_steps_with_w_gt_0_pct: 0.0
+            mean_nonzero_w: 0.0
+        101:
+          checkpoint: results/multiseed_rssm/seed_101/deep_gru/model.pt
+          evaluation_protocol: physics_in_loop
+          episodes_evaluated: 50
+          overall_metrics:
+            grasp_success_rate_pct: 0.0
+            terminal_placement_accuracy_cm: 16.445809898376464
+            placement_accuracy_std_cm: 4.091952617443522
+            terminal_error_cm: 28.271757926940918
+            terminal_error_std_cm: 5.337323594145242
+            mppi_inference_latency_ms: 68.38755179985513
+            mean_joint_accel_rad_s2: 0.004695011512376368
+            std_joint_accel_rad_s2: 0.0019015618294956774
+            mean_joint_jerk_rad_s3: 0.0020017537102103235
+            std_joint_jerk_rad_s3: 0.0010274453240716615
+            mean_direction_flips: 8.6
+            std_direction_flips: 1.5231546211727816
+          handover_telemetry:
+            episodes_evaluated: 50
+            triggered_episodes: 0
+            episodes_with_w_gt_0_pct: 0.0
+            total_phi1_steps: 400
+            triggered_phi1_steps: 0
+            phi1_steps_with_w_gt_0_pct: 0.0
+            mean_nonzero_w: 0.0
+        2024:
+          checkpoint: results/multiseed_rssm/seed_2024/deep_gru/model.pt
+          evaluation_protocol: physics_in_loop
+          episodes_evaluated: 50
+          overall_metrics:
+            grasp_success_rate_pct: 0.0
+            terminal_placement_accuracy_cm: 13.585398197174072
+            placement_accuracy_std_cm: 4.602458838522156
+            terminal_error_cm: 16.216875
+            terminal_error_std_cm: 5.664685795497017
+            mppi_inference_latency_ms: 68.27982960367521
+            mean_joint_accel_rad_s2: 0.0029865276161581277
+            std_joint_accel_rad_s2: 0.0009849739567156495
+            mean_joint_jerk_rad_s3: 0.0014476343628484756
+            std_joint_jerk_rad_s3: 0.0007935315657924097
+            mean_direction_flips: 3.76
+            std_direction_flips: 1.3350655414622912
+          handover_telemetry:
+            episodes_evaluated: 50
+            triggered_episodes: 0
+            episodes_with_w_gt_0_pct: 0.0
+            total_phi1_steps: 400
+            triggered_phi1_steps: 0
+            phi1_steps_with_w_gt_0_pct: 0.0
+            mean_nonzero_w: 0.0
+    deep_gru_online:
+      mean_std:
+        grasp_success_rate_pct: [0.0,0.0]
+        terminal_placement_accuracy_cm: [6.027755393187205,4.003672646431791]
+        terminal_error_cm: [10.87074866215388,3.973647019419447]
+        mean_joint_accel_rad_s2: [0.016541417293871444,0.009718487664175204]
+        mean_joint_jerk_rad_s3: [0.013497935300692918,0.009453182248594585]
+        mean_direction_flips: [19.673333333333336,10.000986617995913]
+        mppi_inference_latency_ms: [60.30913028220712,18.88364182181519]
+      per_seed:
+        42:
+          checkpoint: results/baselines/deep_gru/model.pt
+          evaluation_protocol: physics_in_loop
+          episodes_evaluated: 50
+          overall_metrics:
+            grasp_success_rate_pct: 0.0
+            terminal_placement_accuracy_cm: 1.8828691363334655
+            placement_accuracy_std_cm: 0.9129360328992964
+            terminal_error_cm: 14.958965482711791
+            terminal_error_std_cm: 5.8198658353174295
+            mppi_inference_latency_ms: 39.408694524453786
+            mean_joint_accel_rad_s2: 0.02738728191703558
+            std_joint_accel_rad_s2: 0.0058359002251519515
+            mean_joint_jerk_rad_s3: 0.02424047663807869
+            std_joint_jerk_rad_s3: 0.005460746571514626
+            mean_direction_flips: 31.22
+            std_direction_flips: 6.394654017224075
+          handover_telemetry: null
+        101:
+          checkpoint: results/multiseed_rssm/seed_101/deep_gru/model.pt
+          evaluation_protocol: physics_in_loop
+          episodes_evaluated: 50
+          overall_metrics:
+            grasp_success_rate_pct: 0.0
+            terminal_placement_accuracy_cm: 9.873425269126892
+            placement_accuracy_std_cm: 3.3191995640740144
+            terminal_error_cm: 10.630728125572205
+            terminal_error_std_cm: 4.086173291146598
+            mppi_inference_latency_ms: 65.37689822572655
+            mean_joint_accel_rad_s2: 0.013613363318145276
+            std_joint_accel_rad_s2: 0.00319403673953568
+            mean_joint_jerk_rad_s3: 0.009803270976990462
+            std_joint_jerk_rad_s3: 0.0019610861700191558
+            mean_direction_flips: 14.06
+            std_direction_flips: 1.7596590578859306
+          handover_telemetry:
+            episodes_evaluated: 50
+            triggered_episodes: 50
+            episodes_with_w_gt_0_pct: 100.0
+            total_phi1_steps: 400
+            triggered_phi1_steps: 400
+            phi1_steps_with_w_gt_0_pct: 100.0
+            mean_nonzero_w: 1.0
+        2024:
+          checkpoint: results/multiseed_rssm/seed_2024/deep_gru/model.pt
+          evaluation_protocol: physics_in_loop
+          episodes_evaluated: 50
+          overall_metrics:
+            grasp_success_rate_pct: 0.0
+            terminal_placement_accuracy_cm: 6.326971774101257
+            placement_accuracy_std_cm: 3.9962240007220133
+            terminal_error_cm: 7.022552378177643
+            terminal_error_std_cm: 4.266232180960101
+            mppi_inference_latency_ms: 76.14179809644102
+            mean_joint_accel_rad_s2: 0.008623606646433473
+            std_joint_accel_rad_s2: 0.0019381415625095385
+            mean_joint_jerk_rad_s3: 0.0064500582870095965
+            std_joint_jerk_rad_s3: 0.0014334850317962446
+            mean_direction_flips: 13.74
+            std_direction_flips: 0.7952358140828417
+          handover_telemetry:
+            episodes_evaluated: 50
+            triggered_episodes: 50
+            episodes_with_w_gt_0_pct: 100.0
+            total_phi1_steps: 400
+            triggered_phi1_steps: 400
+            phi1_steps_with_w_gt_0_pct: 100.0
+            mean_nonzero_w: 1.0
+  disentangled_ablation (5 rows):
+    |label|checkpoint|evaluation_protocol|overall_metrics|handover_telemetry|bold|
+    |---|---|---|---|---|---|
+    |1. SPWM-Base (Phase 1 Warmup, Unsmoothed MPPI)|results/spwm_v0_12_4_train_m1/checkpoint_phase_1.pt|physics_in_loop|{grasp_success_rate_pct:62.0,terminal_placement_accuracy_cm:1.270518583357334,placement_accuracy_std_cm:1.1433059847844562,terminal_error_cm:2.51325437605381,terminal_error_std_cm:1.591850890790287,mppi_inference_latency_ms:21.678928387231593,mean_joint_accel_rad_s2:0.007099576396867633,std_joint_accel_rad_s2:0.001774520067574007,mean_joint_jerk_rad_s3:0.004990413328632712,std_joint_jerk_rad_s3:0.0013068799665881348,mean_direction_flips:16.04,std_direction_flips:8.304119459641703}|null|false|
+    |2. + Smooth MPPI Controls|results/spwm_v0_12_4_train_m1/checkpoint_phase_1.pt|physics_in_loop|{grasp_success_rate_pct:62.0,terminal_placement_accuracy_cm:1.088925544321537,placement_accuracy_std_cm:0.9806278517950008,terminal_error_cm:2.2633657586574554,terminal_error_std_cm:1.7920521176335729,mppi_inference_latency_ms:22.35479484997801,mean_joint_accel_rad_s2:0.00728669355623424,std_joint_accel_rad_s2:0.001994464166249948,mean_joint_jerk_rad_s3:0.004507547407411039,std_joint_jerk_rad_s3:0.001292394719881764,mean_direction_flips:15.34,std_direction_flips:7.783598139678076}|null|false|
+    |3. + Phase 1 Curriculum (4-Stage, No Handover/Lookahead)|results/spwm_v0_12_4_train_m1/model.pt|physics_in_loop|{grasp_success_rate_pct:72.0,terminal_placement_accuracy_cm:0.9845381462574005,placement_accuracy_std_cm:0.9663701539547177,terminal_error_cm:1.8471522986888886,terminal_error_std_cm:1.3105550973311277,mppi_inference_latency_ms:22.50886656506723,mean_joint_accel_rad_s2:0.005996449659578502,std_joint_accel_rad_s2:0.001733545237341892,mean_joint_jerk_rad_s3:0.003658297834917903,std_joint_jerk_rad_s3:0.0009730792173353034,mean_direction_flips:14.24,std_direction_flips:7.8601781150302195}|null|false|
+    |4a. + 2-Stage SE(3) Lookahead (Handover Disabled, $w_t \equiv 0$)|results/spwm_v0_12_4_train_m1/best_model.pt|physics_in_loop|{grasp_success_rate_pct:86.0,terminal_placement_accuracy_cm:0.8552020224928856,placement_accuracy_std_cm:0.7991095820631844,terminal_error_cm:1.5668222349882126,terminal_error_std_cm:1.004804437956763,mppi_inference_latency_ms:36.57298823552262,mean_joint_accel_rad_s2:0.0058662799885496495,std_joint_accel_rad_s2:0.0014419035578661795,mean_joint_jerk_rad_s3:0.003542280187830329,std_joint_jerk_rad_s3:0.000713988545542795,mean_direction_flips:14.02,std_direction_flips:7.643271550847844}|{episodes_evaluated:50,triggered_episodes:0,episodes_with_w_gt_0_pct:0.0,total_phi1_steps:400,triggered_phi1_steps:0,phi1_steps_with_w_gt_0_pct:0.0,mean_nonzero_w:0.0}|false|
+    |4b. + Residual Handover \& 2-Stage Lookahead (Full)|results/spwm_v0_12_4_train_m1/model.pt|physics_in_loop|{grasp_success_rate_pct:86.0,terminal_placement_accuracy_cm:0.8552020224928856,placement_accuracy_std_cm:0.7991095820631844,terminal_error_cm:1.5668222349882126,terminal_error_std_cm:1.004804437956763,mppi_inference_latency_ms:36.65447710343201,mean_joint_accel_rad_s2:0.0058662799885496495,std_joint_accel_rad_s2:0.0014419035578661795,mean_joint_jerk_rad_s3:0.003542280187830329,std_joint_jerk_rad_s3:0.000713988545542795,mean_direction_flips:14.02,std_direction_flips:7.643271550847844}|{episodes_evaluated:50,triggered_episodes:0,episodes_with_w_gt_0_pct:0.0,total_phi1_steps:400,triggered_phi1_steps:0,phi1_steps_with_w_gt_0_pct:0.0,mean_nonzero_w:0.0}|true|
+  robustness_3seed_spwm:
+    conditions (5 items):
+      - [0]
+        condition_name: Nominal Baseline
+        grasp_success_rate_pct: [58.0,27.055498516937366]
+        delta_rel_pct: 0.0
+        min_placement_error_mean_cm: [0.8992845916748048,0.0417493623118023]
+        terminal_placement_error_mean_cm: [2.231203550299009,0.6846823009200784]
+        terminal_velocity_mean: [0.42377924611171086,0.0838157235336139]
+        episodes_with_handover_pct: [0.0,0.0]
+        phi1_steps_with_handover_pct: [0.0,0.0]
+        mean_nonzero_handover_w_when_active: 0.0
+        per_seed:
+          42:
+            grasp_success_rate_pct: 86.0
+            min_placement_error_mean_cm: 0.8552020224928856
+            terminal_placement_error_mean_cm: 1.5668222349882126
+            terminal_velocity_mean: 0.32701518952846526
+            mean_latency_ms: 36.05713042749771
+            episodes_with_handover_pct: 0.0
+            phi1_steps_with_handover_pct: 0.0
+            mean_nonzero_handover_w: 0.0
+            delta_rel_pct: 0.0
+          101:
+            grasp_success_rate_pct: 56.00000000000001
+            min_placement_error_mean_cm: 0.9044275161623955
+            terminal_placement_error_mean_cm: 2.1922635650634765
+            terminal_velocity_mean: 0.4737779149413109
+            mean_latency_ms: 35.94414352529596
+            episodes_with_handover_pct: 0.0
+            phi1_steps_with_handover_pct: 0.0
+            mean_nonzero_handover_w: 0.0
+            delta_rel_pct: 0.0
+          2024:
+            grasp_success_rate_pct: 32.0
+            min_placement_error_mean_cm: 0.938224236369133
+            terminal_placement_error_mean_cm: 2.934524850845337
+            terminal_velocity_mean: 0.47054463386535644
+            mean_latency_ms: 36.51248038936411
+            episodes_with_handover_pct: 0.0
+            phi1_steps_with_handover_pct: 0.0
+            mean_nonzero_handover_w: 0.0
+            delta_rel_pct: 0.0
+      - [1]
+        condition_name: Sensory Noise Injection (1.0%)
+        grasp_success_rate_pct: [55.333333333333336,19.42506971244462]
+        delta_rel_pct: -4.597701149425283
+        min_placement_error_mean_cm: [0.8995885254442691,0.0864853745399293]
+        terminal_placement_error_mean_cm: [2.342214393814405,0.6310488458771016]
+        terminal_velocity_mean: [0.3995537382364273,0.12232065703258524]
+        episodes_with_handover_pct: [0.0,0.0]
+        phi1_steps_with_handover_pct: [0.0,0.0]
+        mean_nonzero_handover_w_when_active: 0.0
+        per_seed:
+          42:
+            grasp_success_rate_pct: 72.0
+            min_placement_error_mean_cm: 0.9837424418330193
+            terminal_placement_error_mean_cm: 1.8598396837711335
+            terminal_velocity_mean: 0.2989905294775963
+            mean_latency_ms: 34.990572020690095
+            episodes_with_handover_pct: 0.0
+            phi1_steps_with_handover_pct: 0.0
+            mean_nonzero_handover_w: 0.0
+            delta_rel_pct: -16.27906976744186
+          101:
+            grasp_success_rate_pct: 60.0
+            min_placement_error_mean_cm: 0.9040766698122025
+            terminal_placement_error_mean_cm: 2.1104232871532442
+            terminal_velocity_mean: 0.5357284384965897
+            mean_latency_ms: 36.52126013849798
+            episodes_with_handover_pct: 0.0
+            phi1_steps_with_handover_pct: 0.0
+            mean_nonzero_handover_w: 0.0
+            delta_rel_pct: 7.14285714285713
+          2024:
+            grasp_success_rate_pct: 34.0
+            min_placement_error_mean_cm: 0.8109464646875858
+            terminal_placement_error_mean_cm: 3.056380210518837
+            terminal_velocity_mean: 0.36394224673509595
+            mean_latency_ms: 36.52111676256183
+            episodes_with_handover_pct: 0.0
+            phi1_steps_with_handover_pct: 0.0
+            mean_nonzero_handover_w: 0.0
+            delta_rel_pct: 6.25
+      - [2]
+        condition_name: Payload Extrapolation (4.80 kg)
+        grasp_success_rate_pct: [39.333333333333336,33.724372986511305]
+        delta_rel_pct: -32.183908045977006
+        min_placement_error_mean_cm: [1.1808227265874545,0.1475518910933885]
+        terminal_placement_error_mean_cm: [2.5032857662439345,0.6239346910373739]
+        terminal_velocity_mean: [0.5195224117239315,0.1069074967853979]
+        episodes_with_handover_pct: [1.3333333333333333,2.3094010767585034]
+        phi1_steps_with_handover_pct: [0.16666666666666666,0.2886751345948129]
+        mean_nonzero_handover_w_when_active: 0.16452792689204215
+        per_seed:
+          42:
+            grasp_success_rate_pct: 78.0
+            min_placement_error_mean_cm: 1.245790022313595
+            terminal_placement_error_mean_cm: 1.7834283006191254
+            terminal_velocity_mean: 0.43445359870791433
+            mean_latency_ms: 37.20313749923503
+            episodes_with_handover_pct: 0.0
+            phi1_steps_with_handover_pct: 0.0
+            mean_nonzero_handover_w: 0.0
+            delta_rel_pct: -9.30232558139535
+          101:
+            grasp_success_rate_pct: 24.0
+            min_placement_error_mean_cm: 1.2847428852319718
+            terminal_placement_error_mean_cm: 2.837750395536423
+            terminal_velocity_mean: 0.6395273652672767
+            mean_latency_ms: 36.43832626988797
+            episodes_with_handover_pct: 0.0
+            phi1_steps_with_handover_pct: 0.0
+            mean_nonzero_handover_w: 0.0
+            delta_rel_pct: -57.14285714285715
+          2024:
+            grasp_success_rate_pct: 16.0
+            min_placement_error_mean_cm: 1.011935272216797
+            terminal_placement_error_mean_cm: 2.8886786025762556
+            terminal_velocity_mean: 0.4845862711966038
+            mean_latency_ms: 36.41863351428478
+            episodes_with_handover_pct: 4.0
+            phi1_steps_with_handover_pct: 0.5
+            mean_nonzero_handover_w: 0.16452792689204215
+            delta_rel_pct: -50.0
+      - [3]
+        condition_name: Actuator Drift (0.80x Friction)
+        grasp_success_rate_pct: [40.666666666666664,27.30079363925769]
+        delta_rel_pct: -29.88505747126437
+        min_placement_error_mean_cm: [1.1887371614575386,0.11060501933302767]
+        terminal_placement_error_mean_cm: [2.6100856752196946,0.5422566355658548]
+        terminal_velocity_mean: [0.45519848535458246,0.09270916234318358]
+        episodes_with_handover_pct: [1.3333333333333333,2.3094010767585034]
+        phi1_steps_with_handover_pct: [0.16666666666666666,0.2886751345948129]
+        mean_nonzero_handover_w_when_active: 0.22864747449755668
+        per_seed:
+          42:
+            grasp_success_rate_pct: 70.0
+            min_placement_error_mean_cm: 1.3162081634998322
+            terminal_placement_error_mean_cm: 2.0683961123228074
+            terminal_velocity_mean: 0.3934475040435791
+            mean_latency_ms: 36.6571082404878
+            episodes_with_handover_pct: 0.0
+            phi1_steps_with_handover_pct: 0.0
+            mean_nonzero_handover_w: 0.0
+            delta_rel_pct: -18.6046511627907
+          101:
+            grasp_success_rate_pct: 36.0
+            min_placement_error_mean_cm: 1.1181585595011712
+            terminal_placement_error_mean_cm: 2.6089533033967016
+            terminal_velocity_mean: 0.5618044257164001
+            mean_latency_ms: 36.38057136931481
+            episodes_with_handover_pct: 0.0
+            phi1_steps_with_handover_pct: 0.0
+            mean_nonzero_handover_w: 0.0
+            delta_rel_pct: -35.71428571428572
+          2024:
+            grasp_success_rate_pct: 16.0
+            min_placement_error_mean_cm: 1.1318447613716125
+            terminal_placement_error_mean_cm: 3.152907609939575
+            terminal_velocity_mean: 0.41034352630376814
+            mean_latency_ms: 36.43481188892321
+            episodes_with_handover_pct: 4.0
+            phi1_steps_with_handover_pct: 0.5
+            mean_nonzero_handover_w: 0.22864747449755668
+            delta_rel_pct: -50.0
+      - [4]
+        condition_name: Actuator Drift (1.20x Friction)
+        grasp_success_rate_pct: [44.0,28.0]
+        delta_rel_pct: -24.137931034482758
+        min_placement_error_mean_cm: [1.2160442214210827,0.10678522747967399]
+        terminal_placement_error_mean_cm: [2.5337881688276926,0.5567605187409086]
+        terminal_velocity_mean: [0.4324431197345257,0.07896359786568626]
+        episodes_with_handover_pct: [1.3333333333333333,2.3094010767585034]
+        phi1_steps_with_handover_pct: [0.16666666666666666,0.2886751345948129]
+        mean_nonzero_handover_w_when_active: 0.16903226852416992
+        per_seed:
+          42:
+            grasp_success_rate_pct: 76.0
+            min_placement_error_mean_cm: 1.3224645945429803
+            terminal_placement_error_mean_cm: 1.9732722735404968
+            terminal_velocity_mean: 0.3801573750376701
+            mean_latency_ms: 36.835968496259994
+            episodes_with_handover_pct: 0.0
+            phi1_steps_with_handover_pct: 0.0
+            mean_nonzero_handover_w: 0.0
+            delta_rel_pct: -11.627906976744185
+          101:
+            grasp_success_rate_pct: 32.0
+            min_placement_error_mean_cm: 1.2167702281475068
+            terminal_placement_error_mean_cm: 2.5413764929771423
+            terminal_velocity_mean: 0.5232767987251282
+            mean_latency_ms: 36.59299420893834
+            episodes_with_handover_pct: 0.0
+            phi1_steps_with_handover_pct: 0.0
+            mean_nonzero_handover_w: 0.0
+            delta_rel_pct: -42.85714285714287
+          2024:
+            grasp_success_rate_pct: 24.0
+            min_placement_error_mean_cm: 1.1088978415727615
+            terminal_placement_error_mean_cm: 3.086715739965439
+            terminal_velocity_mean: 0.39389518544077873
+            mean_latency_ms: 36.48604587311423
+            episodes_with_handover_pct: 4.0
+            phi1_steps_with_handover_pct: 0.5
+            mean_nonzero_handover_w: 0.16903226852416992
+            delta_rel_pct: -25.0
+  robustness_3seed_ann_rate:
+    conditions (5 items):
+      - [0]
+        condition_name: Nominal Baseline
+        grasp_success_rate_pct: [37.333333333333336,9.451631252505218]
+        delta_rel_pct: 0.0
+        min_placement_error_mean_cm: [1.0678065086901187,0.2828632725018437]
+        terminal_placement_error_mean_cm: [2.9846295044819513,0.4621451582711122]
+        terminal_velocity_mean: [0.49538074051340425,0.11216522852158058]
+        episodes_with_handover_pct: [0.0,0.0]
+        phi1_steps_with_handover_pct: [0.0,0.0]
+        mean_nonzero_handover_w_when_active: 0.0
+        per_seed:
+          42:
+            grasp_success_rate_pct: 34.0
+            min_placement_error_mean_cm: 0.8320508192479611
+            terminal_placement_error_mean_cm: 2.7538758546113966
+            terminal_velocity_mean: 0.5869238513708115
+            mean_latency_ms: 29.43750379663485
+            episodes_with_handover_pct: 0.0
+            phi1_steps_with_handover_pct: 0.0
+            mean_nonzero_handover_w: 0.0
+            delta_rel_pct: 0.0
+          101:
+            grasp_success_rate_pct: 30.0
+            min_placement_error_mean_cm: 1.3814548110961915
+            terminal_placement_error_mean_cm: 3.5167109155654908
+            terminal_velocity_mean: 0.5289560982584953
+            mean_latency_ms: 26.53065752230858
+            episodes_with_handover_pct: 0.0
+            phi1_steps_with_handover_pct: 0.0
+            mean_nonzero_handover_w: 0.0
+            delta_rel_pct: 0.0
+          2024:
+            grasp_success_rate_pct: 48.0
+            min_placement_error_mean_cm: 0.9899138957262039
+            terminal_placement_error_mean_cm: 2.6833017432689665
+            terminal_velocity_mean: 0.3702622719109058
+            mean_latency_ms: 25.199068654014535
+            episodes_with_handover_pct: 0.0
+            phi1_steps_with_handover_pct: 0.0
+            mean_nonzero_handover_w: 0.0
+            delta_rel_pct: 0.0
+      - [1]
+        condition_name: Sensory Noise Injection (1.0%)
+        grasp_success_rate_pct: [30.0,3.4641016151377544]
+        delta_rel_pct: -19.64285714285715
+        min_placement_error_mean_cm: [1.0367476403713225,0.17609975464908534]
+        terminal_placement_error_mean_cm: [3.362126860022545,0.529625351794463]
+        terminal_velocity_mean: [0.5011851574977239,0.1012983853840122]
+        episodes_with_handover_pct: [0.0,0.0]
+        phi1_steps_with_handover_pct: [0.0,0.0]
+        mean_nonzero_handover_w_when_active: 0.0
+        per_seed:
+          42:
+            grasp_success_rate_pct: 32.0
+            min_placement_error_mean_cm: 0.8365792346000671
+            terminal_placement_error_mean_cm: 3.0554915750026703
+            terminal_velocity_mean: 0.5730594700574875
+            mean_latency_ms: 31.393095565214775
+            episodes_with_handover_pct: 0.0
+            phi1_steps_with_handover_pct: 0.0
+            mean_nonzero_handover_w: 0.0
+            delta_rel_pct: -5.882352941176471
+          101:
+            grasp_success_rate_pct: 26.0
+            min_placement_error_mean_cm: 1.1058386087417602
+            terminal_placement_error_mean_cm: 3.9736847394704817
+            terminal_velocity_mean: 0.5451662424206734
+            mean_latency_ms: 26.004011596295314
+            episodes_with_handover_pct: 0.0
+            phi1_steps_with_handover_pct: 0.0
+            mean_nonzero_handover_w: 0.0
+            delta_rel_pct: -13.333333333333334
+          2024:
+            grasp_success_rate_pct: 32.0
+            min_placement_error_mean_cm: 1.1678250777721404
+            terminal_placement_error_mean_cm: 3.0572042655944824
+            terminal_velocity_mean: 0.38532976001501085
+            mean_latency_ms: 25.061606960452693
+            episodes_with_handover_pct: 0.0
+            phi1_steps_with_handover_pct: 0.0
+            mean_nonzero_handover_w: 0.0
+            delta_rel_pct: -33.333333333333336
+      - [2]
+        condition_name: Payload Extrapolation (4.80 kg)
+        grasp_success_rate_pct: [26.666666666666668,16.165807537309522]
+        delta_rel_pct: -28.571428571428573
+        min_placement_error_mean_cm: [1.359116240243117,0.19601864522317206]
+        terminal_placement_error_mean_cm: [3.6378836290041607,0.7955281178345174]
+        terminal_velocity_mean: [0.6115619068592787,0.10662950140954822]
+        episodes_with_handover_pct: [0.0,0.0]
+        phi1_steps_with_handover_pct: [0.0,0.0]
+        mean_nonzero_handover_w_when_active: 0.0
+        per_seed:
+          42:
+            grasp_success_rate_pct: 24.0
+            min_placement_error_mean_cm: 1.1392030370235444
+            terminal_placement_error_mean_cm: 3.5584317278862
+            terminal_velocity_mean: 0.6400154614448548
+            mean_latency_ms: 29.94859264750354
+            episodes_with_handover_pct: 0.0
+            phi1_steps_with_handover_pct: 0.0
+            mean_nonzero_handover_w: 0.0
+            delta_rel_pct: -29.41176470588235
+          101:
+            grasp_success_rate_pct: 12.0
+            min_placement_error_mean_cm: 1.4226837638020515
+            terminal_placement_error_mean_cm: 4.470156444311142
+            terminal_velocity_mean: 0.7010783076286315
+            mean_latency_ms: 25.1213509093544
+            episodes_with_handover_pct: 0.0
+            phi1_steps_with_handover_pct: 0.0
+            mean_nonzero_handover_w: 0.0
+            delta_rel_pct: -60.0
+          2024:
+            grasp_success_rate_pct: 44.0
+            min_placement_error_mean_cm: 1.5154619199037551
+            terminal_placement_error_mean_cm: 2.88506271481514
+            terminal_velocity_mean: 0.4935919515043497
+            mean_latency_ms: 25.066311646045065
+            episodes_with_handover_pct: 0.0
+            phi1_steps_with_handover_pct: 0.0
+            mean_nonzero_handover_w: 0.0
+            delta_rel_pct: -8.333333333333334
+      - [3]
+        condition_name: Actuator Drift (0.80x Friction)
+        grasp_success_rate_pct: [30.666666666666668,14.047538337136984]
+        delta_rel_pct: -17.857142857142858
+        min_placement_error_mean_cm: [1.4180172796050707,0.21795292848457692]
+        terminal_placement_error_mean_cm: [3.740554449160894,0.8331617947215637]
+        terminal_velocity_mean: [0.5717242361605167,0.13817699362402994]
+        episodes_with_handover_pct: [0.0,0.0]
+        phi1_steps_with_handover_pct: [0.0,0.0]
+        mean_nonzero_handover_w_when_active: 0.0
+        per_seed:
+          42:
+            grasp_success_rate_pct: 32.0
+            min_placement_error_mean_cm: 1.1665561926364898
+            terminal_placement_error_mean_cm: 3.536238695383072
+            terminal_velocity_mean: 0.643540482223034
+            mean_latency_ms: 25.223359415711226
+            episodes_with_handover_pct: 0.0
+            phi1_steps_with_handover_pct: 0.0
+            mean_nonzero_handover_w: 0.0
+            delta_rel_pct: -5.882352941176471
+          101:
+            grasp_success_rate_pct: 16.0
+            min_placement_error_mean_cm: 1.5526343488693237
+            terminal_placement_error_mean_cm: 4.656868257522583
+            terminal_velocity_mean: 0.6592045310139656
+            mean_latency_ms: 25.066783458762252
+            episodes_with_handover_pct: 0.0
+            phi1_steps_with_handover_pct: 0.0
+            mean_nonzero_handover_w: 0.0
+            delta_rel_pct: -46.666666666666664
+          2024:
+            grasp_success_rate_pct: 44.0
+            min_placement_error_mean_cm: 1.5348612973093987
+            terminal_placement_error_mean_cm: 3.028556394577026
+            terminal_velocity_mean: 0.4124276952445507
+            mean_latency_ms: 24.790206348217293
+            episodes_with_handover_pct: 0.0
+            phi1_steps_with_handover_pct: 0.0
+            mean_nonzero_handover_w: 0.0
+            delta_rel_pct: -8.333333333333334
+      - [4]
+        condition_name: Actuator Drift (1.20x Friction)
+        grasp_success_rate_pct: [33.333333333333336,16.65332799572906]
+        delta_rel_pct: -10.714285714285714
+        min_placement_error_mean_cm: [1.3353092057506244,0.20851366158174045]
+        terminal_placement_error_mean_cm: [3.510111181139946,1.2144949894390102]
+        terminal_velocity_mean: [0.5205225745340188,0.10602974885015383]
+        episodes_with_handover_pct: [0.0,0.0]
+        phi1_steps_with_handover_pct: [0.0,0.0]
+        mean_nonzero_handover_w_when_active: 0.0
+        per_seed:
+          42:
+            grasp_success_rate_pct: 28.000000000000004
+            min_placement_error_mean_cm: 1.101568892300129
+            terminal_placement_error_mean_cm: 2.80165857732296
+            terminal_velocity_mean: 0.6022750130295753
+            mean_latency_ms: 25.216824718118666
+            episodes_with_handover_pct: 0.0
+            phi1_steps_with_handover_pct: 0.0
+            mean_nonzero_handover_w: 0.0
+            delta_rel_pct: -17.647058823529402
+          101:
+            grasp_success_rate_pct: 20.0
+            min_placement_error_mean_cm: 1.40215890198946
+            terminal_placement_error_mean_cm: 4.912464030981064
+            terminal_velocity_mean: 0.5585748782753944
+            mean_latency_ms: 25.116685864205966
+            episodes_with_handover_pct: 0.0
+            phi1_steps_with_handover_pct: 0.0
+            mean_nonzero_handover_w: 0.0
+            delta_rel_pct: -33.333333333333336
+          2024:
+            grasp_success_rate_pct: 52.0
+            min_placement_error_mean_cm: 1.5021998229622842
+            terminal_placement_error_mean_cm: 2.816210935115814
+            terminal_velocity_mean: 0.40071783229708674
+            mean_latency_ms: 25.06705994109404
+            episodes_with_handover_pct: 0.0
+            phi1_steps_with_handover_pct: 0.0
+            mean_nonzero_handover_w: 0.0
+            delta_rel_pct: 8.333333333333334
+  val_handover_threshold_sweep:
+    seed42:
+      0026 (5 rows):
+        |condition_name|grasp_success_rate_pct|episodes_with_handover_pct|phi1_steps_with_handover_pct|mean_nonzero_handover_w|
+        |---|---|---|---|---|
+        |Nominal Baseline|78.0|0.0|0.0|0.0|
+        |Sensory Noise Injection (1.0%)|78.0|0.0|0.0|0.0|
+        |Payload Extrapolation (4.80 kg)|66.0|0.0|0.0|0.0|
+        |Actuator Drift (0.80x Friction)|70.0|0.0|0.0|0.0|
+        |Actuator Drift (1.20x Friction)|72.0|0.0|0.0|0.0|
+      0020 (5 rows):
+        |condition_name|grasp_success_rate_pct|episodes_with_handover_pct|phi1_steps_with_handover_pct|mean_nonzero_handover_w|
+        |---|---|---|---|---|
+        |Nominal Baseline|78.0|0.0|0.0|0.0|
+        |Sensory Noise Injection (1.0%)|78.0|0.0|0.0|0.0|
+        |Payload Extrapolation (4.80 kg)|66.0|0.0|0.0|0.0|
+        |Actuator Drift (0.80x Friction)|70.0|0.0|0.0|0.0|
+        |Actuator Drift (1.20x Friction)|72.0|0.0|0.0|0.0|
+      0015 (5 rows):
+        |condition_name|grasp_success_rate_pct|episodes_with_handover_pct|phi1_steps_with_handover_pct|mean_nonzero_handover_w|
+        |---|---|---|---|---|
+        |Nominal Baseline|78.0|0.0|0.0|0.0|
+        |Sensory Noise Injection (1.0%)|78.0|0.0|0.0|0.0|
+        |Payload Extrapolation (4.80 kg)|66.0|0.0|0.0|0.0|
+        |Actuator Drift (0.80x Friction)|70.0|0.0|0.0|0.0|
+        |Actuator Drift (1.20x Friction)|72.0|0.0|0.0|0.0|
+    seed2024:
+      0026 (5 rows):
+        |condition_name|grasp_success_rate_pct|episodes_with_handover_pct|phi1_steps_with_handover_pct|mean_nonzero_handover_w|
+        |---|---|---|---|---|
+        |Nominal Baseline|46.0|0.0|0.0|0.0|
+        |Sensory Noise Injection (1.0%)|36.0|0.0|0.0|0.0|
+        |Payload Extrapolation (4.80 kg)|42.0|0.0|0.0|0.0|
+        |Actuator Drift (0.80x Friction)|38.0|0.0|0.0|0.0|
+        |Actuator Drift (1.20x Friction)|38.0|0.0|0.0|0.0|
+      0020 (5 rows):
+        |condition_name|grasp_success_rate_pct|episodes_with_handover_pct|phi1_steps_with_handover_pct|mean_nonzero_handover_w|
+        |---|---|---|---|---|
+        |Nominal Baseline|46.0|0.0|0.0|0.0|
+        |Sensory Noise Injection (1.0%)|36.0|0.0|0.0|0.0|
+        |Payload Extrapolation (4.80 kg)|42.0|0.0|0.0|0.0|
+        |Actuator Drift (0.80x Friction)|38.0|0.0|0.0|0.0|
+        |Actuator Drift (1.20x Friction)|38.0|0.0|0.0|0.0|
+      0015 (5 rows):
+        |condition_name|grasp_success_rate_pct|episodes_with_handover_pct|phi1_steps_with_handover_pct|mean_nonzero_handover_w|
+        |---|---|---|---|---|
+        |Nominal Baseline|46.0|0.0|0.0|0.0|
+        |Sensory Noise Injection (1.0%)|36.0|0.0|0.0|0.0|
+        |Payload Extrapolation (4.80 kg)|42.0|0.0|0.0|0.0|
+        |Actuator Drift (0.80x Friction)|38.0|0.0|0.0|0.0|
+        |Actuator Drift (1.20x Friction)|38.0|0.0|0.0|0.0|
+  val25_checkpoint_selection:
+    seed42:
+      best_model:
+        grasp_success_rate_pct: 80.0
+        terminal_placement_accuracy_cm: 0.7863803243637085
+        placement_accuracy_std_cm: 0.8316681269711571
+        terminal_error_cm: 1.6063240730762482
+        terminal_error_std_cm: 0.939099794510116
+        mppi_inference_latency_ms: 37.17919258983962
+        mean_joint_accel_rad_s2: 0.005947311874479055
+        std_joint_accel_rad_s2: 0.0014173367373157876
+        mean_joint_jerk_rad_s3: 0.0037400932516902683
+        std_joint_jerk_rad_s3: 0.0007666562902440007
+        mean_direction_flips: 13.48
+        std_direction_flips: 7.099971830930035
+        epoch: 200
+      checkpoint_phase_1:
+        grasp_success_rate_pct: 60.0
+        terminal_placement_accuracy_cm: 0.8103122827410698
+        placement_accuracy_std_cm: 0.6474393576335297
+        terminal_error_cm: 1.9722674000263214
+        terminal_error_std_cm: 1.4443806192871131
+        mppi_inference_latency_ms: 37.00736762533041
+        mean_joint_accel_rad_s2: 0.007161940094083548
+        std_joint_accel_rad_s2: 0.0012864202551724185
+        mean_joint_jerk_rad_s3: 0.004661122979596258
+        std_joint_jerk_rad_s3: 0.0008925166603476878
+        mean_direction_flips: 14.36
+        std_direction_flips: 7.853050362757137
+        epoch: 181
+      checkpoint_phase_2:
+        grasp_success_rate_pct: 52.0
+        terminal_placement_accuracy_cm: 1.1208700883388518
+        placement_accuracy_std_cm: 1.0542713101583618
+        terminal_error_cm: 2.103588616847992
+        terminal_error_std_cm: 1.37658387567322
+        mppi_inference_latency_ms: 37.0669846446348
+        mean_joint_accel_rad_s2: 0.007121144887059927
+        std_joint_accel_rad_s2: 0.0012632364174318858
+        mean_joint_jerk_rad_s3: 0.004813599018380046
+        std_joint_jerk_rad_s3: 0.0008479405115867379
+        mean_direction_flips: 14.88
+        std_direction_flips: 8.223478582692362
+        epoch: 188
+      checkpoint_phase_3:
+        grasp_success_rate_pct: 88.0
+        terminal_placement_accuracy_cm: 0.8251915320754051
+        placement_accuracy_std_cm: 1.061095902824546
+        terminal_error_cm: 1.4272860133647918
+        terminal_error_std_cm: 1.0950905816243908
+        mppi_inference_latency_ms: 36.50109283002571
+        mean_joint_accel_rad_s2: 0.005840645581483841
+        std_joint_accel_rad_s2: 0.0012045624301631605
+        mean_joint_jerk_rad_s3: 0.0036732837650924922
+        std_joint_jerk_rad_s3: 0.0006777807353952663
+        mean_direction_flips: 13.08
+        std_direction_flips: 7.625850772208961
+        epoch: 200
+      checkpoint_phase_4:
+        grasp_success_rate_pct: 92.0
+        terminal_placement_accuracy_cm: 0.8263749217987061
+        placement_accuracy_std_cm: 0.8131163291457509
+        terminal_error_cm: 1.5978229093551635
+        terminal_error_std_cm: 0.8771730168266677
+        mppi_inference_latency_ms: 36.57112133071043
+        mean_joint_accel_rad_s2: 0.005506738461554051
+        std_joint_accel_rad_s2: 0.0014232916122690269
+        mean_joint_jerk_rad_s3: 0.0031630545668303966
+        std_joint_jerk_rad_s3: 0.0006048513470103441
+        mean_direction_flips: 12.08
+        std_direction_flips: 5.388283585707048
+        epoch: 240
+    seed101:
+      best_model:
+        grasp_success_rate_pct: 56.00000000000001
+        terminal_placement_accuracy_cm: 0.8067825222015381
+        placement_accuracy_std_cm: 0.5102949840049316
+        terminal_error_cm: 1.919658842086792
+        terminal_error_std_cm: 0.9328204365318986
+        mppi_inference_latency_ms: 36.6830046373979
+        mean_joint_accel_rad_s2: 0.012233468238264322
+        std_joint_accel_rad_s2: 0.004098371811678969
+        mean_joint_jerk_rad_s3: 0.00957370424643159
+        std_joint_jerk_rad_s3: 0.002600662905870819
+        mean_direction_flips: 29.24
+        std_direction_flips: 7.941183790846299
+        epoch: 80
+      checkpoint_phase_1:
+        grasp_success_rate_pct: 68.0
+        terminal_placement_accuracy_cm: 0.7755509388446807
+        placement_accuracy_std_cm: 0.46954426710336217
+        terminal_error_cm: 1.9073844707012177
+        terminal_error_std_cm: 1.2624602195323336
+        mppi_inference_latency_ms: 35.32790372871258
+        mean_joint_accel_rad_s2: 0.012579807974398137
+        std_joint_accel_rad_s2: 0.0041718596464833295
+        mean_joint_jerk_rad_s3: 0.009853317625820637
+        std_joint_jerk_rad_s3: 0.0027360135113209676
+        mean_direction_flips: 28.64
+        std_direction_flips: 8.831217356627567
+        epoch: 96
+      checkpoint_phase_2:
+        grasp_success_rate_pct: 52.0
+        terminal_placement_accuracy_cm: 0.9253814625740051
+        placement_accuracy_std_cm: 0.4784543164925958
+        terminal_error_cm: 2.3393139266967773
+        terminal_error_std_cm: 1.2209142752391906
+        mppi_inference_latency_ms: 33.997791576217644
+        mean_joint_accel_rad_s2: 0.012314827740192413
+        std_joint_accel_rad_s2: 0.003613214220178058
+        mean_joint_jerk_rad_s3: 0.009852458033710718
+        std_joint_jerk_rad_s3: 0.0023019908291644284
+        mean_direction_flips: 28.08
+        std_direction_flips: 8.776878716263544
+        epoch: 104
+      checkpoint_phase_3:
+        grasp_success_rate_pct: 4.0
+        terminal_placement_accuracy_cm: 1.0723411238193512
+        placement_accuracy_std_cm: 0.5488965121484285
+        terminal_error_cm: 6.585751514434815
+        terminal_error_std_cm: 2.462142148479034
+        mppi_inference_latency_ms: 36.89454996307587
+        mean_joint_accel_rad_s2: 0.010207082200795413
+        std_joint_accel_rad_s2: 0.0032440182882328065
+        mean_joint_jerk_rad_s3: 0.00770574914291501
+        std_joint_jerk_rad_s3: 0.0024250018933556217
+        mean_direction_flips: 15.8
+        std_direction_flips: 4.791659420284375
+        epoch: 124
+      checkpoint_phase_4:
+        grasp_success_rate_pct: 40.0
+        terminal_placement_accuracy_cm: 0.8932908475399017
+        placement_accuracy_std_cm: 0.6142532524831947
+        terminal_error_cm: 3.61430414557457
+        terminal_error_std_cm: 2.0803425569119773
+        mppi_inference_latency_ms: 36.891264794957294
+        mean_joint_accel_rad_s2: 0.00655104667879641
+        std_joint_accel_rad_s2: 0.0019870385418092346
+        mean_joint_jerk_rad_s3: 0.004338146522641182
+        std_joint_jerk_rad_s3: 0.0009688836318665361
+        mean_direction_flips: 9.6
+        std_direction_flips: 3.370459909270544
+        epoch: 240
+    seed2024:
+      best_model:
+        grasp_success_rate_pct: 48.0
+        terminal_placement_accuracy_cm: 0.8991707092523575
+        placement_accuracy_std_cm: 0.5571952553535476
+        terminal_error_cm: 2.5209722006320954
+        terminal_error_std_cm: 1.6852678641416425
+        mppi_inference_latency_ms: 37.86354131541487
+        mean_joint_accel_rad_s2: 0.008363267537206412
+        std_joint_accel_rad_s2: 0.0036055991833148448
+        mean_joint_jerk_rad_s3: 0.005904661854729056
+        std_joint_jerk_rad_s3: 0.0027313948333358177
+        mean_direction_flips: 16.16
+        std_direction_flips: 3.170867389217026
+        epoch: 130
+      checkpoint_phase_1:
+        grasp_success_rate_pct: 64.0
+        terminal_placement_accuracy_cm: 0.9167939400672913
+        placement_accuracy_std_cm: 0.4842631085247366
+        terminal_error_cm: 1.8658612310886382
+        terminal_error_std_cm: 0.892232074215814
+        mppi_inference_latency_ms: 41.55131654470088
+        mean_joint_accel_rad_s2: 0.01057371573522687
+        std_joint_accel_rad_s2: 0.003922804958063201
+        mean_joint_jerk_rad_s3: 0.007624266240745783
+        std_joint_jerk_rad_s3: 0.002724674283801329
+        mean_direction_flips: 20.88
+        std_direction_flips: 5.171614834846076
+        epoch: 94
+      checkpoint_phase_2:
+        grasp_success_rate_pct: 80.0
+        terminal_placement_accuracy_cm: 0.8254767823219299
+        placement_accuracy_std_cm: 0.45833934757821987
+        terminal_error_cm: 1.7428334522247315
+        terminal_error_std_cm: 0.9631726326989476
+        mppi_inference_latency_ms: 42.998756124646725
+        mean_joint_accel_rad_s2: 0.010881818272173405
+        std_joint_accel_rad_s2: 0.004106524851980133
+        mean_joint_jerk_rad_s3: 0.008174818065017462
+        std_joint_jerk_rad_s3: 0.0030611518004082313
+        mean_direction_flips: 23.8
+        std_direction_flips: 4.7833042972405595
+        epoch: 102
+      checkpoint_phase_3:
+        grasp_success_rate_pct: 40.0
+        terminal_placement_accuracy_cm: 0.9588495105504989
+        placement_accuracy_std_cm: 0.622048862001958
+        terminal_error_cm: 2.971398718953133
+        terminal_error_std_cm: 1.8832630559498067
+        mppi_inference_latency_ms: 31.357012376353577
+        mean_joint_accel_rad_s2: 0.008617250081151724
+        std_joint_accel_rad_s2: 0.003343341246914032
+        mean_joint_jerk_rad_s3: 0.006131271691992879
+        std_joint_jerk_rad_s3: 0.002452792632865182
+        mean_direction_flips: 17.12
+        std_direction_flips: 3.9427908897125143
+        epoch: 122
+      checkpoint_phase_4:
+        grasp_success_rate_pct: 60.0
+        terminal_placement_accuracy_cm: 1.9300097036361694
+        placement_accuracy_std_cm: 1.1646329528416253
+        terminal_error_cm: 2.6945787906646728
+        terminal_error_std_cm: 1.8902841139496236
+        mppi_inference_latency_ms: 30.234106229985173
+        mean_joint_accel_rad_s2: 0.005349645232781768
+        std_joint_accel_rad_s2: 0.0018365806990176805
+        mean_joint_jerk_rad_s3: 0.003066285639069974
+        std_joint_jerk_rad_s3: 0.0009587316322348077
+        mean_direction_flips: 9.44
+        std_direction_flips: 3.990789395595814
+        epoch: 260
+  energy_summary:
+    spwm_3seed:
+      spike_rate_pct: [12.151117412707743,0.192861046198146]
+      sops_per_step: [8150.0,129.11622671066561]
+      energy_neuro_nj: [12.224996206577009,0.1940336413590309]
+      power_20hz_mw: [0.24449992413154012,0.0038806728271806117]
+      speedup_vs_own_gpu: [4.938654535978057,0.07910719976272344]
+      e2e_step_energy_mj: [1.0978792841962064,1.9403364130818727e-07]
+      e2e_power_20hz_mw: [21.957585683924133,3.880672826405402e-06]
+    baselines:
+      ANN-Rate:
+        paradigm: Continuous ANN
+        memory_type: Continuous Leaky Rate
+        params: 392141
+        spike_rate: 0.0
+        sops_per_step: 0
+        recurrent_macs: 67072
+        recurrent_flops: 134144
+        energy_neuro_nj: null
+        energy_gpu_nj: 60.364799999999995
+        energy_ratio_vs_gpu: 1.0
+        power_20hz_mw: 1.207296
+        cumulative_energy_h100_uj: 6.036479999999999
+        encoder_macs: 882688
+        encoder_energy_nj: 794.4191999999999
+        mppi_rollout_macs: 1218969600
+        mppi_rollout_energy_nj: 1097072.64
+        e2e_step_energy_nj: 1097927.4239999999
+        e2e_step_energy_mj: 1.0979274239999999
+        e2e_all_gpu_energy_mj: 1.0979274239999999
+        e2e_power_20hz_mw: 21.958548479999997
+      Deep GRU:
+        paradigm: Continuous ANN
+        memory_type: 2-Layer Deep GRU
+        params: 338868
+        spike_rate: 0.0
+        sops_per_step: 0
+        recurrent_macs: 299520
+        recurrent_flops: 599040
+        energy_neuro_nj: null
+        energy_gpu_nj: 269.568
+        energy_ratio_vs_gpu: 1.0
+        power_20hz_mw: 5.39136
+        cumulative_energy_h100_uj: 26.956799999999998
+        encoder_macs: 882688
+        encoder_energy_nj: 794.4191999999999
+        mppi_rollout_macs: 1942179840
+        mppi_rollout_energy_nj: 1747961.856
+        e2e_step_energy_nj: 1749025.8432
+        e2e_step_energy_mj: 1.7490258432
+        e2e_all_gpu_energy_mj: 1.7490258432
+        e2e_power_20hz_mw: 34.980516864
+      Continuous RSSM:
+        paradigm: Continuous ANN
+        memory_type: GRU + Gaussian Latent
+        params: 380460
+        spike_rate: 0.0
+        sops_per_step: 0
+        recurrent_macs: 365056
+        recurrent_flops: 730112
+        energy_neuro_nj: null
+        energy_gpu_nj: 328.55039999999997
+        energy_ratio_vs_gpu: 1.0
+        power_20hz_mw: 6.571008
+        cumulative_energy_h100_uj: 32.855039999999995
+        encoder_macs: 882688
+        encoder_energy_nj: 794.4191999999999
+        mppi_rollout_macs: 2358312960
+        mppi_rollout_energy_nj: 2122481.664
+        e2e_step_energy_nj: 2123604.6336
+        e2e_step_energy_mj: 2.1236046336
+        e2e_all_gpu_energy_mj: 2.1236046336
+        e2e_power_20hz_mw: 42.472092671999995
+      Continuous ConvLSTM:
+        paradigm: Continuous ANN
+        memory_type: Spatial ConvLSTM (2D)
+        params: 296892
+        spike_rate: 0.0
+        sops_per_step: 0
+        recurrent_macs: 2359296
+        recurrent_flops: 4718592
+        energy_neuro_nj: null
+        energy_gpu_nj: 2123.3664
+        energy_ratio_vs_gpu: 1.0
+        power_20hz_mw: 42.467327999999995
+        cumulative_energy_h100_uj: 212.33664
+        encoder_macs: 882688
+        encoder_energy_nj: 794.4191999999999
+        mppi_rollout_macs: 111311585280
+        mppi_rollout_energy_nj: 100180426.752
+        e2e_step_energy_nj: 100183344.53760001
+        e2e_step_energy_mj: 100.18334453760001
+        e2e_all_gpu_energy_mj: 100.18334453760001
+        e2e_power_20hz_mw: 2003.6668907520004
 ```
 
 ### `results/mppi_benchmark/mppi_benchmark_metrics.json`
-> 50-episode closed-loop latent MPPI benchmark breakdown
+> 50-episode closed-loop Physics-in-the-Loop (PIL, t >= t_c) MPPI benchmark breakdown
 
 ```yaml
 benchmark_name: SPWM Closed-Loop Latent MPPI Control Benchmark
+evaluation_protocol: physics_in_loop
+split: test
+handover_dist_threshold: 0.026
 checkpoint: results/spwm_v0_12_4_train_m1/model.pt
 episodes_evaluated: 50
-total_benchmark_time_sec: 34.328646333073266
+total_benchmark_time_sec: 56.54453133302741
 overall_metrics:
-  grasp_success_rate_pct: 96.0
-  terminal_placement_accuracy_cm: 0.6696032772958279
-  placement_accuracy_std_cm: 0.45874769553561406
-  terminal_error_cm: 1.207380838394165
-  terminal_error_std_cm: 0.6988937014146033
-  mppi_inference_latency_ms: 21.862994945655714
-  mean_joint_accel_rad_s2: 0.006116986921988428
-  std_joint_accel_rad_s2: 0.002312369256495449
-  mean_joint_jerk_rad_s3: 0.005014372430741787
-  std_joint_jerk_rad_s3: 0.0025539229214049824
-  mean_direction_flips: 14.58
-  std_direction_flips: 8.330882306214631
+  grasp_success_rate_pct: 86.0
+  terminal_placement_accuracy_cm: 0.8552020224928856
+  placement_accuracy_std_cm: 0.7991095820631844
+  terminal_error_cm: 1.5668222349882126
+  terminal_error_std_cm: 1.004804437956763
+  mppi_inference_latency_ms: 36.65447710343201
+  mean_joint_accel_rad_s2: 0.0058662799885496495
+  std_joint_accel_rad_s2: 0.0014419035578661795
+  mean_joint_jerk_rad_s3: 0.003542280187830329
+  std_joint_jerk_rad_s3: 0.000713988545542795
+  mean_direction_flips: 14.02
+  std_direction_flips: 7.643271550847844
+handover_telemetry:
+  episodes_evaluated: 50
+  triggered_episodes: 0
+  episodes_with_w_gt_0_pct: 0.0
+  total_phi1_steps: 400
+  triggered_phi1_steps: 0
+  phi1_steps_with_w_gt_0_pct: 0.0
+  mean_nonzero_w: 0.0
 elevation_plane_breakdown:
-  Low: {count:22,success_rate_pct:90.9090909090909,mean_error_cm:0.8176338770850138,mean_terminal_error_cm:1.6024634431708942,mean_mass_kg:2.7719357826493005}
-  Mid: {count:18,success_rate_pct:100.0,mean_error_cm:0.6477995978461372,mean_terminal_error_cm:0.8513558473851945,mean_mass_kg:2.8496671517690024}
-  High: {count:10,success_rate_pct:100.0,mean_error_cm:0.38318258076906203,mean_terminal_error_cm:0.9790440917015075,mean_mass_kg:2.9106760144233705}
+  Low: {count:22,success_rate_pct:86.36363636363636,mean_error_cm:0.855392383580858,mean_terminal_error_cm:1.9869136796756224,mean_mass_kg:2.7719357826493005}
+  Mid: {count:18,success_rate_pct:77.77777777777779,mean_error_cm:1.054786902334955,mean_terminal_error_cm:1.3530784381760492,mean_mass_kg:2.8496671517690024}
+  High: {count:10,success_rate_pct:100.0,mean_error_cm:0.4955304443836212,mean_terminal_error_cm:1.0273598909378052,mean_mass_kg:2.9106760144233705}
 mass_tier_breakdown:
-  Light (1.20 - 2.30 kg): {count:17,success_rate_pct:88.23529411764706,mean_error_cm:0.6193538422093672,mean_terminal_error_cm:1.3029169019530802}
-  Medium (2.30 - 3.40 kg): {count:17,success_rate_pct:100.0,mean_error_cm:0.7410731188514653,mean_terminal_error_cm:1.267282314160291}
-  Heavy (3.40 - 4.50 kg): {count:16,success_rate_pct:100.0,mean_error_cm:0.6470565954223275,mean_terminal_error_cm:1.042228452861309}
+  Light (1.20 - 2.30 kg): {count:17,success_rate_pct:82.35294117647058,mean_error_cm:0.6789520838681389,mean_terminal_error_cm:1.643607579609927}
+  Medium (2.30 - 3.40 kg): {count:17,success_rate_pct:100.0,mean_error_cm:0.767013340311892,mean_terminal_error_cm:1.453135742860682}
+  Heavy (3.40 - 4.50 kg): {count:16,success_rate_pct:75.0,mean_error_cm:1.1361680570989847,mean_terminal_error_cm:1.6060297042131424}
 episodes (50 rows):
-  |trajectory_id|payload_mass|payload_shape|elevation_plane|target_pos|final_ee_pos|min_placement_error_cm|terminal_placement_error_cm|terminal_angular_velocity|grasp_success|mean_latency_ms|step_errors_cm|grasp_error_cm|grasp_rot_error_rad|mean_joint_accel_rad_s2|mean_joint_jerk_rad_s3|direction_flips|
-  |---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|
-  |3600|3.0923237800598145|ElongatedCylinder|Low|[-0.1601915806531906,1.0277425050735474,0.44486987590789795]|[-0.18162164092063904,1.0384835004806519,0.4342714548110962]|0.7176769971847534|1.8884549140930176|0.6836905479431152|true|22.433903251242423|[10.242919921875,8.424116134643555,6.849555492401123,5.527215957641602,4.547053337097168,4.220890045166016,4.408608913421631,4.189697742462158,3.7373921871185303,2.842045307159424,1.9783278703689575,1.5740398168563843,1.5994601249694824,1.5554587841033936,1.0950180292129517,0.8346318006515503,0.7815056443214417,0.7176769971847534,0.7230682969093323,0.9248355627059937,1.1296879053115845,1.1595147848129272,1.5909390449523926,1.7002248764038086,1.635393738746643,1.6236259937286377,1.7703440189361572,1.8884549140930176]|1.1296879053115845|0.004475175403058529|0.005068447906523943|0.005323539488017559|24|
-  |3601|1.7130316495895386|Box|Mid|[-0.14557956159114838,1.1094894409179688,0.4503576457500458]|[-0.14138314127922058,1.1064913272857666,0.46658042073249817]|0.1877274215221405|0.39236629009246826|0.6293636560440063|true|21.843212881192034|[19.108238220214844,18.73957061767578,17.84941864013672,16.454866409301758,14.656813621520996,12.634208679199219,10.570937156677246,8.707117080688477,7.244511604309082,6.1444292068481445,5.2602009773254395,4.542939186096191,3.9358701705932617,3.400644302368164,2.8303346633911133,2.236524820327759,1.6450177431106567,1.0798324346542358,0.6430385708808899,0.5718091130256653,0.829271137714386,0.7456772327423096,0.35942691564559937,0.1877274215221405,0.2234460562467575,0.2931760251522064,0.3096877336502075,0.39236629009246826]|0.829271137714386|0.04066229611635208|0.00502836424857378|0.002285280264914036|6|
-  |3602|3.633739471435547|Box|High|[-0.1951867938041687,1.2046148777008057,0.48281943798065186]|[-0.21065320074558258,1.2008490562438965,0.48752519488334656]|0.549974262714386|1.115102767944336|0.8146834373474121|true|21.685739638217324|[12.694923400878906,10.700407981872559,8.216370582580566,5.539139270782471,3.2222588062286377,2.0017502307891846,1.4478826522827148,1.1879823207855225,1.1567792892456055,1.0227540731430054,0.801315426826477,0.6356676816940308,0.549974262714386,0.658882737159729,0.7679283618927002,0.6278871297836304,0.7759699821472168,0.8815598487854004,1.120067834854126,1.3546448945999146,1.5321197509765625,1.0548726320266724,1.0846199989318848,1.1005468368530273,1.1267383098602295,1.125311255455017,1.1074304580688477,1.115102767944336]|1.5321197509765625|0.017880935221910477|0.004231718834489584|0.004483018070459366|27|
-  |3603|2.2544474601745605|Box|Low|[-0.1755688488483429,1.0101819038391113,0.41953858733177185]|[-0.19642886519432068,1.009251356124878,0.41233235597610474]|0.2289082407951355|0.8817962408065796|0.5617283582687378|true|21.871154903367692|[20.273210525512695,19.23360824584961,17.661441802978516,15.66889476776123,13.421792030334473,11.194779396057129,9.204499244689941,7.602092742919922,6.435107231140137,5.631864070892334,4.971186637878418,4.323367595672607,3.730893611907959,3.174642562866211,2.626058578491211,2.175656795501709,1.8177717924118042,1.5860252380371094,1.4940036535263062,1.440956950187683,1.3408100605010986,0.6765990257263184,0.2289082407951355,0.5277923345565796,0.7433927655220032,0.9004566073417664,0.9510267376899719,0.8817962408065796]|1.3408100605010986|0.02634080871939659|0.005083214957267046|0.0027943658642470837|11|
-  |3604|4.175155162811279|Box|Mid|[-0.11803130805492401,1.1047005653381348,0.43481385707855225]|[-0.12575489282608032,1.0973597764968872,0.4631441533565521]|0.9697327613830566|0.9697327613830566|0.6287801861763|true|21.98048324789852|[16.868436813354492,16.386838912963867,15.194320678710938,13.331969261169434,11.026837348937988,8.509496688842773,6.2836432456970215,4.705162048339844,3.730285882949829,2.9427671432495117,2.357224464416504,1.7610374689102173,1.114490032196045,3.6202800273895264,2.9697234630584717,2.4697656631469727,2.1091508865356445,1.7240028381347656,1.321816325187683,0.9697327613830566]|1.114490032196045|0.07136772572994232|0.0070799775421619415|0.004778889007866383|6|
-  |3605|2.795863151550293|Sphere|High|[-0.1699182093143463,1.1916710138320923,0.4913409948348999]|[-0.17885659635066986,1.1850937604904175,0.4978402554988861]|0.18045051395893097|0.616763174533844|0.6911824345588684|true|21.799681496174475|[16.2681827545166,14.860254287719727,13.040677070617676,10.718313217163086,8.057829856872559,5.769859790802002,4.485931396484375,3.4559335708618164,2.3190417289733887,1.5014114379882812,1.1674226522445679,0.8356738090515137,0.5304203629493713,0.46959543228149414,0.3063023090362549,0.18045051395893097,0.42719602584838867,0.5603890419006348,0.5733155012130737,0.5521988272666931,0.7288031578063965,0.563327431678772,0.27706828713417053,0.3516554832458496,0.5333158373832703,0.6320207118988037,0.6190267205238342,0.616763174533844]|0.7288031578063965|0.008638603612780571|0.004851675126701593|0.005306419916450977|29|
-  |3606|1.416571021080017|Sphere|Low|[-0.1465684324502945,1.022121548652649,0.42273831367492676]|[-0.1819976568222046,1.0236055850982666,0.42112642526626587]|0.9874428510665894|2.058925151824951|0.6106354594230652|true|22.259174031205475|[22.380861282348633,21.974809646606445,20.81543731689453,18.93370819091797,16.506412506103516,13.733092308044434,10.906684875488281,8.344161987304688,6.303214073181152,4.774570465087891,3.6530396938323975,2.7474312782287598,2.0505337715148926,1.5393867492675781,1.2101839780807495,1.045932412147522,0.9992204904556274,0.9874428510665894,1.0651658773422241,1.2038145065307617,1.4730581045150757,1.9541198015213013,2.0535082817077637,2.188866138458252,2.2764554023742676,2.258991241455078,2.1596317291259766,2.058925151824951]|1.4730581045150757|0.057815272361040115|0.006031742785125971|0.002557001542299986|9|
-  |3607|3.3372788429260254|Sphere|Low|[-0.18835283815860748,1.0335981845855713,0.4100155532360077]|[-0.19614097476005554,1.0420331954956055,0.42692136764526367]|0.6721408367156982|2.2107315063476562|0.9249321818351746|true|21.675819867856003|[11.75160026550293,9.890595436096191,8.14416217803955,6.602691173553467,5.2690839767456055,4.198214530944824,3.392040729522705,2.748547077178955,2.1514110565185547,1.6644014120101929,1.4941359758377075,1.4320437908172607,1.3687808513641357,1.2805993556976318,1.1421886682510376,1.0366215705871582,1.0033296346664429,0.9113237261772156,0.7817952036857605,0.707345187664032,0.6721408367156982,1.0434272289276123,1.1380586624145508,1.2075096368789673,1.3319519758224487,1.504133939743042,1.8541818857192993,2.2107315063476562]|0.6721408367156982|0.024487806484103203|0.0033706037793308496|0.003217119723558426|14|
-  |3608|1.957986831665039|Sphere|Mid|[-0.17253130674362183,1.1075801849365234,0.4440624713897705]|[-0.19218891859054565,1.0915729999542236,0.4489060640335083]|0.42045918107032776|0.8619856834411621|0.5207621455192566|true|21.631516275062626|[20.76964569091797,20.420333862304688,19.478620529174805,17.942493438720703,15.952205657958984,13.714493751525879,11.465824127197266,9.470314025878906,8.095845222473145,7.07224178314209,6.164629936218262,5.2886881828308105,4.369071006774902,3.4112441539764404,2.577863931655884,1.7674307823181152,1.0292136669158936,0.42045918107032776,0.49552688002586365,0.7630146741867065,1.0353021621704102,1.2809174060821533,0.9937562942504883,0.8864601254463196,0.9239976406097412,1.076328158378601,0.959220826625824,0.8619856834411621]|1.0353021621704102|0.029782254248857498|0.005344439297914505|0.003491958836093545|14|
-  |3609|3.878694772720337|ElongatedCylinder|Mid|[-0.062913678586483,1.148561954498291,0.44581520557403564]|[-0.1726555973291397,1.195465087890625,0.4913502633571625]|0.9342793226242065|0.9342793226242065|1.1684691905975342|true|21.751023508841172|[11.664375305175781,11.196061134338379,10.085541725158691,8.491435050964355,6.80474328994751,5.62998104095459,5.211441516876221,5.175251007080078,4.735703945159912,10.47449779510498,6.641650199890137,4.018527984619141,2.36672306060791,1.5028332471847534,1.2394970655441284,0.9342793226242065]|4.735703945159912|0.10676556825637817|0.012801771983504295|0.013401255011558533|5|
-  |3610|2.4994025230407715|ElongatedCylinder|Low|[-0.17838016152381897,1.0129873752593994,0.4401816427707672]|[-0.2022646814584732,1.0250095129013062,0.4223673939704895]|2.130655288696289|2.753537178039551|0.5444954633712769|true|21.651363149950548|[18.60422134399414,17.180641174316406,15.37193775177002,13.238946914672852,10.93310546875,8.71484375,6.754579544067383,5.155861854553223,3.9394400119781494,3.015409231185913,2.46045184135437,2.2372653484344482,2.163144111633301,2.150618076324463,2.130655288696289,2.1777429580688477,2.3529391288757324,2.482034206390381,2.7198686599731445,2.75445294380188,3.0980634689331055,3.052966356277466,2.8858375549316406,2.7436444759368896,2.6703531742095947,2.767599105834961,2.7772443294525146,2.753537178039551]|3.0980634689331055|0.019954252988100052|0.005028635263442993|0.0035686257760971785|14|
-  |3611|4.42011022567749|ElongatedCylinder|Mid|[-0.14028692245483398,1.1213961839675903,0.4443739652633667]|[-0.19244404137134552,1.1106438636779785,0.45685842633247375]|0.5951816439628601|0.863197922706604|0.7226830720901489|true|21.59790769118168|[18.578596115112305,18.07543182373047,16.842247009277344,14.980188369750977,12.637202262878418,10.16502857208252,7.9033403396606445,6.283299446105957,5.295416355133057,4.415987491607666,3.518491268157959,2.6700632572174072,1.7926418781280518,1.083979606628418,0.5951816439628601,1.0394773483276367,2.8828744888305664,2.0963175296783447,1.6626158952713013,1.231815218925476,0.8704440593719482,0.7232690453529358,0.863197922706604]|1.0394773483276367|0.040650561451911926|0.007579019758850336|0.005186479073017836|6|
-  |3612|3.040818452835083|Box|High|[-0.20262062549591064,1.2052944898605347,0.480135053396225]|[-0.21530687808990479,1.2069443464279175,0.48984700441360474]|0.35887742042541504|1.1234043836593628|0.7799205780029297|true|21.818903199995734|[16.51876449584961,14.285106658935547,11.80746078491211,9.3319673538208,7.428168296813965,6.2730937004089355,5.147801876068115,4.330317497253418,3.4819538593292236,2.9884395599365234,2.333897590637207,1.8502024412155151,1.4605427980422974,1.334834098815918,1.2787501811981201,1.1810518503189087,0.35887742042541504,0.5139562487602234,0.8618260622024536,0.9421335458755493,1.1181013584136963,0.9002543091773987,0.8360958695411682,0.9184855222702026,0.8595653772354126,0.974848210811615,1.0774108171463013,1.1234043836593628]|1.1181013584136963|0.01430267933756113|0.005421977024525404|0.006747884675860405|25|
-  |3613|1.6615263223648071|Box|Low|[-0.16457204520702362,1.0336177349090576,0.4418622851371765]|[-0.17137661576271057,1.0245945453643799,0.43082180619239807]|1.4214940071105957|2.623591661453247|0.2115291953086853|true|23.152717256120273|[22.270389556884766,21.58013916015625,20.278287887573242,18.43747329711914,16.112407684326172,13.550548553466797,10.980008125305176,8.564135551452637,6.430330276489258,4.741189002990723,3.476865530014038,2.5218605995178223,1.8473390340805054,1.4862955808639526,1.4214940071105957,1.5198935270309448,1.6835299730300903,1.8146653175354004,1.988776445388794,2.088703155517578,2.0917153358459473,3.428924798965454,3.251746654510498,3.8278446197509766,2.6967382431030273,2.5423777103424072,2.5834710597991943,2.623591661453247]|2.0917153358459473|0.04364389926195145|0.0091873062774539|0.010186358354985714|17|
-  |3614|3.5822341442108154|Box|Low|[-0.16669978201389313,1.0320783853530884,0.43108421564102173]|[-0.175953671336174,1.0456974506378174,0.4349132776260376]|0.48581477999687195|1.6365967988967896|0.8853379487991333|true|21.722439002977417|[7.972930431365967,6.1389946937561035,4.715415954589844,3.3899028301239014,2.2435545921325684,1.6906830072402954,1.2888376712799072,0.8189541101455688,0.650415301322937,0.6724691390991211,0.6412466168403625,0.5627499222755432,0.5564935207366943,0.50998854637146,0.48581477999687195,0.5346404910087585,0.8334861993789673,0.8427446484565735,0.6811367273330688,0.8432769179344177,0.8364143967628479,0.730780303478241,0.6653611660003662,0.6630467772483826,0.8981706500053406,1.0954170227050781,1.5089521408081055,1.6365967988967896]|0.8364143967628479|0.013407845050096512|0.004322823602706194|0.00470651313662529|33|
-  |3615|2.202942132949829|Box|Mid|[-0.12205535918474197,1.0982131958007812,0.4642801880836487]|[-0.11175135523080826,1.0845897197723389,0.4812399744987488]|0.5231106877326965|1.1043223142623901|0.7276119589805603|true|21.760884115272866|[15.870462417602539,14.895597457885742,13.533531188964844,11.881864547729492,10.160914421081543,8.545084953308105,7.335045337677002,6.552487373352051,6.05441951751709,5.670966625213623,5.256832599639893,4.708380222320557,4.078017711639404,3.334123373031616,2.412458896636963,1.4884501695632935,0.6681239008903503,0.5231106877326965,0.9848051071166992,1.3461259603500366,1.5597048997879028,1.2127246856689453,0.9965901970863342,0.9470897912979126,0.9382956027984619,0.9380170106887817,1.0178989171981812,1.1043223142623901]|1.5597048997879028|0.051030345261096954|0.0049045393243432045|0.002692354843020439|10|
-  |3616|4.123650074005127|Sphere|Mid|[-0.10549936443567276,1.1719096899032593,0.4632115066051483]|[-0.1683623492717743,1.195438027381897,0.5041889548301697]|0.22105242311954498|0.5417562127113342|1.1324020624160767|true|21.43477840888265|[16.253385543823242,15.780716896057129,14.669828414916992,13.094353675842285,11.34601879119873,9.788590431213379,8.622140884399414,7.764102458953857,6.893496990203857,5.948461532592773,4.845492362976074,3.409832715988159,7.133123397827148,4.796974182128906,3.067239284515381,1.8017597198486328,0.808229386806488,0.22105242311954498,0.5417562127113342]|3.409832715988159|0.06029951199889183|0.01110594067722559|0.009571769274771214|7|
-  |3617|2.7443578243255615|Sphere|Low|[-0.167842298746109,1.0162646770477295,0.4412359595298767]|[-0.1871720850467682,1.0269869565963745,0.42886361479759216]|1.8992053270339966|2.162670135498047|0.8806945085525513|true|22.480982147888945|[15.3473539352417,13.813892364501953,12.092769622802734,10.211568832397461,8.277710914611816,6.3489861488342285,4.6850175857543945,3.569201707839966,2.8132362365722656,2.340000629425049,2.0613811016082764,2.006561040878296,1.9977558851242065,1.9355701208114624,1.8992053270339966,1.9644718170166016,1.9906412363052368,2.060873508453369,2.2412912845611572,2.332932233810425,2.238468647003174,2.1003072261810303,2.1748929023742676,2.268277168273926,2.3319222927093506,2.341963291168213,2.1775012016296387,2.162670135498047]|2.238468647003174|0.022086743265390396|0.004468330182135105|0.003626895835623145|14|
-  |3618|1.3650658130645752|Sphere|Mid|[-0.14363370835781097,1.0971513986587524,0.43820515275001526]|[-0.17665879428386688,1.0785542726516724,0.44237953424453735]|0.5009649991989136|1.0552928447723389|0.50874263048172|true|21.78134783081567|[19.363615036010742,18.902345657348633,17.73168182373047,15.956579208374023,13.692830085754395,11.249305725097656,8.882034301757812,6.946557998657227,5.624329090118408,4.733597755432129,3.9947893619537354,3.3267366886138916,2.617340087890625,1.8920283317565918,1.3196989297866821,0.8074882626533508,0.5009649991989136,0.7056435346603394,1.2135101556777954,1.3317224979400635,0.7496119141578674,0.5082272887229919,0.6726998090744019,0.8344721794128418,0.9818288683891296,1.0552928447723389]|1.2135101556777954|0.06728395819664001|0.006756575778126717|0.0034963765647262335|10|
-  |3619|3.285773515701294|Sphere|High|[-0.1843661069869995,1.2083699703216553,0.49158498644828796]|[-0.1921762377023697,1.2063857316970825,0.49721890687942505]|0.3411879241466522|0.5199618339538574|0.8582165837287903|true|21.74860121366302|[14.183509826660156,12.078701972961426,9.834412574768066,7.512826442718506,5.245395660400391,3.626634120941162,2.6542820930480957,1.9689311981201172,1.6495743989944458,1.400691032409668,1.4361307621002197,1.7227603197097778,1.681124210357666,1.4591478109359741,1.283374309539795,1.0447391271591187,0.6067513823509216,0.5310551524162292,0.47966647148132324,0.48367148637771606,0.8252454996109009,0.6801803112030029,0.43322858214378357,0.3411879241466522,0.47856786847114563,0.4448796510696411,0.41221171617507935,0.5199618339538574]|0.8252454996109009|0.025499071925878525|0.004617510829120874|0.005101040005683899|26|
-  |3620|1.9064816236495972|ElongatedCylinder|Low|[-0.15938085317611694,1.0115280151367188,0.4201980531215668]|[-0.17495493590831757,1.0019402503967285,0.4117889404296875]|0.886893630027771|1.1309949159622192|0.13846811652183533|false|21.75029625401034|[22.869081497192383,22.381744384765625,21.3160343170166,19.666770935058594,17.633405685424805,15.30648136138916,12.993926048278809,10.836193084716797,9.021138191223145,7.573514461517334,6.371656894683838,5.2479400634765625,4.246796607971191,3.3143203258514404,2.517498016357422,1.8830441236495972,1.4244133234024048,1.060894250869751,0.886893630027771,0.9761215448379517,1.494201898574829,1.194550633430481,1.778988003730774,2.3154940605163574,2.7885289192199707,3.0379724502563477,2.744687795639038,1.1309949159622192]|1.494201898574829|0.04261258244514465|0.010995538905262947|0.011487051844596863|13|
-  |3621|3.8271894454956055|ElongatedCylinder|Low|[-0.1774565875530243,1.0358524322509766,0.42764782905578613]|[-0.1880025416612625,1.0455341339111328,0.4340727627277374]|0.134756401181221|1.5826572179794312|0.9725302457809448|true|21.64848360449209|[8.150534629821777,6.487374782562256,5.047914981842041,3.7575953006744385,2.6439449787139893,1.7231169939041138,1.139446496963501,0.9685372114181519,0.7524785399436951,0.8423182368278503,1.0685420036315918,0.9794483780860901,0.7630435824394226,0.5024503469467163,0.6271295547485352,0.39099034667015076,0.16626857221126556,0.134756401181221,0.14892874658107758,0.2391720414161682,0.40040430426597595,0.536534309387207,0.6118415594100952,0.8438153266906738,1.0707134008407593,1.0903074741363525,1.2041343450546265,1.5826572179794312]|0.40040430426597595|0.024492675438523293|0.0040735588409006596|0.00450519472360611|29|
-  |3622|2.447897434234619|ElongatedCylinder|Mid|[-0.17179328203201294,1.1022673845291138,0.44678300619125366]|[-0.19321970641613007,1.102514386177063,0.45224401354789734]|0.9650779962539673|1.0407025814056396|0.5960390567779541|true|21.95211613850136|[16.835268020629883,15.614631652832031,14.026638984680176,12.117487907409668,10.100979804992676,8.239645957946777,6.728050708770752,5.448240280151367,4.505606174468994,3.608651876449585,2.7554731369018555,2.0704281330108643,1.3827286958694458,1.075178623199463,0.9650779962539673,1.0305215120315552,1.3021018505096436,1.568955898284912,1.6925139427185059,1.7786614894866943,1.9512507915496826,2.114470958709717,2.062316656112671,1.7159018516540527,1.4370816946029663,1.1973390579223633,1.1457587480545044,1.0407025814056396]|1.9512507915496826|0.0164285097271204|0.0051400684751570225|0.004437242168933153|11|
-  |3623|4.368605136871338|ElongatedCylinder|High|[-0.1286347657442093,1.184536099433899,0.4736163020133972]|[-0.19732874631881714,1.2009180784225464,0.48925724625587463]|0.5877140164375305|0.7353683710098267|0.7751212120056152|true|21.85922731984068|[19.0130672454834,18.529220581054688,17.387012481689453,15.78056812286377,13.989986419677734,12.21192741394043,10.750195503234863,9.667844772338867,8.791438102722168,7.885359764099121,6.902132034301758,5.781323432922363,4.505924701690674,3.384516477584839,2.1009347438812256,5.4326958656311035,4.006229877471924,2.324496030807495,1.0908757448196411,0.5900505781173706,0.5877140164375305,0.7353683710098267]|2.1009347438812256|0.017469502985477448|0.008832578547298908|0.007999851368367672|8|
-  |3624|2.9893131256103516|Box|Low|[-0.11366361379623413,1.0136218070983887,0.43174314498901367]|[-0.10870683193206787,1.004117488861084,0.4287849962711334]|0.16864487528800964|0.49283015727996826|0.5896028876304626|true|21.724572920772648|[10.687779426574707,9.224438667297363,7.539971351623535,5.721587181091309,3.9893627166748047,2.4899868965148926,1.3456201553344727,0.656904935836792,0.29147326946258545,0.3196563720703125,0.33351367712020874,0.18253052234649658,0.16864487528800964,0.28079211711883545,0.34963369369506836,0.3073924779891968,0.23321303725242615,0.34088507294654846,0.6101505756378174,0.706576406955719,0.5979201793670654,1.2520604133605957,0.7790655493736267,0.7305280566215515,0.795738697052002,0.6546519994735718,0.5546075701713562,0.49283015727996826]|0.5979201793670654|0.03995826840400696|0.004448717460036278|0.003729070071130991|20|
-  |3625|1.6100211143493652|Box|Mid|[-0.15163391828536987,1.1202882528305054,0.44957059621810913]|[-0.18452417850494385,1.1199531555175781,0.4536869525909424]|0.3118554651737213|0.8987256288528442|0.5168832540512085|true|21.723559558657662|[19.48771858215332,18.979877471923828,17.804588317871094,16.092609405517578,13.992124557495117,11.719537734985352,9.592293739318848,7.893478870391846,6.832546234130859,5.995410442352295,5.284707546234131,4.565392017364502,3.8502957820892334,3.127469778060913,2.477220296859741,1.9087930917739868,1.4047685861587524,0.8151355981826782,0.3118554651737213,0.5380644202232361,1.1072275638580322,1.0671268701553345,0.721523106098175,0.4837733805179596,0.4221177101135254,0.6176573634147644,0.8159130811691284,0.8987256288528442]|1.1072275638580322|0.06559067219495773|0.005448502022773027|0.002902271458879113|4|
-  |3626|3.530728816986084|Box|High|[-0.1873343586921692,1.2099320888519287,0.4893725514411926]|[-0.19784745573997498,1.210916519165039,0.4985275864601135]|0.6430425047874451|1.0323610305786133|0.8800111413002014|true|21.821619073827087|[14.437274932861328,12.363874435424805,10.04531478881836,7.729755878448486,6.126343727111816,5.053844451904297,3.9706993103027344,2.8640217781066895,1.4960663318634033,0.8795437216758728,0.7801064252853394,0.6954537630081177,1.0308096408843994,1.2410460710525513,1.0441373586654663,0.9599198698997498,0.9730782508850098,1.0063730478286743,0.9945831298828125,0.9419669508934021,0.9325991272926331,0.6430425047874451,0.9150944948196411,1.1182690858840942,0.9383758306503296,0.9696377515792847,0.965800404548645,1.0323610305786133]|0.9325991272926331|0.019005658105015755|0.004855808336287737|0.00627718074247241|29|
-  |3627|2.1514368057250977|Box|Low|[-0.17351315915584564,1.024309515953064,0.426189661026001]|[-0.2019093781709671,1.0221282243728638,0.42185208201408386]|0.6375868916511536|1.2450770139694214|0.5539379119873047|true|21.460983598704583|[21.609241485595703,20.970354080200195,19.783784866333008,18.000322341918945,15.846827507019043,13.602295875549316,11.464801788330078,9.59572982788086,8.078912734985352,6.83751916885376,5.803295612335205,4.859787940979004,4.009250640869141,3.152951955795288,2.4146194458007812,1.7819318771362305,1.2722162008285522,0.912702739238739,0.7740238308906555,0.9523284435272217,1.2591007947921753,0.6573572754859924,0.6375868916511536,0.7561100721359253,0.9470189809799194,1.1569257974624634,1.310952067375183,1.2450770139694214]|1.2591007947921753|0.029810264706611633|0.0053956578485667706|0.0026051229797303677|9|
-  |3628|4.072144985198975|Sphere|Low|[-0.10735169053077698,1.0578010082244873,0.41456565260887146]|[-0.18161432445049286,1.0185436010360718,0.407859206199646]|0.634300172328949|0.634300172328949|0.8581123948097229|true|22.148081004464377|[17.334367752075195,16.983232498168945,15.90454387664795,14.034297943115234,11.586609840393066,8.786409378051758,6.033196449279785,3.6355204582214355,1.8886141777038574,1.4390530586242676,2.4570488929748535,4.321719646453857,3.1657378673553467,2.352856397628784,1.5749804973602295,1.0323364734649658,0.7334824204444885,0.634300172328949]|2.4570488929748535|0.14150898158550262|0.008610911667346954|0.006755279842764139|7|
-  |3629|2.692852735519409|Sphere|Mid|[-0.16786649823188782,1.1062926054000854,0.44768890738487244]|[-0.1758652925491333,1.0987632274627686,0.45143598318099976]|0.27180925011634827|0.506727933883667|0.5710688233375549|true|21.765660752342747|[15.112735748291016,13.774791717529297,12.118159294128418,10.24454116821289,8.355884552001953,6.691187858581543,5.577878475189209,4.990199565887451,4.43433952331543,3.763826608657837,2.7351181507110596,1.7468819618225098,1.0065667629241943,0.7762405276298523,0.7327654957771301,0.6876084804534912,0.7021529078483582,0.8832363486289978,0.8868169784545898,0.8298966288566589,0.6698695421218872,0.6857506632804871,0.4692515432834625,0.4403305649757385,0.3286471366882324,0.27180925011634827,0.37802398204803467,0.506727933883667]|0.6698695421218872|0.033233363181352615|0.004827731288969517|0.004025076050311327|12|
-  |3630|1.3135606050491333|Sphere|High|[-0.14967475831508636,1.1902045011520386,0.4741608798503876]|[-0.1860702633857727,1.1873369216918945,0.48417699337005615]|0.25348880887031555|1.319524884223938|0.5646147131919861|true|21.469756616279483|[20.763029098510742,20.364418029785156,19.30399513244629,17.758689880371094,15.886898040771484,13.880854606628418,12.027104377746582,10.477653503417969,9.277242660522461,8.280685424804688,7.179646015167236,6.017751216888428,4.805222511291504,3.6262214183807373,2.5437750816345215,1.4846906661987305,0.54872065782547,0.25348880887031555,2.799023389816284,2.4312169551849365,1.9963983297348022,1.7066855430603027,1.5020033121109009,1.3622446060180664,1.319524884223938]|0.25348880887031555|0.031471773982048035|0.00662437966093421|0.003911122214049101|7|
-  |3631|3.2342684268951416|Sphere|Low|[-0.1634715497493744,1.038787603378296,0.4216647148132324]|[-0.16767166554927826,1.047317624092102,0.4340327978134155]|0.557299017906189|1.8429737091064453|0.6826892495155334|true|21.650754451651924|[12.834980964660645,11.140464782714844,9.361681938171387,7.514681816101074,5.702956676483154,4.138233661651611,3.205475330352783,2.5833847522735596,2.124321222305298,1.6752341985702515,1.2811387777328491,1.1385655403137207,1.0901317596435547,1.0521585941314697,0.9421048760414124,0.836764395236969,0.7490953803062439,0.6534780859947205,0.6067590117454529,0.5583404302597046,0.557299017906189,0.968061089515686,1.0420138835906982,1.0223469734191895,1.0702111721038818,1.3445109128952026,1.6890268325805664,1.8429737091064453]|0.557299017906189|0.03287626430392265|0.004396004602313042|0.004291616380214691|21|
-  |3632|1.8549762964248657|ElongatedCylinder|Mid|[-0.14753121137619019,1.0955888032913208,0.451601505279541]|[-0.1810806840658188,1.0998139381408691,0.45751315355300903]|0.9762020707130432|0.9762020707130432|0.5031729936599731|true|22.955348083217228|[19.49070930480957,19.02494239807129,18.024770736694336,16.496618270874023,14.640559196472168,12.639878273010254,10.779528617858887,9.329756736755371,8.273711204528809,7.5371222496032715,6.987150192260742,6.457602024078369,5.927943229675293,5.299149513244629,4.602319717407227,3.863288402557373,3.151425361633301,2.5357184410095215,1.9795928001403809,1.381707787513733,1.2548482418060303,1.4704303741455078,1.229540467262268,1.126913070678711,1.0341476202011108,1.003381371498108,0.9930700063705444,0.9762020707130432]|1.2548482418060303|0.04496544972062111|0.005375260021537542|0.0028522179927676916|7|
-  |3633|3.775684118270874|ElongatedCylinder|High|[-0.18505986034870148,1.2041765451431274,0.4869106113910675]|[-0.1929301768541336,1.2018190622329712,0.49725544452667236]|0.3625378906726837|1.051703691482544|0.8514500260353088|true|21.6080223451302|[12.088096618652344,9.915129661560059,7.132069110870361,4.410240650177002,2.3009867668151855,0.7830989360809326,0.3625378906726837,0.8146708607673645,1.1049940586090088,1.3507894277572632,1.0658881664276123,1.2457088232040405,1.505158543586731,1.4250562191009521,1.3649914264678955,1.2197637557983398,1.05934739112854,0.9302589297294617,0.9516397714614868,0.9635234475135803,0.9630773067474365,0.8087186813354492,0.8170338273048401,0.7851365208625793,0.8546964526176453,1.016021490097046,0.9964591860771179,1.051703691482544]|0.9630773067474365|0.006477794144302607|0.004365499131381512|0.004738935735076666|35|
-  |3634|2.3963921070098877|ElongatedCylinder|Low|[-0.1695619374513626,1.008594274520874,0.4257681965827942]|[-0.19118718802928925,1.0181260108947754,0.41082388162612915]|1.5987011194229126|2.242981195449829|0.5869777798652649|true|22.397129497091687|[19.587602615356445,18.3730525970459,16.707992553710938,14.647883415222168,12.259101867675781,9.828402519226074,7.645544528961182,5.858760833740234,4.480468273162842,3.3937759399414062,2.5150644779205322,1.8874967098236084,1.6025135517120361,1.5987011194229126,1.6624282598495483,1.6709215641021729,1.7306350469589233,1.7832192182540894,1.825013518333435,1.9087467193603516,2.0502562522888184,1.8558204174041748,1.920571208000183,1.912998080253601,1.900357723236084,1.9905445575714111,2.161620855331421,2.242981195449829]|2.0502562522888184|0.038412440568208694|0.00498472573235631|0.0028783180750906467|10|
-  |3635|4.3171000480651855|ElongatedCylinder|Low|[-0.12416441738605499,1.0549348592758179,0.42791247367858887]|[-0.18348553776741028,1.016575813293457,0.42883962392807007]|0.7384148240089417|0.7384148240089417|0.9589859247207642|true|21.66841696598567|[18.686986923217773,18.254634857177734,17.086740493774414,15.230086326599121,12.818887710571289,10.099099159240723,7.466638088226318,5.215414524078369,3.664738655090332,2.8339505195617676,2.532205104827881,2.6500699520111084,3.280271291732788,3.743459939956665,3.250124931335449,2.967125654220581,2.5173845291137695,1.8615626096725464,1.1253845691680908,0.7384148240089417]|3.280271291732788|0.12216383963823318|0.007387770339846611|0.0054095154628157616|7|
-  |3636|2.937808036804199|Box|Mid|[-0.1312476545572281,1.0861977338790894,0.45727676153182983]|[-0.14549174904823303,1.0644872188568115,0.44980499148368835]|0.47079628705978394|0.5590090751647949|0.7710319757461548|true|21.814065378358855|[10.427882194519043,8.717863082885742,7.045968055725098,5.455000400543213,4.011814117431641,2.796916961669922,1.8730521202087402,1.0904574394226074,0.6485884785652161,0.6277540922164917,0.783079206943512,0.8337818384170532,0.669468343257904,0.5431094169616699,0.4980183243751526,0.5089260339736938,0.5010761022567749,0.47079628705978394,0.555287778377533,0.8208978176116943,1.0889450311660767,2.381957530975342,2.025418281555176,1.7045663595199585,1.3822472095489502,1.1082170009613037,0.8644395470619202,0.5590090751647949]|1.0889450311660767|0.06731586158275604|0.0037038587033748627|0.0027505483012646437|13|
-  |3637|1.5585157871246338|Box|High|[-0.1817418932914734,1.191416621208191,0.4692378342151642]|[-0.2293129414319992,1.184981346130371,0.4719323515892029]|0.2815462052822113|1.7585458755493164|0.6548144817352295|true|21.830992623498396|[23.41184425354004,22.889616012573242,21.682828903198242,19.932695388793945,17.773761749267578,15.505213737487793,13.433877944946289,11.68619155883789,10.162064552307129,8.782281875610352,7.484699726104736,6.307929992675781,5.160356521606445,4.094148635864258,3.163691282272339,2.09898042678833,1.1330984830856323,0.4127484858036041,0.8011054396629333,1.4358291625976562,1.9553991556167603,1.0183125734329224,0.5700925588607788,0.2815462052822113,0.6062626838684082,1.051424264907837,1.4430115222930908,1.7585458755493164]|1.9553991556167603|0.03621388599276543|0.005455526057630777|0.0032461087685078382|10|
-  |3638|3.4792237281799316|Box|Low|[-0.16325247287750244,1.0150082111358643,0.4373423457145691]|[-0.1800888478755951,1.0237449407577515,0.4281141459941864]|0.9813161492347717|1.8657312393188477|0.8340675830841064|true|21.426168153993785|[9.876331329345703,8.003398895263672,6.2646403312683105,4.725002288818359,3.383448362350464,2.336641311645508,1.7102268934249878,1.290726900100708,1.1372214555740356,0.9982889294624329,1.0198348760604858,1.0918740034103394,1.003355860710144,0.9813161492347717,1.1344050168991089,1.2463359832763672,1.2894575595855713,1.4203248023986816,1.5918105840682983,1.7889271974563599,1.709234356880188,1.5086008310317993,1.631421446800232,1.9521398544311523,1.968492031097412,1.7277048826217651,1.8189314603805542,1.8657312393188477]|1.709234356880188|0.009392311796545982|0.004082757979631424|0.004585128743201494|27|
-  |3639|2.0999317169189453|Box|Mid|[-0.12953197956085205,1.1047871112823486,0.46129995584487915]|[-0.12650559842586517,1.0992275476455688,0.4726225733757019]|0.2301216572523117|0.30485326051712036|0.6214320659637451|true|22.04374860489874|[17.086332321166992,16.477306365966797,15.378517150878906,13.852273941040039,12.01579475402832,10.012982368469238,8.183892250061035,6.847394943237305,6.127124309539795,5.637461185455322,5.112359046936035,4.508780002593994,3.9164226055145264,3.241952896118164,2.5449981689453125,1.8486825227737427,1.2749029397964478,0.8313198685646057,0.5480879545211792,0.6204541325569153,0.7273600101470947,0.8829243183135986,0.5059087872505188,0.35674798488616943,0.3568197786808014,0.24919933080673218,0.2301216572523117,0.30485326051712036]|0.7273600101470947|0.04215681180357933|0.005267512984573841|0.003164042718708515|8|
-  |3640|4.020639419555664|Sphere|Mid|[-0.07282336056232452,1.155226469039917,0.44457247853279114]|[-0.17264418303966522,1.2140882015228271,0.5022895336151123]|1.361080527305603|1.361080527305603|1.3410112857818604|true|22.543294333445374|[12.214021682739258,11.74438762664795,10.606163024902344,9.054183006286621,7.502150535583496,6.2250142097473145,5.307369232177734,4.584388256072998,3.5735480785369873,10.577037811279297,7.182444095611572,4.735644340515137,3.189455986022949,2.3035337924957275,1.784926414489746,1.361080527305603]|3.5735480785369873|0.09638101607561111|0.010976077988743782|0.010852636769413948|4|
-  |3641|2.6413474082946777|Sphere|Low|[-0.1712183803319931,1.0232043266296387,0.41830378770828247]|[-0.18137380480766296,1.0211713314056396,0.4093610346317291]|0.4909186065196991|0.8330183029174805|0.5754672884941101|true|22.118922601553745|[17.73661231994629,16.268386840820312,14.35654354095459,12.157118797302246,9.911101341247559,7.864263534545898,6.098390579223633,4.857728481292725,3.980201482772827,3.203979969024658,2.3989341259002686,1.5757182836532593,0.9497188925743103,0.6606347560882568,0.5378814935684204,0.4909186065196991,0.6556541323661804,0.8585347533226013,0.9177685976028442,0.9853715300559998,1.052306890487671,1.0105928182601929,0.9156553745269775,0.8753059506416321,0.8658695220947266,0.8807568550109863,0.8214606642723083,0.8330183029174805]|1.052306890487671|0.013776218518614769|0.004803245421499014|0.0030287927947938442|15|
-  |3642|1.2620552778244019|Sphere|Low|[-0.1312602162361145,1.0292799472808838,0.4370562434196472]|[-0.1971006691455841,1.0149462223052979,0.4099174737930298]|1.278428316116333|3.889899969100952|0.46400538086891174|false|21.808306084257428|[21.229106903076172,20.763696670532227,19.555265426635742,17.655534744262695,15.237564086914062,12.534080505371094,9.809918403625488,7.3930768966674805,5.679083824157715,4.555969715118408,3.7379703521728516,3.163639545440674,2.850595235824585,2.809638261795044,2.975759744644165,3.235805034637451,2.4113693237304688,1.7462201118469238,1.334429144859314,1.278428316116333,1.674830675125122,2.2342002391815186,3.889899969100952]|3.235805034637451|0.06568336486816406|0.010312158614397049|0.006637408398091793|12|
-  |3643|3.1827633380889893|ElongatedCylinder|Mid|[-0.18268278241157532,1.108489751815796,0.45304444432258606]|[-0.19437916576862335,1.104379415512085,0.45291733741760254]|0.7223706245422363|0.7223706245422363|0.5027598142623901|true|21.761133826138185|[13.299314498901367,11.605843544006348,9.885297775268555,8.229226112365723,6.730498313903809,5.849697589874268,5.483697891235352,4.9017181396484375,3.9033517837524414,2.9236834049224854,2.329253673553467,2.134284496307373,1.8205305337905884,1.5423853397369385,1.5767626762390137,1.7290165424346924,1.8059707880020142,1.7181016206741333,1.6347678899765015,1.4803791046142578,1.5136682987213135,1.0958987474441528,1.1093859672546387,1.1602329015731812,1.1558459997177124,0.9833413362503052,0.7898565530776978,0.7223706245422363]|1.5136682987213135|0.04233182221651077|0.004360924940556288|0.004415533971041441|15|
-  |3644|1.8034710884094238|ElongatedCylinder|High|[-0.16410599648952484,1.1950924396514893,0.4804796874523163]|[-0.18744055926799774,1.1917299032211304,0.4902709126472473]|0.27300626039505005|0.5177049040794373|0.5593205094337463|true|21.53701932651789|[22.01893424987793,21.38745880126953,20.21994972229004,18.57948875427246,16.655311584472656,14.65262222290039,12.840847969055176,11.480684280395508,10.32048511505127,9.165863037109375,8.07314395904541,6.918135166168213,5.632445335388184,4.2975592613220215,3.1263701915740967,1.9965883493423462,1.105881929397583,0.4581393301486969,0.4059063196182251,0.7015128135681152,0.8425773978233337,1.3749977350234985,1.1005157232284546,0.7937790751457214,0.5179895758628845,0.2922807037830353,0.27300626039505005,0.5177049040794373]|0.8425773978233337|0.034607745707035065|0.005278890021145344|0.003815876552835107|12|
-  |3645|3.7241790294647217|ElongatedCylinder|Low|[-0.17290806770324707,1.039229154586792,0.42825472354888916]|[-0.17950737476348877,1.0404548645019531,0.43022358417510986]|0.08587335050106049|0.5204315781593323|0.7583476305007935|true|21.827339227976545|[8.49206256866455,6.859379768371582,5.369968414306641,4.055262565612793,3.0776004791259766,2.5955960750579834,2.1640124320983887,1.8997445106506348,1.59700345993042,1.3329817056655884,1.290605068206787,1.166024923324585,1.0569161176681519,0.807383120059967,0.6285519599914551,0.28312593698501587,0.1544499397277832,0.17795100808143616,0.20240847766399384,0.2634034752845764,0.3367852568626404,0.3250131607055664,0.17097191512584686,0.08587335050106049,0.23610492050647736,0.4811819791793823,0.48366066813468933,0.5204315781593323]|0.3367852568626404|0.018886100500822067|0.004449367523193359|0.005408958066254854|26|
-  |3646|2.3448870182037354|ElongatedCylinder|Mid|[-0.1649940311908722,1.1026322841644287,0.44981849193573]|[-0.19212216138839722,1.096237301826477,0.45096737146377563]|0.9307359457015991|1.1388593912124634|0.4904175102710724|true|21.608383997642836|[18.21530532836914,17.27383804321289,15.80991268157959,14.00728702545166,12.044782638549805,10.111480712890625,8.642081260681152,8.095429420471191,7.77222204208374,7.11339807510376,6.296968460083008,5.396714687347412,4.316737651824951,3.3420562744140625,2.6848440170288086,2.272292137145996,2.121112585067749,1.863979697227478,1.4245305061340332,1.2514910697937012,1.2158840894699097,1.5054662227630615,1.1244432926177979,1.0523041486740112,0.9646445512771606,0.9307359457015991,1.0504673719406128,1.1388593912124634]|1.2158840894699097|0.023781411349773407|0.005680462811142206|0.004407919943332672|11|
-  |3647|4.265594959259033|Box|Mid|[-0.10839852690696716,1.1728864908218384,0.46367132663726807]|[-0.20396338403224945,1.2082891464233398,0.49328213930130005]|1.067834496498108|1.0929408073425293|1.0217705965042114|true|21.709210435418708|[16.486068725585938,16.013811111450195,14.87569808959961,13.246970176696777,11.373294830322266,9.634442329406738,8.345625877380371,7.44235897064209,6.581070899963379,5.577699661254883,4.594351291656494,3.342074155807495,7.281528949737549,4.7855119705200195,2.499431848526001,1.070035696029663,1.1885756254196167,1.067834496498108,1.0929408073425293]|3.342074155807495|0.0571804977953434|0.012039151042699814|0.010348755866289139|7|
-  |3648|2.8863027095794678|Box|Low|[-0.15866422653198242,1.0276182889938354,0.4206014573574066]|[-0.1548900604248047,1.0242605209350586,0.4293997287750244]|0.12169498950242996|0.888803243637085|0.7162086367607117|true|21.815709719833517|[13.798644065856934,12.398695945739746,10.757597923278809,8.934938430786133,7.072746753692627,5.2971649169921875,3.8054425716400146,2.748116970062256,2.0132100582122803,1.3748817443847656,0.7305042147636414,0.32002633810043335,0.7388575673103333,0.775225818157196,0.6564540266990662,0.48561185598373413,0.44079214334487915,0.5328364372253418,0.670261800289154,0.4879612922668457,0.46288734674453735,0.5435736179351807,0.24591472744941711,0.12169498950242996,0.3168240785598755,0.5800660848617554,0.8227972388267517,0.888803243637085]|0.46288734674453735|0.06441430002450943|0.0048607527278363705|0.003543667495250702|22|
-  |3649|1.507010579109192|Box|Low|[-0.13779330253601074,1.0398962497711182,0.4130282998085022]|[-0.16720159351825714,1.0089538097381592,0.40965181589126587]|1.1297786235809326|1.1297786235809326|0.5714928507804871|true|21.619791666475628|[20.224096298217773,19.695636749267578,18.422771453857422,16.595888137817383,14.318570137023926,11.82226276397705,9.521903991699219,7.647881507873535,6.357478141784668,5.428790092468262,4.730342864990234,4.022984504699707,3.3458642959594727,2.757600784301758,2.179682970046997,1.8844555616378784,1.870218276977539,2.1514954566955566,2.538677215576172,2.6986963748931885,2.5067646503448486,2.205413579940796,1.9266009330749512,1.6481541395187378,1.3727705478668213,1.1297786235809326]|2.538677215576172|0.061218295246362686|0.006531331222504377|0.003185030771419406|11|
-physics_in_loop_metrics:
-  spwm:
-    grasp_success_rate_pct: 88.0
-    terminal_placement_accuracy_cm: 0.8831607940793037
-    placement_accuracy_std_cm: 0.8119840275846506
-    terminal_error_cm: 1.5998407745361327
-    terminal_error_std_cm: 1.0035375962561464
-    mppi_inference_latency_ms: 22.07838824687911
-    mean_joint_accel_rad_s2: 0.005810882518999278
-    std_joint_accel_rad_s2: 0.0013435228680266074
-    mean_joint_jerk_rad_s3: 0.003634960176423192
-    std_joint_jerk_rad_s3: 0.0007344861000397225
-    mean_direction_flips: 13.98
-    std_direction_flips: 7.778148880035661
-  rssm:
-    grasp_success_rate_pct: 48.0
-    terminal_placement_accuracy_cm: 1.3246886438131333
-    placement_accuracy_std_cm: 0.9257910382404726
-    terminal_error_cm: 2.2245967417955397
-    terminal_error_std_cm: 1.2122357740777538
-    mppi_inference_latency_ms: 31.119440857837045
-    mean_joint_accel_rad_s2: 0.012931671738624573
-    std_joint_accel_rad_s2: 0.003191803684412109
-    mean_joint_jerk_rad_s3: 0.012974122744053603
-    std_joint_jerk_rad_s3: 0.003128405403233471
-    mean_direction_flips: 32.54
-    std_direction_flips: 9.974387199221814
-  deep_gru:
-    grasp_success_rate_pct: 0.0
-    terminal_placement_accuracy_cm: 12.671033895015716
-    placement_accuracy_std_cm: 5.714335461327533
-    terminal_error_cm: 29.83362277984619
-    terminal_error_std_cm: 7.4562288356886945
-    mppi_inference_latency_ms: 44.544892053711976
-    mean_joint_accel_rad_s2: 0.004151119305752218
-    std_joint_accel_rad_s2: 0.002353932190856757
-    mean_joint_jerk_rad_s3: 0.0016224616684485226
-    std_joint_jerk_rad_s3: 0.0010136947580609817
-    mean_direction_flips: 2.34
-    std_direction_flips: 1.1244554237496478
-  ann_rate:
-    grasp_success_rate_pct: 0.0
-    terminal_placement_accuracy_cm: 7.362843397855759
-    placement_accuracy_std_cm: 3.0365703771808814
-    terminal_error_cm: 16.44354862213135
-    terminal_error_std_cm: 9.040494966017693
-    mppi_inference_latency_ms: 30.358604718370135
-    mean_joint_accel_rad_s2: 0.004622546173632145
-    std_joint_accel_rad_s2: 0.0010745891550026964
-    mean_joint_jerk_rad_s3: 0.001883915641810745
-    std_joint_jerk_rad_s3: 0.0003426545436441245
-    mean_direction_flips: 9.44
-    std_direction_flips: 3.0077233915371937
+  |trajectory_id|payload_mass|payload_shape|elevation_plane|target_pos|final_ee_pos|min_placement_error_cm|terminal_placement_error_cm|terminal_angular_velocity|grasp_success|mean_latency_ms|step_errors_cm|grasp_error_cm|grasp_rot_error_rad|mean_joint_accel_rad_s2|mean_joint_jerk_rad_s3|direction_flips|handover_weights_phi1|
+  |---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|
+  |3600|3.0923237800598145|ElongatedCylinder|Low|[-0.1601915806531906,1.0277425050735474,0.44486987590789795]|[-0.181523859500885,1.0407003164291382,0.4354255497455597]|0.9916855096817017|1.9336272478103638|0.09670901298522949|true|37.85080052745928|[11.573441505432129,9.13671588897705,6.814445495605469,5.375359058380127,4.415168285369873,3.781996726989746,3.6314282417297363,3.5600736141204834,3.1390655040740967,2.3105342388153076,1.5440272092819214,1.337774634361267,1.178063154220581,1.0694260597229004,1.0108526945114136,0.9916855096817017,1.249696969985962,1.4435142278671265,1.4471330642700195,1.390917181968689,1.3779929876327515,1.089792251586914,1.4277375936508179,1.8794653415679932,2.150221586227417,2.137094736099243,2.005171298980713,1.9336272478103638]|1.3779929876327515|0.024531586095690727|0.005452719982713461|0.004464099183678627|24|[0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0]|
+  |3601|1.7130316495895386|Box|Mid|[-0.14557956159114838,1.1094894409179688,0.4503576457500458]|[-0.1422460377216339,1.1097484827041626,0.46741801500320435]|0.506766676902771|0.6558789610862732|0.2623443901538849|true|36.46088522509672|[18.863054275512695,18.71589469909668,18.000974655151367,16.560466766357422,14.5841646194458,12.38664722442627,10.208590507507324,8.222845077514648,6.613028049468994,5.488822937011719,4.7486748695373535,4.199735164642334,3.70710825920105,3.214980363845825,2.6828536987304688,2.1142473220825195,1.5646533966064453,1.1199415922164917,0.9260068535804749,1.024008870124817,1.2364610433578491,1.3526791334152222,0.9986738562583923,0.680321455001831,0.5190710425376892,0.506766676902771,0.5487858057022095,0.6558789610862732]|1.2364610433578491|0.015533333644270897|0.005324265919625759|0.0024402805138379335|8|[0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0]|
+  |3602|3.633739471435547|Box|High|[-0.1951867938041687,1.2046148777008057,0.48281943798065186]|[-0.21047256886959076,1.2045191526412964,0.48794427514076233]|0.5780963897705078|1.0662696361541748|0.18477372825145721|true|41.74411605345085|[13.0217866897583,10.909154891967773,8.175790786743164,5.087525844573975,2.2599239349365234,0.8492842316627502,0.9008960723876953,0.757885754108429,0.5780963897705078,0.6291033029556274,0.6766077876091003,0.7128912210464478,0.8593243360519409,0.989650547504425,0.9515424966812134,0.7987130284309387,0.6454941034317017,0.7472003102302551,0.9919666647911072,1.2199548482894897,1.4382659196853638,1.04286527633667,1.2014124393463135,1.2570909261703491,1.1720829010009766,1.056650161743164,1.0197794437408447,1.0662696361541748]|1.4382659196853638|0.01839362643659115|0.004433663096278906|0.003265181090682745|28|[0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0]|
+  |3603|2.2544474601745605|Box|Low|[-0.1755688488483429,1.0101819038391113,0.41953858733177185]|[-0.19853876531124115,1.0139968395233154,0.4144792854785919]|0.30120307207107544|1.1931208372116089|0.1762886792421341|true|37.52263701919998|[20.206327438354492,19.067882537841797,17.597280502319336,15.646058082580566,13.301840782165527,10.84429931640625,8.568504333496094,6.6685004234313965,5.259915828704834,4.385437965393066,3.9030771255493164,3.529649257659912,3.1092278957366943,2.640129804611206,2.145613193511963,1.6746375560760498,1.267038345336914,0.966471791267395,0.8053648471832275,0.7555561661720276,0.7555692195892334,0.7496841549873352,0.30120307207107544,0.5870426297187805,1.0924853086471558,1.3483059406280518,1.3546491861343384,1.1931208372116089]|0.7555692195892334|0.024149538949131966|0.005527789704501629|0.0028964304365217686|10|[0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0]|
+  |3604|4.175155162811279|Box|Mid|[-0.11803130805492401,1.1047005653381348,0.43481385707855225]|[-0.12391683459281921,1.0984159708023071,0.4646947979927063]|0.7615321278572083|0.7615321278572083|0.6631839275360107|true|35.27139569632709|[16.419307708740234,16.47688865661621,15.590681076049805,13.62572193145752,10.981175422668457,8.17818832397461,5.680799961090088,3.8853890895843506,2.8723678588867188,2.208507537841797,1.5882532596588135,1.0557125806808472,0.8434239625930786,3.9065706729888916,3.397132396697998,2.748361349105835,2.064880847930908,1.4650567770004272,1.0028752088546753,0.7615321278572083]|0.8434239625930786|0.06260932981967926|0.00853119045495987|0.004648132715374231|6|[0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0]|
+  |3605|2.795863151550293|Sphere|High|[-0.1699182093143463,1.1916710138320923,0.4913409948348999]|[-0.18167349696159363,1.1891207695007324,0.49705737829208374]|0.5579374432563782|0.6727336645126343|0.07888572663068771|true|35.35138541233859|[16.62736701965332,14.852818489074707,12.7636137008667,10.363534927368164,7.559988498687744,4.73409366607666,2.6688780784606934,1.5254493951797485,1.013270616531372,1.049547553062439,1.119684100151062,1.0351685285568237,0.9366130232810974,0.9422999620437622,0.792514979839325,0.5579374432563782,0.6398530602455139,0.8698168992996216,0.9959698915481567,0.9806293249130249,1.004894495010376,1.0207127332687378,0.9610164165496826,0.7606266140937805,0.5927325487136841,0.6301759481430054,0.7024286389350891,0.6727336645126343]|1.004894495010376|0.016024427488446236|0.004445232450962067|0.0036578206345438957|25|[0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0]|
+  |3606|1.416571021080017|Sphere|Low|[-0.1465684324502945,1.022121548652649,0.42273831367492676]|[-0.18414996564388275,1.0300668478012085,0.42452389001846313]|0.9793704152107239|2.7034308910369873|0.3070491552352905|false|39.55251928917797|[22.074623107910156,21.98685073852539,21.067712783813477,19.142045974731445,16.49403953552246,13.516757011413574,10.508341789245605,7.695045471191406,5.307694435119629,3.533613681793213,2.4142346382141113,1.7754491567611694,1.3944028615951538,1.1556730270385742,1.021419644355774,0.9793704152107239,1.023956060409546,1.1146032810211182,1.2350940704345703,1.3911460638046265,1.6232742071151733,2.5722403526306152,2.5768916606903076,2.7226579189300537,2.9161627292633057,3.0095701217651367,2.924699306488037,2.7034308910369873]|1.6232742071151733|0.05123559385538101|0.006821285467594862|0.0029433222953230143|12|[0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0]|
+  |3607|3.3372788429260254|Sphere|Low|[-0.18835283815860748,1.0335981845855713,0.4100155532360077]|[-0.1967482566833496,1.045570731163025,0.4280588924884796]|0.8437272310256958|2.5115978717803955|0.3293541669845581|true|36.09264730143228|[11.552645683288574,10.05626392364502,8.145291328430176,6.236244201660156,4.6283979415893555,3.410289764404297,2.563709020614624,1.993027925491333,1.5858583450317383,1.3744828701019287,1.4772422313690186,1.6358176469802856,1.671844720840454,1.593384861946106,1.4417979717254639,1.292467713356018,1.21205472946167,1.1391667127609253,1.0256832838058472,0.9042754769325256,0.8437272310256958,1.2209042310714722,1.323520541191101,1.4906668663024902,1.6714000701904297,1.8630757331848145,2.128577470779419,2.5115978717803955]|0.8437272310256958|0.024257903918623924|0.003289909800514579|0.002672412432730198|18|[0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0]|
+  |3608|1.957986831665039|Sphere|Mid|[-0.17253130674362183,1.1075801849365234,0.4440624713897705]|[-0.1953900009393692,1.0996379852294922,0.4503025412559509]|0.5789094567298889|1.174257755279541|0.20306235551834106|true|35.81420834442334|[20.210655212402344,20.13730812072754,19.567161560058594,18.173227310180664,16.056732177734375,13.573919296264648,11.073359489440918,8.819870948791504,7.090324878692627,5.957820415496826,5.183243274688721,4.517940998077393,3.84212064743042,3.1134719848632812,2.3700008392333984,1.633023977279663,0.9585938453674316,0.5789094567298889,0.7325471639633179,0.9477258920669556,1.1634713411331177,1.8663829565048218,1.5532097816467285,1.2724469900131226,1.1728980541229248,1.275977611541748,1.3527140617370605,1.174257755279541]|1.1634713411331177|0.020162278786301613|0.005878619849681854|0.0031695489306002855|12|[0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0]|
+  |3609|3.878694772720337|ElongatedCylinder|Mid|[-0.062913678586483,1.148561954498291,0.44581520557403564]|[-0.16867566108703613,1.1847368478775024,0.4695170521736145]|2.7950124740600586|2.7950124740600586|1.27104651927948|false|37.432494733366184|[11.491044998168945,11.323838233947754,10.423653602600098,8.758676528930664,6.829644680023193,5.491884231567383,5.2949981689453125,5.697611331939697,6.236111640930176,11.8062162399292,10.396753311157227,8.782577514648438,7.050666332244873,5.391898155212402,3.9452381134033203,2.7950124740600586]|6.236111640930176|0.12469201534986496|0.007096568122506142|0.004245960619300604|2|[0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0]|
+  |3610|2.4994025230407715|ElongatedCylinder|Low|[-0.17838016152381897,1.0129873752593994,0.4401816427707672]|[-0.20216695964336395,1.0263774394989014,0.422979474067688]|1.877776861190796|2.783543348312378|0.07825074344873428|true|37.31123811615232|[18.435977935791016,16.922863006591797,15.10299015045166,12.972124099731445,10.614072799682617,8.201216697692871,5.934650897979736,4.027065277099609,2.677015781402588,1.9750359058380127,1.877776861190796,2.0940470695495605,2.284146547317505,2.3391668796539307,2.2694313526153564,2.2057278156280518,2.3101887702941895,2.5440399646759033,2.833667755126953,2.984696388244629,3.1289186477661133,3.0692648887634277,3.2259013652801514,3.1816940307617188,2.989564895629883,2.83784818649292,2.78542423248291,2.783543348312378]|3.1289186477661133|0.015867428854107857|0.005322796758264303|0.0031827620696276426|11|[0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0]|
+  |3611|4.42011022567749|ElongatedCylinder|Mid|[-0.14028692245483398,1.1213961839675903,0.4443739652633667]|[-0.1954422891139984,1.1178123950958252,0.45919543504714966]|0.9093067646026611|1.2214659452438354|0.5523556470870972|true|34.9572480848545|[18.295475006103516,18.227298736572266,17.291290283203125,15.353883743286133,12.755929946899414,10.001691818237305,7.515650272369385,5.640676021575928,4.5070624351501465,3.7491605281829834,2.9990320205688477,2.255490779876709,1.6379972696304321,1.2188856601715088,0.9093067646026611,0.9962462782859802,3.5999107360839844,2.764124631881714,1.9871240854263306,1.4203698635101318,1.0682471990585327,0.964020848274231,1.2214659452438354]|0.9962462782859802|0.0162387415766716|0.008901944383978844|0.004968914669007063|9|[0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0]|
+  |3612|3.040818452835083|Box|High|[-0.20262062549591064,1.2052944898605347,0.480135053396225]|[-0.21779294312000275,1.21334707736969,0.4896395802497864]|0.5043447613716125|1.4388676881790161|0.1696101725101471|true|36.59438390085207|[17.265993118286133,14.611112594604492,11.49609375,8.478445053100586,5.986507415771484,4.340770244598389,3.3893299102783203,2.8372721672058105,2.4031970500946045,2.125366687774658,1.9125895500183105,1.637894868850708,1.2815426588058472,0.9825573563575745,0.8239065408706665,0.7885252237319946,0.5043447613716125,0.5407300591468811,0.6841803193092346,0.7782511711120605,0.8721257448196411,1.0638645887374878,0.8714159727096558,0.8670576810836792,0.9904080033302307,1.1552531719207764,1.3246654272079468,1.4388676881790161]|0.8721257448196411|0.023443123325705528|0.004613562952727079|0.00382964126765728|23|[0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0]|
+  |3613|1.6615263223648071|Box|Low|[-0.16457204520702362,1.0336177349090576,0.4418622851371765]|[-0.18708594143390656,1.0427496433258057,0.443037748336792]|1.3211021423339844|3.6936566829681396|0.21231871843338013|false|37.78940321561614|[22.635013580322266,21.666013717651367,20.228515625,18.30913734436035,15.96351432800293,13.332262992858887,10.606343269348145,7.95735502243042,5.548788070678711,3.6008517742156982,2.279406785964966,1.5705217123031616,1.3211021423339844,1.3404786586761475,1.4598009586334229,1.584273338317871,1.7173569202423096,1.8706848621368408,2.0681674480438232,2.2601828575134277,2.3963098526000977,3.829526424407959,3.7018563747406006,3.600928544998169,3.5688180923461914,3.5829193592071533,3.631002187728882,3.6936566829681396]|2.3963098526000977|0.032908886671066284|0.005970076657831669|0.0028146791737526655|11|[0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0]|
+  |3614|3.5822341442108154|Box|Low|[-0.16669978201389313,1.0320783853530884,0.43108421564102173]|[-0.17755067348480225,1.0514410734176636,0.43648266792297363]|0.25326672196388245|2.251241683959961|0.3407454192638397|true|34.611700888490304|[8.943724632263184,6.457819938659668,4.258119106292725,2.7879974842071533,1.6090335845947266,0.657162606716156,0.25326672196388245,0.5613920092582703,1.0396243333816528,1.3477591276168823,1.2966938018798828,1.098821997642517,0.9724741578102112,0.9122208952903748,0.8851869702339172,0.8754488825798035,0.9920758008956909,1.122313141822815,1.0916647911071777,1.087362289428711,1.1220457553863525,1.0817625522613525,1.0170663595199585,0.9720361828804016,1.0801496505737305,1.369455337524414,1.8080843687057495,2.251241683959961]|1.1220457553863525|0.012118896469473839|0.004202086012810469|0.0032998882234096527|29|[0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0]|
+  |3615|2.202942132949829|Box|Mid|[-0.12205535918474197,1.0982131958007812,0.4642801880836487]|[-0.11232805252075195,1.0891683101654053,0.48184800148010254]|0.8049491047859192|1.1089707612991333|0.14178039133548737|true|36.96852971084549|[15.237411499023438,14.689679145812988,13.532974243164062,11.798145294189453,9.836645126342773,8.019935607910156,6.638298988342285,5.810934543609619,5.392032623291016,5.103555679321289,4.753120422363281,4.272016525268555,3.674802541732788,2.97409725189209,2.1504015922546387,1.3033897876739502,0.8049491047859192,1.1342395544052124,1.6589303016662598,2.0108494758605957,2.185743570327759,2.380646228790283,1.8546696901321411,1.3684314489364624,1.1160258054733276,1.0192497968673706,1.0118829011917114,1.1089707612991333]|2.185743570327759|0.024030763655900955|0.005630700848996639|0.0027866153977811337|8|[0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0]|
+  |3616|4.123650074005127|Sphere|Mid|[-0.10549936443567276,1.1719096899032593,0.4632115066051483]|[-0.15461504459381104,1.1856918334960938,0.4917733669281006]|1.5770885944366455|1.5770885944366455|0.9466993808746338|false|38.165223680583665|[16.050519943237305,15.976490020751953,15.13637638092041,13.470935821533203,11.436126708984375,9.652623176574707,8.465885162353516,7.745002269744873,7.039708614349365,6.082975387573242,4.872997283935547,3.6610443592071533,7.939085483551025,6.98851203918457,5.904697418212891,4.721248149871826,3.5598673820495605,2.4989805221557617,1.5770885944366455]|3.6610443592071533|0.08423466235399246|0.00812214333564043|0.004782377276569605|4|[0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0]|
+  |3617|2.7443578243255615|Sphere|Low|[-0.167842298746109,1.0162646770477295,0.4412359595298767]|[-0.18875917792320251,1.0354089736938477,0.4323013424873352]|1.593156337738037|2.6905677318573|0.17327050864696503|true|35.567986708234194|[15.525907516479492,13.69143009185791,11.748913764953613,9.79043197631836,7.812884330749512,5.794358730316162,3.8684420585632324,2.4004430770874023,1.6821708679199219,1.593156337738037,1.7684998512268066,2.0129566192626953,2.1663718223571777,2.143958330154419,2.0554094314575195,2.0646297931671143,2.1620230674743652,2.282470703125,2.4374706745147705,2.5553109645843506,2.5426084995269775,2.327301025390625,2.236995220184326,2.28572416305542,2.4575271606445312,2.673576831817627,2.7628209590911865,2.6905677318573]|2.5426084995269775|0.0140927629545331|0.004870283883064985|0.003284703241661191|17|[0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0]|
+  |3618|1.3650658130645752|Sphere|Mid|[-0.14363370835781097,1.0971513986587524,0.43820515275001526]|[-0.1776869148015976,1.083391785621643,0.4438779354095459]|0.2804223299026489|1.309301733970642|0.19441042840480804|true|35.93278040912432|[18.96586036682129,18.994182586669922,18.124658584594727,16.225196838378906,13.667381286621094,10.945236206054688,8.417349815368652,6.339962959289551,4.899565696716309,4.044349193572998,3.4539718627929688,2.899522542953491,2.314434051513672,1.7337180376052856,1.3081575632095337,1.001285433769226,0.61441570520401,0.2804223299026489,0.6859754323959351,1.9977960586547852,1.3402527570724487,0.9435201287269592,1.047229528427124,1.2624526023864746,1.3500157594680786,1.309301733970642]|0.6859754323959351|0.05123326554894447|0.007750516291707754|0.00392241170629859|12|[0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0]|
+  |3619|3.285773515701294|Sphere|High|[-0.1843661069869995,1.2083699703216553,0.49158498644828796]|[-0.19406375288963318,1.2120311260223389,0.4977548122406006]|0.23154476284980774|1.0162675380706787|0.3529472351074219|true|37.60198823459047|[14.836817741394043,12.165616035461426,9.24910831451416,6.438962459564209,3.843275547027588,1.7284754514694214,0.726525068283081,1.2850594520568848,1.8167084455490112,2.115046501159668,2.2320969104766846,2.3749582767486572,2.3783395290374756,2.012259006500244,1.519439697265625,1.1090201139450073,0.715383768081665,0.6320114135742188,0.8577454090118408,0.6961470246315002,0.36497995257377625,0.23154476284980774,0.33703991770744324,0.2613683342933655,0.2697426974773407,0.46811261773109436,0.7332866787910461,1.0162675380706787]|0.36497995257377625|0.02564825303852558|0.004813095089048147|0.0038277339190244675|24|[0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0]|
+  |3620|1.9064816236495972|ElongatedCylinder|Low|[-0.15938085317611694,1.0115280151367188,0.4201980531215668]|[-0.20352128148078918,1.029079556465149,0.43916359543800354]|0.4718458354473114|3.86948299407959|0.18680691719055176|false|36.389944937712116|[22.682846069335938,22.249004364013672,21.29085350036621,19.63762855529785,17.446985244750977,14.978410720825195,12.485459327697754,10.159170150756836,8.12783432006836,6.48287296295166,5.24565315246582,4.3107991218566895,3.539684295654297,2.8321807384490967,2.164886713027954,1.5560272932052612,1.0373705625534058,0.630649209022522,0.4718458354473114,0.7249923944473267,1.2667677402496338,1.4220088720321655,1.993300437927246,2.6451690196990967,3.194894313812256,3.546635150909424,3.748642921447754,3.86948299407959]|1.2667677402496338|0.0557076595723629|0.00595518946647644|0.002554785693064332|6|[0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0]|
+  |3621|3.8271894454956055|ElongatedCylinder|Low|[-0.1774565875530243,1.0358524322509766,0.42764782905578613]|[-0.18887236714363098,1.050490140914917,0.4359287917613983]|0.3817315399646759|2.090648651123047|0.25309044122695923|true|36.97099707538395|[8.642985343933105,6.75567626953125,4.741387367248535,3.059702157974243,1.7649656534194946,0.8298937082290649,0.49204501509666443,0.509000301361084,0.561610758304596,0.6736430525779724,0.8548423647880554,1.0265390872955322,0.9770238995552063,0.7715215682983398,0.9006391167640686,0.9879025816917419,0.7482883334159851,0.49399620294570923,0.3817315399646759,0.4170243740081787,0.5321795344352722,0.8061192035675049,0.9784588813781738,1.2111084461212158,1.4901573657989502,1.730722427368164,1.8969652652740479,2.090648651123047]|0.5321795344352722|0.01997813768684864|0.00431095901876688|0.0032779478933662176|31|[0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0]|
+  |3622|2.447897434234619|ElongatedCylinder|Mid|[-0.17179328203201294,1.1022673845291138,0.44678300619125366]|[-0.19449082016944885,1.1043334007263184,0.4525398015975952]|0.726320743560791|1.1849288940429688|0.2717391550540924|true|35.011696288295624|[16.82199478149414,15.541854858398438,13.890707015991211,11.913989067077637,9.72465705871582,7.542094707489014,5.628571033477783,4.102341175079346,2.9960925579071045,2.155912160873413,1.4741482734680176,1.0455098152160645,0.8131979703903198,0.726320743560791,0.8358361124992371,1.1714401245117188,1.55228590965271,1.8570122718811035,2.034912586212158,2.142489194869995,2.2720539569854736,2.5594186782836914,2.6303365230560303,2.579683303833008,2.2707765102386475,1.8033210039138794,1.4140961170196533,1.1849288940429688]|2.2720539569854736|0.027213485911488533|0.005534427706152201|0.0036903945729136467|11|[0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0]|
+  |3623|4.368605136871338|ElongatedCylinder|High|[-0.1286347657442093,1.184536099433899,0.4736163020133972]|[-0.18811526894569397,1.202555775642395,0.4871509075164795]|0.24395236372947693|0.24395236372947693|0.24362404644489288|true|37.505466041197494|[18.77583122253418,18.723112106323242,17.885498046875,16.213924407958984,14.154230117797852,12.184904098510742,10.590035438537598,9.423843383789062,8.515920639038086,7.59041166305542,6.530089855194092,5.389125823974609,4.240482330322266,3.0955276489257812,2.0136680603027344,6.165989398956299,4.705014228820801,3.1967461109161377,1.8611623048782349,0.9207494258880615,0.44111916422843933,0.24395236372947693]|2.0136680603027344|0.010961941443383694|0.00837490800768137|0.004784216172993183|7|[0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0]|
+  |3624|2.9893131256103516|Box|Low|[-0.11366361379623413,1.0136218070983887,0.43174314498901367]|[-0.10725440829992294,1.005520224571228,0.4294309616088867]|0.6164560317993164|0.6164560317993164|0.3290953040122986|true|36.89854754234797|[10.494338035583496,9.256561279296875,7.613646984100342,5.67695951461792,3.76519775390625,2.2274856567382812,1.480208396911621,1.484779715538025,1.4586421251296997,1.1572813987731934,0.766203761100769,0.6457382440567017,0.8564169406890869,1.0558832883834839,1.1180847883224487,1.0153495073318481,0.8240696787834167,0.7575821876525879,0.9162877798080444,1.120628833770752,1.2076910734176636,2.143428087234497,1.6191837787628174,1.0302115678787231,0.8530060052871704,0.9111985564231873,0.7762708067893982,0.6164560317993164]|1.2076910734176636|0.031411100178956985|0.004940117243677378|0.0033501291181892157|22|[0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0]|
+  |3625|1.6100211143493652|Box|Mid|[-0.15163391828536987,1.1202882528305054,0.44957059621810913]|[-0.18571840226650238,1.1247386932373047,0.45394933223724365]|0.5093672871589661|1.1884957551956177|0.17524683475494385|true|36.16864304058254|[19.41160774230957,19.184282302856445,18.204917907714844,16.385005950927734,14.035934448242188,11.550073623657227,9.241286277770996,7.3553571701049805,6.083436012268066,5.2912139892578125,4.68248176574707,4.0826849937438965,3.4779255390167236,2.8884329795837402,2.3411431312561035,1.8529651165008545,1.4121062755584717,0.9527010917663574,0.5093672871589661,0.575826108455658,1.1319252252578735,1.320868730545044,0.9260712265968323,0.6734710931777954,0.6484938859939575,0.8177240490913391,1.0385916233062744,1.1884957551956177]|1.1319252252578735|0.043823856860399246|0.006040005944669247|0.002965521765872836|11|[0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0]|
+  |3626|3.530728816986084|Box|High|[-0.1873343586921692,1.2099320888519287,0.4893725514411926]|[-0.19845989346504211,1.2147208452224731,0.4983998239040375]|0.5240110754966736|1.1512185335159302|0.23987576365470886|true|36.50462951294945|[14.32147216796875,12.501469612121582,10.044136047363281,7.205102443695068,4.707459926605225,3.048065185546875,2.06121563911438,1.341864824295044,0.560186505317688,0.5240110754966736,0.8561111092567444,1.1277230978012085,1.1553541421890259,1.0414628982543945,0.9279810786247253,0.7972808480262756,0.6980960965156555,0.6170682907104492,0.6240937113761902,0.645821213722229,0.6820462942123413,0.6744535565376282,0.6788455247879028,0.7289376258850098,0.7893009185791016,0.8636918067932129,0.9657697081565857,1.1512185335159302]|0.6820462942123413|0.03351915255188942|0.004448932595551014|0.003769020549952984|23|[0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0]|
+  |3627|2.1514368057250977|Box|Low|[-0.17351315915584564,1.024309515953064,0.426189661026001]|[-0.20382976531982422,1.0255351066589355,0.4227962791919708]|0.27199679613113403|1.5214118957519531|0.24358859658241272|true|36.83903416718489|[21.4793643951416,20.674772262573242,19.59881019592285,17.957653045654297,15.753443717956543,13.286334037780762,10.895737648010254,8.78799819946289,7.059591293334961,5.740137100219727,4.7783098220825195,4.027419567108154,3.347012758255005,2.6467018127441406,1.9523911476135254,1.3258517980575562,0.79252028465271,0.3476771116256714,0.27199679613113403,0.6811124086380005,1.0963740348815918,1.0882114171981812,1.0155190229415894,1.0543897151947021,1.1822434663772583,1.342909812927246,1.4852806329727173,1.5214118957519531]|1.0963740348815918|0.03250057250261307|0.0059038507752120495|0.002812380902469158|12|[0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0]|
+  |3628|4.072144985198975|Sphere|Low|[-0.10735169053077698,1.0578010082244873,0.41456565260887146]|[-0.1736275553703308,1.0184121131896973,0.41274935007095337]|0.4293580949306488|0.4293580949306488|0.6511563062667847|true|36.00941199369522|[16.863754272460938,16.969100952148438,16.19860076904297,14.320588111877441,11.617219924926758,8.539579391479492,5.49940824508667,2.8723387718200684,1.362320899963379,2.011624574661255,3.2131540775299072,3.8280110359191895,2.873960018157959,2.192607879638672,1.747725486755371,1.3480571508407593,0.8919717669487,0.4293580949306488]|3.2131540775299072|0.18120460212230682|0.007587549742311239|0.004643850959837437|6|[0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0]|
+  |3629|2.692852735519409|Sphere|Mid|[-0.16786649823188782,1.1062926054000854,0.44768890738487244]|[-0.17676395177841187,1.1037216186523438,0.45157766342163086]|0.2780361771583557|0.5643303394317627|0.21355482935905457|true|35.70231097234812|[15.108315467834473,13.863889694213867,12.259894371032715,10.33352279663086,8.217118263244629,6.16634464263916,4.549056053161621,3.618645668029785,3.105990409851074,2.545013189315796,1.7088111639022827,0.8749033212661743,0.7857321500778198,1.1200131177902222,1.2223923206329346,1.1335296630859375,1.092045545578003,1.2129268646240234,1.2728813886642456,1.0829355716705322,0.8737503290176392,1.065178632736206,0.7113313674926758,0.42401254177093506,0.2780361771583557,0.3038209080696106,0.4257553815841675,0.5643303394317627]|0.8737503290176392|0.026878463104367256|0.005157529376447201|0.003597099334001541|18|[0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0]|
+  |3630|1.3135606050491333|Sphere|High|[-0.14967475831508636,1.1902045011520386,0.4741608798503876]|[-0.18765167891979218,1.1900206804275513,0.48302626609802246]|0.7940020561218262|1.3787058591842651|0.32437649369239807|true|38.212206810712814|[20.57914924621582,20.554241180419922,19.798397064208984,18.202659606933594,16.102378845214844,13.914566040039062,11.919513702392578,10.236549377441406,8.882159233093262,7.760317802429199,6.665537357330322,5.523362159729004,4.399424076080322,3.349357843399048,2.385547161102295,1.48786199092865,0.7940020561218262,0.7993075251579285,2.8225419521331787,2.3018763065338135,1.8295098543167114,1.4806870222091675,1.3426263332366943,1.3508507013320923,1.3787058591842651]|0.7993075251579285|0.015231078490614891|0.007239998318254948|0.003844128455966711|8|[0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0]|
+  |3631|3.2342684268951416|Sphere|Low|[-0.1634715497493744,1.038787603378296,0.4216647148132324]|[-0.16901221871376038,1.051634669303894,0.43485012650489807]|0.5522339940071106|2.192549705505371|0.2343723624944687|true|35.38596286255467|[12.116371154785156,11.2184419631958,9.626860618591309,7.558220863342285,5.372666358947754,3.385794162750244,2.0066590309143066,1.4076454639434814,1.2972474098205566,1.3060187101364136,1.3613369464874268,1.4632114171981812,1.4641536474227905,1.3204423189163208,1.1247540712356567,0.9767554998397827,0.8764401078224182,0.7808994650840759,0.6803053021430969,0.5949706435203552,0.5522339940071106,1.058268666267395,1.153839349746704,1.297049641609192,1.404298186302185,1.5512619018554688,1.837510585784912,2.192549705505371]|0.5522339940071106|0.032261237502098083|0.004817571956664324|0.003316606394946575|19|[0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0]|
+  |3632|1.8549762964248657|ElongatedCylinder|Mid|[-0.14753121137619019,1.0955888032913208,0.451601505279541]|[-0.1812039464712143,1.1048529148101807,0.45963841676712036]|0.7968575954437256|1.3177038431167603|0.20399363338947296|true|35.66230360801065|[19.342063903808594,18.983379364013672,18.054981231689453,16.45620346069336,14.414267539978027,12.255228042602539,10.253486633300781,8.632150650024414,7.486773490905762,6.76416015625,6.307520866394043,5.925041675567627,5.509479522705078,4.997115135192871,4.3656792640686035,3.6312711238861084,2.85254168510437,2.1179962158203125,1.4718070030212402,0.8772793412208557,0.7968575954437256,1.6057676076889038,1.335113286972046,1.3509929180145264,1.3890559673309326,1.3941981792449951,1.3731639385223389,1.3177038431167603]|0.7968575954437256|0.031021516770124435|0.005859631113708019|0.0027889711782336235|9|[0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0]|
+  |3633|3.775684118270874|ElongatedCylinder|High|[-0.18505986034870148,1.2041765451431274,0.4869106113910675]|[-0.19260895252227783,1.2084227800369263,0.4974644184112549]|0.7855739593505859|1.1281824111938477|0.16408735513687134|true|38.46556856712726|[12.669571876525879,10.255179405212402,7.147441864013672,3.8521337509155273,1.366694450378418,1.4371938705444336,2.0550882816314697,1.832348346710205,1.2951494455337524,1.1186015605926514,1.186187505722046,1.4207302331924438,1.9344004392623901,2.133354663848877,1.9762160778045654,1.6909351348876953,1.4376757144927979,1.2607914209365845,1.2375408411026,1.247198224067688,1.2034505605697632,0.8263468742370605,0.7855739593505859,0.7911210060119629,0.8397747874259949,0.9397642016410828,1.0418787002563477,1.1281824111938477]|1.2034505605697632|0.022108323872089386|0.004672179464250803|0.003283898113295436|33|[0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0]|
+  |3634|2.3963921070098877|ElongatedCylinder|Low|[-0.1695619374513626,1.008594274520874,0.4257681965827942]|[-0.1913250833749771,1.0218191146850586,0.4128127098083496]|1.3192967176437378|2.388773202896118|0.21397584676742554|true|35.25742107220659|[19.755704879760742,18.304271697998047,16.583255767822266,14.52197551727295,12.138203620910645,9.580709457397461,7.1021952629089355,4.950356483459473,3.298713207244873,2.1986145973205566,1.5662553310394287,1.3192967176437378,1.4072436094284058,1.6220219135284424,1.7744224071502686,1.80570650100708,1.8297003507614136,1.9185863733291626,2.0446410179138184,2.182018280029297,2.3400394916534424,2.3438832759857178,2.4185314178466797,2.433094024658203,2.3778717517852783,2.3170011043548584,2.32934308052063,2.388773202896118]|2.3400394916534424|0.02148478850722313|0.005335341673344374|0.0030782262329012156|9|[0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0]|
+  |3635|4.3171000480651855|ElongatedCylinder|Low|[-0.12416441738605499,1.0549348592758179,0.42791247367858887]|[-0.17528286576271057,1.0130916833877563,0.42876237630844116]|1.0889581441879272|1.0889581441879272|0.7931868433952332|true|35.85717918467708|[18.502355575561523,18.27083396911621,17.270139694213867,15.337618827819824,12.718391418457031,9.789525985717773,6.928038597106934,4.494130611419678,2.9154772758483887,2.4798803329467773,2.6673948764801025,2.933116912841797,3.2401137351989746,3.3816239833831787,2.6891512870788574,2.142812967300415,1.8799694776535034,1.7621996402740479,1.5325089693069458,1.0889581441879272]|3.2401137351989746|0.13765671849250793|0.007390642538666725|0.0040932828560471535|6|[0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0]|
+  |3636|2.937808036804199|Box|Mid|[-0.1312476545572281,1.0861977338790894,0.45727676153182983]|[-0.14555317163467407,1.0684548616409302,0.45085036754608154]|0.2914676070213318|0.6492407321929932|0.2071605771780014|true|37.23876329188767|[10.31956958770752,8.802988052368164,6.940525054931641,5.064373016357422,3.359471321105957,1.8927263021469116,0.7804811000823975,0.2914676070213318,0.6138421297073364,0.8282315135002136,0.9533159732818604,1.0607719421386719,1.0664030313491821,0.9736469984054565,0.9433544874191284,0.9863813519477844,0.9851071238517761,0.8984163403511047,0.7281327843666077,0.5963709950447083,0.6774990558624268,2.8396880626678467,2.403714418411255,1.9324673414230347,1.4848918914794922,1.098495602607727,0.8102396726608276,0.6492407321929932]|0.6774990558624268|0.05991054326295853|0.004092748276889324|0.0029092789627611637|19|[0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0]|
+  |3637|1.5585157871246338|Box|High|[-0.1817418932914734,1.191416621208191,0.4692378342151642]|[-0.23025259375572205,1.1904958486557007,0.4722398817539215]|0.40775224566459656|1.6980962753295898|0.2553197145462036|true|35.976718687119764|[23.194746017456055,23.1240234375,22.250764846801758,20.465267181396484,18.07330322265625,15.529826164245605,13.189214706420898,11.199926376342773,9.52406120300293,8.038626670837402,6.672653675079346,5.454441070556641,4.39469051361084,3.4986720085144043,2.740023374557495,1.9397814273834229,1.0336793661117554,0.40775224566459656,1.037522792816162,1.7057992219924927,2.211172580718994,1.4629265069961548,0.9825827479362488,0.4543554484844208,0.4402349293231964,0.9306989908218384,1.3699051141738892,1.6980962753295898]|2.211172580718994|0.017242833971977234|0.0060327318497002125|0.002987214829772711|10|[0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0]|
+  |3638|3.4792237281799316|Box|Low|[-0.16325247287750244,1.0150082111358643,0.4373423457145691]|[-0.1809995174407959,1.0283489227294922,0.43002769351005554]|1.1486928462982178|2.1363041400909424|0.1614849865436554|true|35.30202989350073|[10.394128799438477,8.186164855957031,6.03852653503418,4.224868297576904,2.7496955394744873,1.653647780418396,1.1486928462982178,1.2467883825302124,1.5465056896209717,1.6987943649291992,1.764533281326294,1.8028564453125,1.690259337425232,1.4747930765151978,1.3749431371688843,1.4346140623092651,1.5223978757858276,1.6193041801452637,1.750245451927185,1.9481781721115112,2.1063692569732666,2.0408568382263184,1.9368743896484375,1.9465082883834839,2.0731067657470703,2.136549711227417,2.1330487728118896,2.1363041400909424]|2.1063692569732666|0.00534885935485363|0.00390033470466733|0.0029892371967434883|23|[0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0]|
+  |3639|2.0999317169189453|Box|Mid|[-0.12953197956085205,1.1047871112823486,0.46129995584487915]|[-0.12611684203147888,1.1035633087158203,0.4736282229423523]|0.19728639721870422|0.5408960580825806|0.23843805491924286|true|37.302351298941566|[16.882518768310547,16.298480987548828,15.300130844116211,13.768312454223633,11.823846817016602,9.698659896850586,7.67355489730835,6.075736999511719,5.153343677520752,4.747296333312988,4.464205741882324,4.098345756530762,3.647346019744873,3.1023693084716797,2.4813685417175293,1.8571218252182007,1.3726853132247925,1.1176477670669556,1.0671550035476685,1.1756161451339722,1.3043283224105835,1.7461892366409302,1.2606699466705322,0.7163934707641602,0.3264453113079071,0.19728639721870422,0.28514009714126587,0.5408960580825806]|1.3043283224105835|0.018619094043970108|0.005742546170949936|0.003130862256512046|10|[0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0]|
+  |3640|4.020639419555664|Sphere|Mid|[-0.07282336056232452,1.155226469039917,0.44457247853279114]|[-0.13655848801136017,1.1784952878952026,0.4775695204734802]|5.1237664222717285|5.457233428955078|0.9036175012588501|false|37.418770989461336|[12.106219291687012,11.887073516845703,10.927496910095215,9.245451927185059,7.400056838989258,6.055064678192139,5.411217212677002,5.1237664222717285,5.197731971740723,11.007996559143066,9.174333572387695,7.583587646484375,6.424367427825928,5.806436538696289,5.610735893249512,5.457233428955078]|5.197731971740723|0.12554411590099335|0.00803210586309433|0.0053236945532262325|5|[0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0]|
+  |3641|2.6413474082946777|Sphere|Low|[-0.1712183803319931,1.0232043266296387,0.41830378770828247]|[-0.18267711997032166,1.0249611139297485,0.41108906269073486]|0.8129216432571411|1.002864956855774|0.1469576060771942|true|34.69635267642194|[17.45759391784668,16.137500762939453,14.335711479187012,12.083817481994629,9.625020980834961,7.259502410888672,5.193816661834717,3.6148576736450195,2.6363444328308105,2.071397304534912,1.5696130990982056,1.0513806343078613,0.8129216432571411,0.9578769207000732,1.0612804889678955,0.9755831956863403,0.8927322626113892,0.9791470766067505,1.0651450157165527,1.0607165098190308,1.0426815748214722,1.187910556793213,1.085572361946106,0.9842857718467712,0.9382396936416626,0.9692791700363159,0.9989485144615173,1.002864956855774]|1.0426815748214722|0.015525656752288342|0.005344632547348738|0.0030696671456098557|12|[0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0]|
+  |3642|1.2620552778244019|Sphere|Low|[-0.1312602162361145,1.0292799472808838,0.4370562434196472]|[-0.19579005241394043,1.0340815782546997,0.44326087832450867]|1.872833013534546|2.9891819953918457|0.6108399033546448|true|37.089663036370084|[20.891340255737305,20.74936294555664,19.731258392333984,17.740068435668945,15.093345642089844,12.181805610656738,9.298479080200195,6.684168338775635,4.661325454711914,3.4724388122558594,2.974473714828491,2.787003517150879,2.7043299674987793,2.72312068939209,2.885225296020508,3.182893991470337,2.684072732925415,2.1566312313079834,1.872833013534546,1.88119375705719,2.0804104804992676,2.4414424896240234,2.9891819953918457]|3.182893991470337|0.05378839746117592|0.008433608338236809|0.004169710446149111|8|[0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0]|
+  |3643|3.1827633380889893|ElongatedCylinder|Mid|[-0.18268278241157532,1.108489751815796,0.45304444432258606]|[-0.1941467523574829,1.107060194015503,0.4537445902824402]|0.4981037378311157|0.4981037378311157|0.16859650611877441|true|38.56947315424414|[13.283951759338379,11.755435943603516,9.870942115783691,7.9077534675598145,6.085778713226318,4.72605037689209,4.04270601272583,3.602937698364258,2.8331615924835205,1.762768268585205,0.9426671266555786,0.9300665855407715,1.2048301696777344,1.428088665008545,1.644145131111145,1.9059216976165771,2.148912191390991,2.236454963684082,2.1320278644561768,1.8367730379104614,1.6368309259414673,1.2173523902893066,1.1631443500518799,1.1730637550354004,1.086466908454895,0.9149377942085266,0.6963791251182556,0.4981037378311157]|1.6368309259414673|0.030634766444563866|0.004453351721167564|0.003326810197904706|12|[0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0]|
+  |3644|1.8034710884094238|ElongatedCylinder|High|[-0.16410599648952484,1.1950924396514893,0.4804796874523163]|[-0.18799126148223877,1.197487235069275,0.49020323157310486]|0.3280893862247467|0.4793049395084381|0.31080228090286255|true|34.829306694778744|[22.113142013549805,21.60063934326172,20.48586082458496,18.77707290649414,16.721248626708984,14.585563659667969,12.573369026184082,10.891844749450684,9.56178092956543,8.41137409210205,7.34030818939209,6.3063859939575195,5.243131637573242,4.107929229736328,2.9775493144989014,1.9287328720092773,1.1422733068466187,0.850356936454773,0.9671266078948975,1.1499271392822266,1.219704270362854,1.268770694732666,1.0623815059661865,0.8515442609786987,0.5961471796035767,0.3547673225402832,0.3280893862247467,0.4793049395084381]|1.219704270362854|0.015121103264391422|0.005406329873949289|0.003100489266216755|9|[0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0]|
+  |3645|3.7241790294647217|ElongatedCylinder|Low|[-0.17290806770324707,1.039229154586792,0.42825472354888916]|[-0.18130864202976227,1.0456393957138062,0.4320616126060486]|0.3600579798221588|1.0797256231307983|0.1928645521402359|true|36.69993467130033|[9.150331497192383,7.02732515335083,5.039035797119141,3.4176599979400635,2.1973917484283447,1.4488155841827393,1.1005501747131348,1.0656315088272095,1.1803799867630005,1.4522701501846313,1.7623915672302246,1.7683615684509277,1.4685189723968506,1.1425657272338867,0.824962854385376,0.5326120853424072,0.3600579798221588,0.40539079904556274,0.4263612926006317,0.4116189777851105,0.45109236240386963,0.6647157073020935,0.5826814770698547,0.46109431982040405,0.43979427218437195,0.6068703532218933,0.8567692041397095,1.0797256231307983]|0.45109236240386963|0.027112534269690514|0.0040748100727796555|0.0031210738234221935|20|[0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0]|
+  |3646|2.3448870182037354|ElongatedCylinder|Mid|[-0.1649940311908722,1.1026322841644287,0.44981849193573]|[-0.19301730394363403,1.1013203859329224,0.45314034819602966]|1.1326873302459717|1.1326873302459717|0.21577148139476776|true|36.86733770882711|[18.053485870361328,17.192907333374023,15.874687194824219,14.030045509338379,11.866291999816895,9.676223754882812,7.797937870025635,6.696337699890137,6.3602118492126465,6.142547607421875,5.646338939666748,4.926209449768066,4.057616710662842,3.116490602493286,2.2719972133636475,1.694402813911438,1.5115152597427368,1.526049256324768,1.440524935722351,1.331712245941162,1.3502124547958374,1.7926610708236694,1.433056116104126,1.3598670959472656,1.3656342029571533,1.2598556280136108,1.153818130493164,1.1326873302459717]|1.3502124547958374|0.01200027298182249|0.0061018443666398525|0.0037790373899042606|12|[0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0]|
+  |3647|4.265594959259033|Box|Mid|[-0.10839852690696716,1.1728864908218384,0.46367132663726807]|[-0.18966303765773773,1.1965923309326172,0.4795551598072052]|1.2182834148406982|1.2182834148406982|0.8430679440498352|false|35.962317978326034|[16.345417022705078,16.25582504272461,15.411358833312988,13.723749160766602,11.581009864807129,9.577980995178223,8.163518905639648,7.325316905975342,6.6397247314453125,5.7454352378845215,4.658514499664307,3.6466095447540283,9.12308120727539,8.072050094604492,6.637843132019043,4.977214336395264,3.4049465656280518,2.139024019241333,1.2182834148406982]|3.6466095447540283|0.06668733805418015|0.008798625320196152|0.00531770708039403|6|[0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0]|
+  |3648|2.8863027095794678|Box|Low|[-0.15866422653198242,1.0276182889938354,0.4206014573574066]|[-0.15615913271903992,1.0297589302062988,0.4308958649635315]|0.2115298956632614|1.426167607307434|0.263416588306427|true|35.831544681319166|[13.931703567504883,12.361063957214355,10.612894058227539,8.721366882324219,6.746662616729736,4.788078784942627,2.9990289211273193,1.6014795303344727,0.7589187026023865,0.3922695219516754,0.2115298956632614,0.5550619959831238,1.110539436340332,1.3995920419692993,1.329877495765686,1.059828519821167,0.8175868391990662,0.7511590719223022,0.8653322458267212,0.8741737604141235,0.6955620646476746,1.1257160902023315,0.728600263595581,0.4560602903366089,0.4230881929397583,0.6361039280891418,1.03836989402771,1.426167607307434]|0.6955620646476746|0.04563148319721222|0.0048606665804982185|0.0033648773096501827|20|[0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0]|
+  |3649|1.507010579109192|Box|Low|[-0.13779330253601074,1.0398962497711182,0.4130282998085022]|[-0.16762113571166992,1.01058030128479,0.41067200899124146]|1.1194316148757935|1.1194316148757935|0.35556474328041077|true|37.50439418049959|[20.014331817626953,19.74274444580078,18.646495819091797,16.674230575561523,14.164755821228027,11.494549751281738,9.000923156738281,6.943305015563965,5.48641300201416,4.610429763793945,4.100951194763184,3.6810014247894287,3.220621109008789,2.718043088912964,2.167541980743408,1.6999106407165527,1.4585003852844238,1.550903081893921,1.8900858163833618,2.9828853607177734,2.679309129714966,2.357097864151001,1.999541163444519,1.6408946514129639,1.3293319940567017,1.1194316148757935]|1.8900858163833618|0.053485989570617676|0.007472377736121416|0.003570972941815853|11|[0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0]|
 ```
 
 ### `results/robustness_benchmark/robustness_metrics.json`
-> 50-trajectory sensor sweep and 20-episode/condition MPPI stress tests
+> 400-trajectory sensor sweep and 50-episode/condition PIL MPPI stress tests
 
 ```yaml
 benchmark_name: Zero-Shot Sim-to-Real Domain Gap & Robustness Stress Test
 version: SPWM-v0.12.3
-checkpoint: results/spwm_v0_12_4_train_m1/model.pt
-total_benchmark_time_sec: 173.1223387500504
-sensor_benchmark_time_sec: 37.485225334065035
-mppi_benchmark_time_sec: 135.6368814590387
+checkpoint: results/spwm_v0_12_4_train_m1/best_model.pt
+split: test
+handover_dist_threshold: 0.026
+total_benchmark_time_sec: 579.821102707996
+sensor_benchmark_time_sec: 306.1516772499308
+mppi_benchmark_time_sec: 273.6689721249277
 sensor_suite (7 rows):
   |condition_name|condition_description|evaluated_trajectories|pos_mae_per_horizon|pos_mse_per_horizon|vel_mae_per_horizon|vel_mse_per_horizon|latent_mse_per_horizon|mean_spike_rate|drift_ratio|rollout_mae|rollout_vel_mae|
   |---|---|---|---|---|---|---|---|---|---|---|---|
-  |Nominal Baseline|Clean events (theta = 0.08, 0% noise)|50|{1:0.021930447779595852,10:0.029158656485378742,50:0.09414058551192284,100:0.10781355202198029}|{1:8.238844020524994e-05,10:0.0003153129364363849,50:0.0027013140497729182,100:0.003200656734406948}|{1:0.04131058417260647,10:0.2299039512872696,50:0.2915344685316086,100:0.30137890577316284}|{1:0.00031290169863495976,10:0.02135908417403698,50:0.024593469686806202,100:0.02515572588890791}|{1:0.0036306558176875114,10:0.02910272590816021,50:0.15069670230150223,100:0.4697989672422409}|0.1683722287416458|4.9161582611318275|0.06326081044971943|0.21603197744116187|
-  |Threshold Shift (theta = 0.05)|Hypersensitive contrast threshold (excessive triggers)|50|{1:0.025102506391704082,10:0.03303779102861881,50:0.09349561855196953,100:0.10733401402831078}|{1:0.0001092025195248425,10:0.0003421138972043991,50:0.0025358180282637477,100:0.0031078680185601115}|{1:0.044013673439621925,10:0.22537864744663239,50:0.2910250723361969,100:0.3004699647426605}|{1:0.00038446842518169433,10:0.021124249324202538,50:0.024447920732200146,100:0.02494172193109989}|{1:0.0037187611451372504,10:0.026389094069600105,50:0.10806606337428093,100:0.3816693276166916}|0.1619323417544365|4.275828570798918|0.0647424825001508|0.21522183949127793|
-  |Threshold Shift (theta = 0.12)|Hyposensitive contrast threshold (event dropout)|50|{1:0.023433959111571312,10:0.031197521835565567,50:0.10329414904117584,100:0.11489368975162506}|{1:9.53374183154665e-05,10:0.00033292960142716765,50:0.0033989179646596313,100:0.0036589745432138443}|{1:0.043036602437496185,10:0.23381725698709488,50:0.299067422747612,100:0.3133062720298767}|{1:0.0003255085466662422,10:0.021587561815977097,50:0.026343561708927155,100:0.02703767456114292}|{1:0.0036921744467690587,10:0.033333687111735344,50:0.22332974523305893,100:0.6906146705150604}|0.18230387568473816|4.902871478293756|0.06820482993498445|0.22230688855051994|
-  |Background Activity (0.5%)|Thermal dark current Poisson flip noise (0.5% rate)|50|{1:0.3347571939229965,10:0.3061508983373642,50:0.23902542889118195,100:0.19042761623859406}|{1:0.020275470800697803,10:0.01752731204032898,50:0.01332625187933445,100:0.00893018813803792}|{1:0.3129487633705139,10:0.44721387326717377,50:0.6663545072078705,100:0.509506106376648}|{1:0.01846904493868351,10:0.07899007201194763,50:0.11529530957341194,100:0.07292498648166656}|{1:0.012809284031391144,10:0.045519033446908,50:0.14703867584466934,100:0.4213939309120178}|0.16454238444566727|0.5688529468388295|0.2675902843475342|0.48400581255555153|
-  |Background Activity (1.0%)|Thermal dark current Poisson flip noise (1.0% rate)|50|{1:0.4100620299577713,10:0.3942795991897583,50:0.2826600968837738,100:0.2199886590242386}|{1:0.030094170942902565,10:0.02921116165816784,50:0.018224515952169895,100:0.011876245029270649}|{1:0.4365050792694092,10:0.5103726387023926,50:0.766610324382782,100:0.5773968696594238}|{1:0.03593316860496998,10:0.08776632323861122,50:0.14234652370214462,100:0.0892469473183155}|{1:0.014208784326910973,10:0.05093478970229626,50:0.13923776894807816,100:0.38041384518146515}|0.1606636494398117|0.5364765400173561|0.3267475962638855|0.5727212280035019|
-  |Refractory Dropout (10%)|Dead-time/bus saturation active event masking (10% rate)|50|{1:0.023287813179194927,10:0.030391262844204903,50:0.09674662351608276,100:0.10961677506566048}|{1:9.32960829231888e-05,10:0.00032667220511939377,50:0.002860643435269594,100:0.0033075505634769797}|{1:0.04114950820803642,10:0.22835002839565277,50:0.29155075550079346,100:0.3030034005641937}|{1:0.00031244057754520327,10:0.02091586496680975,50:0.024677231907844543,100:0.025404768995940685}|{1:0.003716578707098961,10:0.029916787520051003,50:0.16612444072961807,100:0.5027956962585449}|0.1706780046224594|4.7070445911851815|0.06501061865128577|0.2160134231671691|
-  |Refractory Dropout (20%)|Dead-time/bus saturation active event masking (20% rate)|50|{1:0.02431896049529314,10:0.030996902845799923,50:0.09916341304779053,100:0.1112130768597126}|{1:0.00010261240095132962,10:0.00032603551517240703,50:0.0030260069761425257,100:0.003406619536690414}|{1:0.0409739650785923,10:0.2312559261918068,50:0.2925983816385269,100:0.30442844331264496}|{1:0.00031936295272316784,10:0.021225028671324253,50:0.02498574275523424,100:0.02571234479546547}|{1:0.003769209375604987,10:0.030906815081834793,50:0.1839912086725235,100:0.5425122976303101}|0.1731717213988304|4.57310158800733|0.06642308831214905|0.21731417905539274|
+  |Nominal Baseline|Clean events (theta = 0.08, 0% noise)|400|{1:0.021866663430745784,10:0.0280087895404834,50:0.08357812464237213,100:0.10119512734504846}|{1:8.261299920447457e-05,10:0.00025150049791241495,50:0.0018420498728608857,100:0.0025279655461557782}|{1:0.043133348799668826,10:0.2146205615538817,50:0.2703980757639958,100:0.28352354352290815}|{1:0.0003449317278304639,10:0.01601280694684157,50:0.020913268081270732,100:0.021970406317940123}|{1:0.0036323230821066177,10:0.029199937501778968,50:0.1523307068989827,100:0.4701635379057664}|0.16886679369669694|4.627826630502864|0.058662176239662446|0.20291888241011363|
+  |Threshold Shift (theta = 0.05)|Hypersensitive contrast threshold (excessive triggers)|400|{1:0.02434844022186903,10:0.0311208377377345,50:0.08291540753382903,100:0.10027076017398101}|{1:0.00010200044422302968,10:0.00027270377680766757,50:0.0017328091019477982,100:0.0024490583455190063}|{1:0.04525788472248958,10:0.21077184837598067,50:0.2722240182069632,100:0.2828080172722156}|{1:0.0004267896068855547,10:0.015791650001819316,50:0.021022879017087128,100:0.021868897745242484}|{1:0.0036948650108220484,10:0.02638488678404918,50:0.10624228360561225,100:0.379447503731801}|0.16239957282176384|4.118159490311863|0.0596638614168534|0.20276544214441228|
+  |Threshold Shift (theta = 0.12)|Hyposensitive contrast threshold (event dropout)|400|{1:0.02378764204107798,10:0.030523547616142493,50:0.09119394077704503,100:0.1088219560109652}|{1:9.874529832114394e-05,10:0.0002712722623702855,50:0.002337033027568116,100:0.0029515724163502455}|{1:0.04488573853786175,10:0.21711571858479425,50:0.2768082320690155,100:0.2975696875498845}|{1:0.00035693880188493774,10:0.016278337973814744,50:0.022404052317142487,100:0.024400545713993218}|{1:0.0036737392119203624,10:0.033397352179655664,50:0.2237849900355706,100:0.6997736096382141}|0.18293448021778694|4.574726482895811|0.06358177161130768|0.20909484418538898|
+  |Background Activity (0.5%)|Thermal dark current Poisson flip noise (0.5% rate)|400|{1:0.30989960523752064,10:0.283331403365502,50:0.21347965987829062,100:0.1741357113306339}|{1:0.017396035962379895,10:0.015061042844676055,50:0.010069513191970495,100:0.007026396297778075}|{1:0.28225606221419114,10:0.4105911667530353,50:0.6197603803414565,100:0.4707247775334578}|{1:0.01515914098574565,10:0.06220898691278238,50:0.09822860933267154,100:0.06217856533252276}|{1:0.012375020851882605,10:0.04393538202230747,50:0.14769999568278974,100:0.42187062822855437}|0.16496152717333573|0.5619100779336865|0.24521159495298678|0.44583309671053517|
+  |Background Activity (1.0%)|Thermal dark current Poisson flip noise (1.0% rate)|400|{1:0.3967986267346602,10:0.3823115940277393,50:0.26958138667620146,100:0.21231906574506026}|{1:0.027938672413046543,10:0.02713170790901551,50:0.015920649425914653,100:0.010550613443438824}|{1:0.41660942710362947,10:0.48122223294698274,50:0.7480433491560129,100:0.5626890888580909}|{1:0.03242027917160438,10:0.07405852612394553,50:0.13276195239562255,100:0.08351876586675644}|{1:0.013969818201775733,10:0.05016351806429716,50:0.14118089240330917,100:0.37954342594513524}|0.16082481810679802|0.5350801425203477|0.3152526682959153|0.552141024516179|
+  |Refractory Dropout (10%)|Dead-time/bus saturation active event masking (10% rate)|400|{1:0.023128399052298985,10:0.02896793272632819,50:0.08507037793214504,100:0.10247140778945042}|{1:9.313903025870856e-05,10:0.0002581641937677677,50:0.0019213098119227933,100:0.002592817987673558}|{1:0.04307255234855872,10:0.21461740938516763,50:0.2702915072441101,100:0.2851291230091682}|{1:0.0003505987786831191,10:0.015979128459898326,50:0.02102163118811754,100:0.02227333947443045}|{1:0.0036899231625004457,10:0.030018638962736495,50:0.1686514042890989,100:0.5061306701256678}|0.1711532209928219|4.43054478426014|0.059909529375055656|0.20327764799675113|
+  |Refractory Dropout (20%)|Dead-time/bus saturation active event masking (20% rate)|400|{1:0.024738904948417958,10:0.029932929202914238,50:0.08702022926165508,100:0.10421608503048237}|{1:0.00010756217502953055,10:0.00026523186086426274,50:0.002029965604798725,100:0.0026821902630707393}|{1:0.043136574901067294,10:0.21473453365839446,50:0.27093966878377473,100:0.28750301553652835}|{1:0.00035260149161331356,10:0.0160292827595885,50:0.02124805347277568,100:0.022672553188525714}|{1:0.0037681947354800426,10:0.030889696943072174,50:0.1845304725261835,100:0.5457320488416232}|0.1735646678851201|4.21263937299484|0.06147703711086741|0.2040784482199412|
 mppi_suite (5 items):
   - [0]
     condition_name: Nominal Baseline
     condition_description: Nominal visual telemetry, calibrated dynamics and friction
-    episodes_evaluated: 20
-    grasp_success_rate_pct: 100.0
-    min_placement_error_mean_cm: 1.0100752845406533
-    min_placement_error_std_cm: 0.5076732662319127
-    terminal_placement_error_mean_cm: 1.8064247757196426
-    terminal_velocity_mean: 0.6173681676387787
-    mean_latency_ms: 45.935406044244644
+    episodes_evaluated: 50
+    grasp_success_rate_pct: 86.0
+    min_placement_error_mean_cm: 0.8552020224928856
+    min_placement_error_std_cm: 0.7991095820631844
+    terminal_placement_error_mean_cm: 1.5668222349882126
+    terminal_velocity_mean: 0.32701518952846526
+    mean_latency_ms: 36.05713042749771
     elevation_plane_breakdown:
-      Low: {count:8.0,success_rate_pct:100.0,mean_error_cm:1.1962089724838734,mean_terminal_error_cm:2.033821016550064}
-      Mid: {count:8.0,success_rate_pct:100.0,mean_error_cm:0.9447571001946926,mean_terminal_error_cm:1.851724348962307}
-      High: {count:4.0,success_rate_pct:100.0,mean_error_cm:0.7684442773461342,mean_terminal_error_cm:1.261033147573471}
+      Low: {count:22.0,success_rate_pct:86.36363636363636,mean_error_cm:0.855392383580858,mean_terminal_error_cm:1.9869136796756224}
+      Mid: {count:18.0,success_rate_pct:77.77777777777779,mean_error_cm:1.054786902334955,mean_terminal_error_cm:1.3530784381760492}
+      High: {count:10.0,success_rate_pct:100.0,mean_error_cm:0.4955304443836212,mean_terminal_error_cm:1.0273598909378052}
     mass_tier_breakdown:
-      Light (1.2 - 2.3 kg): {count:7.0,success_rate_pct:100.0,mean_error_cm:1.0693898754460471,mean_terminal_error_cm:1.8775200928960527}
-      Medium (2.3 - 3.4 kg): {count:7.0,success_rate_pct:100.0,mean_error_cm:1.0612847677298956,mean_terminal_error_cm:1.7037265300750732}
-      Heavy (3.4 - 4.5+ kg): {count:6.0,success_rate_pct:100.0,mean_error_cm:0.8811305314302444,mean_terminal_error_cm:1.8432948589324951}
+      Light (1.2 - 2.3 kg): {count:17.0,success_rate_pct:82.35294117647058,mean_error_cm:0.6789520838681389,mean_terminal_error_cm:1.643607579609927}
+      Medium (2.3 - 3.4 kg): {count:17.0,success_rate_pct:100.0,mean_error_cm:0.767013340311892,mean_terminal_error_cm:1.453135742860682}
+      Heavy (3.4 - 4.5+ kg): {count:16.0,success_rate_pct:75.0,mean_error_cm:1.1361680570989847,mean_terminal_error_cm:1.6060297042131424}
+    episodes_with_handover_pct: 0.0
+    phi1_steps_with_handover_pct: 0.0
+    mean_nonzero_handover_w: 0.0
+    total_phi1_steps: 400
+    triggered_phi1_steps: 0
+    triggered_episodes: 0
   - [1]
     condition_name: Sensory Noise Injection (1.0%)
     condition_description: Visual events corrupted with 1.0% Background Activity noise
-    episodes_evaluated: 20
-    grasp_success_rate_pct: 95.0
-    min_placement_error_mean_cm: 1.1920840561389923
-    min_placement_error_std_cm: 1.0678772836030415
-    terminal_placement_error_mean_cm: 2.3059052526950836
-    terminal_velocity_mean: 0.7492431208491326
-    mean_latency_ms: 50.22398696532043
+    episodes_evaluated: 50
+    grasp_success_rate_pct: 72.0
+    min_placement_error_mean_cm: 0.9837424418330193
+    min_placement_error_std_cm: 0.8029913824759806
+    terminal_placement_error_mean_cm: 1.8598396837711335
+    terminal_velocity_mean: 0.2989905294775963
+    mean_latency_ms: 34.990572020690095
     elevation_plane_breakdown:
-      Low: {count:8.0,success_rate_pct:100.0,mean_error_cm:1.1163961961865425,mean_terminal_error_cm:2.6198011115193367}
-      Mid: {count:8.0,success_rate_pct:87.5,mean_error_cm:1.5847439169883728,mean_terminal_error_cm:2.5646226704120636}
-      High: {count:4.0,success_rate_pct:100.0,mean_error_cm:0.5581400543451309,mean_terminal_error_cm:1.1606786996126175}
+      Low: {count:22.0,success_rate_pct:63.63636363636363,mean_error_cm:1.1564414731480859,mean_terminal_error_cm:2.533061908050017}
+      Mid: {count:18.0,success_rate_pct:66.66666666666666,mean_error_cm:0.9351571831438277,mean_terminal_error_cm:1.383733461300532}
+      High: {count:10.0,success_rate_pct:100.0,mean_error_cm:0.6912580385804177,mean_terminal_error_cm:1.2357419908046723}
     mass_tier_breakdown:
-      Light (1.2 - 2.3 kg): {count:7.0,success_rate_pct:100.0,mean_error_cm:0.9026004586900983,mean_terminal_error_cm:2.2878914645739963}
-      Medium (2.3 - 3.4 kg): {count:7.0,success_rate_pct:100.0,mean_error_cm:1.0819873341492243,mean_terminal_error_cm:2.0509549464498247}
-      Heavy (3.4 - 4.5+ kg): {count:6.0,success_rate_pct:83.33333333333334,mean_error_cm:1.6582610954840977,mean_terminal_error_cm:2.624363362789154}
+      Light (1.2 - 2.3 kg): {count:17.0,success_rate_pct:82.35294117647058,mean_error_cm:0.8425054918317234,mean_terminal_error_cm:1.7817925039459677}
+      Medium (2.3 - 3.4 kg): {count:17.0,success_rate_pct:82.35294117647058,mean_error_cm:0.9956889766104081,mean_terminal_error_cm:1.9012414111810572}
+      Heavy (3.4 - 4.5+ kg): {count:16.0,success_rate_pct:50.0,mean_error_cm:1.1211135080084205,mean_terminal_error_cm:1.898775476962328}
+    episodes_with_handover_pct: 0.0
+    phi1_steps_with_handover_pct: 0.0
+    mean_nonzero_handover_w: 0.0
+    total_phi1_steps: 400
+    triggered_phi1_steps: 0
+    triggered_episodes: 0
   - [2]
     condition_name: Payload Extrapolation (4.80 kg)
     condition_description: Out-of-distribution heavy payload (m=4.80 kg vs [1.20, 4.50] kg)
-    episodes_evaluated: 20
-    grasp_success_rate_pct: 70.0
-    min_placement_error_mean_cm: 2.840679243952036
-    min_placement_error_std_cm: 2.562727050795405
-    terminal_placement_error_mean_cm: 4.3670338720083235
-    terminal_velocity_mean: 0.6519881308078765
-    mean_latency_ms: 46.683162903940236
+    episodes_evaluated: 50
+    grasp_success_rate_pct: 78.0
+    min_placement_error_mean_cm: 1.245790022313595
+    min_placement_error_std_cm: 1.0984275509927777
+    terminal_placement_error_mean_cm: 1.7834283006191254
+    terminal_velocity_mean: 0.43445359870791433
+    mean_latency_ms: 37.20313749923503
     elevation_plane_breakdown:
-      Low: {count:8.0,success_rate_pct:100.0,mean_error_cm:1.411405999213457,mean_terminal_error_cm:2.2487796992063522}
-      Mid: {count:8.0,success_rate_pct:62.5,mean_error_cm:3.500629311427474,mean_terminal_error_cm:4.722257271409035}
-      High: {count:4.0,success_rate_pct:25.0,mean_error_cm:4.379325598478317,mean_terminal_error_cm:7.893095418810844}
+      Low: {count:22.0,success_rate_pct:77.27272727272727,mean_error_cm:1.1498750068924644,mean_terminal_error_cm:2.083613170818849}
+      Mid: {count:18.0,success_rate_pct:77.77777777777779,mean_error_cm:1.4548369869589806,mean_terminal_error_cm:1.7425566514333088}
+      High: {count:10.0,success_rate_pct:80.0,mean_error_cm:1.0805185198783875,mean_terminal_error_cm:1.1965905547142028}
     mass_tier_breakdown:
-      Light (1.2 - 2.3 kg): {count:7.0,success_rate_pct:100.0,mean_error_cm:1.2827991183315004,mean_terminal_error_cm:2.7702027218682423}
-      Medium (2.3 - 3.4 kg): {count:7.0,success_rate_pct:71.42857142857143,mean_error_cm:2.952100157737732,mean_terminal_error_cm:4.26131489447185}
-      Heavy (3.4 - 4.5+ kg): {count:6.0,success_rate_pct:33.33333333333333,mean_error_cm:4.528214991092682,mean_terminal_error_cm:6.353342354297638}
+      Light (1.2 - 2.3 kg): {count:17.0,success_rate_pct:76.47058823529412,mean_error_cm:0.876447988783612,mean_terminal_error_cm:1.3729157938676722}
+      Medium (2.3 - 3.4 kg): {count:17.0,success_rate_pct:88.23529411764706,mean_error_cm:1.072767906329211,mean_terminal_error_cm:1.7970439546248491}
+      Heavy (3.4 - 4.5+ kg): {count:16.0,success_rate_pct:68.75,mean_error_cm:1.8220519311726093,mean_terminal_error_cm:2.205131206661463}
+    episodes_with_handover_pct: 0.0
+    phi1_steps_with_handover_pct: 0.0
+    mean_nonzero_handover_w: 0.0
+    total_phi1_steps: 400
+    triggered_phi1_steps: 0
+    triggered_episodes: 0
   - [3]
     condition_name: Actuator Drift (0.80x Friction)
     condition_description: Mechanical wear / loose joints (-20% friction/damping)
-    episodes_evaluated: 20
+    episodes_evaluated: 50
     grasp_success_rate_pct: 70.0
-    min_placement_error_mean_cm: 2.6926072530448435
-    min_placement_error_std_cm: 2.467932780999888
-    terminal_placement_error_mean_cm: 3.695260724425316
-    terminal_velocity_mean: 0.5818803250789643
-    mean_latency_ms: 50.046350437834306
+    min_placement_error_mean_cm: 1.3162081634998322
+    min_placement_error_std_cm: 1.1690919022908202
+    terminal_placement_error_mean_cm: 2.0683961123228074
+    terminal_velocity_mean: 0.3934475040435791
+    mean_latency_ms: 36.6571082404878
     elevation_plane_breakdown:
-      Low: {count:8.0,success_rate_pct:87.5,mean_error_cm:1.6305343974381685,mean_terminal_error_cm:2.3042124211788177}
-      Mid: {count:8.0,success_rate_pct:62.5,mean_error_cm:3.4798328541219234,mean_terminal_error_cm:4.368916355073452}
-      High: {count:4.0,success_rate_pct:50.0,mean_error_cm:3.2423017621040344,mean_terminal_error_cm:5.13004606962204}
+      Low: {count:22.0,success_rate_pct:63.63636363636363,mean_error_cm:1.1889834607189351,mean_terminal_error_cm:2.53419767184691}
+      Mid: {count:18.0,success_rate_pct:72.22222222222221,mean_error_cm:1.5544826421472762,mean_terminal_error_cm:1.7902768933110766}
+      High: {count:10.0,success_rate_pct:80.0,mean_error_cm:1.1672084480524063,mean_terminal_error_cm:1.5442472755908967}
     mass_tier_breakdown:
-      Light (1.2 - 2.3 kg): {count:7.0,success_rate_pct:100.0,mean_error_cm:1.2550513531480516,mean_terminal_error_cm:2.0974117262022838}
-      Medium (2.3 - 3.4 kg): {count:7.0,success_rate_pct:57.14285714285714,mean_error_cm:2.6176903950316563,mean_terminal_error_cm:3.960586820329939}
-      Heavy (3.4 - 4.5+ kg): {count:6.0,success_rate_pct:50.0,mean_error_cm:4.457158803939819,mean_terminal_error_cm:5.249870777130127}
+      Light (1.2 - 2.3 kg): {count:17.0,success_rate_pct:88.23529411764706,mean_error_cm:0.8253367402974296,mean_terminal_error_cm:1.5288092020679922}
+      Medium (2.3 - 3.4 kg): {count:17.0,success_rate_pct:70.58823529411765,mean_error_cm:1.1374130424331217,mean_terminal_error_cm:2.021532507503734}
+      Heavy (3.4 - 4.5+ kg): {count:16.0,success_rate_pct:50.0,mean_error_cm:2.0277288667857647,mean_terminal_error_cm:2.691499784588814}
+    episodes_with_handover_pct: 0.0
+    phi1_steps_with_handover_pct: 0.0
+    mean_nonzero_handover_w: 0.0
+    total_phi1_steps: 400
+    triggered_phi1_steps: 0
+    triggered_episodes: 0
   - [4]
     condition_name: Actuator Drift (1.20x Friction)
     condition_description: Mechanical wear / stiff transmission (+20% friction/damping)
-    episodes_evaluated: 20
-    grasp_success_rate_pct: 60.0
-    min_placement_error_mean_cm: 2.6456326082348824
-    min_placement_error_std_cm: 2.262685901727287
-    terminal_placement_error_mean_cm: 4.55549341738224
-    terminal_velocity_mean: 0.654160974919796
-    mean_latency_ms: 46.55089773193158
+    episodes_evaluated: 50
+    grasp_success_rate_pct: 76.0
+    min_placement_error_mean_cm: 1.3224645945429803
+    min_placement_error_std_cm: 1.2224200163900485
+    terminal_placement_error_mean_cm: 1.9732722735404968
+    terminal_velocity_mean: 0.3801573750376701
+    mean_latency_ms: 36.835968496259994
     elevation_plane_breakdown:
-      Low: {count:8.0,success_rate_pct:87.5,mean_error_cm:1.2761128172278404,mean_terminal_error_cm:2.788045085966587}
-      Mid: {count:8.0,success_rate_pct:62.5,mean_error_cm:3.1257375739514828,mean_terminal_error_cm:4.062019526958466}
-      High: {count:4.0,success_rate_pct:0.0,mean_error_cm:4.424462258815765,mean_terminal_error_cm:9.077337861061096}
+      Low: {count:22.0,success_rate_pct:72.72727272727273,mean_error_cm:1.1845615858381444,mean_terminal_error_cm:2.3086387406695974}
+      Mid: {count:18.0,success_rate_pct:72.22222222222221,mean_error_cm:1.6079355710082583,mean_terminal_error_cm:1.8520427114433713}
+      High: {count:10.0,success_rate_pct:90.0,mean_error_cm:1.112003456056118,mean_terminal_error_cm:1.4536792576313018}
     mass_tier_breakdown:
-      Light (1.2 - 2.3 kg): {count:7.0,success_rate_pct:100.0,mean_error_cm:1.1930531050477708,mean_terminal_error_cm:2.361404061317444}
-      Medium (2.3 - 3.4 kg): {count:7.0,success_rate_pct:42.857142857142854,mean_error_cm:2.740092545747757,mean_terminal_error_cm:5.275590692247663}
-      Heavy (3.4 - 4.5+ kg): {count:6.0,success_rate_pct:33.33333333333333,mean_error_cm:4.230105434854825,mean_terminal_error_cm:6.275150845448176}
+      Light (1.2 - 2.3 kg): {count:17.0,success_rate_pct:100.0,mean_error_cm:0.8716237729086596,mean_terminal_error_cm:1.2805503992473377}
+      Medium (2.3 - 3.4 kg): {count:17.0,success_rate_pct:76.47058823529412,mean_error_cm:1.0381577838869656,mean_terminal_error_cm:2.0561175486620735}
+      Heavy (3.4 - 4.5+ kg): {count:16.0,success_rate_pct:50.0,mean_error_cm:2.1035589538514614,mean_terminal_error_cm:2.621266160160303}
+    episodes_with_handover_pct: 0.0
+    phi1_steps_with_handover_pct: 0.0
+    mean_nonzero_handover_w: 0.0
+    total_phi1_steps: 400
+    triggered_phi1_steps: 0
+    triggered_episodes: 0
 ```
 
 ## 2. Architecture, Training & Environment Context
 
 ### `docs/DOSSIER.md`
-> High-level system narrative, v0.12.20 vs. v0.12.4 comparisons, and ghost rollout metrics
+> High-level system narrative, CoRL grounded PIL benchmarks, multi-seed validation, and deploy-ready architecture
 
 # Technical Dossier & Academic Readiness Audit
 **Project**: SPWM (Spiking Predictive World Model for 3D Articulated Manipulation)
@@ -1658,7 +3987,7 @@ Evaluated on the 400 held-out test set trajectories under the production `SPWM-v
 > **Multi-Horizon Stability (`SPWM-v0.12.4`)**: On the 400 held-out test trajectories (`results/spwm_v0_12_4_train_m1/metrics_spwm_v0_12_4.json`, `results/ssot_eval_metrics.json`), `SPWM-v0.12.4` achieves $0.0219\,\text{rad}$ one-step ($H=1$) position error and $0.1186\,\text{rad}$ at $H=100$ ($0.1115\,\text{rad}$ pure open-loop mean error over $h \in [1, 100]$ vs $0.1482\,\text{rad}$ with un-gated phasic sensory handover).
 
 ### 4.2 Active Perception Sensory Handover
-Unconditional mid-trajectory phasic sensory re-injection degrades $H=100$ rollout tracking ($0.1482\,\text{rad}$ vs.\ $0.1115\,\text{rad}$ pure open-loop) by perturbing $M_1$'s autonomous momentum manifold. Consequently, `SPWM-v0.12.4` employs **Residual-Gated Sensory Handover** strictly as an online closed-loop gate during `phase_flags == 1`, improving closed-loop grasp success from $76.0\%$ (`no_handover`) to $96.0\%$ (Latent-Grounded) / $\ge 90.0\%$ (Physics-in-the-Loop).
+Unconditional mid-trajectory phasic sensory re-injection degrades $H=100$ rollout tracking ($0.1482\,\text{rad}$ vs.\ $0.1115\,\text{rad}$ pure open-loop) by perturbing $M_1$'s autonomous momentum manifold. Consequently, `SPWM-v0.12.4` pairs **2-Stage SE(3) Lookahead** with **Residual-Gated Sensory Handover** strictly as an online closed-loop safety gate during `phase_flags == 1`. Disentangling Stage 4 in 50-episode Physics-in-the-Loop (PIL, `t >= t_c`) evaluation confirms that **2-Stage SE(3) Lookahead alone (`Stage 4a`, $w_t \equiv 0$)** drives the full `+14.0 pp` gain from `72.0%` (`Stage 3`) to **`86.0%` (`43/50`)** on canonical Seed `42`, while the residual gate enforces a `0.0%` false-trigger rate on nominal episodes across all 3 seeds (rejecting `dist_obs = 0.16–0.22 m` post-contact event bursts) and activates selectively only under mechanical OOD drift (Seed `2024`: `4.0%` of episodes / `0.5%` of $\phi_t=1$ steps).
 
 ### 4.3 Biological Plausibility Metrics
 - **Mean Firing Sparsity**: $\bar{s} = 0.1227$ ($12.27\%$ measured ALIF spike rate on `results/ssot_eval_metrics.json`; $16.89\%$ on `results/spwm_v0_12_4_train_m1/metrics_spwm_v0_12_4.json`). Meets the biophysical sparsity design target of $10.0\% - 17.0\%$, avoiding both silent network quiescence ($< 5\%$) and energetic saturation ($> 25\%$).
@@ -1686,7 +4015,7 @@ timeline
         SPWM-v0.6.0 : Dual-Camera Perception (Global + Wrist, C=4) : Depth Disambiguation
         SPWM-v0.7.2 : Anti-Fallback AST Enforcement : Zero-Lag Decoder Sweep (alpha=0.0)
         SPWM-v0.7.3 : Anthropomorphic Humanoid Rig : Continuous Soft-Fade Baseline
-        SPWM-v0.12.4 : SE(3) + Stasis Damping Gate : Deploy-Ready MPPI (96.0% Grasp)
+        SPWM-v0.12.4 : SE(3) + ALIF Homeostasis : Deploy-Ready PIL MPPI (86.0% Seed 42)
 ```
 
 ### 5.1 Chronological Milestone Progression
@@ -1699,7 +4028,7 @@ timeline
 7. **SPWM-v0.6.0 (Dual-Camera Active Perception, $C=4$)**: Added egocentric wrist-mounted event camera paired with static head observer, resolving axial wrist roll symmetry and elbow flex depth foreshortening.
 8. **SPWM-v0.7.2 (Anti-Fallback Enforcement & Zero-Lag Readout)**: Completely eliminated all silent fallbacks (`getattr`, ternary `hasattr`, `strict=False`). Conducted 9-combination grid sweep over decoder EMA smoothing factors, establishing optimal zero-lag filtering ($\alpha_{\text{pos}} = 0.0, \alpha_{\text{vel}} = 0.0$).
 9. **SPWM-v0.7.3**: Integrated anthropomorphic right humanoid arm kinematics, continuous soft-fade sensory handover, and procedural object variance ($1.20 - 4.50\,\text{kg}$).
-10. **SPWM-v0.12.4 (Production Baseline)**: Added Stasis Damping Gate (`stasis_sigma = 0.003`), direct momentum velocity slice (`v_p = p_next[:, :q_dim]`), active-perception soft-fade handover ($w_{\text{max}} = 0.60$, window `[t_contact-7, t_contact+7]`), $SE(3)$ supervision, and deploy-ready Latent MPPI (`96.0%` grasp success).
+10. **SPWM-v0.12.4 (Production Baseline)**: Added Stasis Damping Gate (`stasis_sigma = 0.003`), direct momentum velocity slice (`v_p = p_next[:, :q_dim]`), active-perception soft-fade handover, ALIF homeostasis ($\lambda_{\text{spike\_balance}} = 0.25$), $SE(3)$ supervision, and deploy-ready Latent MPPI (**`86.0%`** PIL grasp success on Seed `42`; **`58.0 ± 27.1%`** across 3 seeds).
 
 ### 5.2 Negative Ablations & Post-Mortem Log
 
@@ -1750,218 +4079,136 @@ flowchart TD
     RepoCurrent -.->|"Comparative Benchmarks Completed"| MissingPublication
 ```
 
-### 6.1 Missing Comparative Baselines [COMPLETED]
-- [x] **Current Repo State**: Benchmarked head-to-head against 3 non-spiking deep recurrent architectures (Continuous RSSM, Deep GRU, Continuous ConvLSTM) in `results/spwm_v0_12_4_train_m1/comparative_metrics_v0_12_4.json` (historical `results/baselines/` pruned during SSOT consolidation):
-  - **Baseline 1: Continuous RSSM (DreamerV3 style)**: Continuous RSSM with deterministic GRU state $h_t \in \mathbb{R}^{256}$ + stochastic Gaussian state $s_t \in \mathbb{R}^{32}$ (380.5k params).
-  - **Baseline 2: Deep GRU Predictor**: 2-layer action-conditioned GRU predictor matched to parameter budget (338.9k params).
-  - **Baseline 3: Continuous ConvLSTM**: Spatial-temporal ConvLSTM operating directly on 2D convolutional feature maps (296.9k params).
-  - **Comparative Metric Table (Empirical Benchmark)**:
+### 6.1 Comparative Baselines [COMPLETED — CoRL Final Grounded Parity]
+- [x] **Current Repo State**: Benchmarked head-to-head against 3 non-spiking deep recurrent architectures (Continuous RSSM across seeds `42, 101, 2024`, Deep GRU, Continuous ConvLSTM), Parameter-Matched `ANN-Rate` (across seeds `42, 101, 2024`), Reactive BC, and Privileged Jacobian-IK + PD under equalized SE(3) + multi-step rollout training (`4,000` trajectories, `results/spwm_v0_12_4_train_m1/comparative_metrics_v0_12_4.json`):
+  - **Continuous RSSM**: Deterministic GRU $h_t \in \mathbb{R}^{256}$ + stochastic $s_t \in \mathbb{R}^{32}$ (380.5k params, 3 seeds).
+  - **Deep GRU Predictor**: 2-layer action-conditioned GRU (338.9k params).
+  - **Continuous ConvLSTM**: Spatial-temporal ConvLSTM on 2D conv maps (296.9k params).
+  - **Open-Loop Multi-Horizon Table ($N=400$, $H=100$, $t_{\text{start}}=4$; multi-seed mean $\pm$ std over seeds `[42, 101, 2024]`):**
 
-| Model Architecture | Params | Latency (ms) | Pos MSE (H=1) | Pos MSE (H=10) | Pos MSE (H=50) | Pos MSE (H=100) | Vel MSE (H=1) | Vel MSE (H=10) | Vel MSE (H=50) | Vel MSE (H=100) |
+| Model Architecture | Active (Total) Params | Seeds | Pos MSE (H=1) | Pos MSE (H=10) | Pos MSE (H=50) | Pos MSE (H=100) | Vel MSE (H=1) | Vel MSE (H=10) | Vel MSE (H=50) | Vel MSE (H=100) |
 | :--- | :---: | :---: | :---: | :---: | :---: | :---: | :---: | :---: | :---: | :---: |
-| **SPWM** | **328.7k** | 1.95 | 0.10635 | 0.02117 | 0.01425 | 0.01728 | **0.00027** | **0.01118** | **0.01262** | **0.01153** |
-| **Continuous RSSM** | 380.5k | 1.79 | **0.01319** | **0.00679** | **0.01394** | **0.01305** | 0.00388 | 0.03410 | 0.05901 | 0.04894 |
-| **Deep GRU** | 338.9k | 1.47 | 0.01472 | 0.57502 | 0.81406 | 0.77883 | 0.02032 | 0.22951 | 0.20108 | 0.16139 |
-| **Continuous ConvLSTM** | 296.9k | 0.95 | 0.15692 | 0.46418 | 0.36748 | 0.30935 | 0.03959 | 0.06667 | 0.18170 | 0.13567 |
+| **SPWM-v0.12.4** | **317.9k (392.1k)** | 3 | `0.00018 ± 0.00011` | `0.00348 ± 0.00265` | `0.00315 ± 0.00144` | `0.00240 ± 0.00037` | `0.00139 ± 0.00076` | `0.04507 ± 0.02601` | `0.02466 ± 0.01271` | **`0.00971 ± 0.00177`** |
+| **ANN-Rate** | 317.9k (392.1k) | 3 | `0.00028 ± 0.00012` | `0.00249 ± 0.00032` | `0.00341 ± 0.00264` | `0.00210 ± 0.00063` | `0.00193 ± 0.00069` | `0.03356 ± 0.00511` | `0.02440 ± 0.01698` | `0.01183 ± 0.00715` |
+| **Continuous RSSM** | 380.5k | 3 | **`0.00001 ± 0.00001`** | `0.00029 ± 0.00006` | `0.00166 ± 0.00002` | **`0.00145 ± 0.00009`** | **`0.00033 ± 0.00017`** | `0.01659 ± 0.00244` | `0.02262 ± 0.00088` | `0.02101 ± 0.00044` |
+| **Deep GRU** | 338.9k | 1 | `0.00003` | `0.00029` | `0.00173` | `0.00650` | `0.00097` | `0.00643` | `0.01605` | `0.11191` |
+| **Continuous ConvLSTM** | 296.9k | 1 | `0.00002` | **`0.00012`** | **`0.00150`** | `0.00707` | `0.00147` | **`0.00553`** | **`0.01095`** | `0.33696` |
 
 > **Key Empirical Takeaways**:
-> 1. **Velocity Accuracy**: SPWM achieves **4.2x lower velocity MSE at H=100** ($0.01153$ vs $0.04894$) compared to Continuous RSSM, and over **14x lower** compared to Deep GRU ($0.16139$). SPWM's symplectic/dissipative phase-space factorization ($q, p$) prevents unbounded velocity drift during long-horizon unrolls.
-> 2. **Position Tracking Trade-offs**: Continuous RSSM achieves the lowest position tracking error across all evaluated horizons ($0.01305$ at $H=100$, $0.2510\,\text{rad}$ $L_2$ error), but exhibits compounding velocity drift ($0.04894$). Deep GRU collapses beyond $H=1$ due to exposure bias ($\text{MSE}_{\text{pos}}$ rises 52x from $0.01472$ to $0.77883$, $L_2$ error $2.12\,\text{rad}$). ConvLSTM exhibits notable drift ($\text{MSE}_{\text{pos}} = 0.30935$). SPWM maintains competitive, bounded position tracking ($0.01425$ at $H=50$, $0.01728$ at $H=100$, $0.2740\,\text{rad}$ $L_2$ error) while preserving stable kinematics.
-> 3. **Comparative Metrics**: Consolidated in [`results/spwm_v0_12_4_train_m1/comparative_metrics_v0_12_4.json`](file:///Users/Mattia/Desktop/Studies/Temp/results/spwm_v0_12_4_train_m1/comparative_metrics_v0_12_4.json).
+> 1. **Lowest Long-Horizon Velocity Error**: With equalized SE(3) + multi-step rollout training, all baselines stabilize at $H \le 50$, but at $H=100$ `SPWM-v0.12.4` achieves **`0.00971 ± 0.00177` rad²/s²** velocity MSE (**`2.2x` lower** than `Continuous RSSM` `0.02101 ± 0.00044`, **`11.5x` lower** than `Deep GRU` `0.11191`, and **`34.7x` lower** than `ConvLSTM` `0.33696`).
+> 2. **Comparative Metrics**: Consolidated in [`results/spwm_v0_12_4_train_m1/comparative_metrics_v0_12_4.json`](file:///Users/Mattia/Desktop/Studies/Temp/results/spwm_v0_12_4_train_m1/comparative_metrics_v0_12_4.json).
 
 ### 6.2 Non-Spiking SNN Ablation (COMPLETED)
-- [x] **Current Repo State**: Evaluated direct apples-to-apples non-spiking continuous rate ablation (`ANNWorldModel`) vs. SNN-ALIF (`SPWM`), maintaining exact parameter parity ($328,652$ parameters), identical SpatialSoftmax keypoint frontend, symplectic/dissipative phase-space factorization ($q, p$), and identical loss formulation ($\mathcal{L}_{\text{pos}} + 1.5\,\mathcal{L}_{\text{vel}}$). Both models were pushed to their **full production regime** on $4,000$ trajectories ($80$ epochs with early stopping patience $10$ until true validation plateau: `SPWM` converged at $78$ epochs, `ANN-Rate` plateaued and stopped at $42$ epochs).
-- [x] **Ablation Implemented**: Constructed `ANNWorldModel` in `spwm/models/ann_ablation.py` by replacing the 256 ALIF spiking cells in `MultiTimescaleMemory` with identical continuous leaky rate units:
-  $$\mathbf{m}_t = \beta_{\text{mem}} \mathbf{m}_{t-1} + (1 - \beta_{\text{mem}}) \mathbf{I}_t, \quad \mathbf{r}_t = \sigma(\mathbf{m}_t)$$
-  using identical projection matrices (`input_proj`, `recurrent_proj`, `q_proj`, `action_proj`, `vel_proj`, `W_vel`, `fuse_spikes`, `fuse_mems`, `norm`).
-- [x] **Deliverable Generated**: Side-by-side production-regime performance table showing tracking accuracy, drift rate over $H=100$, and training convergence stability:
+- [x] **Current Repo State**: Evaluated direct apples-to-apples non-spiking continuous rate ablation (`ANNWorldModel`) vs. SNN-ALIF (`SPWM-v0.12.4`) under identical full two-phase training (`160` Phase 0 + `240` Phase 1 epochs across seeds `42, 101, 2024`) and identical closed-loop causal residual-gated handover during PIL (`t >= t_c`).
+- [x] **Ablation Implemented**: Constructed `ANNWorldModel` in `spwm/models/ann_ablation.py` by replacing the 256 ALIF spiking cells in `MultiTimescaleMemory` with identical continuous leaky rate units (`317.9k` active / `392.1k` total parameters).
+- [x] **Side-by-Side 3-Seed Closed-Loop PIL Comparison (50 Episodes `[3600, 3649]`, `t >= t_c`)**:
 
-| Model Architecture | Memory Dynamics | Params | Latency (ms) | Best Val Loss | Pos MSE (H=1) | Pos MSE (H=10) | Pos MSE (H=50) | Pos MSE (H=100) | Vel MSE (H=1) | Vel MSE (H=10) | Vel MSE (H=50) | Vel MSE (H=100) | Drift Ratio (H=100) |
-| :--- | :---: | :---: | :---: | :---: | :---: | :---: | :---: | :---: | :---: | :---: | :---: | :---: | :---: |
-| **SPWM (SNN-ALIF)** | ALIF (Spiking, 14.6% rate) | **328.7k** | 2.61 | 0.00204 | 0.10635 | 0.02117 | 0.01425 | **0.01728** | **0.00027** | **0.01118** | **0.01262** | **0.01153** | -0.8375 |
-| **ANN-Rate (Continuous Leaky)** | Leaky Rate Units (Continuous) | **328.7k** | **2.10** | **0.00098** | **0.00151** | **0.00872** | **0.01282** | 0.01842 | 0.00228 | 0.02106 | 0.01996 | 0.01685 | +11.2123 |
-
-> \* *Note on Drift Ratio Formulation*: In the ablation script, Drift Ratio is computed as relative MSE change: $(\text{MSE}_{100} - \text{MSE}_1) / \text{MSE}_1$. SPWM's negative ratio reflects the initial pose alignment transient at $H=1$ ($0.10635$) settling into a stable rollout manifold ($0.01728$), whereas ANN-Rate begins with near-zero $H=1$ error ($0.00151$) that increases to $0.01842$.
-
-> **Key Empirical Takeaways**:
-> 1. **Fitting Capacity vs. Velocity Stability**: During teacher-forced training, `ANN-Rate` achieves lower validation loss ($0.00098$ vs $0.00204$ for SNN-ALIF) due to continuous gradient flow. In autonomous multi-step rollouts, however, ANN-Rate exhibits higher velocity drift: its velocity MSE is **8.5x higher at H=1** ($0.00228$ vs $0.00027$) and remains **46% higher at H=100** ($0.01685$ vs $0.01153$).
-> 2. **Long-Horizon Position Parity**: At extended horizon $H=100$, both architectures achieve comparable position MSE ($0.01728$ for SPWM vs $0.01842$ for ANN-Rate; $L_2$ position errors $0.2740\,\text{rad}$ vs $0.2911\,\text{rad}$). However, discrete spike thresholding in SPWM prevents small high-frequency velocity perturbations from compounding, bounding velocity errors across multi-step execution.
-> 3. **Physical Kinematics Tracking**: In physical joint metric space, SNN-ALIF maintains tight velocity tracking across all horizons ($0.0393\,\text{rad/s}$ at $H=1$ and $0.1846\,\text{rad/s}$ at $H=100$), whereas ANN-Rate drifts to $0.1166\,\text{rad/s}$ at $H=1$ (3x worse) and $0.2384\,\text{rad/s}$ at $H=100$ (29% worse).
-> 4. **Comparative Metrics**: Consolidated in [`results/spwm_v0_12_4_train_m1/comparative_metrics_v0_12_4.json`](file:///Users/Mattia/Desktop/Studies/Temp/results/spwm_v0_12_4_train_m1/comparative_metrics_v0_12_4.json).
+| Architecture | PIL Success (%) | Min Error (cm) | Terminal Error (cm) | Smoothness $\|\Delta^2 q\|$ | Jerk $\|\Delta^3 q\|$ | Flips |
+| :--- | :---: | :---: | :---: | :---: | :---: | :---: |
+| **SPWM-v0.12.4 (SNN-ALIF, $N=6$ Tier-2, 3 seeds)** | **`58.0 ± 27.1%`** *(Seed 42: **86.0%**)* | **`0.90 ± 0.04`** *(0.86)* | **`2.23 ± 0.68`** *(1.57)* | **`0.00860 ± 0.00304`** | **`0.00608 ± 0.00291`** | **`19.4 ± 7.6`** |
+| **SPWM-v0.12.4 (SNN-ALIF, $N=25$ Val-Sel., 3 seeds)** | **`60.7 ± 2.3%`** | **`0.88 ± 0.11`** | **`2.01 ± 0.12`** | **`0.00931 ± 0.00346`** | **`0.00663 ± 0.00321`** | **`21.1 ± 8.5`** |
+| **ANN-Rate (Leaky Rate, 3 seeds)** | `37.3 ± 9.5%` *(Seed 42: 34.0%)* | `1.07 ± 0.28` *(0.83)* | `2.98 ± 0.46` *(2.75)* | `0.01148 ± 0.00088` | `0.00938 ± 0.00107` | `26.0 ± 1.9` |
 
 ### 6.3 Computational & Energy Profiling (SOPs vs. FLOPs) [COMPLETED]
-- [x] **Current Repo State**: Profiled neuromorphic Synaptic Operations (SOPs) on Loihi-2 vs dense GPU MACs for `SPWM-v0.12.4` in [`results/ssot_eval_metrics.json`](file:///Users/Mattia/Desktop/Studies/Temp/results/ssot_eval_metrics.json) and [`docs/FIGURE_METRICS.md`](file:///Users/Mattia/Desktop/Studies/Temp/docs/FIGURE_METRICS.md):
-  - **SPWM-v0.12.4 Step Energy**: **`0.43 nJ/step`** on Loihi-2 SOPs vs **`60.36 nJ/step`** on own GPU MACs (**`141.1x`** energy efficiency advantage) at `12.27%` measured ALIF spike rate.
-  - **Synaptic Operations Formulation**:
-    $$\text{SOPs}(t) = \sum_{l=1}^{L} s_{l-1}(t) \cdot F_{\text{out}, l}$$
-    where $s_{l-1}(t)$ is the spike count emitted by ALIF layer $l-1$, and $F_{\text{out}, l} = 384$ is the total synaptic fan-out (recurrent projection $256$, velocity mapping $32$, spike fusion $96$).
-  - **Neuromorphic Energy Formulation (Intel Loihi-2 Benchmark)**:
-    $$E_{\text{neuromorphic}} = \text{SOPs} \times E_{\text{SOP}} + N_{\text{neurons}} \times E_{\text{leak}}$$
-    with $E_{\text{SOP}} = 0.9\,\text{pJ}$ and $E_{\text{leak}} = 0.1\,\text{pJ}$ per active neuron ($N_{\text{neurons}} = 256$).
-  - **GPU Dense Energy Formulation (Nvidia Jetson Orin Benchmark)**:
-    $$E_{\text{GPU}} = \text{FLOPs} \times E_{\text{FLOP}}$$
-    with $E_{\text{FLOP}} = 4.0\,\text{pJ}$ (equivalent to $E_{\text{MAC}} = 8.0\,\text{pJ}$).
-  - **Comparative Energy & Operations Table (Empirical Benchmark)**:
+- [x] **Current Repo State**: Profiled neuromorphic Synaptic Operations (SOPs) on Loihi-2 vs dense GPU MACs across all 3 `SPWM-v0.12.4` seeds in [`results/energy_profiling/energy_profiling_metrics.json`](file:///Users/Mattia/Desktop/Studies/Temp/results/energy_profiling/energy_profiling_metrics.json) and `results/multiseed/seed_{101,2024}_energy/`:
+  - **SPWM-v0.12.4 Recurrent Step Energy (3-Seed Mean ± Std)**: **`12.22 ± 0.19 nJ/step`** on Loihi-2 SOPs (`8,150 ± 129` SOPs/step at **`12.15 ± 0.19%`** ALIF spike rate; Seed 42: `12.34 nJ`, `12.27%`, `8,229` SOPs) vs **`60.36 nJ/step`** on Jetson Orin GPU MACs (**`4.94 ± 0.08x`** recurrent step efficiency advantage).
 
-| Model Architecture | Memory Paradigm | Params | Spike Rate | SOPs / step | FLOPs / step | E_neuro (nJ/step) | E_GPU (nJ/step) | Energy Efficiency vs. GPU | Power @ 20Hz (mW) | E_cumul (H=100, μJ) |
+| Model Architecture | Memory Paradigm | Total Params | Spike Rate | SOPs / step | Recurrent MACs / step | E_neuro (nJ/step) | E_GPU (nJ/step) | Efficiency vs. Own GPU | Power @ 20Hz (mW) | E_cumul (H=100, μJ) |
 | :--- | :---: | :---: | :---: | :---: | :---: | :---: | :---: | :---: | :---: | :---: |
-| **SPWM (Prod)** | ALIF Spiking (2-tier) | **328.7k** | 14.5% | 14,208 | 258,796 | **12.81** | 1035.18 | **80.8x** | **0.256** | **1.28** |
-| **SNN-ALIF (Matched)** | ALIF Spiking (2-tier) | **328.7k** | 24.8% | 24,192 | 258,796 | **21.80** | 1035.18 | **47.5x** | **0.436** | **2.18** |
-| **ANN-Rate (Ablation)** | Continuous Leaky Rate | **328.7k** | — | — | 258,796 | — | 1035.18 | 1.0x (Ref) | 20.704 | 103.52 |
-| **Continuous RSSM** | GRU + Gaussian Latent | **380.5k** | — | — | 615,244 | — | 2460.98 | 1.0x (Ref) | 49.220 | 246.10 |
-| **Deep GRU** | 2-Layer Deep GRU | **338.9k** | — | — | 506,772 | — | 2027.09 | 1.0x (Ref) | 40.542 | 202.71 |
-| **Continuous ConvLSTM** | Spatial ConvLSTM (2D) | **296.9k** | — | — | 29,001,740 | — | 116006.96 | 1.0x (Ref) | 2320.139 | 11600.70 |
+| **SPWM-v0.12.4 (Seed 42)** | ALIF Spiking (2-tier) | **392.1k (317.9k act.)** | 12.27% | 8,229 | 67,072 | **12.34** | 60.36 | **4.89x** | **0.247** | **1.23** |
+| **SPWM-v0.12.4 (3-Seed Mean±Std)** | ALIF Spiking (2-tier) | **392.1k (317.9k act.)** | 12.15 ± 0.19% | 8,150 ± 129 | 67,072 | **12.22 ± 0.19** | 60.36 | **4.94 ± 0.08x** | **0.244 ± 0.004** | **1.22 ± 0.02** |
+| **ANN-Rate (Ablation)** | Continuous Leaky Rate | **392.1k (317.9k act.)** | — | — | 67,072 | — | 60.36 | 1.0x (Ref) | 1.207 | 6.04 |
+| **Continuous RSSM** | GRU + Gaussian Latent | **380.5k** | — | — | 365,056 | — | 328.55 | 1.0x (Ref) | 6.571 | 32.86 |
+| **Deep GRU** | 2-Layer Deep GRU | **338.9k** | — | — | 299,520 | — | 269.57 | 1.0x (Ref) | 5.391 | 26.96 |
+| **Continuous ConvLSTM** | Spatial ConvLSTM (2D) | **296.9k** | — | — | 2,359,296 | — | 2123.37 | 1.0x (Ref) | 42.467 | 212.34 |
 
-> **Key Empirical Takeaways**:
-> 1. **80.8x Energy Efficiency Advantage over Parameter-Matched ANN**: On identical parameter budgets ($328.7\text{k}$) and projection topologies, `SPWM` consumes only **$12.81\,\text{nJ}$ per recurrent step** on Intel Loihi-2 vs. **$1035.18\,\text{nJ}$ per step** for `ANN-Rate` on Nvidia Jetson Orin GPU, an **$80.8\times$ reduction in energy consumption**.
-> 2. **Sub-Milliwatt Autonomous Predictive Dynamics**: Operating at a $20\,\text{Hz}$ robotic control loop, SPWM draws only **$0.256\,\text{mW}$** of active recurrent dynamics power (compared to $20.7\,\text{mW}$ for ANN-Rate, $49.2\,\text{mW}$ for Continuous RSSM, and $2.32\,\text{W}$ for ConvLSTM), well within ultra-low-power micro-robotic edge thermal limits.
-> 3. **Trajectory Energy Accumulation**: Over an extended $H=100$ autonomous trajectory ($5.0\,\text{s}$ at $20\,\text{Hz}$), SPWM expends a negligible **$1.28\,\mu\text{J}$** of cumulative energy, compared to $103.5\,\mu\text{J}$ for ANN-Rate, $246.1\,\mu\text{J}$ for Continuous RSSM, and $11.6\,\text{mJ}$ for ConvLSTM ($9,056\times$ higher).
-> 4. **Energy Profiling Artifacts**: Consolidated in [`results/ssot_eval_metrics.json`](file:///Users/Mattia/Desktop/Studies/Temp/results/ssot_eval_metrics.json) and [`docs/FIGURE_METRICS.md`](file:///Users/Mattia/Desktop/Studies/Temp/docs/FIGURE_METRICS.md).
+- **Full End-to-End Closed-Loop Step Energy (Jetson Orin, Encoder `882,688` MACs + $K=256 \times H=10 \times N_{\text{iter}}=3 = 7,680$ MPPI Rollouts)**: `1.0979 mJ/step` (`21.96 mW` @ 20 Hz) for `SPWM` and `ANN-Rate` (`1.219 GMACs` MPPI), vs. `1.7490 mJ/step` (`34.98 mW`) for `Deep GRU` (`1.942 GMACs`), `2.1236 mJ/step` (`42.47 mW`) for `Continuous RSSM` (`2.358 GMACs`), and `100.1833 mJ/step` (`2003.67 mW`) for `Continuous ConvLSTM` (`111.312 GMACs`).
 
 ### 6.4 Statistical Significance & Multi-Seed Validation [COMPLETED]
-- [x] **Current Repo State**: Evaluated statistical significance across $N = 3$ random initializations (`seed = 42, 101, 2024`) by passing **every seed through the complete, identical two-phase training pipeline** (Phase 0 Representation grounding $\to$ Phase 1 M1 Latent Predictor training) over the canonical 4,000 trajectories dataset (`results/multiseed/`).
-- [x] **Statistical Multi-Seed Performance Table (Full Two-Phase Pipeline)**:
+- [x] **Current Repo State**: Evaluated across $N = 3$ seeds (`42, 101, 2024`) in `results/multiseed/multiseed_metrics.json` (full `160` Phase 0 + `240` Phase 1 training budget across all 3 seeds; Seed `2024` resumed cleanly via `BaseTrainer.load_checkpoint(..., strict=True)` through epoch `240`/`260` with Tier 2 score monotonically drifting from `2.67` to `2.98`, confirming `best_model.pt` locked at epoch `130`):
 
-| Run / Metric | Latency (ms) | Spike Rate | Pos MSE (H=1) | Pos MSE (H=10) | Pos MSE (H=50) | Pos MSE (H=100) | Vel MSE (H=1) | Vel MSE (H=10) | Vel MSE (H=50) | Vel MSE (H=100) | Drift Ratio (H=100) |
-| :--- | :---: | :---: | :---: | :---: | :---: | :---: | :---: | :---: | :---: | :---: | :---: |
-| **Seed 42** | 2.61 | 14.6% | 0.10635 | 0.02117 | 0.01425 | 0.01728 | 0.00027 | 0.01118 | 0.01262 | 0.01153 | **-0.8375** |
-| **Seed 101** | 2.74 | 22.7% | 0.02513 | 0.01080 | 0.01600 | 0.01970 | 0.00441 | 0.02746 | 0.02744 | 0.02337 | **-0.2161** |
-| **Seed 2024** | 2.76 | 25.1% | 0.01534 | 0.00875 | 0.01078 | 0.01067 | 0.00452 | 0.02692 | 0.03177 | 0.02709 | **-0.3043** |
-| **Mean ± Std (N=3)** | **2.70 ± 0.09** | **20.8 ± 5.5%** | **0.0489 ± 0.0500** | **0.0136 ± 0.0067** | **0.0137 ± 0.0027** | **0.0159 ± 0.0047** | **0.0031 ± 0.0024** | **0.0219 ± 0.0092** | **0.0239 ± 0.0100** | **0.0207 ± 0.0081** | **-0.4527 ± 0.3362** |
+| Seed | OL Pos MSE (H=1) | OL Pos MSE (H=10) | OL Pos MSE (H=50) | OL Pos MSE (H=100) | OL Vel MSE (H=100) | PIL Success (50 ep) | PIL Min Err (cm) | PIL Term Err (cm) | Energy (nJ/step) |
+| :--- | :---: | :---: | :---: | :---: | :---: | :---: | :---: | :---: | :---: |
+| **Seed 42** | 0.00016 | 0.00649 | 0.00264 | 0.00246 | 0.01175 | **86.0%** | 0.86 ± 0.80 | 1.57 ± 1.00 | 12.34 |
+| **Seed 101** | 0.00030 | 0.00148 | 0.00477 | 0.00274 | 0.00871 | **56.0%** | 0.90 ± 0.65 | 2.19 ± 1.19 | 12.33 |
+| **Seed 2024** | 0.00009 | 0.00246 | 0.00203 | 0.00201 | 0.00867 | **32.0%** | 0.94 ± 0.64 | 2.93 ± 1.81 | 12.00 |
+| **Mean ± Std (N=3)** | **0.00018 ± 0.00011** | **0.00348 ± 0.00265** | **0.00315 ± 0.00144** | **0.00240 ± 0.00037** | **0.00971 ± 0.00177** | **58.0 ± 27.1%** | **0.90 ± 0.04** | **2.23 ± 0.68** | **12.22 ± 0.19** |
 
-> **Key Empirical Takeaways**:
-> 1. **Multi-Seed Stability Progression**: Under the two-phase pipeline, the relative drift metric $(\text{MSE}_{100} - \text{MSE}_1) / \text{MSE}_1$ yields: **Seed 42 ($-0.8375$)**, **Seed 101 ($-0.2161$)**, and **Seed 2024 ($-0.3043$)**, aggregating to **$-0.4527 \pm 0.3362$**. This ratio reflects the initial pose alignment transient at $H=1$ ($0.0489 \pm 0.0500$) rapidly settling into a stable rollout manifold ($H=10$: $0.0136 \pm 0.0067$, $H=50$: $0.0137 \pm 0.0027$, $H=100$: $0.0159 \pm 0.0047$).
-> 2. **Negligible Multi-Seed Variance across Extended Horizons ($H=50, 100$)**: At $H=50$, position MSE is tightly constrained to **$0.0137 \pm 0.0027$** (relative standard deviation $< 20\%$). At $H=100$, position MSE across all initializations remains below $0.02$ at **$0.0159 \pm 0.0047$**, while velocity MSE is stabilized at **$0.0207 \pm 0.0081$**.
-> 3. **Validation of Two-Phase Inductive Bias**: Passing all seeds through Phase 0 eliminates the ungrounded latent space issue, confirming that representation grounding is an indispensable prerequisite for symplectic predictor stability.
-> 4. **Statistical Validation Artifacts**: Summarized above; historical `results/multiseed/` pruned during SSOT consolidation.
+### 6.5 Closed-Loop Physics-in-the-Loop (PIL) Downstream Control Benchmark [COMPLETED]
+- [x] **Strict Causal Zero-Leakage Protocol**: All closed-loop benchmarks below use **Physics-in-the-Loop (PIL)** (`ArticulatedArmPhysicsStepper` with `payload_attached = (t >= t_c)` at contact onset and causal `OnlineEventCameraStream`) with zero `z_gt_next` leakage. Continuous recurrent baselines (`Continuous RSSM`, `Deep GRU`) are evaluated under **both** Open-Loop PIL (no sensory overwrite during $\phi_t=1$) and Online Observation Update during $\phi_t=1$.
 
-### 6.5 Closed-Loop Downstream Control Task [COMPLETED]
-- [x] **Current Repo State**: Downstream closed-loop latent control is fully implemented, verified, and benchmarked without requiring external physics engines or simulator rollout steps (`results/mppi_benchmark/`):
-  - **Differentiable Forward Kinematics (FK)**: Extracted exact kinematic link offsets, rotation axes, and end-effector tip geometry directly from Unity simulation specifications (`sim/Assets/Scripts/ArticulatedRobotRig.cs`). Implemented PyTorch `DifferentiableForwardKinematics` in [`spwm/models/kinematics.py`](file:///Users/Mattia/Desktop/Studies/Temp/spwm/models/kinematics.py), converting decoded joint coordinates $\hat{\mathbf{q}}_t \in \mathbb{R}^6$ to batched $4 \times 4$ transformation matrices and computing Cartesian 3D end-effector tip positions $(x, y, z)$.
-  - **Latent MPPI Controller**: Implemented `LatentMPPIController` in [`spwm/evaluation/mppi_controller.py`](file:///Users/Mattia/Desktop/Studies/Temp/spwm/evaluation/mppi_controller.py). Evaluates $K = 256$ candidate trajectories over a planning horizon $H = 10$ with action space $\mathbf{u}_\tau \in [-1.0, 1.0]^6$. Performs "mental simulation" (blind autoregressive unroll) entirely inside the isolated symplectic `LatentPredictor` ($M_1$):
-    $$\mathbf{z}_{\tau+1} = M_1(\mathbf{z}_\tau, \mathbf{u}_\tau), \quad \hat{\mathbf{y}}_\tau = \text{Decoder}(\mathbf{z}_\tau)$$
-    conditioned on sensory-grounded initial latent state $\mathbf{z}_t$ without calling visual encoders or spiking dynamics during the rollout.
-  - **Trajectory Cost Formulation**:
-    $$\mathcal{C}(\tau) = \sum_{h=1}^H \left[ w_{\text{pos}} \|\mathbf{x}_{\text{ee}}(h) - \mathbf{x}_{\text{target}}\|_2 + w_{\text{vel}} \|\hat{\mathbf{p}}_h\|_2 + w_{\text{act}} \|\mathbf{u}_h - \mathbf{u}_{h-1}\|_2 \right]$$
-    with weights $w_{\text{pos}} = 1.0$, $w_{\text{vel}} = 0.1$, $w_{\text{act}} = 0.05$, and importance sampling temperature $\lambda = 0.15$.
-  - **Benchmark Execution**: Evaluated closed-loop control across 50 unseen test partition episodes with variable payload masses ($1.20 - 4.50\,\text{kg}$) across 3 vertical elevation planes (Low: $1.04\,\text{m}$, Mid: $1.14\,\text{m}$, High: $1.26\,\text{m}$).
-  - **Comparative Metric Table (Empirical Latent MPPI Benchmark)**:
+| Method / Model | PIL Success (%) | Min Err (cm) | Term Err (cm) | $|\Delta^2 q|$ ($\text{rad/step}^2$) | $|\Delta^3 q|$ | Flips | Latency (ms) |
+| :--- | :---: | :---: | :---: | :---: | :---: | :---: | :---: |
+| *Privileged Jacobian-IK + PD (Oracle)* | *96.0%* | *0.01 ± 0.03* | *0.43 ± 0.73* | *0.00771* | *0.00497* | *10.46* | *22.7* |
+| **SPWM-v0.12.4 (Seed 42)** | **86.0%** | **0.86 ± 0.80** | **1.57 ± 1.00** | **0.00587** | **0.00354** | **14.02** | **36.7** |
+| **SPWM-v0.12.4 ($N=6$ Tier-2, 3 seeds)** | **58.0 ± 27.1%** | **0.90 ± 0.04** | **2.23 ± 0.68** | **0.00860** | **0.00608** | **19.37** | **27.5** |
+| **SPWM-v0.12.4 ($N=25$ Val-Sel., 3 seeds)** | **60.7 ± 2.3%** | **0.88 ± 0.11** | **2.01 ± 0.12** | **0.00931** | **0.00663** | **21.14** | **35.5** |
+| **ANN-Rate (3-Seed Mean ± Std)** | 37.3 ± 9.5% | 1.07 ± 0.28 | 2.98 ± 0.46 | 0.01148 | 0.00938 | 26.00 | 24.6 |
+| **Continuous RSSM (Open-Loop PIL, 3 seeds)** | 15.3 ± 4.6% | 1.31 ± 0.02 | 2.88 ± 0.10 | 0.01998 | 0.02059 | 36.23 | 52.4 |
+| **Continuous RSSM (Online Post., 3 seeds)** | 0.0 ± 0.0% | 1.53 ± 0.06 | 22.43 ± 0.58 | 0.03119 | 0.02875 | 36.13 | 35.1 |
+| **Deep GRU (Open-Loop PIL, 3 seeds)** | 1.3 ± 2.3% | 10.57 ± 7.83 | 16.72 ± 11.31 | 0.00777 | 0.00622 | 14.67 | 67.4 |
+| **Deep GRU (Online Obs., 3 seeds)** | 0.0 ± 0.0% | 6.03 ± 4.00 | 10.87 ± 3.97 | 0.01654 | 0.01350 | 19.67 | 60.3 |
+| **Reactive BC (50 ep, Seed 42)** | 0.0% | 13.13 ± 6.27 | 15.66 ± 8.15 | 0.00140 | 0.00135 | 13.98 | 1.9 |
 
-| Metric | Target / Specification | Observed Empirical Result (`SPWM-v0.12.4`) | Status |
-| :--- | :---: | :---: | :---: |
-| **Grasp Success Rate (%)** | $> 80.0\%$ | **96.0%** (48 / 50 episodes) | **VERIFIED** |
-| **Minimum Placement Distance (Mean Error)** | $< 3.0\,\text{cm}$ | **0.67 ± 0.46 cm** | **VERIFIED** |
-| **Final Terminal Error (Mean Error)** | — | **1.21 cm** | **BOUNDED** |
-| **MPPI Inference Latency (ms / step)** | $< 50.0\,\text{ms}$ | **22.2 ms** ($K=256, H=10, N_{\text{iter}}=3$) | **REAL-TIME (45 Hz)** |
-
-#### Stratification by Vertical Elevation Plane
-
-| Elevation Plane | Episodes | Mean Mass (kg) | Grasp Success Rate (%) | Placement Accuracy (cm) | Mean Terminal Error (cm) |
-| :--- | :---: | :---: | :---: | :---: | :---: |
-| **Low Plane (1.04m)** | 22 | 2.77 | **86.4%** | **1.58 cm** | 3.56 cm |
-| **Mid Plane (1.14m)** | 18 | 2.85 | **61.1%** | **3.27 cm** | 8.29 cm |
-| **High Plane (1.26m)** | 10 | 2.91 | **100.0%** | **1.48 cm** | 10.82 cm |
-
-#### Stratification by Payload Mass Tier
-
-| Mass Tier | Mass Range | Episodes | Grasp Success Rate (%) | Placement Accuracy (cm) | Mean Terminal Error (cm) |
-| :--- | :---: | :---: | :---: | :---: | :---: |
-| **Light** | $1.20 - 2.30\,\text{kg}$ | 17 | **94.1%** | **1.76 cm** | 6.78 cm |
-| **Medium** | $2.30 - 3.40\,\text{kg}$ | 17 | **88.2%** | **1.51 cm** | 6.50 cm |
-| **Heavy** | $3.40 - 4.50\,\text{kg}$ | 16 | **56.3%** | **3.30 cm** | 6.88 cm |
-
-> **Key Empirical Takeaways**:
-> 1. **Latent Space Mental Simulation Supports Downstream Closed-Loop Control**: Without querying the Unity physics engine or executing costly image renders during planning, the agent successfully executes multi-step path integral optimization directly over the latent trajectory unroll $M_1(\mathbf{z}, \mathbf{u})$, validating that SPWM's latent manifold is topologically grounded to physical dynamics.
-> 2. **High Payload Generalization Under Active Perception**: The controller achieves an **80.0% grasp success rate** (minimum placement distance of **$2.17 \pm 1.80\,\text{cm}$**, mean terminal error $6.72\,\text{cm}$) across unseen test trajectories. For light ($1.2 - 2.3\,\text{kg}$) and medium ($2.3 - 3.4\,\text{kg}$) payloads, grasp success reaches **94.1%** and **88.2%** respectively, confirming that Phase 0 active perception heft estimation accurately embeds inertial mass into the initial latent state $\mathbf{z}_t$.
-> 3. **Real-Time Control Budget Compliance**: On a standard CPU, full path integral optimization with $K=256$ candidate trajectories, horizon $H=20$, and 3 refinement iterations executes in **$38.9\,\text{ms}$ per control step**, meeting the $25\,\text{Hz}$ real-time robotic control requirement with zero AST fallbacks.
-> 4. **Benchmark Artifacts**: Saved to [`results/mppi_benchmark/mppi_benchmark_metrics.json`](file:///Users/Mattia/Desktop/Studies/Temp/results/mppi_benchmark/mppi_benchmark_metrics.json), [`results/mppi_benchmark/mppi_benchmark_table.md`](file:///Users/Mattia/Desktop/Studies/Temp/results/mppi_benchmark/mppi_benchmark_table.md), and [`results/mppi_benchmark/mppi_benchmark_results.png`](file:///Users/Mattia/Desktop/Studies/Temp/results/mppi_benchmark/mppi_benchmark_results.png).
+#### Stratification by Elevation Plane & Payload Mass (SPWM Seed 42 PIL, `50` Episodes)
+- **Elevation:** Low (`86.4%`, `0.86 cm`, `n=22`), Mid (`77.8%`, `1.05 cm`, `n=18`), High (`100.0%`, `0.50 cm`, `n=10`).
+- **Mass Tier:** Light `1.20–2.30 kg` (`82.4%`, `0.68 cm`, `n=17`), Medium `2.30–3.40 kg` (`100.0%`, `0.77 cm`, `n=17`), Heavy `3.40–4.50 kg` (`75.0%`, `1.14 cm`, `n=16`).
+- **Disentangled 5-Stage SPWM Architectural Ablation (50-Ep PIL, `t >= t_c`):**
+  - Stage 1 (`SPWM-Base`, unsmoothed MPPI): `62.0%` succ, `1.27 ± 1.14 cm` min, `2.51 ± 1.59 cm` term, `|\Delta^2 q|=0.00710`
+  - Stage 2 (`+ Smooth MPPI`): `62.0%` succ, `1.09 ± 0.98 cm` min, `2.26 ± 1.79 cm` term, `|\Delta^2 q|=0.00729`
+  - Stage 3 (`+ Phase 1 Curriculum`, no handover/lookahead): `72.0%` succ, `0.98 ± 0.97 cm` min, `1.85 ± 1.31 cm` term, `|\Delta^2 q|=0.00600`
+  - Stage 4a (`+ 2-Stage SE(3) Lookahead`, Handover disabled $w_t \equiv 0$): **`86.0%`** succ, **`0.86 ± 0.80 cm`** min, **`1.57 ± 1.00 cm`** term, **`|\Delta^2 q|=0.00587`**
+  - Stage 4b (`+ Residual Handover & 2-Stage Lookahead (Full)`): **`86.0%`** succ, **`0.86 ± 0.80 cm`** min, **`1.57 ± 1.00 cm`** term, **`|\Delta^2 q|=0.00587`** (`w_t > 0` nominal rate `0.0%`)
 
 ### 6.6 Zero-Shot Sim-to-Real Domain Gap & Robustness Stress Test [COMPLETED]
-- [x] **Current Repo State**: Evaluated empirical zero-shot sim-to-real transfer and robustness stress tests strictly without retraining or fine-tuning (`torch.no_grad()`, `model.eval()`) on frozen production checkpoint `results/spwm_v0_12_4_train_m1/model.pt` (`results/robustness_benchmark/robustness_metrics.json`):
+- [x] **Current Repo State**: Evaluated strictly without retraining (`torch.no_grad()`, `model.eval()`) on frozen Seed 42 checkpoint `results/spwm_v0_12_4_train_m1/model.pt` (`results/robustness_benchmark/robustness_metrics.json`):
 
-#### 1. Neuromorphic Visual Stream Perturbations (Sensor Domain Gap)
-Evaluated autonomous tracking error across the full held-out test split (400 trajectories) across horizons $H \in \{1, 10, 50, 100\}$ under 7 sensory perturbation conditions:
+#### 1. Neuromorphic Visual Stream Perturbations ($N=400$ Open-Loop Test Split)
 
-| Perturbation Condition | Spike Rate | Pos MSE (H=1) | Pos MSE (H=10) | Pos MSE (H=50) | Pos MSE (H=100) | Vel MSE (H=100) | Drift Ratio (H=100)* | Status |
+| Perturbation Condition | Spike Rate | Pos MSE (H=1) | Pos MSE (H=10) | Pos MSE (H=50) | Pos MSE (H=100) | Vel MSE (H=100) | Drift Ratio ($L_2$) | Status |
 | :--- | :---: | :---: | :---: | :---: | :---: | :---: | :---: | :---: |
-| **Nominal Baseline ($\theta = 0.08$)** | 14.6% | 0.10635 | 0.02117 | 0.01425 | 0.01728 | 0.01153 | **+0.3432** | BOUNDED |
-| **Threshold Shift ($\theta = 0.05$, Hypersensitive)** | 14.3% | 0.08997 | 0.01732 | 0.01364 | 0.01694 | 0.01193 | **+0.3707** | BOUNDED |
-| **Threshold Shift ($\theta = 0.12$, Hyposensitive)** | 15.3% | 0.12759 | 0.02620 | 0.01632 | 0.01983 | 0.01190 | **+0.3355** | BOUNDED |
-| **Background Activity (0.5% Poisson Flip)** | 14.3% | 0.50225 | 0.07066 | 0.07673 | 0.04694 | 0.02880 | **+0.2436** | BOUNDED |
-| **Background Activity (1.0% Poisson Flip)** | 14.2% | 0.52888 | 0.07616 | 0.09218 | 0.05485 | 0.03542 | **+0.2564** | BOUNDED |
-| **Refractory Period Dropout (10%)** | 14.7% | 0.11683 | 0.02353 | 0.01458 | 0.01734 | 0.01151 | **+0.3280** | BOUNDED |
-| **Refractory Period Dropout (20%)** | 14.9% | 0.12782 | 0.02608 | 0.01509 | 0.01753 | 0.01157 | **+0.3155** | BOUNDED |
+| **Nominal Baseline ($\theta = 0.08$)** | 16.89% | 0.00008 | 0.00025 | 0.00184 | 0.00253 | 0.02197 | 4.6278 | BOUNDED |
+| **Threshold Shift ($\theta = 0.05$)** | 16.24% | 0.00010 | 0.00027 | 0.00173 | 0.00245 | 0.02187 | 4.1182 | BOUNDED |
+| **Threshold Shift ($\theta = 0.12$)** | 18.29% | 0.00010 | 0.00027 | 0.00234 | 0.00295 | 0.02440 | 4.5747 | BOUNDED |
+| **Background Activity (0.5%)** | 16.50% | 0.01740 | 0.01506 | 0.01007 | 0.00703 | 0.06218 | 0.5619 | BOUNDED |
+| **Background Activity (1.0%)** | 16.08% | 0.02794 | 0.02713 | 0.01592 | 0.01055 | 0.08352 | 0.5351 | BOUNDED |
+| **Refractory Dropout (10%)** | 17.12% | 0.00009 | 0.00026 | 0.00192 | 0.00259 | 0.02227 | 4.4305 | BOUNDED |
+| **Refractory Dropout (20%)** | 17.36% | 0.00011 | 0.00027 | 0.00203 | 0.00268 | 0.02267 | 4.2126 | BOUNDED |
 
-> \* *Note on Evaluator Drift Ratio*: In this suite, Drift Ratio is computed via `RolloutEvaluator` as the $L_2$ position error ratio $\text{MAE}_{100} / \text{MAE}_1 = 0.2740 / 0.7983 = +0.3432$. Values $< 1.0$ indicate bounded multi-horizon error relative to the initial step.
+#### 2. Downstream PIL Robustness Under Perturbed Execution Conditions (`50` Test Episodes `[3600, 3649]`, `t >= t_c`, Seeds `42, 101, 2024`)
 
-#### 2. Downstream Latent MPPI Robustness Under Perturbed Execution Conditions
-Batched closed-loop Latent MPPI controller ($K=256, H=10, N_{\text{iter}}=3$) evaluated over 20 canonical test episodes per condition (`results/robustness_benchmark/robustness_metrics.json`):
+| Perturbation Condition | Episodes | SPWM (Seed 42) Succ / Term | SPWM (3-Seed Mean ± Std) Succ / Term | ANN-Rate (3-Seed Mean ± Std) Succ / Min / Term | SPWM Step $w_t>0$ |
+| :--- | :---: | :---: | :---: | :---: | :---: |
+| **Nominal Baseline** | 50 | **86.0%** / **1.57 cm** | **58.0 ± 27.1%** / **2.23 ± 0.68 cm** | 37.3 ± 9.5% / 1.07 cm / 2.98 cm | `0.00 ± 0.00%` |
+| **Sensory Noise Injection (1.0%)** | 50 | **72.0%** (-16.3% rel) / **1.86 cm** | **55.3 ± 19.4%** (-4.6% rel) / **2.34 ± 0.63 cm** | 30.0 ± 3.5% (-19.6% rel) / 1.04 cm / 3.36 cm | `0.00 ± 0.00%` |
+| **Payload Extrapolation (4.80 kg)** | 50 | **78.0%** (-9.3% rel) / **1.78 cm** | **39.3 ± 33.7%** (-32.2% rel) / **2.50 ± 0.62 cm** | 26.7 ± 16.2% (-28.6% rel) / 1.36 cm / 3.64 cm | `0.17 ± 0.29%` *(Seed 2024: 4.0% ep, mean w=0.165)* |
+| **Actuator Drift (0.80x Friction)** | 50 | **70.0%** (-18.6% rel) / **2.07 cm** | **40.7 ± 27.3%** (-29.9% rel) / **2.61 ± 0.54 cm** | 30.7 ± 14.0% (-17.9% rel) / 1.42 cm / 3.74 cm | `0.17 ± 0.29%` *(Seed 2024: 4.0% ep, mean w=0.229)* |
+| **Actuator Drift (1.20x Friction)** | 50 | **76.0%** (-11.6% rel) / **1.97 cm** | **44.0 ± 28.0%** (-24.1% rel) / **2.53 ± 0.56 cm** | 33.3 ± 16.7% (-10.7% rel) / 1.34 cm / 3.51 cm | `0.17 ± 0.29%` *(Seed 2024: 4.0% ep, mean w=0.169)* |
 
-| Perturbation Condition | Episodes | Grasp Success Rate (%) | Mean Error (cm) |
-| :--- | :---: | :---: | :---: |
-| **Nominal Baseline** | 20 | **100.0%** | **1.01 cm** |
-| **Sensory Noise Injection (1.0%)** | 20 | **95.0%** | **1.19 cm** |
-| **Payload Extrapolation (4.80 kg)** | 20 | **70.0%** | **2.84 cm** |
-| **Actuator Drift (0.80x Friction)** | 20 | **70.0%** | **2.69 cm** |
-| **Actuator Drift (1.20x Friction)** | 20 | **60.0%** | **2.65 cm** |
-
-#### Stratification of Downstream Performance Across Shifted Conditions
-
-| Perturbation Condition | Low Plane Succ (%) | Mid Plane Succ (%) | High Plane Succ (%) | Light Mass Succ (%) | Med Mass Succ (%) | Heavy Mass Succ (%) |
-| :--- | :---: | :---: | :---: | :---: | :---: | :---: |
-| **Nominal Baseline** | 81.8% | 55.6% | 90.0% | 82.4% | 82.4% | 56.2% |
-| **Sensory Noise Injection (1.0%)** | 86.4% | 55.6% | 100.0% | 94.1% | 82.4% | 56.2% |
-| **Payload Extrapolation (4.80 kg)** | 4.5% | 27.8% | 30.0% | 23.5% | 23.5% | 6.2% |
-| **Actuator Drift (0.80x Friction)** | 0.0% | 33.3% | 30.0% | 23.5% | 23.5% | 6.2% |
-| **Actuator Drift (1.20x Friction)** | 4.5% | 22.2% | 20.0% | 11.8% | 17.6% | 12.5% |
-
-> **Key Empirical Takeaways**:
-> 1. **Extreme Robustness to Sensor Domain Discrepancies**: The model exhibits remarkable invariance to threshold shifts ($\theta \in [0.05, 0.12]$) and refractory dropout ($10\% - 20\%$). At $H=100$, position MSE under 20% refractory event loss remains virtually identical to nominal ($0.01753$ vs $0.01728$), proving that the SpatialSoftmax bottleneck and ALIF multi-timescale temporal filtering effectively discard sensor timing jitter and pixel dead time.
-> 2. **Downstream Control Immune to 1.0% Background Activity Noise**: In closed-loop Latent MPPI reaching, injecting 1.0% dark-current Poisson flip noise achieves a **78.0% grasp success rate** and **$2.16 \pm 1.74\,\text{cm}$ placement accuracy** (matching the nominal baseline of $74.0\%$ and $2.21\,\text{cm}$). Because mental simulation occurs in latent space $M_1(\mathbf{z}_\tau, \mathbf{u}_\tau)$, sensory noise during the initial observation phase is suppressed.
-> 3. **Vulnerability to Physical Dynamics Mismatch (Sim-to-Real Friction & Inertia Boundary)**: When physical dynamics drift outside the training distribution—such as unmodeled heavy payloads ($4.80\,\text{kg}$) or $\pm 20\%$ actuator friction drift—grasp success drops to $14\% - 18\%$ and placement errors increase to $\sim 5.0\,\text{cm}$ (exceeding the strict $3.0\,\text{cm}$ grasp bounding box). This establishes the exact empirical boundary of zero-shot transfer: while SPWM is immune to visual domain gaps, mechanical and inertial shifts require online closed-loop sensory re-grounding or adaptive gain scheduling.
-> 4. **Benchmark Artifacts**: Saved to [`results/robustness_benchmark/robustness_metrics.json`](file:///Users/Mattia/Desktop/Studies/Temp/results/robustness_benchmark/robustness_metrics.json), [`results/robustness_benchmark/robustness_table.md`](file:///Users/Mattia/Desktop/Studies/Temp/results/robustness_benchmark/robustness_table.md), [`results/robustness_benchmark/robustness_sensor_curves.png`](file:///Users/Mattia/Desktop/Studies/Temp/results/robustness_benchmark/robustness_sensor_curves.png), and [`results/robustness_benchmark/robustness_mppi_bars.png`](file:///Users/Mattia/Desktop/Studies/Temp/results/robustness_benchmark/robustness_mppi_bars.png).
+### 6.7 Forensic Failure-Mode & Inter-Seed Variance Diagnostics [COMPLETED]
+- **Why `Continuous RSSM` and `Deep GRU` Fail in PIL (`Open-Loop` vs. `Online Observation`):**
+  - Under **Online Observation Update** during $\phi_t=1$ (`scripts/diagnostics/forensic_rssm_gru_failure.py`, `results/diagnostics/forensic_rssm_gru_failure.json`), `141/150` (`94.0%`) of `Continuous RSSM` episodes (3 seeds) and `42/50` (`84.0%`) of `Deep GRU` (Seed 42) episodes reach $\le 3.0\,\text{cm}$ pre-contact and collapse via **Post-Contact Impulse Divergence + Terminal Velocity Failure** (`7.17` / `5.75 rad/s` vs. $\tau_{\text{vel}} = 1.50\,\text{rad/s}$), yielding `0.0 ± 0.0%` across all 3 seeds for both baselines.
+  - Under **Open-Loop PIL** (`--disable-handover`, no online sensory overwrite during $\phi_t=1$), `Continuous RSSM` improves only to `15.3 ± 4.6%` (`18.0% / 10.0% / 18.0%`, `36.23` flips) and `Deep GRU` scores `1.3 ± 2.3%` (`4.0% / 0.0% / 0.0%`), confirming `SPWM`'s structural superiority regardless of baseline sensory mode.
+- **Inter-Seed PIL Variance Resolution (`N=6` Tier-2 vs. `N=25` Validation `[3200, 3224]`):**
+  - Representation convergence is uniform across seeds (ALIF spike rate `11.93–12.27%`, `0.0%` hyperactive neurons, `softplus(gate_scale)` `49.04–49.07`, open-loop `H=100` Pos MSE `0.00201–0.00274`).
+  - Evaluating all 5 saved checkpoints per seed strictly on the held-out `N=25` validation split (`[3200, 3224]`) selects `checkpoint_phase_4.pt` (Seed 42, `92.0%` val $\to$ `58.0%` test), `checkpoint_phase_1.pt` (Seed 101, `68.0%` val $\to$ `62.0%` test), and `checkpoint_phase_2.pt` (Seed 2024, `80.0%` val $\to$ `62.0%` test), reducing 3-seed test std **`11.7×`** from **`58.0 ± 27.1%`** (`N=6` Tier-2) to **`60.7 ± 2.3%`** (`N=25` Val-Selected) with zero test-set peeking.
 
 ---
 
-## 7. Concrete Next Steps & Action Plan Prior to Submission
+## 7. CoRL Submission Summary & Artifact Index
 
-To transition this technical dossier into a submission-ready manuscript:
-
-```mermaid
-flowchart LR
-    Step1["Step 1: Comparative Baselines [DONE]\n(RSSM, Deep GRU, ConvLSTM)"] --> Step2["Step 2: Non-Spiking ANN Ablation [DONE]\n(Exact Param-Matched Leaky Rate)"]
-    Step2 --> Step3["Step 3: Neuromorphic Energy Profiling [DONE]\n(SOPs vs FLOPs / Loihi-2 vs Orin)"]
-    Step3 --> Step4["Step 4: Multi-Seed Statistical Validation [DONE]\n(Seeds 42, 101, 2024 Two-Phase Pipeline)"]
-    Step4 --> Step5["Step 5: Latent MPC Planning Experiment [DONE]\n(Latent MPPI in latent space)"]
-    Step5 --> Step6["Step 6: Sim-to-Real Domain Gap Benchmark [DONE]\n(Sensor noise, payload & friction drift)"]
-```
-
-1. **Comparative Baseline Benchmarks [COMPLETED]**: Trained and benchmarked Continuous RSSM, Deep GRU, and Continuous ConvLSTM under matched parameter budgets (`results/spwm_v0_12_4_train_m1/comparative_metrics_v0_12_4.json`).
-2. **Rate-Based ANN Ablation [COMPLETED]**: Evaluated exact parameter-matched `ANNWorldModel` with continuous leaky rate units, proving SNN ALIF threshold dynamics prevent compounding drift (`results/spwm_v0_12_4_train_m1/comparative_metrics_v0_12_4.json`).
-3. **Neuromorphic SOP & Energy Profiling [COMPLETED]**: Computed active Synaptic Operations (SOPs) on Loihi-2 (`0.43 nJ/step`) vs own GPU MACs (`60.36 nJ/step`), proving a `141.1x` energy efficiency advantage (`results/ssot_eval_metrics.json`, `docs/FIGURE_METRICS.md`).
-4. **Multi-Seed Statistical Verification [COMPLETED]**: Executed the full two-phase pipeline across seeds 42, 101, and 2024, confirming negative drift and low variance across extended horizons.
-5. **Benchmark Latent MPC Closed-Loop Controller [COMPLETED]**: Implemented differentiable forward kinematics and a Model Predictive Path Integral (MPPI) controller operating directly on SPWM's latent space ($M_1$), achieving `96.0%` (`48/50`) grasp success rate, `0.67 ± 0.46 cm` accuracy, `1.21 cm` terminal error, and `22.2 ms` step latency across `1.20 - 4.50 kg` payloads (`results/mppi_benchmark/mppi_benchmark_metrics.json`).
+1. **Comparative Baselines & ANN Ablation**: Synchronized in [`results/spwm_v0_12_4_train_m1/comparative_metrics_v0_12_4.json`](file:///Users/Mattia/Desktop/Studies/Temp/results/spwm_v0_12_4_train_m1/comparative_metrics_v0_12_4.json).
+2. **Neuromorphic SOP & Energy Profiling**: Synchronized in [`results/energy_profiling/energy_profiling_metrics.json`](file:///Users/Mattia/Desktop/Studies/Temp/results/energy_profiling/energy_profiling_metrics.json) and `results/multiseed/seed_{101,2024}_energy/`.
+3. **Multi-Seed Statistical Verification**: Synchronized in [`results/multiseed/multiseed_metrics.json`](file:///Users/Mattia/Desktop/Studies/Temp/results/multiseed/multiseed_metrics.json).
+4. **Closed-Loop PIL MPPI & Robustness SSOT**: Synchronized in [`results/mppi_benchmark/mppi_benchmark_metrics.json`](file:///Users/Mattia/Desktop/Studies/Temp/results/mppi_benchmark/mppi_benchmark_metrics.json), [`results/robustness_benchmark/robustness_metrics.json`](file:///Users/Mattia/Desktop/Studies/Temp/results/robustness_benchmark/robustness_metrics.json), [`results/ssot_eval_metrics.json`](file:///Users/Mattia/Desktop/Studies/Temp/results/ssot_eval_metrics.json), [`docs/FIGURE_METRICS.md`](file:///Users/Mattia/Desktop/Studies/Temp/docs/FIGURE_METRICS.md), and [`docs/CORL_FINAL_BENCHMARK_SUMMARY.md`](file:///Users/Mattia/Desktop/Studies/Temp/docs/CORL_FINAL_BENCHMARK_SUMMARY.md).
 
 ---
 
-## 8. SPWM-v0.12.4 Deploy-Ready Smoothness & SE(3) Upgrade Addendum
+## 8. SPWM-v0.12.4 Architecture & Training Specification
 
-To prepare SPWM for physical robot arm deployment (suppressing high-frequency joint jitter, enforcing slew-rate limits, and improving end-effector orientation accuracy), `SPWM-v0.12.4` (`392,141` parameters) introduced coordinated upgrades across Phase 0, Phase 1, and the Latent MPPI controller:
+`SPWM-v0.12.4` (`392,141` total / `317,900` active inference parameters) integrates ALIF firing-rate homeostasis ($\lambda_{\text{spike\_balance}} = 0.25$, target $0.12$), SE(3) end-effector supervision (`ee_rot_weight = 0.5`, `cartesian_weight = 40.0`), decoded kinematic smoothness (`lambda_kinematic_smooth = 0.5`), 4-phase Latch/DAgger/AR(1) curriculum training, and receding-horizon Latent MPPI control (`horizon = 10`, `num_samples = 256`, `num_iterations = 3`, `max_action_delta = 0.10`, 2-stage SE(3) lookahead, and causal residual-gated active perception during $\phi_t = 1$). Under full 50-episode Physics-in-the-Loop (`t >= t_c`) evaluation, canonical Seed `42` achieves **`86.0%`** grasp success (`0.86 ± 0.80 cm` min placement error, `1.57 ± 1.00 cm` terminal error), `N=25` validation-selected 3-seed SPWM achieves **`60.7 ± 2.3%`** (`58.0 ± 27.1%` under `N=6` Tier-2), disentangled ablation advances monotonically (`62.0% → 62.0% → 72.0% → 86.0%`), 3-seed OOD PIL robustness yields `55.3% / 39.3% / 40.7% / 44.0%` (`70.0%–78.0%` on Seed `42`), and Loihi-2 recurrent core energy averages **`12.22 ± 0.19 nJ/step`** across 3 seeds.
 
-- **Phase 0 Representation (`160` epochs, best `val_loss=1.28173 @ Epoch 159`)**:
-  - Added ALIF firing-rate homeostasis ($\lambda_{\text{spike\_balance}} = 0.25$, target $0.12$), reducing silent neurons from `44.92%` (`v0.12.20`) to `19.14%` and hyperactive neurons from `5.86%` to `2.34%` at `mean_spike_rate = 0.1684`.
-  - Added SE(3) end-effector rotation supervision (`ee_rot_weight = 0.5`, `cartesian_weight = 40.0`), decoded temporal kinematic smoothness (`lambda_kinematic_smooth = 0.5`), and cosine LR decay (`1.0x -> 0.20x`).
-  - On 50-episode grounded evaluation vs `v0.12.20`: acceleration ratio dropped `7.79x -> 3.88x`, `kin_fwd_mae` improved `0.1829 -> 0.1079`, direction flips dropped `205.3 -> 156.4`, and rotation error improved `0.049 -> 0.043 rad` (`p90: 0.100 -> 0.082`).
-- **Phase 1 Predictor $M_1$ (`240` epochs across 4-Phase Latch Curriculum, best `mppi_score = 2.86639 @ Epoch 200`)**:
-  - Matched AR(1) training noise ($\beta = 0.90$, $\sigma = 0.08$, shoulder $1.6\times$, elbow $1.4\times$) to `MPPIConfig`, added SE(3) + temporal smoothness to `compute_m1_loss`, and tightened Latch thresholds (`0.10` / `0.095`).
-  - `rollout_mae = 0.05500 rad` (vs `0.08184` in `v0.12.20`), `rollout_score = 0.38069`, `drift_ratio = 2.69x` (vs `2.84x`), `H=100` position MSE `0.003501` (`0.11864 rad` MAE), Tier 2 Ep 240 `succ = 100.0%`, `rot = 0.0104 rad`.
-- **Deploy-Ready Latent MPPI Controller (`50`-episode benchmark, `results/mppi_benchmark/`)**:
-  - Receding-horizon `nominal_actions` warm-start, 2-stage $SE(3)$ horizon lookahead (`t_c -> t_grasp`), residual-gated active perception, `max_action_delta = 0.10` (normalized action units/step) slew-rate clamping, `w_pos = 80.0`, `w_rot = 100.0`, `w_damping = 12.0`, `w_jerk = 4.0`, `w_joint_accel = 15.0`, `w_joint_limit = 50.0`, `w_critic = 0.0`.
-  - **Grasp Success Rate**: **`96.0%`** (48/50 episodes; Low `90.9%`, Mid `100.0%`, High `100.0%`; Light `88.2%`, Medium `100.0%`, Heavy `100.0%`), **`0.67 ± 0.46 cm`** minimum placement accuracy (`0.670 ± 0.459 cm`), **`1.207 cm`** terminal error, **`22.70 ms`** step latency.
-  - **Closed-Loop Ghost Rollout (`traj 3622`)**: `mean_ddq = 0.00426 rad/step^2` (`-64.7%` vs `0.01208` in `v0.12.20`), `mean_dddq = 0.00524` (`-68.8%` vs `0.01682`), `flips = 74` (`-41.7%` vs `127`), `mean_latent_error = 1.17 cm`.
-6. **Sim-to-Real Gap Analysis & Robustness Stress Test [COMPLETED]**: Formally evaluated visual sensor domain gaps (threshold shifts, thermal Poisson flip noise, refractory dropout) and physical dynamics perturbations (out-of-distribution 4.80 kg payload mass, loose/stiff actuator friction drift) across 400 test trajectories and 50 closed-loop MPPI episodes with zero retraining (`results/robustness_benchmark/`).
-
-### `docs/ARCHITECTURE.md`
+### `docs/Architecture.md`
 > Detailed neural architecture specification
 
 # SPWM Master Architectural Specification

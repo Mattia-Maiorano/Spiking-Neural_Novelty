@@ -1,209 +1,1003 @@
 {
   "seeds": [
+    42,
     101,
     2024
   ],
-  "num_seeds": 2,
-  "per_seed_results": {
-    "101": {
-      "seed": 101,
-      "latency_ms": 2.547933330060914,
-      "mean_spike_rate": 0.1486528435578713,
-      "teacher_forcing_mse": 0.03939702648382921,
-      "position_mse": {
-        "1": 0.001283759421382386,
-        "5": 0.0009986933481951172,
-        "10": 0.0012732447716049277,
-        "25": 0.00848711572157649,
-        "50": 0.009209816559002949,
-        "100": 0.007162401058639471
-      },
-      "velocity_mse": {
-        "1": 0.004601455544336484,
-        "5": 0.01650349344485081,
-        "10": 0.04348150583413931,
-        "25": 0.05954726212299787,
-        "50": 0.04656696290923999,
-        "100": 0.03890782709305103
-      },
-      "position_error": {
-        "1": 0.08723771801361671,
-        "5": 0.07603691632931049,
-        "10": 0.07750169073159878,
-        "25": 0.16817211990173048,
-        "50": 0.1920309582581887,
-        "100": 0.17186704048743615
-      },
-      "velocity_error": {
-        "1": 0.16353881359100342,
-        "5": 0.3029003831056448,
-        "10": 0.4231495696764726,
-        "25": 0.48565180943562436,
-        "50": 0.43767030193255496,
-        "100": 0.4064420966001657
-      },
-      "drift_ratio": 4.5792393335869805
+  "open_loop_spwm": {
+    "position_mse_per_horizon": {
+      "1": 0.00018221767580447099,
+      "5": 0.0011347631613413494,
+      "10": 0.0034783149991805353,
+      "25": 0.0021969674853608012,
+      "50": 0.0031450896058231592,
+      "100": 0.0024013782385736704
     },
-    "2024": {
-      "seed": 2024,
-      "latency_ms": 3.4835924999788404,
-      "mean_spike_rate": 0.14291142385739547,
-      "teacher_forcing_mse": 0.05915561060492809,
-      "position_mse": {
-        "1": 0.003913140712449184,
-        "5": 0.0026795735869270107,
-        "10": 0.0024390235507430937,
-        "25": 0.010732113383710384,
-        "50": 0.010117440699384762,
-        "100": 0.007904675502616625
+    "position_mse_seed_std_per_horizon": {
+      "1": 0.00010954467998152894,
+      "5": 0.0008189706679996508,
+      "10": 0.0026521253541566974,
+      "25": 0.0004156317481905645,
+      "50": 0.001442577257336728,
+      "100": 0.000366950848819243
+    },
+    "velocity_mse_per_horizon": {
+      "1": 0.001385071101443221,
+      "5": 0.04249462919930617,
+      "10": 0.045068783685564995,
+      "25": 0.036605274925629296,
+      "50": 0.02465990123649438,
+      "100": 0.009707977995276451
+    },
+    "velocity_mse_seed_std_per_horizon": {
+      "1": 0.000763865468875661,
+      "5": 0.012683060543225525,
+      "10": 0.026009623700082144,
+      "25": 0.01818887773598169,
+      "50": 0.012712159468845796,
+      "100": 0.0017663810650883683
+    },
+    "per_seed": {
+      "42": {
+        "position_mse_per_horizon": {
+          "1": 0.00015687845007050782,
+          "5": 0.0020792167633771896,
+          "10": 0.006488359998911619,
+          "25": 0.002526428084820509,
+          "50": 0.002635047771036625,
+          "100": 0.0024581069592386484
+        },
+        "velocity_mse_per_horizon": {
+          "1": 0.0013571062590926886,
+          "5": 0.05235695838928223,
+          "10": 0.07470371574163437,
+          "25": 0.03928713873028755,
+          "50": 0.01999685727059841,
+          "100": 0.011747471988201141
+        }
       },
-      "velocity_mse": {
-        "1": 0.0007220628053451387,
-        "5": 0.01217198228606811,
-        "10": 0.04354900064376684,
-        "25": 0.0598734153004793,
-        "50": 0.05320605922203798,
-        "100": 0.04573972809773225
+      "101": {
+        "position_mse_per_horizon": {
+          "1": 0.0003022114688064903,
+          "5": 0.0007039911579340696,
+          "10": 0.0014849373837932944,
+          "25": 0.002334464807063341,
+          "50": 0.004773399326950312,
+          "100": 0.0027366611175239086
+        },
+        "velocity_mse_per_horizon": {
+          "1": 0.0006355720688588917,
+          "5": 0.028187384828925133,
+          "10": 0.026028921827673912,
+          "25": 0.05330432578921318,
+          "50": 0.039045095443725586,
+          "100": 0.008709450252354145
+        }
       },
-      "position_error": {
-        "1": 0.15276741293760446,
-        "5": 0.12502067536115646,
-        "10": 0.11485057381483224,
-        "25": 0.20238269177766946,
-        "50": 0.2050125266496952,
-        "100": 0.18385823185627276
-      },
-      "velocity_error": {
-        "1": 0.06506607137047328,
-        "5": 0.24291830223340255,
-        "10": 0.41309861494944644,
-        "25": 0.49437928887513966,
-        "50": 0.47880110373863805,
-        "100": 0.4429932259596311
-      },
-      "drift_ratio": 1.0200335442752817
+      "2024": {
+        "position_mse_per_horizon": {
+          "1": 8.75631085364148e-05,
+          "5": 0.0006210815627127886,
+          "10": 0.002461647614836693,
+          "25": 0.0017300095641985536,
+          "50": 0.002026821719482541,
+          "100": 0.002009366638958454
+        },
+        "velocity_mse_per_horizon": {
+          "1": 0.0021625349763780832,
+          "5": 0.04693954437971115,
+          "10": 0.034473713487386703,
+          "25": 0.01722436025738716,
+          "50": 0.01493775099515915,
+          "100": 0.008667011745274067
+        }
+      }
     }
   },
-  "aggregated_statistics": {
-    "latency_ms": [
-      3.0157629150198773,
-      0.6616109439283417
-    ],
-    "mean_spike_rate": [
-      0.14578213370763338,
-      0.004059796803844504
-    ],
-    "teacher_forcing_mse": [
-      0.04927631854437865,
-      0.01397142881867386
-    ],
-    "drift_ratio": [
-      2.799636438931131,
-      2.5167385492607206
-    ],
-    "position_mse": {
-      "1": [
-        0.002598450066915785,
-        0.001859253341238372
+  "pil_50ep_mean_std": {
+    "SPWM-v0.12.4": {
+      "grasp_success_rate_pct": [
+        58.0,
+        27.055498516937366
       ],
-      "5": [
-        0.0018391334675610638,
-        0.0011885618151697848
+      "terminal_placement_accuracy_cm": [
+        0.8992845916748048,
+        0.0417493623118023
       ],
-      "10": [
-        0.0018561341611740107,
-        0.0008243300800919716
+      "terminal_error_cm": [
+        2.231203550299009,
+        0.6846823009200784
       ],
-      "25": [
-        0.009609614552643437,
-        0.0015874530706428227
+      "mean_joint_accel_rad_s2": [
+        0.008598180722134809,
+        0.003043671174468545
       ],
-      "50": [
-        0.009663628629193855,
-        0.0006417871844325909
+      "mean_joint_jerk_rad_s3": [
+        0.00608342978792886,
+        0.0029084716855952435
       ],
-      "100": [
-        0.007533538280628048,
-        0.0005248672928377196
+      "mean_direction_flips": [
+        19.373333333333335,
+        7.574545090850891
+      ],
+      "mppi_inference_latency_ms": [
+        23.067443259943843,
+        0.23469874288645293
       ]
     },
-    "velocity_mse": {
-      "1": [
-        0.002661759174840811,
-        0.0027431449126266343
+    "ANN-Rate": {
+      "grasp_success_rate_pct": [
+        37.333333333333336,
+        9.451631252505218
       ],
-      "5": [
-        0.01433773786545946,
-        0.0030628409131604477
+      "terminal_placement_accuracy_cm": [
+        1.0678065086901187,
+        0.2828632725018437
       ],
-      "10": [
-        0.043515253238953076,
-        4.772603758252363e-05
+      "terminal_error_cm": [
+        2.9846295044819513,
+        0.4621451582711122
       ],
-      "25": [
-        0.059710338711738586,
-        0.00023062512350265733
+      "mean_joint_accel_rad_s2": [
+        0.011481044394895437,
+        0.0008839583251549979
       ],
-      "50": [
-        0.04988651106563899,
-        0.00469455002373006
+      "mean_joint_jerk_rad_s3": [
+        0.009379258422801892,
+        0.0010705614356774748
       ],
-      "100": [
-        0.042323777595391646,
-        0.004830883528805279
+      "mean_direction_flips": [
+        26.0,
+        1.94648400969543
+      ],
+      "mppi_inference_latency_ms": [
+        24.616702500178565,
+        0.07683415875005363
       ]
     },
-    "position_error": {
-      "1": [
-        0.12000256547561058,
-        0.04633649164983742
+    "Continuous RSSM": {
+      "grasp_success_rate_pct": [
+        0.0,
+        0.0
       ],
-      "5": [
-        0.10052879584523347,
-        0.03463674817942608
+      "terminal_placement_accuracy_cm": [
+        1.5289842367172242,
+        0.06375312364798832
       ],
-      "10": [
-        0.0961761322732155,
-        0.026409648497897908
+      "terminal_error_cm": [
+        22.434701797167463,
+        0.5797279333300245
       ],
-      "25": [
-        0.18527740583969998,
-        0.024190527361746244
+      "mean_joint_accel_rad_s2": [
+        0.031191026711215573,
+        0.0008520616038234162
       ],
-      "50": [
-        0.19852174245394194,
-        0.009179355040071183
+      "mean_joint_jerk_rad_s3": [
+        0.02875449779753884,
+        0.00014085841965964314
       ],
-      "100": [
-        0.17786263617185444,
-        0.008479052731409966
+      "mean_direction_flips": [
+        36.126666666666665,
+        0.4518111699961975
+      ],
+      "mppi_inference_latency_ms": [
+        35.14400501011499,
+        0.7717180625877539
       ]
     },
-    "velocity_error": {
-      "1": [
-        0.11430244248073834,
-        0.0696307437861717
+    "SPWM-v0.12.4 (N=25 Val-Selected)": {
+      "grasp_success_rate_pct": [
+        60.666666666666664,
+        2.3094010767585074
       ],
-      "5": [
-        0.2729093426695237,
-        0.042413736134442416
+      "terminal_placement_accuracy_cm": [
+        0.8798704931139946,
+        0.10505539807183523
       ],
-      "10": [
-        0.41812409231295955,
-        0.007107098244879184
+      "terminal_error_cm": [
+        2.006662103931109,
+        0.11581144347528279
       ],
-      "25": [
-        0.49001554915538204,
-        0.006171259894347434
+      "mean_joint_accel_rad_s2": [
+        0.009308865414932371,
+        0.0034586698705177275
       ],
-      "50": [
-        0.4582357028355965,
-        0.029083868872721245
+      "mean_joint_jerk_rad_s3": [
+        0.006634432549277941,
+        0.003263484407032791
       ],
-      "100": [
-        0.4247176612798984,
-        0.02584555143010467
+      "mean_direction_flips": [
+        21.14,
+        8.549807015365904
+      ],
+      "mppi_inference_latency_ms": [
+        35.50311868491241,
+        1.4903537737959471
+      ]
+    },
+    "Continuous RSSM (Open-Loop PIL)": {
+      "grasp_success_rate_pct": [
+        15.333333333333334,
+        4.618802153517006
+      ],
+      "terminal_placement_accuracy_cm": [
+        1.3101576902468999,
+        0.015239180448274645
+      ],
+      "terminal_error_cm": [
+        2.8772510814666745,
+        0.10043628738006709
+      ],
+      "mean_joint_accel_rad_s2": [
+        0.019980563490341108,
+        0.00044725536859862214
+      ],
+      "mean_joint_jerk_rad_s3": [
+        0.020594383161514997,
+        0.0002908916650769286
+      ],
+      "mean_direction_flips": [
+        36.23333333333333,
+        0.9737213838328386
+      ],
+      "mppi_inference_latency_ms": [
+        52.36163894086636,
+        2.3005863220714606
+      ]
+    },
+    "Continuous RSSM (Online Posterior)": {
+      "grasp_success_rate_pct": [
+        0.0,
+        0.0
+      ],
+      "terminal_placement_accuracy_cm": [
+        1.5289842367172242,
+        0.06375312364798832
+      ],
+      "terminal_error_cm": [
+        22.434701797167463,
+        0.5797279333300245
+      ],
+      "mean_joint_accel_rad_s2": [
+        0.031191026711215573,
+        0.0008520616038234162
+      ],
+      "mean_joint_jerk_rad_s3": [
+        0.02875449779753884,
+        0.00014085841965964314
+      ],
+      "mean_direction_flips": [
+        36.126666666666665,
+        0.4518111699961975
+      ],
+      "mppi_inference_latency_ms": [
+        35.14400501011499,
+        0.7717180625877539
+      ]
+    },
+    "Deep GRU (Open-Loop PIL)": {
+      "grasp_success_rate_pct": [
+        1.3333333333333333,
+        2.3094010767585034
+      ],
+      "terminal_placement_accuracy_cm": [
+        10.56911430199941,
+        7.8332178543025
+      ],
+      "terminal_error_cm": [
+        16.720466453234355,
+        11.307909064116105
+      ],
+      "mean_joint_accel_rad_s2": [
+        0.007771262118282417,
+        0.006861198470924401
+      ],
+      "mean_joint_jerk_rad_s3": [
+        0.006221064189837005,
+        0.007792868260752681
+      ],
+      "mean_direction_flips": [
+        14.666666666666666,
+        14.897212267177151
+      ],
+      "mppi_inference_latency_ms": [
+        67.4003965856917,
+        1.6174098859533237
+      ]
+    },
+    "Deep GRU (Online Observation)": {
+      "grasp_success_rate_pct": [
+        0.0,
+        0.0
+      ],
+      "terminal_placement_accuracy_cm": [
+        6.027755393187205,
+        4.003672646431791
+      ],
+      "terminal_error_cm": [
+        10.87074866215388,
+        3.973647019419447
+      ],
+      "mean_joint_accel_rad_s2": [
+        0.016541417293871444,
+        0.009718487664175204
+      ],
+      "mean_joint_jerk_rad_s3": [
+        0.013497935300692918,
+        0.009453182248594585
+      ],
+      "mean_direction_flips": [
+        19.673333333333336,
+        10.000986617995913
+      ],
+      "mppi_inference_latency_ms": [
+        60.30913028220712,
+        18.88364182181519
       ]
     }
+  },
+  "energy_spwm_mean_std": {
+    "spike_rate_pct": [
+      12.151117412707743,
+      0.192861046198146
+    ],
+    "sops_per_step": [
+      8150.0,
+      129.11622671066561
+    ],
+    "energy_neuro_nj": [
+      12.224996206577009,
+      0.1940336413590309
+    ],
+    "speedup_vs_own_gpu": [
+      4.938654535978057,
+      0.07910719976272344
+    ]
+  },
+  "robustness_pil_3seed": {
+    "SPWM-v0.12.4": [
+      {
+        "condition_name": "Nominal Baseline",
+        "grasp_success_rate_pct": [
+          58.0,
+          27.055498516937366
+        ],
+        "delta_rel_pct": 0.0,
+        "min_placement_error_mean_cm": [
+          0.8992845916748048,
+          0.0417493623118023
+        ],
+        "terminal_placement_error_mean_cm": [
+          2.231203550299009,
+          0.6846823009200784
+        ],
+        "terminal_velocity_mean": [
+          0.42377924611171086,
+          0.0838157235336139
+        ],
+        "episodes_with_handover_pct": [
+          0.0,
+          0.0
+        ],
+        "phi1_steps_with_handover_pct": [
+          0.0,
+          0.0
+        ],
+        "mean_nonzero_handover_w_when_active": 0.0,
+        "per_seed": {
+          "42": {
+            "grasp_success_rate_pct": 86.0,
+            "min_placement_error_mean_cm": 0.8552020224928856,
+            "terminal_placement_error_mean_cm": 1.5668222349882126,
+            "terminal_velocity_mean": 0.32701518952846526,
+            "mean_latency_ms": 36.05713042749771,
+            "episodes_with_handover_pct": 0.0,
+            "phi1_steps_with_handover_pct": 0.0,
+            "mean_nonzero_handover_w": 0.0,
+            "delta_rel_pct": 0.0
+          },
+          "101": {
+            "grasp_success_rate_pct": 56.00000000000001,
+            "min_placement_error_mean_cm": 0.9044275161623955,
+            "terminal_placement_error_mean_cm": 2.1922635650634765,
+            "terminal_velocity_mean": 0.4737779149413109,
+            "mean_latency_ms": 35.94414352529596,
+            "episodes_with_handover_pct": 0.0,
+            "phi1_steps_with_handover_pct": 0.0,
+            "mean_nonzero_handover_w": 0.0,
+            "delta_rel_pct": 0.0
+          },
+          "2024": {
+            "grasp_success_rate_pct": 32.0,
+            "min_placement_error_mean_cm": 0.938224236369133,
+            "terminal_placement_error_mean_cm": 2.934524850845337,
+            "terminal_velocity_mean": 0.47054463386535644,
+            "mean_latency_ms": 36.51248038936411,
+            "episodes_with_handover_pct": 0.0,
+            "phi1_steps_with_handover_pct": 0.0,
+            "mean_nonzero_handover_w": 0.0,
+            "delta_rel_pct": 0.0
+          }
+        }
+      },
+      {
+        "condition_name": "Sensory Noise Injection (1.0%)",
+        "grasp_success_rate_pct": [
+          55.333333333333336,
+          19.42506971244462
+        ],
+        "delta_rel_pct": -4.597701149425283,
+        "min_placement_error_mean_cm": [
+          0.8995885254442691,
+          0.0864853745399293
+        ],
+        "terminal_placement_error_mean_cm": [
+          2.342214393814405,
+          0.6310488458771016
+        ],
+        "terminal_velocity_mean": [
+          0.3995537382364273,
+          0.12232065703258524
+        ],
+        "episodes_with_handover_pct": [
+          0.0,
+          0.0
+        ],
+        "phi1_steps_with_handover_pct": [
+          0.0,
+          0.0
+        ],
+        "mean_nonzero_handover_w_when_active": 0.0,
+        "per_seed": {
+          "42": {
+            "grasp_success_rate_pct": 72.0,
+            "min_placement_error_mean_cm": 0.9837424418330193,
+            "terminal_placement_error_mean_cm": 1.8598396837711335,
+            "terminal_velocity_mean": 0.2989905294775963,
+            "mean_latency_ms": 34.990572020690095,
+            "episodes_with_handover_pct": 0.0,
+            "phi1_steps_with_handover_pct": 0.0,
+            "mean_nonzero_handover_w": 0.0,
+            "delta_rel_pct": -16.27906976744186
+          },
+          "101": {
+            "grasp_success_rate_pct": 60.0,
+            "min_placement_error_mean_cm": 0.9040766698122025,
+            "terminal_placement_error_mean_cm": 2.1104232871532442,
+            "terminal_velocity_mean": 0.5357284384965897,
+            "mean_latency_ms": 36.52126013849798,
+            "episodes_with_handover_pct": 0.0,
+            "phi1_steps_with_handover_pct": 0.0,
+            "mean_nonzero_handover_w": 0.0,
+            "delta_rel_pct": 7.14285714285713
+          },
+          "2024": {
+            "grasp_success_rate_pct": 34.0,
+            "min_placement_error_mean_cm": 0.8109464646875858,
+            "terminal_placement_error_mean_cm": 3.056380210518837,
+            "terminal_velocity_mean": 0.36394224673509595,
+            "mean_latency_ms": 36.52111676256183,
+            "episodes_with_handover_pct": 0.0,
+            "phi1_steps_with_handover_pct": 0.0,
+            "mean_nonzero_handover_w": 0.0,
+            "delta_rel_pct": 6.25
+          }
+        }
+      },
+      {
+        "condition_name": "Payload Extrapolation (4.80 kg)",
+        "grasp_success_rate_pct": [
+          39.333333333333336,
+          33.724372986511305
+        ],
+        "delta_rel_pct": -32.183908045977006,
+        "min_placement_error_mean_cm": [
+          1.1808227265874545,
+          0.1475518910933885
+        ],
+        "terminal_placement_error_mean_cm": [
+          2.5032857662439345,
+          0.6239346910373739
+        ],
+        "terminal_velocity_mean": [
+          0.5195224117239315,
+          0.1069074967853979
+        ],
+        "episodes_with_handover_pct": [
+          1.3333333333333333,
+          2.3094010767585034
+        ],
+        "phi1_steps_with_handover_pct": [
+          0.16666666666666666,
+          0.2886751345948129
+        ],
+        "mean_nonzero_handover_w_when_active": 0.16452792689204215,
+        "per_seed": {
+          "42": {
+            "grasp_success_rate_pct": 78.0,
+            "min_placement_error_mean_cm": 1.245790022313595,
+            "terminal_placement_error_mean_cm": 1.7834283006191254,
+            "terminal_velocity_mean": 0.43445359870791433,
+            "mean_latency_ms": 37.20313749923503,
+            "episodes_with_handover_pct": 0.0,
+            "phi1_steps_with_handover_pct": 0.0,
+            "mean_nonzero_handover_w": 0.0,
+            "delta_rel_pct": -9.30232558139535
+          },
+          "101": {
+            "grasp_success_rate_pct": 24.0,
+            "min_placement_error_mean_cm": 1.2847428852319718,
+            "terminal_placement_error_mean_cm": 2.837750395536423,
+            "terminal_velocity_mean": 0.6395273652672767,
+            "mean_latency_ms": 36.43832626988797,
+            "episodes_with_handover_pct": 0.0,
+            "phi1_steps_with_handover_pct": 0.0,
+            "mean_nonzero_handover_w": 0.0,
+            "delta_rel_pct": -57.14285714285715
+          },
+          "2024": {
+            "grasp_success_rate_pct": 16.0,
+            "min_placement_error_mean_cm": 1.011935272216797,
+            "terminal_placement_error_mean_cm": 2.8886786025762556,
+            "terminal_velocity_mean": 0.4845862711966038,
+            "mean_latency_ms": 36.41863351428478,
+            "episodes_with_handover_pct": 4.0,
+            "phi1_steps_with_handover_pct": 0.5,
+            "mean_nonzero_handover_w": 0.16452792689204215,
+            "delta_rel_pct": -50.0
+          }
+        }
+      },
+      {
+        "condition_name": "Actuator Drift (0.80x Friction)",
+        "grasp_success_rate_pct": [
+          40.666666666666664,
+          27.30079363925769
+        ],
+        "delta_rel_pct": -29.88505747126437,
+        "min_placement_error_mean_cm": [
+          1.1887371614575386,
+          0.11060501933302767
+        ],
+        "terminal_placement_error_mean_cm": [
+          2.6100856752196946,
+          0.5422566355658548
+        ],
+        "terminal_velocity_mean": [
+          0.45519848535458246,
+          0.09270916234318358
+        ],
+        "episodes_with_handover_pct": [
+          1.3333333333333333,
+          2.3094010767585034
+        ],
+        "phi1_steps_with_handover_pct": [
+          0.16666666666666666,
+          0.2886751345948129
+        ],
+        "mean_nonzero_handover_w_when_active": 0.22864747449755668,
+        "per_seed": {
+          "42": {
+            "grasp_success_rate_pct": 70.0,
+            "min_placement_error_mean_cm": 1.3162081634998322,
+            "terminal_placement_error_mean_cm": 2.0683961123228074,
+            "terminal_velocity_mean": 0.3934475040435791,
+            "mean_latency_ms": 36.6571082404878,
+            "episodes_with_handover_pct": 0.0,
+            "phi1_steps_with_handover_pct": 0.0,
+            "mean_nonzero_handover_w": 0.0,
+            "delta_rel_pct": -18.6046511627907
+          },
+          "101": {
+            "grasp_success_rate_pct": 36.0,
+            "min_placement_error_mean_cm": 1.1181585595011712,
+            "terminal_placement_error_mean_cm": 2.6089533033967016,
+            "terminal_velocity_mean": 0.5618044257164001,
+            "mean_latency_ms": 36.38057136931481,
+            "episodes_with_handover_pct": 0.0,
+            "phi1_steps_with_handover_pct": 0.0,
+            "mean_nonzero_handover_w": 0.0,
+            "delta_rel_pct": -35.71428571428572
+          },
+          "2024": {
+            "grasp_success_rate_pct": 16.0,
+            "min_placement_error_mean_cm": 1.1318447613716125,
+            "terminal_placement_error_mean_cm": 3.152907609939575,
+            "terminal_velocity_mean": 0.41034352630376814,
+            "mean_latency_ms": 36.43481188892321,
+            "episodes_with_handover_pct": 4.0,
+            "phi1_steps_with_handover_pct": 0.5,
+            "mean_nonzero_handover_w": 0.22864747449755668,
+            "delta_rel_pct": -50.0
+          }
+        }
+      },
+      {
+        "condition_name": "Actuator Drift (1.20x Friction)",
+        "grasp_success_rate_pct": [
+          44.0,
+          28.0
+        ],
+        "delta_rel_pct": -24.137931034482758,
+        "min_placement_error_mean_cm": [
+          1.2160442214210827,
+          0.10678522747967399
+        ],
+        "terminal_placement_error_mean_cm": [
+          2.5337881688276926,
+          0.5567605187409086
+        ],
+        "terminal_velocity_mean": [
+          0.4324431197345257,
+          0.07896359786568626
+        ],
+        "episodes_with_handover_pct": [
+          1.3333333333333333,
+          2.3094010767585034
+        ],
+        "phi1_steps_with_handover_pct": [
+          0.16666666666666666,
+          0.2886751345948129
+        ],
+        "mean_nonzero_handover_w_when_active": 0.16903226852416992,
+        "per_seed": {
+          "42": {
+            "grasp_success_rate_pct": 76.0,
+            "min_placement_error_mean_cm": 1.3224645945429803,
+            "terminal_placement_error_mean_cm": 1.9732722735404968,
+            "terminal_velocity_mean": 0.3801573750376701,
+            "mean_latency_ms": 36.835968496259994,
+            "episodes_with_handover_pct": 0.0,
+            "phi1_steps_with_handover_pct": 0.0,
+            "mean_nonzero_handover_w": 0.0,
+            "delta_rel_pct": -11.627906976744185
+          },
+          "101": {
+            "grasp_success_rate_pct": 32.0,
+            "min_placement_error_mean_cm": 1.2167702281475068,
+            "terminal_placement_error_mean_cm": 2.5413764929771423,
+            "terminal_velocity_mean": 0.5232767987251282,
+            "mean_latency_ms": 36.59299420893834,
+            "episodes_with_handover_pct": 0.0,
+            "phi1_steps_with_handover_pct": 0.0,
+            "mean_nonzero_handover_w": 0.0,
+            "delta_rel_pct": -42.85714285714287
+          },
+          "2024": {
+            "grasp_success_rate_pct": 24.0,
+            "min_placement_error_mean_cm": 1.1088978415727615,
+            "terminal_placement_error_mean_cm": 3.086715739965439,
+            "terminal_velocity_mean": 0.39389518544077873,
+            "mean_latency_ms": 36.48604587311423,
+            "episodes_with_handover_pct": 4.0,
+            "phi1_steps_with_handover_pct": 0.5,
+            "mean_nonzero_handover_w": 0.16903226852416992,
+            "delta_rel_pct": -25.0
+          }
+        }
+      }
+    ],
+    "ANN-Rate": [
+      {
+        "condition_name": "Nominal Baseline",
+        "grasp_success_rate_pct": [
+          37.333333333333336,
+          9.451631252505218
+        ],
+        "delta_rel_pct": 0.0,
+        "min_placement_error_mean_cm": [
+          1.0678065086901187,
+          0.2828632725018437
+        ],
+        "terminal_placement_error_mean_cm": [
+          2.9846295044819513,
+          0.4621451582711122
+        ],
+        "terminal_velocity_mean": [
+          0.49538074051340425,
+          0.11216522852158058
+        ],
+        "episodes_with_handover_pct": [
+          0.0,
+          0.0
+        ],
+        "phi1_steps_with_handover_pct": [
+          0.0,
+          0.0
+        ],
+        "mean_nonzero_handover_w_when_active": 0.0,
+        "per_seed": {
+          "42": {
+            "grasp_success_rate_pct": 34.0,
+            "min_placement_error_mean_cm": 0.8320508192479611,
+            "terminal_placement_error_mean_cm": 2.7538758546113966,
+            "terminal_velocity_mean": 0.5869238513708115,
+            "mean_latency_ms": 29.43750379663485,
+            "episodes_with_handover_pct": 0.0,
+            "phi1_steps_with_handover_pct": 0.0,
+            "mean_nonzero_handover_w": 0.0,
+            "delta_rel_pct": 0.0
+          },
+          "101": {
+            "grasp_success_rate_pct": 30.0,
+            "min_placement_error_mean_cm": 1.3814548110961915,
+            "terminal_placement_error_mean_cm": 3.5167109155654908,
+            "terminal_velocity_mean": 0.5289560982584953,
+            "mean_latency_ms": 26.53065752230858,
+            "episodes_with_handover_pct": 0.0,
+            "phi1_steps_with_handover_pct": 0.0,
+            "mean_nonzero_handover_w": 0.0,
+            "delta_rel_pct": 0.0
+          },
+          "2024": {
+            "grasp_success_rate_pct": 48.0,
+            "min_placement_error_mean_cm": 0.9899138957262039,
+            "terminal_placement_error_mean_cm": 2.6833017432689665,
+            "terminal_velocity_mean": 0.3702622719109058,
+            "mean_latency_ms": 25.199068654014535,
+            "episodes_with_handover_pct": 0.0,
+            "phi1_steps_with_handover_pct": 0.0,
+            "mean_nonzero_handover_w": 0.0,
+            "delta_rel_pct": 0.0
+          }
+        }
+      },
+      {
+        "condition_name": "Sensory Noise Injection (1.0%)",
+        "grasp_success_rate_pct": [
+          30.0,
+          3.4641016151377544
+        ],
+        "delta_rel_pct": -19.64285714285715,
+        "min_placement_error_mean_cm": [
+          1.0367476403713225,
+          0.17609975464908534
+        ],
+        "terminal_placement_error_mean_cm": [
+          3.362126860022545,
+          0.529625351794463
+        ],
+        "terminal_velocity_mean": [
+          0.5011851574977239,
+          0.1012983853840122
+        ],
+        "episodes_with_handover_pct": [
+          0.0,
+          0.0
+        ],
+        "phi1_steps_with_handover_pct": [
+          0.0,
+          0.0
+        ],
+        "mean_nonzero_handover_w_when_active": 0.0,
+        "per_seed": {
+          "42": {
+            "grasp_success_rate_pct": 32.0,
+            "min_placement_error_mean_cm": 0.8365792346000671,
+            "terminal_placement_error_mean_cm": 3.0554915750026703,
+            "terminal_velocity_mean": 0.5730594700574875,
+            "mean_latency_ms": 31.393095565214775,
+            "episodes_with_handover_pct": 0.0,
+            "phi1_steps_with_handover_pct": 0.0,
+            "mean_nonzero_handover_w": 0.0,
+            "delta_rel_pct": -5.882352941176471
+          },
+          "101": {
+            "grasp_success_rate_pct": 26.0,
+            "min_placement_error_mean_cm": 1.1058386087417602,
+            "terminal_placement_error_mean_cm": 3.9736847394704817,
+            "terminal_velocity_mean": 0.5451662424206734,
+            "mean_latency_ms": 26.004011596295314,
+            "episodes_with_handover_pct": 0.0,
+            "phi1_steps_with_handover_pct": 0.0,
+            "mean_nonzero_handover_w": 0.0,
+            "delta_rel_pct": -13.333333333333334
+          },
+          "2024": {
+            "grasp_success_rate_pct": 32.0,
+            "min_placement_error_mean_cm": 1.1678250777721404,
+            "terminal_placement_error_mean_cm": 3.0572042655944824,
+            "terminal_velocity_mean": 0.38532976001501085,
+            "mean_latency_ms": 25.061606960452693,
+            "episodes_with_handover_pct": 0.0,
+            "phi1_steps_with_handover_pct": 0.0,
+            "mean_nonzero_handover_w": 0.0,
+            "delta_rel_pct": -33.333333333333336
+          }
+        }
+      },
+      {
+        "condition_name": "Payload Extrapolation (4.80 kg)",
+        "grasp_success_rate_pct": [
+          26.666666666666668,
+          16.165807537309522
+        ],
+        "delta_rel_pct": -28.571428571428573,
+        "min_placement_error_mean_cm": [
+          1.359116240243117,
+          0.19601864522317206
+        ],
+        "terminal_placement_error_mean_cm": [
+          3.6378836290041607,
+          0.7955281178345174
+        ],
+        "terminal_velocity_mean": [
+          0.6115619068592787,
+          0.10662950140954822
+        ],
+        "episodes_with_handover_pct": [
+          0.0,
+          0.0
+        ],
+        "phi1_steps_with_handover_pct": [
+          0.0,
+          0.0
+        ],
+        "mean_nonzero_handover_w_when_active": 0.0,
+        "per_seed": {
+          "42": {
+            "grasp_success_rate_pct": 24.0,
+            "min_placement_error_mean_cm": 1.1392030370235444,
+            "terminal_placement_error_mean_cm": 3.5584317278862,
+            "terminal_velocity_mean": 0.6400154614448548,
+            "mean_latency_ms": 29.94859264750354,
+            "episodes_with_handover_pct": 0.0,
+            "phi1_steps_with_handover_pct": 0.0,
+            "mean_nonzero_handover_w": 0.0,
+            "delta_rel_pct": -29.41176470588235
+          },
+          "101": {
+            "grasp_success_rate_pct": 12.0,
+            "min_placement_error_mean_cm": 1.4226837638020515,
+            "terminal_placement_error_mean_cm": 4.470156444311142,
+            "terminal_velocity_mean": 0.7010783076286315,
+            "mean_latency_ms": 25.1213509093544,
+            "episodes_with_handover_pct": 0.0,
+            "phi1_steps_with_handover_pct": 0.0,
+            "mean_nonzero_handover_w": 0.0,
+            "delta_rel_pct": -60.0
+          },
+          "2024": {
+            "grasp_success_rate_pct": 44.0,
+            "min_placement_error_mean_cm": 1.5154619199037551,
+            "terminal_placement_error_mean_cm": 2.88506271481514,
+            "terminal_velocity_mean": 0.4935919515043497,
+            "mean_latency_ms": 25.066311646045065,
+            "episodes_with_handover_pct": 0.0,
+            "phi1_steps_with_handover_pct": 0.0,
+            "mean_nonzero_handover_w": 0.0,
+            "delta_rel_pct": -8.333333333333334
+          }
+        }
+      },
+      {
+        "condition_name": "Actuator Drift (0.80x Friction)",
+        "grasp_success_rate_pct": [
+          30.666666666666668,
+          14.047538337136984
+        ],
+        "delta_rel_pct": -17.857142857142858,
+        "min_placement_error_mean_cm": [
+          1.4180172796050707,
+          0.21795292848457692
+        ],
+        "terminal_placement_error_mean_cm": [
+          3.740554449160894,
+          0.8331617947215637
+        ],
+        "terminal_velocity_mean": [
+          0.5717242361605167,
+          0.13817699362402994
+        ],
+        "episodes_with_handover_pct": [
+          0.0,
+          0.0
+        ],
+        "phi1_steps_with_handover_pct": [
+          0.0,
+          0.0
+        ],
+        "mean_nonzero_handover_w_when_active": 0.0,
+        "per_seed": {
+          "42": {
+            "grasp_success_rate_pct": 32.0,
+            "min_placement_error_mean_cm": 1.1665561926364898,
+            "terminal_placement_error_mean_cm": 3.536238695383072,
+            "terminal_velocity_mean": 0.643540482223034,
+            "mean_latency_ms": 25.223359415711226,
+            "episodes_with_handover_pct": 0.0,
+            "phi1_steps_with_handover_pct": 0.0,
+            "mean_nonzero_handover_w": 0.0,
+            "delta_rel_pct": -5.882352941176471
+          },
+          "101": {
+            "grasp_success_rate_pct": 16.0,
+            "min_placement_error_mean_cm": 1.5526343488693237,
+            "terminal_placement_error_mean_cm": 4.656868257522583,
+            "terminal_velocity_mean": 0.6592045310139656,
+            "mean_latency_ms": 25.066783458762252,
+            "episodes_with_handover_pct": 0.0,
+            "phi1_steps_with_handover_pct": 0.0,
+            "mean_nonzero_handover_w": 0.0,
+            "delta_rel_pct": -46.666666666666664
+          },
+          "2024": {
+            "grasp_success_rate_pct": 44.0,
+            "min_placement_error_mean_cm": 1.5348612973093987,
+            "terminal_placement_error_mean_cm": 3.028556394577026,
+            "terminal_velocity_mean": 0.4124276952445507,
+            "mean_latency_ms": 24.790206348217293,
+            "episodes_with_handover_pct": 0.0,
+            "phi1_steps_with_handover_pct": 0.0,
+            "mean_nonzero_handover_w": 0.0,
+            "delta_rel_pct": -8.333333333333334
+          }
+        }
+      },
+      {
+        "condition_name": "Actuator Drift (1.20x Friction)",
+        "grasp_success_rate_pct": [
+          33.333333333333336,
+          16.65332799572906
+        ],
+        "delta_rel_pct": -10.714285714285714,
+        "min_placement_error_mean_cm": [
+          1.3353092057506244,
+          0.20851366158174045
+        ],
+        "terminal_placement_error_mean_cm": [
+          3.510111181139946,
+          1.2144949894390102
+        ],
+        "terminal_velocity_mean": [
+          0.5205225745340188,
+          0.10602974885015383
+        ],
+        "episodes_with_handover_pct": [
+          0.0,
+          0.0
+        ],
+        "phi1_steps_with_handover_pct": [
+          0.0,
+          0.0
+        ],
+        "mean_nonzero_handover_w_when_active": 0.0,
+        "per_seed": {
+          "42": {
+            "grasp_success_rate_pct": 28.000000000000004,
+            "min_placement_error_mean_cm": 1.101568892300129,
+            "terminal_placement_error_mean_cm": 2.80165857732296,
+            "terminal_velocity_mean": 0.6022750130295753,
+            "mean_latency_ms": 25.216824718118666,
+            "episodes_with_handover_pct": 0.0,
+            "phi1_steps_with_handover_pct": 0.0,
+            "mean_nonzero_handover_w": 0.0,
+            "delta_rel_pct": -17.647058823529402
+          },
+          "101": {
+            "grasp_success_rate_pct": 20.0,
+            "min_placement_error_mean_cm": 1.40215890198946,
+            "terminal_placement_error_mean_cm": 4.912464030981064,
+            "terminal_velocity_mean": 0.5585748782753944,
+            "mean_latency_ms": 25.116685864205966,
+            "episodes_with_handover_pct": 0.0,
+            "phi1_steps_with_handover_pct": 0.0,
+            "mean_nonzero_handover_w": 0.0,
+            "delta_rel_pct": -33.333333333333336
+          },
+          "2024": {
+            "grasp_success_rate_pct": 52.0,
+            "min_placement_error_mean_cm": 1.5021998229622842,
+            "terminal_placement_error_mean_cm": 2.816210935115814,
+            "terminal_velocity_mean": 0.40071783229708674,
+            "mean_latency_ms": 25.06705994109404,
+            "episodes_with_handover_pct": 0.0,
+            "phi1_steps_with_handover_pct": 0.0,
+            "mean_nonzero_handover_w": 0.0,
+            "delta_rel_pct": 8.333333333333334
+          }
+        }
+      }
+    ]
   }
 }

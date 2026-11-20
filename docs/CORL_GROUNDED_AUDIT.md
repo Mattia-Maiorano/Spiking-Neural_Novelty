@@ -1,5 +1,8 @@
 # CoRL Grounded Audit & Benchmark Report (`SPWM-v0.12.4`)
 
+> [!NOTE]
+> **Historical Nov 17 Audit Snapshot:** This document records the initial Nov 17 `SPWM-v0.12.4` leakage & PIL fidelity audit (`t >= t_grasp` vs `t >= t_c`). All final, multi-seed (`42, 101, 2024`), symmetric `t >= t_c` PIL benchmarks, disentangled Stage 4 ablations, $w_t$ activation telemetry, and Open-Loop vs. Online baseline comparisons are consolidated in [**docs/CORL_FINAL_BENCHMARK_SUMMARY.md**](file:///Users/Mattia/Desktop/Studies/Temp/docs/CORL_FINAL_BENCHMARK_SUMMARY.md).
+
 **Audit Date:** 2026-11-17  
 **Audited Checkpoint:** [`results/spwm_v0_12_4_train_m1/model.pt`](file:///Users/Mattia/Desktop/Studies/Temp/results/spwm_v0_12_4_train_m1/model.pt) (`392,141` total / `317,900` active inference parameters)  
 **AST Anti-Fallback Gate:** Clean (`0` violations across `spwm/`, `experiments/benchmark_classical_and_bc.py`, `experiments/benchmark_robustness_stress_test.py`; `20/20` contract & anti-fallback tests passing).

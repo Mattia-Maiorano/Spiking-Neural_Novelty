@@ -718,5 +718,2117 @@
     "rssm_gpu_nj": 328.55039999999997,
     "convlstm_gpu_nj": 2123.3664,
     "speedup_vs_own_gpu": 4.890475307893975
+  },
+  "corl_final_verification": {
+    "pil_3seed_comparison": {
+      "spwm_n6_tier2": {
+        "mean_std": {
+          "grasp_success_rate_pct": [
+            58.0,
+            27.055498516937366
+          ],
+          "terminal_placement_accuracy_cm": [
+            0.8992845916748048,
+            0.0417493623118023
+          ],
+          "terminal_error_cm": [
+            2.231203550299009,
+            0.6846823009200784
+          ],
+          "mean_joint_accel_rad_s2": [
+            0.008598180722134809,
+            0.003043671174468545
+          ],
+          "mean_joint_jerk_rad_s3": [
+            0.00608342978792886,
+            0.0029084716855952435
+          ],
+          "mean_direction_flips": [
+            19.373333333333335,
+            7.574545090850891
+          ],
+          "mppi_inference_latency_ms": [
+            27.510263026675336,
+            7.919433452921299
+          ]
+        },
+        "per_seed": {
+          "42": {
+            "checkpoint": "results/spwm_v0_12_4_train_m1/model.pt",
+            "evaluation_protocol": "physics_in_loop",
+            "episodes_evaluated": 50,
+            "overall_metrics": {
+              "grasp_success_rate_pct": 86.0,
+              "terminal_placement_accuracy_cm": 0.8552020224928856,
+              "placement_accuracy_std_cm": 0.7991095820631844,
+              "terminal_error_cm": 1.5668222349882126,
+              "terminal_error_std_cm": 1.004804437956763,
+              "mppi_inference_latency_ms": 36.65447710343201,
+              "mean_joint_accel_rad_s2": 0.0058662799885496495,
+              "std_joint_accel_rad_s2": 0.0014419035578661795,
+              "mean_joint_jerk_rad_s3": 0.003542280187830329,
+              "std_joint_jerk_rad_s3": 0.000713988545542795,
+              "mean_direction_flips": 14.02,
+              "std_direction_flips": 7.643271550847844
+            },
+            "handover_telemetry": {
+              "episodes_evaluated": 50,
+              "triggered_episodes": 0,
+              "episodes_with_w_gt_0_pct": 0.0,
+              "total_phi1_steps": 400,
+              "triggered_phi1_steps": 0,
+              "phi1_steps_with_w_gt_0_pct": 0.0,
+              "mean_nonzero_w": 0.0
+            }
+          },
+          "101": {
+            "checkpoint": "results/multiseed/seed_101_m1/model.pt",
+            "evaluation_protocol": "physics_in_loop",
+            "episodes_evaluated": 50,
+            "overall_metrics": {
+              "grasp_success_rate_pct": 56.00000000000001,
+              "terminal_placement_accuracy_cm": 0.9044275161623955,
+              "placement_accuracy_std_cm": 0.6471105496304267,
+              "terminal_error_cm": 2.1922635650634765,
+              "terminal_error_std_cm": 1.1926734087904072,
+              "mppi_inference_latency_ms": 23.008426210175344,
+              "mean_joint_accel_rad_s2": 0.011878934735432268,
+              "std_joint_accel_rad_s2": 0.00374689697219965,
+              "mean_joint_jerk_rad_s3": 0.009255616161972284,
+              "std_joint_jerk_rad_s3": 0.0022864994051547106,
+              "mean_direction_flips": 28.04,
+              "std_direction_flips": 7.623542483648924
+            },
+            "handover_telemetry": null
+          },
+          "2024": {
+            "checkpoint": "results/multiseed/seed_2024_m1/model.pt",
+            "evaluation_protocol": "physics_in_loop",
+            "episodes_evaluated": 50,
+            "overall_metrics": {
+              "grasp_success_rate_pct": 32.0,
+              "terminal_placement_accuracy_cm": 0.938224236369133,
+              "placement_accuracy_std_cm": 0.6394334407237005,
+              "terminal_error_cm": 2.934524850845337,
+              "terminal_error_std_cm": 1.8091352151209616,
+              "mppi_inference_latency_ms": 22.86788576641866,
+              "mean_joint_accel_rad_s2": 0.008049327442422509,
+              "std_joint_accel_rad_s2": 0.0032349260861896404,
+              "mean_joint_jerk_rad_s3": 0.005452393013983965,
+              "std_joint_jerk_rad_s3": 0.0021297406964725127,
+              "mean_direction_flips": 16.06,
+              "std_direction_flips": 4.6364210335128115
+            },
+            "handover_telemetry": null
+          }
+        }
+      },
+      "spwm_n25_val": {
+        "mean_std": {
+          "grasp_success_rate_pct": [
+            60.666666666666664,
+            2.3094010767585074
+          ],
+          "terminal_placement_accuracy_cm": [
+            0.8798704931139946,
+            0.10505539807183523
+          ],
+          "terminal_error_cm": [
+            2.006662103931109,
+            0.11581144347528279
+          ],
+          "mean_joint_accel_rad_s2": [
+            0.009308865414932371,
+            0.0034586698705177275
+          ],
+          "mean_joint_jerk_rad_s3": [
+            0.006634432549277941,
+            0.003263484407032791
+          ],
+          "mean_direction_flips": [
+            21.14,
+            8.549807015365904
+          ],
+          "mppi_inference_latency_ms": [
+            35.50311868491241,
+            1.4903537737959471
+          ]
+        },
+        "per_seed": {
+          "42": {
+            "checkpoint": "results/spwm_v0_12_4_train_m1/checkpoint_phase_4.pt",
+            "evaluation_protocol": "physics_in_loop",
+            "episodes_evaluated": 50,
+            "overall_metrics": {
+              "grasp_success_rate_pct": 57.99999999999999,
+              "terminal_placement_accuracy_cm": 0.9966417002677918,
+              "placement_accuracy_std_cm": 0.7168366082198878,
+              "terminal_error_cm": 2.117010636925697,
+              "terminal_error_std_cm": 1.2261713068281301,
+              "mppi_inference_latency_ms": 36.37386128397549,
+              "mean_joint_accel_rad_s2": 0.005460824174806475,
+              "std_joint_accel_rad_s2": 0.0014449158194058374,
+              "mean_joint_jerk_rad_s3": 0.003033191980794072,
+              "std_joint_jerk_rad_s3": 0.0006583887773716086,
+              "mean_direction_flips": 11.82,
+              "std_direction_flips": 6.098163658020339
+            },
+            "handover_telemetry": {
+              "episodes_evaluated": 50,
+              "triggered_episodes": 0,
+              "episodes_with_w_gt_0_pct": 0.0,
+              "total_phi1_steps": 400,
+              "triggered_phi1_steps": 0,
+              "phi1_steps_with_w_gt_0_pct": 0.0,
+              "mean_nonzero_w": 0.0
+            }
+          },
+          "101": {
+            "checkpoint": "results/multiseed/seed_101_m1/checkpoint_phase_1.pt",
+            "evaluation_protocol": "physics_in_loop",
+            "episodes_evaluated": 50,
+            "overall_metrics": {
+              "grasp_success_rate_pct": 62.0,
+              "terminal_placement_accuracy_cm": 0.8499453981220723,
+              "placement_accuracy_std_cm": 0.5894733005655424,
+              "terminal_error_cm": 2.0169071877002716,
+              "terminal_error_std_cm": 1.1516123596745238,
+              "mppi_inference_latency_ms": 36.35324723590614,
+              "mean_joint_accel_rad_s2": 0.012158537823706865,
+              "std_joint_accel_rad_s2": 0.0038326392576793562,
+              "mean_joint_jerk_rad_s3": 0.00939610967412591,
+              "std_joint_jerk_rad_s3": 0.0024506745164746524,
+              "mean_direction_flips": 28.62,
+              "std_direction_flips": 8.126229137798171
+            },
+            "handover_telemetry": {
+              "episodes_evaluated": 50,
+              "triggered_episodes": 0,
+              "episodes_with_w_gt_0_pct": 0.0,
+              "total_phi1_steps": 400,
+              "triggered_phi1_steps": 0,
+              "phi1_steps_with_w_gt_0_pct": 0.0,
+              "mean_nonzero_w": 0.0
+            }
+          },
+          "2024": {
+            "checkpoint": "results/multiseed/seed_2024_m1/checkpoint_phase_2.pt",
+            "evaluation_protocol": "physics_in_loop",
+            "episodes_evaluated": 50,
+            "overall_metrics": {
+              "grasp_success_rate_pct": 62.0,
+              "terminal_placement_accuracy_cm": 0.7930243809521198,
+              "placement_accuracy_std_cm": 0.5496822026263848,
+              "terminal_error_cm": 1.8860684871673583,
+              "terminal_error_std_cm": 1.187425109721587,
+              "mppi_inference_latency_ms": 33.78224753485561,
+              "mean_joint_accel_rad_s2": 0.01030723424628377,
+              "std_joint_accel_rad_s2": 0.003965905046145654,
+              "mean_joint_jerk_rad_s3": 0.007473995992913842,
+              "std_joint_jerk_rad_s3": 0.0027093614883279904,
+              "mean_direction_flips": 22.98,
+              "std_direction_flips": 5.540721974616666
+            },
+            "handover_telemetry": {
+              "episodes_evaluated": 50,
+              "triggered_episodes": 0,
+              "episodes_with_w_gt_0_pct": 0.0,
+              "total_phi1_steps": 400,
+              "triggered_phi1_steps": 0,
+              "phi1_steps_with_w_gt_0_pct": 0.0,
+              "mean_nonzero_w": 0.0
+            }
+          }
+        }
+      },
+      "ann_rate": {
+        "mean_std": {
+          "grasp_success_rate_pct": [
+            37.333333333333336,
+            9.451631252505218
+          ],
+          "terminal_placement_accuracy_cm": [
+            1.0678065086901187,
+            0.2828632725018437
+          ],
+          "terminal_error_cm": [
+            2.9846295044819513,
+            0.4621451582711122
+          ],
+          "mean_joint_accel_rad_s2": [
+            0.011481044394895437,
+            0.0008839583251549979
+          ],
+          "mean_joint_jerk_rad_s3": [
+            0.009379258422801892,
+            0.0010705614356774748
+          ],
+          "mean_direction_flips": [
+            26.0,
+            1.94648400969543
+          ],
+          "mppi_inference_latency_ms": [
+            24.616702500178565,
+            0.07683415875005363
+          ]
+        },
+        "per_seed": {
+          "42": {
+            "checkpoint": "results/ann_ablation/seed_42_m1/model.pt",
+            "evaluation_protocol": "physics_in_loop",
+            "episodes_evaluated": 50,
+            "overall_metrics": {
+              "grasp_success_rate_pct": 34.0,
+              "terminal_placement_accuracy_cm": 0.8320508192479611,
+              "placement_accuracy_std_cm": 0.4655940325677702,
+              "terminal_error_cm": 2.7538758546113966,
+              "terminal_error_std_cm": 1.6488538132409942,
+              "mppi_inference_latency_ms": 24.528368778591304,
+              "mean_joint_accel_rad_s2": 0.012113787466660142,
+              "std_joint_accel_rad_s2": 0.004143865865535021,
+              "mean_joint_jerk_rad_s3": 0.00986627260223031,
+              "std_joint_jerk_rad_s3": 0.0032970702130067234,
+              "mean_direction_flips": 28.24,
+              "std_direction_flips": 7.061331319234355
+            },
+            "handover_telemetry": null
+          },
+          "101": {
+            "checkpoint": "results/ann_ablation/seed_101_m1/model.pt",
+            "evaluation_protocol": "physics_in_loop",
+            "episodes_evaluated": 50,
+            "overall_metrics": {
+              "grasp_success_rate_pct": 30.0,
+              "terminal_placement_accuracy_cm": 1.3814548110961915,
+              "placement_accuracy_std_cm": 1.0088033363029787,
+              "terminal_error_cm": 3.5167109155654908,
+              "terminal_error_std_cm": 1.908053762203449,
+              "mppi_inference_latency_ms": 24.66803547384716,
+              "mean_joint_accel_rad_s2": 0.011858293414115905,
+              "std_joint_accel_rad_s2": 0.0038084789794641236,
+              "mean_joint_jerk_rad_s3": 0.010119730336591602,
+              "std_joint_jerk_rad_s3": 0.0028768772037011977,
+              "mean_direction_flips": 25.04,
+              "std_direction_flips": 6.483702645865247
+            },
+            "handover_telemetry": null
+          },
+          "2024": {
+            "checkpoint": "results/ann_ablation/seed_2024_m1/model.pt",
+            "evaluation_protocol": "physics_in_loop",
+            "episodes_evaluated": 50,
+            "overall_metrics": {
+              "grasp_success_rate_pct": 48.0,
+              "terminal_placement_accuracy_cm": 0.9899138957262039,
+              "placement_accuracy_std_cm": 0.6084400484165465,
+              "terminal_error_cm": 2.6833017432689665,
+              "terminal_error_std_cm": 1.3172601917506164,
+              "mppi_inference_latency_ms": 24.65370324809723,
+              "mean_joint_accel_rad_s2": 0.010471052303910256,
+              "std_joint_accel_rad_s2": 0.004437141968405458,
+              "mean_joint_jerk_rad_s3": 0.008151772329583765,
+              "std_joint_jerk_rad_s3": 0.0029226110981672468,
+              "mean_direction_flips": 24.72,
+              "std_direction_flips": 6.318354216091402
+            },
+            "handover_telemetry": null
+          }
+        }
+      },
+      "rssm_open_loop": {
+        "mean_std": {
+          "grasp_success_rate_pct": [
+            15.333333333333334,
+            4.618802153517006
+          ],
+          "terminal_placement_accuracy_cm": [
+            1.3101576902468999,
+            0.015239180448274645
+          ],
+          "terminal_error_cm": [
+            2.8772510814666745,
+            0.10043628738006709
+          ],
+          "mean_joint_accel_rad_s2": [
+            0.019980563490341108,
+            0.00044725536859862214
+          ],
+          "mean_joint_jerk_rad_s3": [
+            0.020594383161514997,
+            0.0002908916650769286
+          ],
+          "mean_direction_flips": [
+            36.23333333333333,
+            0.9737213838328386
+          ],
+          "mppi_inference_latency_ms": [
+            52.36163894086636,
+            2.3005863220714606
+          ]
+        },
+        "per_seed": {
+          "42": {
+            "checkpoint": "results/baselines/continuous_rssm/model.pt",
+            "evaluation_protocol": "physics_in_loop",
+            "episodes_evaluated": 50,
+            "overall_metrics": {
+              "grasp_success_rate_pct": 18.0,
+              "terminal_placement_accuracy_cm": 1.3266203773021699,
+              "placement_accuracy_std_cm": 0.7567385234666243,
+              "terminal_error_cm": 2.989941152334213,
+              "terminal_error_std_cm": 2.314479426505856,
+              "mppi_inference_latency_ms": 53.49043995589559,
+              "mean_joint_accel_rad_s2": 0.020397072955965996,
+              "std_joint_accel_rad_s2": 0.005150112805367512,
+              "mean_joint_jerk_rad_s3": 0.020926078390330075,
+              "std_joint_jerk_rad_s3": 0.004612915595826576,
+              "mean_direction_flips": 36.48,
+              "std_direction_flips": 8.70457351051733
+            },
+            "handover_telemetry": {
+              "episodes_evaluated": 50,
+              "triggered_episodes": 0,
+              "episodes_with_w_gt_0_pct": 0.0,
+              "total_phi1_steps": 400,
+              "triggered_phi1_steps": 0,
+              "phi1_steps_with_w_gt_0_pct": 0.0,
+              "mean_nonzero_w": 0.0
+            }
+          },
+          "101": {
+            "checkpoint": "results/multiseed_rssm/seed_101/continuous_rssm/model.pt",
+            "evaluation_protocol": "physics_in_loop",
+            "episodes_evaluated": 50,
+            "overall_metrics": {
+              "grasp_success_rate_pct": 10.0,
+              "terminal_placement_accuracy_cm": 1.29654419362545,
+              "placement_accuracy_std_cm": 0.7349282199575204,
+              "terminal_error_cm": 2.7971750795841217,
+              "terminal_error_std_cm": 1.2842201852756545,
+              "mppi_inference_latency_ms": 53.87979782665941,
+              "mean_joint_accel_rad_s2": 0.02003674639388919,
+              "std_joint_accel_rad_s2": 0.005475541541558765,
+              "mean_joint_jerk_rad_s3": 0.020382691603153945,
+              "std_joint_jerk_rad_s3": 0.0051559219643164565,
+              "mean_direction_flips": 35.16,
+              "std_direction_flips": 8.398476052237097
+            },
+            "handover_telemetry": {
+              "episodes_evaluated": 50,
+              "triggered_episodes": 0,
+              "episodes_with_w_gt_0_pct": 0.0,
+              "total_phi1_steps": 400,
+              "triggered_phi1_steps": 0,
+              "phi1_steps_with_w_gt_0_pct": 0.0,
+              "mean_nonzero_w": 0.0
+            }
+          },
+          "2024": {
+            "checkpoint": "results/multiseed_rssm/seed_2024/continuous_rssm/model.pt",
+            "evaluation_protocol": "physics_in_loop",
+            "episodes_evaluated": 50,
+            "overall_metrics": {
+              "grasp_success_rate_pct": 18.0,
+              "terminal_placement_accuracy_cm": 1.3073084998130797,
+              "placement_accuracy_std_cm": 0.7205506123520404,
+              "terminal_error_cm": 2.8446370124816895,
+              "terminal_error_std_cm": 1.6639887935850126,
+              "mppi_inference_latency_ms": 49.71467904004407,
+              "mean_joint_accel_rad_s2": 0.019507871121168138,
+              "std_joint_accel_rad_s2": 0.0060982226813745795,
+              "mean_joint_jerk_rad_s3": 0.02047437949106097,
+              "std_joint_jerk_rad_s3": 0.0055033501945377225,
+              "mean_direction_flips": 37.06,
+              "std_direction_flips": 8.598627797503507
+            },
+            "handover_telemetry": {
+              "episodes_evaluated": 50,
+              "triggered_episodes": 0,
+              "episodes_with_w_gt_0_pct": 0.0,
+              "total_phi1_steps": 400,
+              "triggered_phi1_steps": 0,
+              "phi1_steps_with_w_gt_0_pct": 0.0,
+              "mean_nonzero_w": 0.0
+            }
+          }
+        }
+      },
+      "rssm_online": {
+        "mean_std": {
+          "grasp_success_rate_pct": [
+            0.0,
+            0.0
+          ],
+          "terminal_placement_accuracy_cm": [
+            1.5289842367172242,
+            0.06375312364798832
+          ],
+          "terminal_error_cm": [
+            22.434701797167463,
+            0.5797279333300245
+          ],
+          "mean_joint_accel_rad_s2": [
+            0.031191026711215573,
+            0.0008520616038234162
+          ],
+          "mean_joint_jerk_rad_s3": [
+            0.02875449779753884,
+            0.00014085841965964314
+          ],
+          "mean_direction_flips": [
+            36.126666666666665,
+            0.4518111699961975
+          ],
+          "mppi_inference_latency_ms": [
+            35.14400501011499,
+            0.7717180625877539
+          ]
+        },
+        "per_seed": {
+          "42": {
+            "checkpoint": "results/baselines/continuous_rssm/model.pt",
+            "evaluation_protocol": "physics_in_loop",
+            "episodes_evaluated": 50,
+            "overall_metrics": {
+              "grasp_success_rate_pct": 0.0,
+              "terminal_placement_accuracy_cm": 1.4853565365076065,
+              "placement_accuracy_std_cm": 0.8072306821662141,
+              "terminal_error_cm": 23.064797267913818,
+              "terminal_error_std_cm": 10.191853322128246,
+              "mppi_inference_latency_ms": 35.43504671945729,
+              "mean_joint_accel_rad_s2": 0.031375364810228346,
+              "std_joint_accel_rad_s2": 0.007305338172597787,
+              "mean_joint_jerk_rad_s3": 0.02885244209319353,
+              "std_joint_jerk_rad_s3": 0.0060618628680671055,
+              "mean_direction_flips": 36.08,
+              "std_direction_flips": 8.728894546275605
+            },
+            "handover_telemetry": null
+          },
+          "101": {
+            "checkpoint": "results/multiseed_rssm/seed_101/continuous_rssm/model.pt",
+            "evaluation_protocol": "physics_in_loop",
+            "episodes_evaluated": 50,
+            "overall_metrics": {
+              "grasp_success_rate_pct": 0.0,
+              "terminal_placement_accuracy_cm": 1.6021491199731828,
+              "placement_accuracy_std_cm": 1.2447488731995244,
+              "terminal_error_cm": 22.315407094955443,
+              "terminal_error_std_cm": 10.553710423116314,
+              "mppi_inference_latency_ms": 35.727881036909295,
+              "mean_joint_accel_rad_s2": 0.03193583052605391,
+              "std_joint_accel_rad_s2": 0.008043311584610484,
+              "mean_joint_jerk_rad_s3": 0.028817981332540512,
+              "std_joint_jerk_rad_s3": 0.006339214528534832,
+              "mean_direction_flips": 35.7,
+              "std_direction_flips": 7.867019766086774
+            },
+            "handover_telemetry": null
+          },
+          "2024": {
+            "checkpoint": "results/multiseed_rssm/seed_2024/continuous_rssm/model.pt",
+            "evaluation_protocol": "physics_in_loop",
+            "episodes_evaluated": 50,
+            "overall_metrics": {
+              "grasp_success_rate_pct": 0.0,
+              "terminal_placement_accuracy_cm": 1.4994470536708833,
+              "placement_accuracy_std_cm": 0.9216384459318591,
+              "terminal_error_cm": 21.923901028633118,
+              "terminal_error_std_cm": 11.209971466939866,
+              "mppi_inference_latency_ms": 34.269087273978386,
+              "mean_joint_accel_rad_s2": 0.030261884797364472,
+              "std_joint_accel_rad_s2": 0.008483142166426698,
+              "mean_joint_jerk_rad_s3": 0.02859306996688247,
+              "std_joint_jerk_rad_s3": 0.006732266722885297,
+              "mean_direction_flips": 36.6,
+              "std_direction_flips": 8.12403840463596
+            },
+            "handover_telemetry": null
+          }
+        }
+      },
+      "deep_gru_open_loop": {
+        "mean_std": {
+          "grasp_success_rate_pct": [
+            1.3333333333333333,
+            2.3094010767585034
+          ],
+          "terminal_placement_accuracy_cm": [
+            10.56911430199941,
+            7.8332178543025
+          ],
+          "terminal_error_cm": [
+            16.720466453234355,
+            11.307909064116105
+          ],
+          "mean_joint_accel_rad_s2": [
+            0.007771262118282417,
+            0.006861198470924401
+          ],
+          "mean_joint_jerk_rad_s3": [
+            0.006221064189837005,
+            0.007792868260752681
+          ],
+          "mean_direction_flips": [
+            14.666666666666666,
+            14.897212267177151
+          ],
+          "mppi_inference_latency_ms": [
+            67.4003965856917,
+            1.6174098859533237
+          ]
+        },
+        "per_seed": {
+          "42": {
+            "checkpoint": "results/baselines/deep_gru/model.pt",
+            "evaluation_protocol": "physics_in_loop",
+            "episodes_evaluated": 50,
+            "overall_metrics": {
+              "grasp_success_rate_pct": 4.0,
+              "terminal_placement_accuracy_cm": 1.676134810447693,
+              "placement_accuracy_std_cm": 0.8117443861694015,
+              "terminal_error_cm": 5.672766432762146,
+              "terminal_error_std_cm": 2.2391999765559203,
+              "mppi_inference_latency_ms": 65.53380835354476,
+              "mean_joint_accel_rad_s2": 0.015632247226312755,
+              "std_joint_accel_rad_s2": 0.004271736979986495,
+              "mean_joint_jerk_rad_s3": 0.015213804496452212,
+              "std_joint_jerk_rad_s3": 0.003654658887291699,
+              "mean_direction_flips": 31.64,
+              "std_direction_flips": 6.492333940887515
+            },
+            "handover_telemetry": {
+              "episodes_evaluated": 50,
+              "triggered_episodes": 0,
+              "episodes_with_w_gt_0_pct": 0.0,
+              "total_phi1_steps": 400,
+              "triggered_phi1_steps": 0,
+              "phi1_steps_with_w_gt_0_pct": 0.0,
+              "mean_nonzero_w": 0.0
+            }
+          },
+          "101": {
+            "checkpoint": "results/multiseed_rssm/seed_101/deep_gru/model.pt",
+            "evaluation_protocol": "physics_in_loop",
+            "episodes_evaluated": 50,
+            "overall_metrics": {
+              "grasp_success_rate_pct": 0.0,
+              "terminal_placement_accuracy_cm": 16.445809898376464,
+              "placement_accuracy_std_cm": 4.091952617443522,
+              "terminal_error_cm": 28.271757926940918,
+              "terminal_error_std_cm": 5.337323594145242,
+              "mppi_inference_latency_ms": 68.38755179985513,
+              "mean_joint_accel_rad_s2": 0.004695011512376368,
+              "std_joint_accel_rad_s2": 0.0019015618294956774,
+              "mean_joint_jerk_rad_s3": 0.0020017537102103235,
+              "std_joint_jerk_rad_s3": 0.0010274453240716615,
+              "mean_direction_flips": 8.6,
+              "std_direction_flips": 1.5231546211727816
+            },
+            "handover_telemetry": {
+              "episodes_evaluated": 50,
+              "triggered_episodes": 0,
+              "episodes_with_w_gt_0_pct": 0.0,
+              "total_phi1_steps": 400,
+              "triggered_phi1_steps": 0,
+              "phi1_steps_with_w_gt_0_pct": 0.0,
+              "mean_nonzero_w": 0.0
+            }
+          },
+          "2024": {
+            "checkpoint": "results/multiseed_rssm/seed_2024/deep_gru/model.pt",
+            "evaluation_protocol": "physics_in_loop",
+            "episodes_evaluated": 50,
+            "overall_metrics": {
+              "grasp_success_rate_pct": 0.0,
+              "terminal_placement_accuracy_cm": 13.585398197174072,
+              "placement_accuracy_std_cm": 4.602458838522156,
+              "terminal_error_cm": 16.216875,
+              "terminal_error_std_cm": 5.664685795497017,
+              "mppi_inference_latency_ms": 68.27982960367521,
+              "mean_joint_accel_rad_s2": 0.0029865276161581277,
+              "std_joint_accel_rad_s2": 0.0009849739567156495,
+              "mean_joint_jerk_rad_s3": 0.0014476343628484756,
+              "std_joint_jerk_rad_s3": 0.0007935315657924097,
+              "mean_direction_flips": 3.76,
+              "std_direction_flips": 1.3350655414622912
+            },
+            "handover_telemetry": {
+              "episodes_evaluated": 50,
+              "triggered_episodes": 0,
+              "episodes_with_w_gt_0_pct": 0.0,
+              "total_phi1_steps": 400,
+              "triggered_phi1_steps": 0,
+              "phi1_steps_with_w_gt_0_pct": 0.0,
+              "mean_nonzero_w": 0.0
+            }
+          }
+        }
+      },
+      "deep_gru_online": {
+        "mean_std": {
+          "grasp_success_rate_pct": [
+            0.0,
+            0.0
+          ],
+          "terminal_placement_accuracy_cm": [
+            6.027755393187205,
+            4.003672646431791
+          ],
+          "terminal_error_cm": [
+            10.87074866215388,
+            3.973647019419447
+          ],
+          "mean_joint_accel_rad_s2": [
+            0.016541417293871444,
+            0.009718487664175204
+          ],
+          "mean_joint_jerk_rad_s3": [
+            0.013497935300692918,
+            0.009453182248594585
+          ],
+          "mean_direction_flips": [
+            19.673333333333336,
+            10.000986617995913
+          ],
+          "mppi_inference_latency_ms": [
+            60.30913028220712,
+            18.88364182181519
+          ]
+        },
+        "per_seed": {
+          "42": {
+            "checkpoint": "results/baselines/deep_gru/model.pt",
+            "evaluation_protocol": "physics_in_loop",
+            "episodes_evaluated": 50,
+            "overall_metrics": {
+              "grasp_success_rate_pct": 0.0,
+              "terminal_placement_accuracy_cm": 1.8828691363334655,
+              "placement_accuracy_std_cm": 0.9129360328992964,
+              "terminal_error_cm": 14.958965482711791,
+              "terminal_error_std_cm": 5.8198658353174295,
+              "mppi_inference_latency_ms": 39.408694524453786,
+              "mean_joint_accel_rad_s2": 0.02738728191703558,
+              "std_joint_accel_rad_s2": 0.0058359002251519515,
+              "mean_joint_jerk_rad_s3": 0.02424047663807869,
+              "std_joint_jerk_rad_s3": 0.005460746571514626,
+              "mean_direction_flips": 31.22,
+              "std_direction_flips": 6.394654017224075
+            },
+            "handover_telemetry": null
+          },
+          "101": {
+            "checkpoint": "results/multiseed_rssm/seed_101/deep_gru/model.pt",
+            "evaluation_protocol": "physics_in_loop",
+            "episodes_evaluated": 50,
+            "overall_metrics": {
+              "grasp_success_rate_pct": 0.0,
+              "terminal_placement_accuracy_cm": 9.873425269126892,
+              "placement_accuracy_std_cm": 3.3191995640740144,
+              "terminal_error_cm": 10.630728125572205,
+              "terminal_error_std_cm": 4.086173291146598,
+              "mppi_inference_latency_ms": 65.37689822572655,
+              "mean_joint_accel_rad_s2": 0.013613363318145276,
+              "std_joint_accel_rad_s2": 0.00319403673953568,
+              "mean_joint_jerk_rad_s3": 0.009803270976990462,
+              "std_joint_jerk_rad_s3": 0.0019610861700191558,
+              "mean_direction_flips": 14.06,
+              "std_direction_flips": 1.7596590578859306
+            },
+            "handover_telemetry": {
+              "episodes_evaluated": 50,
+              "triggered_episodes": 50,
+              "episodes_with_w_gt_0_pct": 100.0,
+              "total_phi1_steps": 400,
+              "triggered_phi1_steps": 400,
+              "phi1_steps_with_w_gt_0_pct": 100.0,
+              "mean_nonzero_w": 1.0
+            }
+          },
+          "2024": {
+            "checkpoint": "results/multiseed_rssm/seed_2024/deep_gru/model.pt",
+            "evaluation_protocol": "physics_in_loop",
+            "episodes_evaluated": 50,
+            "overall_metrics": {
+              "grasp_success_rate_pct": 0.0,
+              "terminal_placement_accuracy_cm": 6.326971774101257,
+              "placement_accuracy_std_cm": 3.9962240007220133,
+              "terminal_error_cm": 7.022552378177643,
+              "terminal_error_std_cm": 4.266232180960101,
+              "mppi_inference_latency_ms": 76.14179809644102,
+              "mean_joint_accel_rad_s2": 0.008623606646433473,
+              "std_joint_accel_rad_s2": 0.0019381415625095385,
+              "mean_joint_jerk_rad_s3": 0.0064500582870095965,
+              "std_joint_jerk_rad_s3": 0.0014334850317962446,
+              "mean_direction_flips": 13.74,
+              "std_direction_flips": 0.7952358140828417
+            },
+            "handover_telemetry": {
+              "episodes_evaluated": 50,
+              "triggered_episodes": 50,
+              "episodes_with_w_gt_0_pct": 100.0,
+              "total_phi1_steps": 400,
+              "triggered_phi1_steps": 400,
+              "phi1_steps_with_w_gt_0_pct": 100.0,
+              "mean_nonzero_w": 1.0
+            }
+          }
+        }
+      }
+    },
+    "disentangled_ablation": [
+      {
+        "label": "1. SPWM-Base (Phase 1 Warmup, Unsmoothed MPPI)",
+        "checkpoint": "results/spwm_v0_12_4_train_m1/checkpoint_phase_1.pt",
+        "evaluation_protocol": "physics_in_loop",
+        "overall_metrics": {
+          "grasp_success_rate_pct": 62.0,
+          "terminal_placement_accuracy_cm": 1.270518583357334,
+          "placement_accuracy_std_cm": 1.1433059847844562,
+          "terminal_error_cm": 2.51325437605381,
+          "terminal_error_std_cm": 1.591850890790287,
+          "mppi_inference_latency_ms": 21.678928387231593,
+          "mean_joint_accel_rad_s2": 0.007099576396867633,
+          "std_joint_accel_rad_s2": 0.001774520067574007,
+          "mean_joint_jerk_rad_s3": 0.004990413328632712,
+          "std_joint_jerk_rad_s3": 0.0013068799665881348,
+          "mean_direction_flips": 16.04,
+          "std_direction_flips": 8.304119459641703
+        },
+        "handover_telemetry": null,
+        "bold": false
+      },
+      {
+        "label": "2. + Smooth MPPI Controls",
+        "checkpoint": "results/spwm_v0_12_4_train_m1/checkpoint_phase_1.pt",
+        "evaluation_protocol": "physics_in_loop",
+        "overall_metrics": {
+          "grasp_success_rate_pct": 62.0,
+          "terminal_placement_accuracy_cm": 1.088925544321537,
+          "placement_accuracy_std_cm": 0.9806278517950008,
+          "terminal_error_cm": 2.2633657586574554,
+          "terminal_error_std_cm": 1.7920521176335729,
+          "mppi_inference_latency_ms": 22.35479484997801,
+          "mean_joint_accel_rad_s2": 0.00728669355623424,
+          "std_joint_accel_rad_s2": 0.001994464166249948,
+          "mean_joint_jerk_rad_s3": 0.004507547407411039,
+          "std_joint_jerk_rad_s3": 0.001292394719881764,
+          "mean_direction_flips": 15.34,
+          "std_direction_flips": 7.783598139678076
+        },
+        "handover_telemetry": null,
+        "bold": false
+      },
+      {
+        "label": "3. + Phase 1 Curriculum (4-Stage, No Handover/Lookahead)",
+        "checkpoint": "results/spwm_v0_12_4_train_m1/model.pt",
+        "evaluation_protocol": "physics_in_loop",
+        "overall_metrics": {
+          "grasp_success_rate_pct": 72.0,
+          "terminal_placement_accuracy_cm": 0.9845381462574005,
+          "placement_accuracy_std_cm": 0.9663701539547177,
+          "terminal_error_cm": 1.8471522986888886,
+          "terminal_error_std_cm": 1.3105550973311277,
+          "mppi_inference_latency_ms": 22.50886656506723,
+          "mean_joint_accel_rad_s2": 0.005996449659578502,
+          "std_joint_accel_rad_s2": 0.001733545237341892,
+          "mean_joint_jerk_rad_s3": 0.003658297834917903,
+          "std_joint_jerk_rad_s3": 0.0009730792173353034,
+          "mean_direction_flips": 14.24,
+          "std_direction_flips": 7.8601781150302195
+        },
+        "handover_telemetry": null,
+        "bold": false
+      },
+      {
+        "label": "4a. + 2-Stage SE(3) Lookahead (Handover Disabled, $w_t \\equiv 0$)",
+        "checkpoint": "results/spwm_v0_12_4_train_m1/best_model.pt",
+        "evaluation_protocol": "physics_in_loop",
+        "overall_metrics": {
+          "grasp_success_rate_pct": 86.0,
+          "terminal_placement_accuracy_cm": 0.8552020224928856,
+          "placement_accuracy_std_cm": 0.7991095820631844,
+          "terminal_error_cm": 1.5668222349882126,
+          "terminal_error_std_cm": 1.004804437956763,
+          "mppi_inference_latency_ms": 36.57298823552262,
+          "mean_joint_accel_rad_s2": 0.0058662799885496495,
+          "std_joint_accel_rad_s2": 0.0014419035578661795,
+          "mean_joint_jerk_rad_s3": 0.003542280187830329,
+          "std_joint_jerk_rad_s3": 0.000713988545542795,
+          "mean_direction_flips": 14.02,
+          "std_direction_flips": 7.643271550847844
+        },
+        "handover_telemetry": {
+          "episodes_evaluated": 50,
+          "triggered_episodes": 0,
+          "episodes_with_w_gt_0_pct": 0.0,
+          "total_phi1_steps": 400,
+          "triggered_phi1_steps": 0,
+          "phi1_steps_with_w_gt_0_pct": 0.0,
+          "mean_nonzero_w": 0.0
+        },
+        "bold": false
+      },
+      {
+        "label": "4b. + Residual Handover \\& 2-Stage Lookahead (Full)",
+        "checkpoint": "results/spwm_v0_12_4_train_m1/model.pt",
+        "evaluation_protocol": "physics_in_loop",
+        "overall_metrics": {
+          "grasp_success_rate_pct": 86.0,
+          "terminal_placement_accuracy_cm": 0.8552020224928856,
+          "placement_accuracy_std_cm": 0.7991095820631844,
+          "terminal_error_cm": 1.5668222349882126,
+          "terminal_error_std_cm": 1.004804437956763,
+          "mppi_inference_latency_ms": 36.65447710343201,
+          "mean_joint_accel_rad_s2": 0.0058662799885496495,
+          "std_joint_accel_rad_s2": 0.0014419035578661795,
+          "mean_joint_jerk_rad_s3": 0.003542280187830329,
+          "std_joint_jerk_rad_s3": 0.000713988545542795,
+          "mean_direction_flips": 14.02,
+          "std_direction_flips": 7.643271550847844
+        },
+        "handover_telemetry": {
+          "episodes_evaluated": 50,
+          "triggered_episodes": 0,
+          "episodes_with_w_gt_0_pct": 0.0,
+          "total_phi1_steps": 400,
+          "triggered_phi1_steps": 0,
+          "phi1_steps_with_w_gt_0_pct": 0.0,
+          "mean_nonzero_w": 0.0
+        },
+        "bold": true
+      }
+    ],
+    "robustness_3seed_spwm": {
+      "conditions": [
+        {
+          "condition_name": "Nominal Baseline",
+          "grasp_success_rate_pct": [
+            58.0,
+            27.055498516937366
+          ],
+          "delta_rel_pct": 0.0,
+          "min_placement_error_mean_cm": [
+            0.8992845916748048,
+            0.0417493623118023
+          ],
+          "terminal_placement_error_mean_cm": [
+            2.231203550299009,
+            0.6846823009200784
+          ],
+          "terminal_velocity_mean": [
+            0.42377924611171086,
+            0.0838157235336139
+          ],
+          "episodes_with_handover_pct": [
+            0.0,
+            0.0
+          ],
+          "phi1_steps_with_handover_pct": [
+            0.0,
+            0.0
+          ],
+          "mean_nonzero_handover_w_when_active": 0.0,
+          "per_seed": {
+            "42": {
+              "grasp_success_rate_pct": 86.0,
+              "min_placement_error_mean_cm": 0.8552020224928856,
+              "terminal_placement_error_mean_cm": 1.5668222349882126,
+              "terminal_velocity_mean": 0.32701518952846526,
+              "mean_latency_ms": 36.05713042749771,
+              "episodes_with_handover_pct": 0.0,
+              "phi1_steps_with_handover_pct": 0.0,
+              "mean_nonzero_handover_w": 0.0,
+              "delta_rel_pct": 0.0
+            },
+            "101": {
+              "grasp_success_rate_pct": 56.00000000000001,
+              "min_placement_error_mean_cm": 0.9044275161623955,
+              "terminal_placement_error_mean_cm": 2.1922635650634765,
+              "terminal_velocity_mean": 0.4737779149413109,
+              "mean_latency_ms": 35.94414352529596,
+              "episodes_with_handover_pct": 0.0,
+              "phi1_steps_with_handover_pct": 0.0,
+              "mean_nonzero_handover_w": 0.0,
+              "delta_rel_pct": 0.0
+            },
+            "2024": {
+              "grasp_success_rate_pct": 32.0,
+              "min_placement_error_mean_cm": 0.938224236369133,
+              "terminal_placement_error_mean_cm": 2.934524850845337,
+              "terminal_velocity_mean": 0.47054463386535644,
+              "mean_latency_ms": 36.51248038936411,
+              "episodes_with_handover_pct": 0.0,
+              "phi1_steps_with_handover_pct": 0.0,
+              "mean_nonzero_handover_w": 0.0,
+              "delta_rel_pct": 0.0
+            }
+          }
+        },
+        {
+          "condition_name": "Sensory Noise Injection (1.0%)",
+          "grasp_success_rate_pct": [
+            55.333333333333336,
+            19.42506971244462
+          ],
+          "delta_rel_pct": -4.597701149425283,
+          "min_placement_error_mean_cm": [
+            0.8995885254442691,
+            0.0864853745399293
+          ],
+          "terminal_placement_error_mean_cm": [
+            2.342214393814405,
+            0.6310488458771016
+          ],
+          "terminal_velocity_mean": [
+            0.3995537382364273,
+            0.12232065703258524
+          ],
+          "episodes_with_handover_pct": [
+            0.0,
+            0.0
+          ],
+          "phi1_steps_with_handover_pct": [
+            0.0,
+            0.0
+          ],
+          "mean_nonzero_handover_w_when_active": 0.0,
+          "per_seed": {
+            "42": {
+              "grasp_success_rate_pct": 72.0,
+              "min_placement_error_mean_cm": 0.9837424418330193,
+              "terminal_placement_error_mean_cm": 1.8598396837711335,
+              "terminal_velocity_mean": 0.2989905294775963,
+              "mean_latency_ms": 34.990572020690095,
+              "episodes_with_handover_pct": 0.0,
+              "phi1_steps_with_handover_pct": 0.0,
+              "mean_nonzero_handover_w": 0.0,
+              "delta_rel_pct": -16.27906976744186
+            },
+            "101": {
+              "grasp_success_rate_pct": 60.0,
+              "min_placement_error_mean_cm": 0.9040766698122025,
+              "terminal_placement_error_mean_cm": 2.1104232871532442,
+              "terminal_velocity_mean": 0.5357284384965897,
+              "mean_latency_ms": 36.52126013849798,
+              "episodes_with_handover_pct": 0.0,
+              "phi1_steps_with_handover_pct": 0.0,
+              "mean_nonzero_handover_w": 0.0,
+              "delta_rel_pct": 7.14285714285713
+            },
+            "2024": {
+              "grasp_success_rate_pct": 34.0,
+              "min_placement_error_mean_cm": 0.8109464646875858,
+              "terminal_placement_error_mean_cm": 3.056380210518837,
+              "terminal_velocity_mean": 0.36394224673509595,
+              "mean_latency_ms": 36.52111676256183,
+              "episodes_with_handover_pct": 0.0,
+              "phi1_steps_with_handover_pct": 0.0,
+              "mean_nonzero_handover_w": 0.0,
+              "delta_rel_pct": 6.25
+            }
+          }
+        },
+        {
+          "condition_name": "Payload Extrapolation (4.80 kg)",
+          "grasp_success_rate_pct": [
+            39.333333333333336,
+            33.724372986511305
+          ],
+          "delta_rel_pct": -32.183908045977006,
+          "min_placement_error_mean_cm": [
+            1.1808227265874545,
+            0.1475518910933885
+          ],
+          "terminal_placement_error_mean_cm": [
+            2.5032857662439345,
+            0.6239346910373739
+          ],
+          "terminal_velocity_mean": [
+            0.5195224117239315,
+            0.1069074967853979
+          ],
+          "episodes_with_handover_pct": [
+            1.3333333333333333,
+            2.3094010767585034
+          ],
+          "phi1_steps_with_handover_pct": [
+            0.16666666666666666,
+            0.2886751345948129
+          ],
+          "mean_nonzero_handover_w_when_active": 0.16452792689204215,
+          "per_seed": {
+            "42": {
+              "grasp_success_rate_pct": 78.0,
+              "min_placement_error_mean_cm": 1.245790022313595,
+              "terminal_placement_error_mean_cm": 1.7834283006191254,
+              "terminal_velocity_mean": 0.43445359870791433,
+              "mean_latency_ms": 37.20313749923503,
+              "episodes_with_handover_pct": 0.0,
+              "phi1_steps_with_handover_pct": 0.0,
+              "mean_nonzero_handover_w": 0.0,
+              "delta_rel_pct": -9.30232558139535
+            },
+            "101": {
+              "grasp_success_rate_pct": 24.0,
+              "min_placement_error_mean_cm": 1.2847428852319718,
+              "terminal_placement_error_mean_cm": 2.837750395536423,
+              "terminal_velocity_mean": 0.6395273652672767,
+              "mean_latency_ms": 36.43832626988797,
+              "episodes_with_handover_pct": 0.0,
+              "phi1_steps_with_handover_pct": 0.0,
+              "mean_nonzero_handover_w": 0.0,
+              "delta_rel_pct": -57.14285714285715
+            },
+            "2024": {
+              "grasp_success_rate_pct": 16.0,
+              "min_placement_error_mean_cm": 1.011935272216797,
+              "terminal_placement_error_mean_cm": 2.8886786025762556,
+              "terminal_velocity_mean": 0.4845862711966038,
+              "mean_latency_ms": 36.41863351428478,
+              "episodes_with_handover_pct": 4.0,
+              "phi1_steps_with_handover_pct": 0.5,
+              "mean_nonzero_handover_w": 0.16452792689204215,
+              "delta_rel_pct": -50.0
+            }
+          }
+        },
+        {
+          "condition_name": "Actuator Drift (0.80x Friction)",
+          "grasp_success_rate_pct": [
+            40.666666666666664,
+            27.30079363925769
+          ],
+          "delta_rel_pct": -29.88505747126437,
+          "min_placement_error_mean_cm": [
+            1.1887371614575386,
+            0.11060501933302767
+          ],
+          "terminal_placement_error_mean_cm": [
+            2.6100856752196946,
+            0.5422566355658548
+          ],
+          "terminal_velocity_mean": [
+            0.45519848535458246,
+            0.09270916234318358
+          ],
+          "episodes_with_handover_pct": [
+            1.3333333333333333,
+            2.3094010767585034
+          ],
+          "phi1_steps_with_handover_pct": [
+            0.16666666666666666,
+            0.2886751345948129
+          ],
+          "mean_nonzero_handover_w_when_active": 0.22864747449755668,
+          "per_seed": {
+            "42": {
+              "grasp_success_rate_pct": 70.0,
+              "min_placement_error_mean_cm": 1.3162081634998322,
+              "terminal_placement_error_mean_cm": 2.0683961123228074,
+              "terminal_velocity_mean": 0.3934475040435791,
+              "mean_latency_ms": 36.6571082404878,
+              "episodes_with_handover_pct": 0.0,
+              "phi1_steps_with_handover_pct": 0.0,
+              "mean_nonzero_handover_w": 0.0,
+              "delta_rel_pct": -18.6046511627907
+            },
+            "101": {
+              "grasp_success_rate_pct": 36.0,
+              "min_placement_error_mean_cm": 1.1181585595011712,
+              "terminal_placement_error_mean_cm": 2.6089533033967016,
+              "terminal_velocity_mean": 0.5618044257164001,
+              "mean_latency_ms": 36.38057136931481,
+              "episodes_with_handover_pct": 0.0,
+              "phi1_steps_with_handover_pct": 0.0,
+              "mean_nonzero_handover_w": 0.0,
+              "delta_rel_pct": -35.71428571428572
+            },
+            "2024": {
+              "grasp_success_rate_pct": 16.0,
+              "min_placement_error_mean_cm": 1.1318447613716125,
+              "terminal_placement_error_mean_cm": 3.152907609939575,
+              "terminal_velocity_mean": 0.41034352630376814,
+              "mean_latency_ms": 36.43481188892321,
+              "episodes_with_handover_pct": 4.0,
+              "phi1_steps_with_handover_pct": 0.5,
+              "mean_nonzero_handover_w": 0.22864747449755668,
+              "delta_rel_pct": -50.0
+            }
+          }
+        },
+        {
+          "condition_name": "Actuator Drift (1.20x Friction)",
+          "grasp_success_rate_pct": [
+            44.0,
+            28.0
+          ],
+          "delta_rel_pct": -24.137931034482758,
+          "min_placement_error_mean_cm": [
+            1.2160442214210827,
+            0.10678522747967399
+          ],
+          "terminal_placement_error_mean_cm": [
+            2.5337881688276926,
+            0.5567605187409086
+          ],
+          "terminal_velocity_mean": [
+            0.4324431197345257,
+            0.07896359786568626
+          ],
+          "episodes_with_handover_pct": [
+            1.3333333333333333,
+            2.3094010767585034
+          ],
+          "phi1_steps_with_handover_pct": [
+            0.16666666666666666,
+            0.2886751345948129
+          ],
+          "mean_nonzero_handover_w_when_active": 0.16903226852416992,
+          "per_seed": {
+            "42": {
+              "grasp_success_rate_pct": 76.0,
+              "min_placement_error_mean_cm": 1.3224645945429803,
+              "terminal_placement_error_mean_cm": 1.9732722735404968,
+              "terminal_velocity_mean": 0.3801573750376701,
+              "mean_latency_ms": 36.835968496259994,
+              "episodes_with_handover_pct": 0.0,
+              "phi1_steps_with_handover_pct": 0.0,
+              "mean_nonzero_handover_w": 0.0,
+              "delta_rel_pct": -11.627906976744185
+            },
+            "101": {
+              "grasp_success_rate_pct": 32.0,
+              "min_placement_error_mean_cm": 1.2167702281475068,
+              "terminal_placement_error_mean_cm": 2.5413764929771423,
+              "terminal_velocity_mean": 0.5232767987251282,
+              "mean_latency_ms": 36.59299420893834,
+              "episodes_with_handover_pct": 0.0,
+              "phi1_steps_with_handover_pct": 0.0,
+              "mean_nonzero_handover_w": 0.0,
+              "delta_rel_pct": -42.85714285714287
+            },
+            "2024": {
+              "grasp_success_rate_pct": 24.0,
+              "min_placement_error_mean_cm": 1.1088978415727615,
+              "terminal_placement_error_mean_cm": 3.086715739965439,
+              "terminal_velocity_mean": 0.39389518544077873,
+              "mean_latency_ms": 36.48604587311423,
+              "episodes_with_handover_pct": 4.0,
+              "phi1_steps_with_handover_pct": 0.5,
+              "mean_nonzero_handover_w": 0.16903226852416992,
+              "delta_rel_pct": -25.0
+            }
+          }
+        }
+      ]
+    },
+    "robustness_3seed_ann_rate": {
+      "conditions": [
+        {
+          "condition_name": "Nominal Baseline",
+          "grasp_success_rate_pct": [
+            37.333333333333336,
+            9.451631252505218
+          ],
+          "delta_rel_pct": 0.0,
+          "min_placement_error_mean_cm": [
+            1.0678065086901187,
+            0.2828632725018437
+          ],
+          "terminal_placement_error_mean_cm": [
+            2.9846295044819513,
+            0.4621451582711122
+          ],
+          "terminal_velocity_mean": [
+            0.49538074051340425,
+            0.11216522852158058
+          ],
+          "episodes_with_handover_pct": [
+            0.0,
+            0.0
+          ],
+          "phi1_steps_with_handover_pct": [
+            0.0,
+            0.0
+          ],
+          "mean_nonzero_handover_w_when_active": 0.0,
+          "per_seed": {
+            "42": {
+              "grasp_success_rate_pct": 34.0,
+              "min_placement_error_mean_cm": 0.8320508192479611,
+              "terminal_placement_error_mean_cm": 2.7538758546113966,
+              "terminal_velocity_mean": 0.5869238513708115,
+              "mean_latency_ms": 29.43750379663485,
+              "episodes_with_handover_pct": 0.0,
+              "phi1_steps_with_handover_pct": 0.0,
+              "mean_nonzero_handover_w": 0.0,
+              "delta_rel_pct": 0.0
+            },
+            "101": {
+              "grasp_success_rate_pct": 30.0,
+              "min_placement_error_mean_cm": 1.3814548110961915,
+              "terminal_placement_error_mean_cm": 3.5167109155654908,
+              "terminal_velocity_mean": 0.5289560982584953,
+              "mean_latency_ms": 26.53065752230858,
+              "episodes_with_handover_pct": 0.0,
+              "phi1_steps_with_handover_pct": 0.0,
+              "mean_nonzero_handover_w": 0.0,
+              "delta_rel_pct": 0.0
+            },
+            "2024": {
+              "grasp_success_rate_pct": 48.0,
+              "min_placement_error_mean_cm": 0.9899138957262039,
+              "terminal_placement_error_mean_cm": 2.6833017432689665,
+              "terminal_velocity_mean": 0.3702622719109058,
+              "mean_latency_ms": 25.199068654014535,
+              "episodes_with_handover_pct": 0.0,
+              "phi1_steps_with_handover_pct": 0.0,
+              "mean_nonzero_handover_w": 0.0,
+              "delta_rel_pct": 0.0
+            }
+          }
+        },
+        {
+          "condition_name": "Sensory Noise Injection (1.0%)",
+          "grasp_success_rate_pct": [
+            30.0,
+            3.4641016151377544
+          ],
+          "delta_rel_pct": -19.64285714285715,
+          "min_placement_error_mean_cm": [
+            1.0367476403713225,
+            0.17609975464908534
+          ],
+          "terminal_placement_error_mean_cm": [
+            3.362126860022545,
+            0.529625351794463
+          ],
+          "terminal_velocity_mean": [
+            0.5011851574977239,
+            0.1012983853840122
+          ],
+          "episodes_with_handover_pct": [
+            0.0,
+            0.0
+          ],
+          "phi1_steps_with_handover_pct": [
+            0.0,
+            0.0
+          ],
+          "mean_nonzero_handover_w_when_active": 0.0,
+          "per_seed": {
+            "42": {
+              "grasp_success_rate_pct": 32.0,
+              "min_placement_error_mean_cm": 0.8365792346000671,
+              "terminal_placement_error_mean_cm": 3.0554915750026703,
+              "terminal_velocity_mean": 0.5730594700574875,
+              "mean_latency_ms": 31.393095565214775,
+              "episodes_with_handover_pct": 0.0,
+              "phi1_steps_with_handover_pct": 0.0,
+              "mean_nonzero_handover_w": 0.0,
+              "delta_rel_pct": -5.882352941176471
+            },
+            "101": {
+              "grasp_success_rate_pct": 26.0,
+              "min_placement_error_mean_cm": 1.1058386087417602,
+              "terminal_placement_error_mean_cm": 3.9736847394704817,
+              "terminal_velocity_mean": 0.5451662424206734,
+              "mean_latency_ms": 26.004011596295314,
+              "episodes_with_handover_pct": 0.0,
+              "phi1_steps_with_handover_pct": 0.0,
+              "mean_nonzero_handover_w": 0.0,
+              "delta_rel_pct": -13.333333333333334
+            },
+            "2024": {
+              "grasp_success_rate_pct": 32.0,
+              "min_placement_error_mean_cm": 1.1678250777721404,
+              "terminal_placement_error_mean_cm": 3.0572042655944824,
+              "terminal_velocity_mean": 0.38532976001501085,
+              "mean_latency_ms": 25.061606960452693,
+              "episodes_with_handover_pct": 0.0,
+              "phi1_steps_with_handover_pct": 0.0,
+              "mean_nonzero_handover_w": 0.0,
+              "delta_rel_pct": -33.333333333333336
+            }
+          }
+        },
+        {
+          "condition_name": "Payload Extrapolation (4.80 kg)",
+          "grasp_success_rate_pct": [
+            26.666666666666668,
+            16.165807537309522
+          ],
+          "delta_rel_pct": -28.571428571428573,
+          "min_placement_error_mean_cm": [
+            1.359116240243117,
+            0.19601864522317206
+          ],
+          "terminal_placement_error_mean_cm": [
+            3.6378836290041607,
+            0.7955281178345174
+          ],
+          "terminal_velocity_mean": [
+            0.6115619068592787,
+            0.10662950140954822
+          ],
+          "episodes_with_handover_pct": [
+            0.0,
+            0.0
+          ],
+          "phi1_steps_with_handover_pct": [
+            0.0,
+            0.0
+          ],
+          "mean_nonzero_handover_w_when_active": 0.0,
+          "per_seed": {
+            "42": {
+              "grasp_success_rate_pct": 24.0,
+              "min_placement_error_mean_cm": 1.1392030370235444,
+              "terminal_placement_error_mean_cm": 3.5584317278862,
+              "terminal_velocity_mean": 0.6400154614448548,
+              "mean_latency_ms": 29.94859264750354,
+              "episodes_with_handover_pct": 0.0,
+              "phi1_steps_with_handover_pct": 0.0,
+              "mean_nonzero_handover_w": 0.0,
+              "delta_rel_pct": -29.41176470588235
+            },
+            "101": {
+              "grasp_success_rate_pct": 12.0,
+              "min_placement_error_mean_cm": 1.4226837638020515,
+              "terminal_placement_error_mean_cm": 4.470156444311142,
+              "terminal_velocity_mean": 0.7010783076286315,
+              "mean_latency_ms": 25.1213509093544,
+              "episodes_with_handover_pct": 0.0,
+              "phi1_steps_with_handover_pct": 0.0,
+              "mean_nonzero_handover_w": 0.0,
+              "delta_rel_pct": -60.0
+            },
+            "2024": {
+              "grasp_success_rate_pct": 44.0,
+              "min_placement_error_mean_cm": 1.5154619199037551,
+              "terminal_placement_error_mean_cm": 2.88506271481514,
+              "terminal_velocity_mean": 0.4935919515043497,
+              "mean_latency_ms": 25.066311646045065,
+              "episodes_with_handover_pct": 0.0,
+              "phi1_steps_with_handover_pct": 0.0,
+              "mean_nonzero_handover_w": 0.0,
+              "delta_rel_pct": -8.333333333333334
+            }
+          }
+        },
+        {
+          "condition_name": "Actuator Drift (0.80x Friction)",
+          "grasp_success_rate_pct": [
+            30.666666666666668,
+            14.047538337136984
+          ],
+          "delta_rel_pct": -17.857142857142858,
+          "min_placement_error_mean_cm": [
+            1.4180172796050707,
+            0.21795292848457692
+          ],
+          "terminal_placement_error_mean_cm": [
+            3.740554449160894,
+            0.8331617947215637
+          ],
+          "terminal_velocity_mean": [
+            0.5717242361605167,
+            0.13817699362402994
+          ],
+          "episodes_with_handover_pct": [
+            0.0,
+            0.0
+          ],
+          "phi1_steps_with_handover_pct": [
+            0.0,
+            0.0
+          ],
+          "mean_nonzero_handover_w_when_active": 0.0,
+          "per_seed": {
+            "42": {
+              "grasp_success_rate_pct": 32.0,
+              "min_placement_error_mean_cm": 1.1665561926364898,
+              "terminal_placement_error_mean_cm": 3.536238695383072,
+              "terminal_velocity_mean": 0.643540482223034,
+              "mean_latency_ms": 25.223359415711226,
+              "episodes_with_handover_pct": 0.0,
+              "phi1_steps_with_handover_pct": 0.0,
+              "mean_nonzero_handover_w": 0.0,
+              "delta_rel_pct": -5.882352941176471
+            },
+            "101": {
+              "grasp_success_rate_pct": 16.0,
+              "min_placement_error_mean_cm": 1.5526343488693237,
+              "terminal_placement_error_mean_cm": 4.656868257522583,
+              "terminal_velocity_mean": 0.6592045310139656,
+              "mean_latency_ms": 25.066783458762252,
+              "episodes_with_handover_pct": 0.0,
+              "phi1_steps_with_handover_pct": 0.0,
+              "mean_nonzero_handover_w": 0.0,
+              "delta_rel_pct": -46.666666666666664
+            },
+            "2024": {
+              "grasp_success_rate_pct": 44.0,
+              "min_placement_error_mean_cm": 1.5348612973093987,
+              "terminal_placement_error_mean_cm": 3.028556394577026,
+              "terminal_velocity_mean": 0.4124276952445507,
+              "mean_latency_ms": 24.790206348217293,
+              "episodes_with_handover_pct": 0.0,
+              "phi1_steps_with_handover_pct": 0.0,
+              "mean_nonzero_handover_w": 0.0,
+              "delta_rel_pct": -8.333333333333334
+            }
+          }
+        },
+        {
+          "condition_name": "Actuator Drift (1.20x Friction)",
+          "grasp_success_rate_pct": [
+            33.333333333333336,
+            16.65332799572906
+          ],
+          "delta_rel_pct": -10.714285714285714,
+          "min_placement_error_mean_cm": [
+            1.3353092057506244,
+            0.20851366158174045
+          ],
+          "terminal_placement_error_mean_cm": [
+            3.510111181139946,
+            1.2144949894390102
+          ],
+          "terminal_velocity_mean": [
+            0.5205225745340188,
+            0.10602974885015383
+          ],
+          "episodes_with_handover_pct": [
+            0.0,
+            0.0
+          ],
+          "phi1_steps_with_handover_pct": [
+            0.0,
+            0.0
+          ],
+          "mean_nonzero_handover_w_when_active": 0.0,
+          "per_seed": {
+            "42": {
+              "grasp_success_rate_pct": 28.000000000000004,
+              "min_placement_error_mean_cm": 1.101568892300129,
+              "terminal_placement_error_mean_cm": 2.80165857732296,
+              "terminal_velocity_mean": 0.6022750130295753,
+              "mean_latency_ms": 25.216824718118666,
+              "episodes_with_handover_pct": 0.0,
+              "phi1_steps_with_handover_pct": 0.0,
+              "mean_nonzero_handover_w": 0.0,
+              "delta_rel_pct": -17.647058823529402
+            },
+            "101": {
+              "grasp_success_rate_pct": 20.0,
+              "min_placement_error_mean_cm": 1.40215890198946,
+              "terminal_placement_error_mean_cm": 4.912464030981064,
+              "terminal_velocity_mean": 0.5585748782753944,
+              "mean_latency_ms": 25.116685864205966,
+              "episodes_with_handover_pct": 0.0,
+              "phi1_steps_with_handover_pct": 0.0,
+              "mean_nonzero_handover_w": 0.0,
+              "delta_rel_pct": -33.333333333333336
+            },
+            "2024": {
+              "grasp_success_rate_pct": 52.0,
+              "min_placement_error_mean_cm": 1.5021998229622842,
+              "terminal_placement_error_mean_cm": 2.816210935115814,
+              "terminal_velocity_mean": 0.40071783229708674,
+              "mean_latency_ms": 25.06705994109404,
+              "episodes_with_handover_pct": 0.0,
+              "phi1_steps_with_handover_pct": 0.0,
+              "mean_nonzero_handover_w": 0.0,
+              "delta_rel_pct": 8.333333333333334
+            }
+          }
+        }
+      ]
+    },
+    "val_handover_threshold_sweep": {
+      "seed42": {
+        "0026": [
+          {
+            "condition_name": "Nominal Baseline",
+            "grasp_success_rate_pct": 78.0,
+            "episodes_with_handover_pct": 0.0,
+            "phi1_steps_with_handover_pct": 0.0,
+            "mean_nonzero_handover_w": 0.0
+          },
+          {
+            "condition_name": "Sensory Noise Injection (1.0%)",
+            "grasp_success_rate_pct": 78.0,
+            "episodes_with_handover_pct": 0.0,
+            "phi1_steps_with_handover_pct": 0.0,
+            "mean_nonzero_handover_w": 0.0
+          },
+          {
+            "condition_name": "Payload Extrapolation (4.80 kg)",
+            "grasp_success_rate_pct": 66.0,
+            "episodes_with_handover_pct": 0.0,
+            "phi1_steps_with_handover_pct": 0.0,
+            "mean_nonzero_handover_w": 0.0
+          },
+          {
+            "condition_name": "Actuator Drift (0.80x Friction)",
+            "grasp_success_rate_pct": 70.0,
+            "episodes_with_handover_pct": 0.0,
+            "phi1_steps_with_handover_pct": 0.0,
+            "mean_nonzero_handover_w": 0.0
+          },
+          {
+            "condition_name": "Actuator Drift (1.20x Friction)",
+            "grasp_success_rate_pct": 72.0,
+            "episodes_with_handover_pct": 0.0,
+            "phi1_steps_with_handover_pct": 0.0,
+            "mean_nonzero_handover_w": 0.0
+          }
+        ],
+        "0020": [
+          {
+            "condition_name": "Nominal Baseline",
+            "grasp_success_rate_pct": 78.0,
+            "episodes_with_handover_pct": 0.0,
+            "phi1_steps_with_handover_pct": 0.0,
+            "mean_nonzero_handover_w": 0.0
+          },
+          {
+            "condition_name": "Sensory Noise Injection (1.0%)",
+            "grasp_success_rate_pct": 78.0,
+            "episodes_with_handover_pct": 0.0,
+            "phi1_steps_with_handover_pct": 0.0,
+            "mean_nonzero_handover_w": 0.0
+          },
+          {
+            "condition_name": "Payload Extrapolation (4.80 kg)",
+            "grasp_success_rate_pct": 66.0,
+            "episodes_with_handover_pct": 0.0,
+            "phi1_steps_with_handover_pct": 0.0,
+            "mean_nonzero_handover_w": 0.0
+          },
+          {
+            "condition_name": "Actuator Drift (0.80x Friction)",
+            "grasp_success_rate_pct": 70.0,
+            "episodes_with_handover_pct": 0.0,
+            "phi1_steps_with_handover_pct": 0.0,
+            "mean_nonzero_handover_w": 0.0
+          },
+          {
+            "condition_name": "Actuator Drift (1.20x Friction)",
+            "grasp_success_rate_pct": 72.0,
+            "episodes_with_handover_pct": 0.0,
+            "phi1_steps_with_handover_pct": 0.0,
+            "mean_nonzero_handover_w": 0.0
+          }
+        ],
+        "0015": [
+          {
+            "condition_name": "Nominal Baseline",
+            "grasp_success_rate_pct": 78.0,
+            "episodes_with_handover_pct": 0.0,
+            "phi1_steps_with_handover_pct": 0.0,
+            "mean_nonzero_handover_w": 0.0
+          },
+          {
+            "condition_name": "Sensory Noise Injection (1.0%)",
+            "grasp_success_rate_pct": 78.0,
+            "episodes_with_handover_pct": 0.0,
+            "phi1_steps_with_handover_pct": 0.0,
+            "mean_nonzero_handover_w": 0.0
+          },
+          {
+            "condition_name": "Payload Extrapolation (4.80 kg)",
+            "grasp_success_rate_pct": 66.0,
+            "episodes_with_handover_pct": 0.0,
+            "phi1_steps_with_handover_pct": 0.0,
+            "mean_nonzero_handover_w": 0.0
+          },
+          {
+            "condition_name": "Actuator Drift (0.80x Friction)",
+            "grasp_success_rate_pct": 70.0,
+            "episodes_with_handover_pct": 0.0,
+            "phi1_steps_with_handover_pct": 0.0,
+            "mean_nonzero_handover_w": 0.0
+          },
+          {
+            "condition_name": "Actuator Drift (1.20x Friction)",
+            "grasp_success_rate_pct": 72.0,
+            "episodes_with_handover_pct": 0.0,
+            "phi1_steps_with_handover_pct": 0.0,
+            "mean_nonzero_handover_w": 0.0
+          }
+        ]
+      },
+      "seed2024": {
+        "0026": [
+          {
+            "condition_name": "Nominal Baseline",
+            "grasp_success_rate_pct": 46.0,
+            "episodes_with_handover_pct": 0.0,
+            "phi1_steps_with_handover_pct": 0.0,
+            "mean_nonzero_handover_w": 0.0
+          },
+          {
+            "condition_name": "Sensory Noise Injection (1.0%)",
+            "grasp_success_rate_pct": 36.0,
+            "episodes_with_handover_pct": 0.0,
+            "phi1_steps_with_handover_pct": 0.0,
+            "mean_nonzero_handover_w": 0.0
+          },
+          {
+            "condition_name": "Payload Extrapolation (4.80 kg)",
+            "grasp_success_rate_pct": 42.0,
+            "episodes_with_handover_pct": 0.0,
+            "phi1_steps_with_handover_pct": 0.0,
+            "mean_nonzero_handover_w": 0.0
+          },
+          {
+            "condition_name": "Actuator Drift (0.80x Friction)",
+            "grasp_success_rate_pct": 38.0,
+            "episodes_with_handover_pct": 0.0,
+            "phi1_steps_with_handover_pct": 0.0,
+            "mean_nonzero_handover_w": 0.0
+          },
+          {
+            "condition_name": "Actuator Drift (1.20x Friction)",
+            "grasp_success_rate_pct": 38.0,
+            "episodes_with_handover_pct": 0.0,
+            "phi1_steps_with_handover_pct": 0.0,
+            "mean_nonzero_handover_w": 0.0
+          }
+        ],
+        "0020": [
+          {
+            "condition_name": "Nominal Baseline",
+            "grasp_success_rate_pct": 46.0,
+            "episodes_with_handover_pct": 0.0,
+            "phi1_steps_with_handover_pct": 0.0,
+            "mean_nonzero_handover_w": 0.0
+          },
+          {
+            "condition_name": "Sensory Noise Injection (1.0%)",
+            "grasp_success_rate_pct": 36.0,
+            "episodes_with_handover_pct": 0.0,
+            "phi1_steps_with_handover_pct": 0.0,
+            "mean_nonzero_handover_w": 0.0
+          },
+          {
+            "condition_name": "Payload Extrapolation (4.80 kg)",
+            "grasp_success_rate_pct": 42.0,
+            "episodes_with_handover_pct": 0.0,
+            "phi1_steps_with_handover_pct": 0.0,
+            "mean_nonzero_handover_w": 0.0
+          },
+          {
+            "condition_name": "Actuator Drift (0.80x Friction)",
+            "grasp_success_rate_pct": 38.0,
+            "episodes_with_handover_pct": 0.0,
+            "phi1_steps_with_handover_pct": 0.0,
+            "mean_nonzero_handover_w": 0.0
+          },
+          {
+            "condition_name": "Actuator Drift (1.20x Friction)",
+            "grasp_success_rate_pct": 38.0,
+            "episodes_with_handover_pct": 0.0,
+            "phi1_steps_with_handover_pct": 0.0,
+            "mean_nonzero_handover_w": 0.0
+          }
+        ],
+        "0015": [
+          {
+            "condition_name": "Nominal Baseline",
+            "grasp_success_rate_pct": 46.0,
+            "episodes_with_handover_pct": 0.0,
+            "phi1_steps_with_handover_pct": 0.0,
+            "mean_nonzero_handover_w": 0.0
+          },
+          {
+            "condition_name": "Sensory Noise Injection (1.0%)",
+            "grasp_success_rate_pct": 36.0,
+            "episodes_with_handover_pct": 0.0,
+            "phi1_steps_with_handover_pct": 0.0,
+            "mean_nonzero_handover_w": 0.0
+          },
+          {
+            "condition_name": "Payload Extrapolation (4.80 kg)",
+            "grasp_success_rate_pct": 42.0,
+            "episodes_with_handover_pct": 0.0,
+            "phi1_steps_with_handover_pct": 0.0,
+            "mean_nonzero_handover_w": 0.0
+          },
+          {
+            "condition_name": "Actuator Drift (0.80x Friction)",
+            "grasp_success_rate_pct": 38.0,
+            "episodes_with_handover_pct": 0.0,
+            "phi1_steps_with_handover_pct": 0.0,
+            "mean_nonzero_handover_w": 0.0
+          },
+          {
+            "condition_name": "Actuator Drift (1.20x Friction)",
+            "grasp_success_rate_pct": 38.0,
+            "episodes_with_handover_pct": 0.0,
+            "phi1_steps_with_handover_pct": 0.0,
+            "mean_nonzero_handover_w": 0.0
+          }
+        ]
+      }
+    },
+    "val25_checkpoint_selection": {
+      "seed42": {
+        "best_model": {
+          "grasp_success_rate_pct": 80.0,
+          "terminal_placement_accuracy_cm": 0.7863803243637085,
+          "placement_accuracy_std_cm": 0.8316681269711571,
+          "terminal_error_cm": 1.6063240730762482,
+          "terminal_error_std_cm": 0.939099794510116,
+          "mppi_inference_latency_ms": 37.17919258983962,
+          "mean_joint_accel_rad_s2": 0.005947311874479055,
+          "std_joint_accel_rad_s2": 0.0014173367373157876,
+          "mean_joint_jerk_rad_s3": 0.0037400932516902683,
+          "std_joint_jerk_rad_s3": 0.0007666562902440007,
+          "mean_direction_flips": 13.48,
+          "std_direction_flips": 7.099971830930035,
+          "epoch": 200
+        },
+        "checkpoint_phase_1": {
+          "grasp_success_rate_pct": 60.0,
+          "terminal_placement_accuracy_cm": 0.8103122827410698,
+          "placement_accuracy_std_cm": 0.6474393576335297,
+          "terminal_error_cm": 1.9722674000263214,
+          "terminal_error_std_cm": 1.4443806192871131,
+          "mppi_inference_latency_ms": 37.00736762533041,
+          "mean_joint_accel_rad_s2": 0.007161940094083548,
+          "std_joint_accel_rad_s2": 0.0012864202551724185,
+          "mean_joint_jerk_rad_s3": 0.004661122979596258,
+          "std_joint_jerk_rad_s3": 0.0008925166603476878,
+          "mean_direction_flips": 14.36,
+          "std_direction_flips": 7.853050362757137,
+          "epoch": 181
+        },
+        "checkpoint_phase_2": {
+          "grasp_success_rate_pct": 52.0,
+          "terminal_placement_accuracy_cm": 1.1208700883388518,
+          "placement_accuracy_std_cm": 1.0542713101583618,
+          "terminal_error_cm": 2.103588616847992,
+          "terminal_error_std_cm": 1.37658387567322,
+          "mppi_inference_latency_ms": 37.0669846446348,
+          "mean_joint_accel_rad_s2": 0.007121144887059927,
+          "std_joint_accel_rad_s2": 0.0012632364174318858,
+          "mean_joint_jerk_rad_s3": 0.004813599018380046,
+          "std_joint_jerk_rad_s3": 0.0008479405115867379,
+          "mean_direction_flips": 14.88,
+          "std_direction_flips": 8.223478582692362,
+          "epoch": 188
+        },
+        "checkpoint_phase_3": {
+          "grasp_success_rate_pct": 88.0,
+          "terminal_placement_accuracy_cm": 0.8251915320754051,
+          "placement_accuracy_std_cm": 1.061095902824546,
+          "terminal_error_cm": 1.4272860133647918,
+          "terminal_error_std_cm": 1.0950905816243908,
+          "mppi_inference_latency_ms": 36.50109283002571,
+          "mean_joint_accel_rad_s2": 0.005840645581483841,
+          "std_joint_accel_rad_s2": 0.0012045624301631605,
+          "mean_joint_jerk_rad_s3": 0.0036732837650924922,
+          "std_joint_jerk_rad_s3": 0.0006777807353952663,
+          "mean_direction_flips": 13.08,
+          "std_direction_flips": 7.625850772208961,
+          "epoch": 200
+        },
+        "checkpoint_phase_4": {
+          "grasp_success_rate_pct": 92.0,
+          "terminal_placement_accuracy_cm": 0.8263749217987061,
+          "placement_accuracy_std_cm": 0.8131163291457509,
+          "terminal_error_cm": 1.5978229093551635,
+          "terminal_error_std_cm": 0.8771730168266677,
+          "mppi_inference_latency_ms": 36.57112133071043,
+          "mean_joint_accel_rad_s2": 0.005506738461554051,
+          "std_joint_accel_rad_s2": 0.0014232916122690269,
+          "mean_joint_jerk_rad_s3": 0.0031630545668303966,
+          "std_joint_jerk_rad_s3": 0.0006048513470103441,
+          "mean_direction_flips": 12.08,
+          "std_direction_flips": 5.388283585707048,
+          "epoch": 240
+        }
+      },
+      "seed101": {
+        "best_model": {
+          "grasp_success_rate_pct": 56.00000000000001,
+          "terminal_placement_accuracy_cm": 0.8067825222015381,
+          "placement_accuracy_std_cm": 0.5102949840049316,
+          "terminal_error_cm": 1.919658842086792,
+          "terminal_error_std_cm": 0.9328204365318986,
+          "mppi_inference_latency_ms": 36.6830046373979,
+          "mean_joint_accel_rad_s2": 0.012233468238264322,
+          "std_joint_accel_rad_s2": 0.004098371811678969,
+          "mean_joint_jerk_rad_s3": 0.00957370424643159,
+          "std_joint_jerk_rad_s3": 0.002600662905870819,
+          "mean_direction_flips": 29.24,
+          "std_direction_flips": 7.941183790846299,
+          "epoch": 80
+        },
+        "checkpoint_phase_1": {
+          "grasp_success_rate_pct": 68.0,
+          "terminal_placement_accuracy_cm": 0.7755509388446807,
+          "placement_accuracy_std_cm": 0.46954426710336217,
+          "terminal_error_cm": 1.9073844707012177,
+          "terminal_error_std_cm": 1.2624602195323336,
+          "mppi_inference_latency_ms": 35.32790372871258,
+          "mean_joint_accel_rad_s2": 0.012579807974398137,
+          "std_joint_accel_rad_s2": 0.0041718596464833295,
+          "mean_joint_jerk_rad_s3": 0.009853317625820637,
+          "std_joint_jerk_rad_s3": 0.0027360135113209676,
+          "mean_direction_flips": 28.64,
+          "std_direction_flips": 8.831217356627567,
+          "epoch": 96
+        },
+        "checkpoint_phase_2": {
+          "grasp_success_rate_pct": 52.0,
+          "terminal_placement_accuracy_cm": 0.9253814625740051,
+          "placement_accuracy_std_cm": 0.4784543164925958,
+          "terminal_error_cm": 2.3393139266967773,
+          "terminal_error_std_cm": 1.2209142752391906,
+          "mppi_inference_latency_ms": 33.997791576217644,
+          "mean_joint_accel_rad_s2": 0.012314827740192413,
+          "std_joint_accel_rad_s2": 0.003613214220178058,
+          "mean_joint_jerk_rad_s3": 0.009852458033710718,
+          "std_joint_jerk_rad_s3": 0.0023019908291644284,
+          "mean_direction_flips": 28.08,
+          "std_direction_flips": 8.776878716263544,
+          "epoch": 104
+        },
+        "checkpoint_phase_3": {
+          "grasp_success_rate_pct": 4.0,
+          "terminal_placement_accuracy_cm": 1.0723411238193512,
+          "placement_accuracy_std_cm": 0.5488965121484285,
+          "terminal_error_cm": 6.585751514434815,
+          "terminal_error_std_cm": 2.462142148479034,
+          "mppi_inference_latency_ms": 36.89454996307587,
+          "mean_joint_accel_rad_s2": 0.010207082200795413,
+          "std_joint_accel_rad_s2": 0.0032440182882328065,
+          "mean_joint_jerk_rad_s3": 0.00770574914291501,
+          "std_joint_jerk_rad_s3": 0.0024250018933556217,
+          "mean_direction_flips": 15.8,
+          "std_direction_flips": 4.791659420284375,
+          "epoch": 124
+        },
+        "checkpoint_phase_4": {
+          "grasp_success_rate_pct": 40.0,
+          "terminal_placement_accuracy_cm": 0.8932908475399017,
+          "placement_accuracy_std_cm": 0.6142532524831947,
+          "terminal_error_cm": 3.61430414557457,
+          "terminal_error_std_cm": 2.0803425569119773,
+          "mppi_inference_latency_ms": 36.891264794957294,
+          "mean_joint_accel_rad_s2": 0.00655104667879641,
+          "std_joint_accel_rad_s2": 0.0019870385418092346,
+          "mean_joint_jerk_rad_s3": 0.004338146522641182,
+          "std_joint_jerk_rad_s3": 0.0009688836318665361,
+          "mean_direction_flips": 9.6,
+          "std_direction_flips": 3.370459909270544,
+          "epoch": 240
+        }
+      },
+      "seed2024": {
+        "best_model": {
+          "grasp_success_rate_pct": 48.0,
+          "terminal_placement_accuracy_cm": 0.8991707092523575,
+          "placement_accuracy_std_cm": 0.5571952553535476,
+          "terminal_error_cm": 2.5209722006320954,
+          "terminal_error_std_cm": 1.6852678641416425,
+          "mppi_inference_latency_ms": 37.86354131541487,
+          "mean_joint_accel_rad_s2": 0.008363267537206412,
+          "std_joint_accel_rad_s2": 0.0036055991833148448,
+          "mean_joint_jerk_rad_s3": 0.005904661854729056,
+          "std_joint_jerk_rad_s3": 0.0027313948333358177,
+          "mean_direction_flips": 16.16,
+          "std_direction_flips": 3.170867389217026,
+          "epoch": 130
+        },
+        "checkpoint_phase_1": {
+          "grasp_success_rate_pct": 64.0,
+          "terminal_placement_accuracy_cm": 0.9167939400672913,
+          "placement_accuracy_std_cm": 0.4842631085247366,
+          "terminal_error_cm": 1.8658612310886382,
+          "terminal_error_std_cm": 0.892232074215814,
+          "mppi_inference_latency_ms": 41.55131654470088,
+          "mean_joint_accel_rad_s2": 0.01057371573522687,
+          "std_joint_accel_rad_s2": 0.003922804958063201,
+          "mean_joint_jerk_rad_s3": 0.007624266240745783,
+          "std_joint_jerk_rad_s3": 0.002724674283801329,
+          "mean_direction_flips": 20.88,
+          "std_direction_flips": 5.171614834846076,
+          "epoch": 94
+        },
+        "checkpoint_phase_2": {
+          "grasp_success_rate_pct": 80.0,
+          "terminal_placement_accuracy_cm": 0.8254767823219299,
+          "placement_accuracy_std_cm": 0.45833934757821987,
+          "terminal_error_cm": 1.7428334522247315,
+          "terminal_error_std_cm": 0.9631726326989476,
+          "mppi_inference_latency_ms": 42.998756124646725,
+          "mean_joint_accel_rad_s2": 0.010881818272173405,
+          "std_joint_accel_rad_s2": 0.004106524851980133,
+          "mean_joint_jerk_rad_s3": 0.008174818065017462,
+          "std_joint_jerk_rad_s3": 0.0030611518004082313,
+          "mean_direction_flips": 23.8,
+          "std_direction_flips": 4.7833042972405595,
+          "epoch": 102
+        },
+        "checkpoint_phase_3": {
+          "grasp_success_rate_pct": 40.0,
+          "terminal_placement_accuracy_cm": 0.9588495105504989,
+          "placement_accuracy_std_cm": 0.622048862001958,
+          "terminal_error_cm": 2.971398718953133,
+          "terminal_error_std_cm": 1.8832630559498067,
+          "mppi_inference_latency_ms": 31.357012376353577,
+          "mean_joint_accel_rad_s2": 0.008617250081151724,
+          "std_joint_accel_rad_s2": 0.003343341246914032,
+          "mean_joint_jerk_rad_s3": 0.006131271691992879,
+          "std_joint_jerk_rad_s3": 0.002452792632865182,
+          "mean_direction_flips": 17.12,
+          "std_direction_flips": 3.9427908897125143,
+          "epoch": 122
+        },
+        "checkpoint_phase_4": {
+          "grasp_success_rate_pct": 60.0,
+          "terminal_placement_accuracy_cm": 1.9300097036361694,
+          "placement_accuracy_std_cm": 1.1646329528416253,
+          "terminal_error_cm": 2.6945787906646728,
+          "terminal_error_std_cm": 1.8902841139496236,
+          "mppi_inference_latency_ms": 30.234106229985173,
+          "mean_joint_accel_rad_s2": 0.005349645232781768,
+          "std_joint_accel_rad_s2": 0.0018365806990176805,
+          "mean_joint_jerk_rad_s3": 0.003066285639069974,
+          "std_joint_jerk_rad_s3": 0.0009587316322348077,
+          "mean_direction_flips": 9.44,
+          "std_direction_flips": 3.990789395595814,
+          "epoch": 260
+        }
+      }
+    },
+    "energy_summary": {
+      "spwm_3seed": {
+        "spike_rate_pct": [
+          12.151117412707743,
+          0.192861046198146
+        ],
+        "sops_per_step": [
+          8150.0,
+          129.11622671066561
+        ],
+        "energy_neuro_nj": [
+          12.224996206577009,
+          0.1940336413590309
+        ],
+        "power_20hz_mw": [
+          0.24449992413154012,
+          0.0038806728271806117
+        ],
+        "speedup_vs_own_gpu": [
+          4.938654535978057,
+          0.07910719976272344
+        ],
+        "e2e_step_energy_mj": [
+          1.0978792841962064,
+          1.9403364130818727e-07
+        ],
+        "e2e_power_20hz_mw": [
+          21.957585683924133,
+          3.880672826405402e-06
+        ]
+      },
+      "baselines": {
+        "ANN-Rate": {
+          "paradigm": "Continuous ANN",
+          "memory_type": "Continuous Leaky Rate",
+          "params": 392141,
+          "spike_rate": 0.0,
+          "sops_per_step": 0,
+          "recurrent_macs": 67072,
+          "recurrent_flops": 134144,
+          "energy_neuro_nj": null,
+          "energy_gpu_nj": 60.364799999999995,
+          "energy_ratio_vs_gpu": 1.0,
+          "power_20hz_mw": 1.207296,
+          "cumulative_energy_h100_uj": 6.036479999999999,
+          "encoder_macs": 882688,
+          "encoder_energy_nj": 794.4191999999999,
+          "mppi_rollout_macs": 1218969600,
+          "mppi_rollout_energy_nj": 1097072.64,
+          "e2e_step_energy_nj": 1097927.4239999999,
+          "e2e_step_energy_mj": 1.0979274239999999,
+          "e2e_all_gpu_energy_mj": 1.0979274239999999,
+          "e2e_power_20hz_mw": 21.958548479999997
+        },
+        "Deep GRU": {
+          "paradigm": "Continuous ANN",
+          "memory_type": "2-Layer Deep GRU",
+          "params": 338868,
+          "spike_rate": 0.0,
+          "sops_per_step": 0,
+          "recurrent_macs": 299520,
+          "recurrent_flops": 599040,
+          "energy_neuro_nj": null,
+          "energy_gpu_nj": 269.568,
+          "energy_ratio_vs_gpu": 1.0,
+          "power_20hz_mw": 5.39136,
+          "cumulative_energy_h100_uj": 26.956799999999998,
+          "encoder_macs": 882688,
+          "encoder_energy_nj": 794.4191999999999,
+          "mppi_rollout_macs": 1942179840,
+          "mppi_rollout_energy_nj": 1747961.856,
+          "e2e_step_energy_nj": 1749025.8432,
+          "e2e_step_energy_mj": 1.7490258432,
+          "e2e_all_gpu_energy_mj": 1.7490258432,
+          "e2e_power_20hz_mw": 34.980516864
+        },
+        "Continuous RSSM": {
+          "paradigm": "Continuous ANN",
+          "memory_type": "GRU + Gaussian Latent",
+          "params": 380460,
+          "spike_rate": 0.0,
+          "sops_per_step": 0,
+          "recurrent_macs": 365056,
+          "recurrent_flops": 730112,
+          "energy_neuro_nj": null,
+          "energy_gpu_nj": 328.55039999999997,
+          "energy_ratio_vs_gpu": 1.0,
+          "power_20hz_mw": 6.571008,
+          "cumulative_energy_h100_uj": 32.855039999999995,
+          "encoder_macs": 882688,
+          "encoder_energy_nj": 794.4191999999999,
+          "mppi_rollout_macs": 2358312960,
+          "mppi_rollout_energy_nj": 2122481.664,
+          "e2e_step_energy_nj": 2123604.6336,
+          "e2e_step_energy_mj": 2.1236046336,
+          "e2e_all_gpu_energy_mj": 2.1236046336,
+          "e2e_power_20hz_mw": 42.472092671999995
+        },
+        "Continuous ConvLSTM": {
+          "paradigm": "Continuous ANN",
+          "memory_type": "Spatial ConvLSTM (2D)",
+          "params": 296892,
+          "spike_rate": 0.0,
+          "sops_per_step": 0,
+          "recurrent_macs": 2359296,
+          "recurrent_flops": 4718592,
+          "energy_neuro_nj": null,
+          "energy_gpu_nj": 2123.3664,
+          "energy_ratio_vs_gpu": 1.0,
+          "power_20hz_mw": 42.467327999999995,
+          "cumulative_energy_h100_uj": 212.33664,
+          "encoder_macs": 882688,
+          "encoder_energy_nj": 794.4191999999999,
+          "mppi_rollout_macs": 111311585280,
+          "mppi_rollout_energy_nj": 100180426.752,
+          "e2e_step_energy_nj": 100183344.53760001,
+          "e2e_step_energy_mj": 100.18334453760001,
+          "e2e_all_gpu_energy_mj": 100.18334453760001,
+          "e2e_power_20hz_mw": 2003.6668907520004
+        }
+      }
+    }
   }
 }

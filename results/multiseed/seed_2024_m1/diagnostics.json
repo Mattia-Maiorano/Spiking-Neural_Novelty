@@ -36,9 +36,9 @@
     ]
   },
   "gradient_diagnostics": {
-    "total_norm": 0.8000000390707531,
+    "total_norm": 0.8000000445307213,
     "has_nan": false,
     "has_inf": false,
-    "zero_gradient_ratio": 0.29355579951376265
+    "zero_gradient_ratio": 0.29267577213513307
   }
 }

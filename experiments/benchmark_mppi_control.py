@@ -11,7 +11,7 @@ Zero AST Fallbacks strictly enforced.
 from __future__ import annotations
 
 import argparse
-from dataclasses import asdict, dataclass, replace
+from dataclasses import asdict, dataclass, field, replace
 import gzip
 import json
 from pathlib import Path
@@ -64,6 +64,7 @@ class EpisodeResult:
     mean_joint_accel_rad_s2: float = 0.0
     mean_joint_jerk_rad_s3: float = 0.0
     direction_flips: int = 0
+    handover_weights_phi1: List[float] = field(default_factory=list)
 
 
 class _RSSMPredictorAdapter(torch.nn.Module):
@@ -238,6 +239,7 @@ def _compute_residual_handover_weight(
     target_final_mat: torch.Tensor,
     t: int,
     t_c: int,
+    dist_threshold: float = 0.026,
 ) -> float:
     """Shared causal residual-gated handover rule for SPWM and ANN-Rate during phi_t == 1."""
     dec_pred = physical_decoder(z_pred)
@@ -247,7 +249,7 @@ def _compute_residual_handover_weight(
     ee_obs_now = fk(dec_obs[:, :6])[0].detach()
     dist_obs = float(torch.norm(ee_obs_now - target_final_mat[:3, 3]).item())
     rot_obs = compute_rot_error(fk, dec_obs[0, :6], target_final_mat)
-    if dist_pred > 0.026 and dist_obs < 0.025 and rot_obs < 0.049:
+    if dist_pred > dist_threshold and dist_obs < 0.025 and rot_obs < 0.049:
         return 0.85
     if dist_obs < dist_pred and t <= t_c + 2:
         return 0.40 * max(0.0, min(1.0, (dist_pred - 0.032) / 0.04))
@@ -291,6 +293,7 @@ def run_episode(
     use_lookahead: bool = True,
     physics_in_loop: bool = False,
     physics_damping_scale: float = 1.0,
+    handover_dist_threshold: float = 0.026,
 ) -> EpisodeResult:
     """Executes closed-loop latent MPPI reaching on a single test trajectory."""
     p1_indices = (phase_flags == 1).nonzero()
@@ -349,6 +352,7 @@ def run_episode(
     step_errors: List[float] = []
     latencies: List[float] = []
     q_history: List[np.ndarray] = []
+    handover_weights_phi1: List[float] = []
     final_vel = 0.0
     final_ee = target_pos
     grasp_err_cm = 0.0
@@ -393,15 +397,28 @@ def run_episode(
                         z_obs, dyn_state = model.step_online(ev_online, u_pd_t, curr_z, dyn_state)
                         if use_handover and int(phase_flags[t].item()) == 1:
                             w_t = _compute_residual_handover_weight(
-                                fk, model.physical_decoder, z_pred, z_obs, target_final_mat, t, t_c
+                                fk,
+                                model.physical_decoder,
+                                z_pred,
+                                z_obs,
+                                target_final_mat,
+                                t,
+                                t_c,
+                                dist_threshold=handover_dist_threshold,
                             )
+                            handover_weights_phi1.append(float(w_t))
                             curr_z = (1.0 - w_t) * z_pred + w_t * z_obs
                         else:
+                            if int(phase_flags[t].item()) == 1:
+                                handover_weights_phi1.append(0.0)
                             curr_z = z_pred
-                    elif int(phase_flags[t].item()) == 1:
+                    elif use_handover and int(phase_flags[t].item()) == 1:
                         z_obs, dyn_state = model.step_online(ev_online, u_pd_t, curr_z, dyn_state)
+                        handover_weights_phi1.append(1.0)
                         curr_z = z_obs
                     else:
+                        if int(phase_flags[t].item()) == 1:
+                            handover_weights_phi1.append(0.0)
                         curr_z = z_pred
                 elif dyn_state is not None:
                     z_obs, dyn_state = step_grounded(
@@ -414,10 +431,20 @@ def run_episode(
                     )
                     if use_handover and int(phase_flags[t].item()) == 1:
                         w_t = _compute_residual_handover_weight(
-                            fk, model.physical_decoder, z_pred, z_obs, target_final_mat, t, t_c
+                            fk,
+                            model.physical_decoder,
+                            z_pred,
+                            z_obs,
+                            target_final_mat,
+                            t,
+                            t_c,
+                            dist_threshold=handover_dist_threshold,
                         )
+                        handover_weights_phi1.append(float(w_t))
                         curr_z = (1.0 - w_t) * z_pred + w_t * z_obs
                     else:
+                        if int(phase_flags[t].item()) == 1:
+                            handover_weights_phi1.append(0.0)
                         curr_z = z_pred
                 else:
                     curr_z = z_pred
@@ -511,7 +538,27 @@ def run_episode(
         mean_joint_accel_rad_s2=mean_ddq,
         mean_joint_jerk_rad_s3=mean_dddq,
         direction_flips=direction_flips,
+        handover_weights_phi1=handover_weights_phi1,
     )
+
+
+def summarize_handover_telemetry(episodes: List[EpisodeResult]) -> Dict[str, Any]:
+    """Computes w_t activation statistics across phi_t == 1 steps and episodes."""
+    total_episodes = len(episodes)
+    triggered_episodes = sum(1 for ep in episodes if any(w > 0.0 for w in ep.handover_weights_phi1))
+    all_w = [w for ep in episodes for w in ep.handover_weights_phi1]
+    nonzero_w = [w for w in all_w if w > 0.0]
+    total_phi1_steps = len(all_w)
+    triggered_phi1_steps = len(nonzero_w)
+    return {
+        "episodes_evaluated": total_episodes,
+        "triggered_episodes": triggered_episodes,
+        "episodes_with_w_gt_0_pct": float(100.0 * triggered_episodes / max(1, total_episodes)),
+        "total_phi1_steps": total_phi1_steps,
+        "triggered_phi1_steps": triggered_phi1_steps,
+        "phi1_steps_with_w_gt_0_pct": float(100.0 * triggered_phi1_steps / max(1, total_phi1_steps)),
+        "mean_nonzero_w": float(np.mean(nonzero_w)) if nonzero_w else 0.0,
+    }
 
 
 def generate_benchmark_figures(
@@ -636,6 +683,19 @@ def main() -> None:
         action="store_true",
         help="Execute true Featherstone articulated physics + online EventCameraSimulator in the closed loop.",
     )
+    parser.add_argument(
+        "--split",
+        type=str,
+        default="test",
+        choices=("test", "val"),
+        help="Dataset split to evaluate ('test' [3600..3999] or 'val' [3200..3599]).",
+    )
+    parser.add_argument(
+        "--handover-dist-threshold",
+        type=float,
+        default=0.026,
+        help="Residual handover distance trigger threshold d_pred > tau (m, default: 0.026).",
+    )
     args = parser.parse_args()
 
     cfg = ExperimentConfig.load(args.config)
@@ -730,7 +790,7 @@ def main() -> None:
     )
 
 
-    chronicle.log_info(f"Creating test DataLoader for {args.num_episodes} evaluation episodes...")
+    chronicle.log_info(f"Creating {args.split} DataLoader for {args.num_episodes} evaluation episodes...")
     loaders = create_dataloaders_from_config(
         cfg,
         batch_size=1,
@@ -738,20 +798,20 @@ def main() -> None:
         weighted_sampling=False,
     )
 
-    test_loader = loaders["test"]
+    eval_loader = loaders[args.split]
     dataset_dir = Path(cfg.data.dataset_dir) if cfg.data.dataset_dir is not None else Path("sim/ExportedTrajectories")
 
     results: List[EpisodeResult] = []
-    total_to_eval = min(args.num_episodes, len(test_loader))
+    total_to_eval = min(args.num_episodes, len(eval_loader))
 
     chronicle.log_info(
-        f"Starting Latent MPPI Closed-Loop Benchmark: K={mppi_cfg.num_samples}, H={mppi_cfg.horizon}, "
+        f"Starting Latent MPPI Closed-Loop Benchmark ({args.split}): K={mppi_cfg.num_samples}, H={mppi_cfg.horizon}, "
         f"Episodes={total_to_eval} across Low/Mid/High elevation and masses 1.20 - 4.50 kg"
     )
 
     start_bench = time.perf_counter()
 
-    for idx, batch in enumerate(test_loader):
+    for idx, batch in enumerate(eval_loader):
         if idx >= total_to_eval:
             break
 
@@ -774,6 +834,7 @@ def main() -> None:
             use_handover=not args.disable_handover,
             use_lookahead=not args.disable_lookahead,
             physics_in_loop=args.physics_in_loop,
+            handover_dist_threshold=args.handover_dist_threshold,
         )
         results.append(ep_res)
 
@@ -838,9 +899,12 @@ def main() -> None:
                 "mean_terminal_error_cm": float(np.mean([r.terminal_placement_error_cm for r in subset])),
             }
 
+    handover_telemetry = summarize_handover_telemetry(results)
     summary = {
         "benchmark_name": f"{args.model_label} Closed-Loop Latent MPPI Control Benchmark",
         "evaluation_protocol": "physics_in_loop" if args.physics_in_loop else "latent_grounded",
+        "split": args.split,
+        "handover_dist_threshold": float(args.handover_dist_threshold),
         "checkpoint": str(args.checkpoint),
         "episodes_evaluated": len(results),
         "total_benchmark_time_sec": float(elapsed_bench),
@@ -858,6 +922,7 @@ def main() -> None:
             "mean_direction_flips": overall_mean_flips,
             "std_direction_flips": overall_std_flips,
         },
+        "handover_telemetry": handover_telemetry,
         "elevation_plane_breakdown": plane_metrics,
         "mass_tier_breakdown": tier_metrics,
         "episodes": [asdict(r) for r in results],

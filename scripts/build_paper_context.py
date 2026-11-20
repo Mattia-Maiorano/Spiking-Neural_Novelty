@@ -14,10 +14,26 @@ REPO_ROOT = Path(__file__).resolve().parent.parent
 OUTPUT_PATH = REPO_ROOT / "PAPER_CONTEXT.md"
 
 SECTION_1_FILES: list[tuple[str, str]] = [
-    ("docs/FIGURE_METRICS.md", "Master SSOT summary table"),
+    (
+        "docs/CORL_FINAL_BENCHMARK_SUMMARY.md",
+        "CoRL final grounded multi-seed, 50-episode PIL, ablation, robustness, and energy summary + LaTeX tables",
+    ),
+    ("docs/FIGURE_METRICS.md", "Master SSOT figure & 50-episode PIL summary table"),
     (
         "results/spwm_v0_12_4_train_m1/comparative_metrics_v0_12_4.json",
-        "Baseline comparison (SPWM vs. Continuous RSSM, Deep GRU, Continuous ConvLSTM)",
+        "Multi-seed N=400 open-loop baseline comparison (SPWM, ANN-Rate, RSSM across 3 seeds + Deep GRU, ConvLSTM)",
+    ),
+    (
+        "results/multiseed/multiseed_metrics.json",
+        "3-seed (42, 101, 2024) SPWM, ANN-Rate, and Continuous RSSM open-loop, 50-ep PIL, and energy summary",
+    ),
+    (
+        "results/energy_profiling/energy_profiling_metrics.json",
+        "Neuromorphic SOPs (Loihi-2) vs. GPU MACs (Jetson Orin) profiling across SPWM and baselines",
+    ),
+    (
+        "results/baselines/classical_and_bc_pil/classical_bc_pil_metrics.json",
+        "50-episode PIL benchmarks for Privileged Fixed-Gain PD and Reactive BC",
     ),
     (
         "results/spwm_v0_12_4_train_m1/metrics_spwm_v0_12_4.json",
@@ -33,20 +49,20 @@ SECTION_1_FILES: list[tuple[str, str]] = [
     ),
     (
         "results/mppi_benchmark/mppi_benchmark_metrics.json",
-        "50-episode closed-loop latent MPPI benchmark breakdown",
+        "50-episode closed-loop Physics-in-the-Loop (PIL, t >= t_c) MPPI benchmark breakdown",
     ),
     (
         "results/robustness_benchmark/robustness_metrics.json",
-        "50-trajectory sensor sweep and 20-episode/condition MPPI stress tests",
+        "400-trajectory sensor sweep and 50-episode/condition PIL MPPI stress tests",
     ),
 ]
 
 SECTION_2_FILES: list[tuple[str, str]] = [
     (
         "docs/DOSSIER.md",
-        "High-level system narrative, v0.12.20 vs. v0.12.4 comparisons, and ghost rollout metrics",
+        "High-level system narrative, CoRL grounded PIL benchmarks, multi-seed validation, and deploy-ready architecture",
     ),
-    ("docs/ARCHITECTURE.md", "Detailed neural architecture specification"),
+    ("docs/Architecture.md", "Detailed neural architecture specification"),
     ("docs/TRAINING_AND_LOSSES.md", "Loss formulations and 2-phase / 4-latch curriculum details"),
     ("docs/WORLD.md", "Unity PhysX 4 environment, payload distribution, and dataset splits"),
     ("results/spwm_v0_12_4_train_m1/config.yaml", "Exact hyperparameters used for the v0.12.4 run"),

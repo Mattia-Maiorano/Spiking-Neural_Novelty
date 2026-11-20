@@ -312,4 +312,10 @@ class MPPIPerturbationResult:
     mean_latency_ms: float
     elevation_plane_breakdown: Dict[str, Dict[str, float]]
     mass_tier_breakdown: Dict[str, Dict[str, float]]
+    episodes_with_handover_pct: float = 0.0
+    phi1_steps_with_handover_pct: float = 0.0
+    mean_nonzero_handover_w: float = 0.0
+    total_phi1_steps: int = 0
+    triggered_phi1_steps: int = 0
+    triggered_episodes: int = 0
 

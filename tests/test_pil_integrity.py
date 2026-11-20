@@ -187,9 +187,31 @@ def test_baselines_receive_online_observations_in_pil(monkeypatch):
 
     monkeypatch.setattr(wrapper_gru, "step_online", spy_gru)
     ctrl_gru = LatentMPPIController(p_gru, d_gru, cfg.mppi, fk, device=device)
-    run_episode(
+    ep_gru = run_episode(
         model=wrapper_gru, controller=ctrl_gru, fk=fk, events=events, q_gt=q_gt,
         phase_flags=flags, traj_id=3, payload_mass=2.5, payload_shape="Box",
         device=device, actions=actions, approach_window=10, p_gt=p_gt, physics_in_loop=True,
     )
     assert calls_gru == 8
+    assert len(ep_gru.handover_weights_phi1) == 8
+
+    # 4. Open-Loop PIL mode (use_handover=False) skips online sensory overwrite for RSSM & Deep GRU
+    calls_rssm = 0
+    ep_rssm_ol = run_episode(
+        model=wrapper_rssm, controller=ctrl_rssm, fk=fk, events=events, q_gt=q_gt,
+        phase_flags=flags, traj_id=2, payload_mass=2.5, payload_shape="Box",
+        device=device, actions=actions, approach_window=10, p_gt=p_gt,
+        use_handover=False, physics_in_loop=True,
+    )
+    assert calls_rssm == 0
+    assert ep_rssm_ol.handover_weights_phi1 == [0.0] * 8
+
+    calls_gru = 0
+    ep_gru_ol = run_episode(
+        model=wrapper_gru, controller=ctrl_gru, fk=fk, events=events, q_gt=q_gt,
+        phase_flags=flags, traj_id=3, payload_mass=2.5, payload_shape="Box",
+        device=device, actions=actions, approach_window=10, p_gt=p_gt,
+        use_handover=False, physics_in_loop=True,
+    )
+    assert calls_gru == 0
+    assert ep_gru_ol.handover_weights_phi1 == [0.0] * 8

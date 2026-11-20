@@ -1,0 +1,362 @@
+{
+  "Seed 42 (best_model.pt)": {
+    "label": "Seed 42 (best_model.pt)",
+    "checkpoint": "/Users/Mattia/Desktop/Studies/Temp/results/spwm_v0_12_4_train_m1/best_model.pt",
+    "epoch": 200,
+    "best_epoch": 200,
+    "action_proj_spectral_norm": 0.8593953847885132,
+    "action_proj_frobenius_norm": 0.949728786945343,
+    "gate_scale_raw": {
+      "mean": 49.044986724853516,
+      "std": 6.588039104826748e-05,
+      "min": 49.04484558105469,
+      "max": 49.045108795166016
+    },
+    "gate_scale_softplus": {
+      "mean": 49.044986724853516,
+      "std": 6.588039104826748e-05,
+      "min": 49.04484558105469,
+      "max": 49.045108795166016
+    },
+    "alif_spike_stats": {
+      "mean_spike_rate": 0.1226828470826149,
+      "median_spike_rate": 0.12472619116306305,
+      "min_spike_rate": 4.761904710903764e-05,
+      "max_spike_rate": 0.1678333282470703,
+      "fraction_silent_neurons": 0.0078125,
+      "fraction_hyperactive_neurons": 0.0,
+      "histogram_counts": [
+        26,
+        230,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0
+      ],
+      "histogram_bin_edges": [
+        0.0,
+        0.10000000149011612,
+        0.20000000298023224,
+        0.30000001192092896,
+        0.4000000059604645,
+        0.5,
+        0.6000000238418579,
+        0.699999988079071,
+        0.800000011920929,
+        0.8999999761581421,
+        1.0
+      ]
+    },
+    "pil_handover_stats": {
+      "total_phi1_steps": 400,
+      "triggered_phi1_steps": 0,
+      "trigger_rate_pct": 0.0,
+      "mean_w_all_phi1": 0.0,
+      "mean_w_when_triggered": 0.0
+    }
+  },
+  "Seed 42 (final checkpoint.pt)": {
+    "label": "Seed 42 (final checkpoint.pt)",
+    "checkpoint": "/Users/Mattia/Desktop/Studies/Temp/results/spwm_v0_12_4_train_m1/checkpoint.pt",
+    "epoch": 240,
+    "best_epoch": 200,
+    "action_proj_spectral_norm": 0.8593952059745789,
+    "action_proj_frobenius_norm": 0.949728786945343,
+    "gate_scale_raw": {
+      "mean": 49.044979095458984,
+      "std": 6.068807851988822e-05,
+      "min": 49.04484558105469,
+      "max": 49.045108795166016
+    },
+    "gate_scale_softplus": {
+      "mean": 49.044979095458984,
+      "std": 6.068807851988822e-05,
+      "min": 49.04484558105469,
+      "max": 49.045108795166016
+    },
+    "alif_spike_stats": {
+      "mean_spike_rate": 0.12268145382404327,
+      "median_spike_rate": 0.12472619116306305,
+      "min_spike_rate": 4.761904710903764e-05,
+      "max_spike_rate": 0.16780953109264374,
+      "fraction_silent_neurons": 0.0078125,
+      "fraction_hyperactive_neurons": 0.0,
+      "histogram_counts": [
+        26,
+        230,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0
+      ],
+      "histogram_bin_edges": [
+        0.0,
+        0.10000000149011612,
+        0.20000000298023224,
+        0.30000001192092896,
+        0.4000000059604645,
+        0.5,
+        0.6000000238418579,
+        0.699999988079071,
+        0.800000011920929,
+        0.8999999761581421,
+        1.0
+      ]
+    },
+    "pil_handover_stats": {
+      "total_phi1_steps": 400,
+      "triggered_phi1_steps": 0,
+      "trigger_rate_pct": 0.0,
+      "mean_w_all_phi1": 0.0,
+      "mean_w_when_triggered": 0.0
+    }
+  },
+  "Seed 101 (best_model.pt)": {
+    "label": "Seed 101 (best_model.pt)",
+    "checkpoint": "/Users/Mattia/Desktop/Studies/Temp/results/multiseed/seed_101_m1/best_model.pt",
+    "epoch": 80,
+    "best_epoch": 80,
+    "action_proj_spectral_norm": 1.013080358505249,
+    "action_proj_frobenius_norm": 1.1117337942123413,
+    "gate_scale_raw": {
+      "mean": 49.04307174682617,
+      "std": 6.421336001949385e-05,
+      "min": 49.04289627075195,
+      "max": 49.04313278198242
+    },
+    "gate_scale_softplus": {
+      "mean": 49.04307174682617,
+      "std": 6.421336001949385e-05,
+      "min": 49.04289627075195,
+      "max": 49.04313278198242
+    },
+    "alif_spike_stats": {
+      "mean_spike_rate": 0.12256668508052826,
+      "median_spike_rate": 0.12576191127300262,
+      "min_spike_rate": 0.0,
+      "max_spike_rate": 0.19114285707473755,
+      "fraction_silent_neurons": 0.0078125,
+      "fraction_hyperactive_neurons": 0.0,
+      "histogram_counts": [
+        22,
+        234,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0
+      ],
+      "histogram_bin_edges": [
+        0.0,
+        0.10000000149011612,
+        0.20000000298023224,
+        0.30000001192092896,
+        0.4000000059604645,
+        0.5,
+        0.6000000238418579,
+        0.699999988079071,
+        0.800000011920929,
+        0.8999999761581421,
+        1.0
+      ]
+    },
+    "pil_handover_stats": {
+      "total_phi1_steps": 400,
+      "triggered_phi1_steps": 0,
+      "trigger_rate_pct": 0.0,
+      "mean_w_all_phi1": 0.0,
+      "mean_w_when_triggered": 0.0
+    }
+  },
+  "Seed 101 (final checkpoint.pt)": {
+    "label": "Seed 101 (final checkpoint.pt)",
+    "checkpoint": "/Users/Mattia/Desktop/Studies/Temp/results/multiseed/seed_101_m1/checkpoint.pt",
+    "epoch": 240,
+    "best_epoch": 80,
+    "action_proj_spectral_norm": 1.0130802392959595,
+    "action_proj_frobenius_norm": 1.1117337942123413,
+    "gate_scale_raw": {
+      "mean": 49.043052673339844,
+      "std": 5.13443628733512e-05,
+      "min": 49.04289627075195,
+      "max": 49.04310989379883
+    },
+    "gate_scale_softplus": {
+      "mean": 49.043052673339844,
+      "std": 5.13443628733512e-05,
+      "min": 49.04289627075195,
+      "max": 49.04310989379883
+    },
+    "alif_spike_stats": {
+      "mean_spike_rate": 0.12256687134504318,
+      "median_spike_rate": 0.12576191127300262,
+      "min_spike_rate": 0.0,
+      "max_spike_rate": 0.19116666913032532,
+      "fraction_silent_neurons": 0.0078125,
+      "fraction_hyperactive_neurons": 0.0,
+      "histogram_counts": [
+        22,
+        234,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0
+      ],
+      "histogram_bin_edges": [
+        0.0,
+        0.10000000149011612,
+        0.20000000298023224,
+        0.30000001192092896,
+        0.4000000059604645,
+        0.5,
+        0.6000000238418579,
+        0.699999988079071,
+        0.800000011920929,
+        0.8999999761581421,
+        1.0
+      ]
+    },
+    "pil_handover_stats": {
+      "total_phi1_steps": 400,
+      "triggered_phi1_steps": 3,
+      "trigger_rate_pct": 0.75,
+      "mean_w_all_phi1": 0.0023984485514461995,
+      "mean_w_when_triggered": 0.3197931401928266
+    }
+  },
+  "Seed 2024 (best_model.pt)": {
+    "label": "Seed 2024 (best_model.pt)",
+    "checkpoint": "/Users/Mattia/Desktop/Studies/Temp/results/multiseed/seed_2024_m1/best_model.pt",
+    "epoch": 130,
+    "best_epoch": 130,
+    "action_proj_spectral_norm": 0.818860650062561,
+    "action_proj_frobenius_norm": 0.9222898483276367,
+    "gate_scale_raw": {
+      "mean": 49.070533752441406,
+      "std": 4.373639967525378e-05,
+      "min": 49.07042694091797,
+      "max": 49.07060241699219
+    },
+    "gate_scale_softplus": {
+      "mean": 49.070533752441406,
+      "std": 4.373639967525378e-05,
+      "min": 49.07042694091797,
+      "max": 49.07060241699219
+    },
+    "alif_spike_stats": {
+      "mean_spike_rate": 0.11928748339414597,
+      "median_spike_rate": 0.12389285862445831,
+      "min_spike_rate": 0.0,
+      "max_spike_rate": 0.16090476512908936,
+      "fraction_silent_neurons": 0.0234375,
+      "fraction_hyperactive_neurons": 0.0,
+      "histogram_counts": [
+        42,
+        214,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0
+      ],
+      "histogram_bin_edges": [
+        0.0,
+        0.10000000149011612,
+        0.20000000298023224,
+        0.30000001192092896,
+        0.4000000059604645,
+        0.5,
+        0.6000000238418579,
+        0.699999988079071,
+        0.800000011920929,
+        0.8999999761581421,
+        1.0
+      ]
+    },
+    "pil_handover_stats": {
+      "total_phi1_steps": 400,
+      "triggered_phi1_steps": 0,
+      "trigger_rate_pct": 0.0,
+      "mean_w_all_phi1": 0.0,
+      "mean_w_when_triggered": 0.0
+    }
+  },
+  "Seed 2024 (final checkpoint.pt)": {
+    "label": "Seed 2024 (final checkpoint.pt)",
+    "checkpoint": "/Users/Mattia/Desktop/Studies/Temp/results/multiseed/seed_2024_m1/checkpoint.pt",
+    "epoch": 260,
+    "best_epoch": 130,
+    "action_proj_spectral_norm": 0.8188605904579163,
+    "action_proj_frobenius_norm": 0.9222897887229919,
+    "gate_scale_raw": {
+      "mean": 49.070526123046875,
+      "std": 3.613747321651317e-05,
+      "min": 49.07042694091797,
+      "max": 49.07060241699219
+    },
+    "gate_scale_softplus": {
+      "mean": 49.070526123046875,
+      "std": 3.613747321651317e-05,
+      "min": 49.07042694091797,
+      "max": 49.07060241699219
+    },
+    "alif_spike_stats": {
+      "mean_spike_rate": 0.11928562819957733,
+      "median_spike_rate": 0.12388095259666443,
+      "min_spike_rate": 0.0,
+      "max_spike_rate": 0.1608809530735016,
+      "fraction_silent_neurons": 0.0234375,
+      "fraction_hyperactive_neurons": 0.0,
+      "histogram_counts": [
+        42,
+        214,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0
+      ],
+      "histogram_bin_edges": [
+        0.0,
+        0.10000000149011612,
+        0.20000000298023224,
+        0.30000001192092896,
+        0.4000000059604645,
+        0.5,
+        0.6000000238418579,
+        0.699999988079071,
+        0.800000011920929,
+        0.8999999761581421,
+        1.0
+      ]
+    },
+    "pil_handover_stats": {
+      "total_phi1_steps": 400,
+      "triggered_phi1_steps": 0,
+      "trigger_rate_pct": 0.0,
+      "mean_w_all_phi1": 0.0,
+      "mean_w_when_triggered": 0.0
+    }
+  }
+}

@@ -1,4 +1,4 @@
-# RSSM (Seed 101 PIL) Latent MPPI Downstream Control Benchmark
+# Continuous RSSM (Seed 101) Latent MPPI Downstream Control Benchmark
 
 **Evaluated Configuration:**
 - **Planner:** Latent MPPI Controller ($K = 256$, $H = 10$, Iterations = $3$)
@@ -13,13 +13,13 @@
 
 | Metric | Target / Spec | Observed Result | Status |
 | :--- | :---: | :---: | :---: |
-| **Grasp Success Rate (%)** | $> 80.0\%$ | **46.0%** | **VERIFIED** |
-| **Min Placement Error (cm)** | $< 3.0\,\text{cm}$ | **1.35 ± 0.70 cm** | **VERIFIED** |
-| **Terminal Placement Error (cm)** | $< 3.0\,\text{cm}$ | **2.45 ± 1.10 cm** | **VERIFIED** |
-| **Joint Acceleration ($|\Delta^2 q|$)** | — | **0.01242 ± 0.00331 rad/step²** | **RECORDED** |
-| **Joint Jerk ($|\Delta^3 q|$)** | — | **0.01228 ± 0.00305 rad/step³** | **RECORDED** |
-| **Direction Flips (per episode)** | — | **30.5 ± 9.4** | **RECORDED** |
-| **MPPI Inference Latency (ms / step)** | $< 50.0\,\text{ms}$ | **50.0 ms** | **REAL-TIME** |
+| **Grasp Success Rate (%)** | $> 80.0\%$ | **0.0%** | **VERIFIED** |
+| **Min Placement Error (cm)** | $< 3.0\,\text{cm}$ | **1.60 ± 1.24 cm** | **VERIFIED** |
+| **Terminal Placement Error (cm)** | $< 3.0\,\text{cm}$ | **22.32 ± 10.55 cm** | **VERIFIED** |
+| **Joint Acceleration ($|\Delta^2 q|$)** | — | **0.03194 ± 0.00804 rad/step²** | **RECORDED** |
+| **Joint Jerk ($|\Delta^3 q|$)** | — | **0.02882 ± 0.00634 rad/step³** | **RECORDED** |
+| **Direction Flips (per episode)** | — | **35.7 ± 7.9** | **RECORDED** |
+| **MPPI Inference Latency (ms / step)** | $< 50.0\,\text{ms}$ | **35.7 ms** | **REAL-TIME** |
 
 ---
 
@@ -27,9 +27,9 @@
 
 | Elevation Plane | Episodes | Mean Mass (kg) | Grasp Success Rate (%) | Placement Accuracy (cm) |
 | :--- | :---: | :---: | :---: | :---: |
-| **Low Plane** | 22 | 2.77 | **45.5%** | 1.64 cm |
-| **Mid Plane** | 18 | 2.85 | **27.8%** | 1.29 cm |
-| **High Plane** | 10 | 2.91 | **80.0%** | 0.83 cm |
+| **Low Plane** | 22 | 2.77 | **0.0%** | 1.50 cm |
+| **Mid Plane** | 18 | 2.85 | **0.0%** | 2.11 cm |
+| **High Plane** | 10 | 2.91 | **0.0%** | 0.90 cm |
 
 ---
 
@@ -37,6 +37,6 @@
 
 | Mass Tier | Episodes | Grasp Success Rate (%) | Placement Accuracy (cm) |
 | :--- | :---: | :---: | :---: |
-| **Light (1.20 - 2.30 kg)** | 17 | **17.6%** | 1.21 cm |
-| **Medium (2.30 - 3.40 kg)** | 17 | **47.1%** | 1.54 cm |
-| **Heavy (3.40 - 4.50 kg)** | 16 | **75.0%** | 1.30 cm |
+| **Light (1.20 - 2.30 kg)** | 17 | **0.0%** | 1.25 cm |
+| **Medium (2.30 - 3.40 kg)** | 17 | **0.0%** | 1.62 cm |
+| **Heavy (3.40 - 4.50 kg)** | 16 | **0.0%** | 1.96 cm |

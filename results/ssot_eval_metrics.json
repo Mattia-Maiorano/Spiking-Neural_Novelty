@@ -721,6 +721,138 @@
   },
   "corl_final_verification": {
     "pil_3seed_comparison": {
+      "spwm_n25_val": {
+        "mean_std": {
+          "grasp_success_rate_pct": [
+            60.666666666666664,
+            2.3094010767585074
+          ],
+          "terminal_placement_accuracy_cm": [
+            0.8798704931139946,
+            0.10505539807183523
+          ],
+          "terminal_error_cm": [
+            2.006662103931109,
+            0.11581144347528279
+          ],
+          "mean_joint_accel_rad_s2": [
+            0.009308865414932371,
+            0.0034586698705177275
+          ],
+          "mean_joint_jerk_rad_s3": [
+            0.006634432549277941,
+            0.003263484407032791
+          ],
+          "mean_direction_flips": [
+            21.14,
+            8.549807015365904
+          ],
+          "mppi_inference_latency_ms": [
+            26.649352693166346,
+            2.271980219747186
+          ]
+        },
+        "per_seed": {
+          "42": {
+            "checkpoint": "results/spwm_v0_12_4_train_m1/checkpoint_phase_4.pt",
+            "evaluation_protocol": "physics_in_loop",
+            "baseline_handover_mode": "residual_gated",
+            "episodes_evaluated": 50,
+            "overall_metrics": {
+              "grasp_success_rate_pct": 57.99999999999999,
+              "terminal_placement_accuracy_cm": 0.9966417002677918,
+              "placement_accuracy_std_cm": 0.7168366082198878,
+              "terminal_error_cm": 2.117010636925697,
+              "terminal_error_std_cm": 1.2261713068281301,
+              "mppi_inference_latency_ms": 27.953717743547482,
+              "mean_joint_accel_rad_s2": 0.005460824174806475,
+              "std_joint_accel_rad_s2": 0.0014449158194058374,
+              "mean_joint_jerk_rad_s3": 0.003033191980794072,
+              "std_joint_jerk_rad_s3": 0.0006583887773716086,
+              "mean_direction_flips": 11.82,
+              "std_direction_flips": 6.098163658020339
+            },
+            "handover_telemetry": {
+              "episodes_evaluated": 50,
+              "triggered_episodes": 0,
+              "episodes_with_w_gt_0_pct": 0.0,
+              "total_phi1_steps": 400,
+              "triggered_phi1_steps": 0,
+              "phi1_steps_with_w_gt_0_pct": 0.0,
+              "mean_nonzero_w": 0.0
+            }
+          },
+          "101": {
+            "checkpoint": "results/multiseed/seed_101_m1/checkpoint_phase_1.pt",
+            "evaluation_protocol": "physics_in_loop",
+            "baseline_handover_mode": "residual_gated",
+            "episodes_evaluated": 50,
+            "overall_metrics": {
+              "grasp_success_rate_pct": 62.0,
+              "terminal_placement_accuracy_cm": 0.8499453981220723,
+              "placement_accuracy_std_cm": 0.5894733005655424,
+              "terminal_error_cm": 2.0169071877002716,
+              "terminal_error_std_cm": 1.1516123596745238,
+              "mppi_inference_latency_ms": 27.968430673446996,
+              "mean_joint_accel_rad_s2": 0.012158537823706865,
+              "std_joint_accel_rad_s2": 0.0038326392576793562,
+              "mean_joint_jerk_rad_s3": 0.00939610967412591,
+              "std_joint_jerk_rad_s3": 0.0024506745164746524,
+              "mean_direction_flips": 28.62,
+              "std_direction_flips": 8.126229137798171
+            },
+            "handover_telemetry": {
+              "episodes_evaluated": 50,
+              "triggered_episodes": 0,
+              "episodes_with_w_gt_0_pct": 0.0,
+              "total_phi1_steps": 400,
+              "triggered_phi1_steps": 0,
+              "phi1_steps_with_w_gt_0_pct": 0.0,
+              "mean_nonzero_w": 0.0
+            }
+          },
+          "2024": {
+            "checkpoint": "results/multiseed/seed_2024_m1/checkpoint_phase_2.pt",
+            "evaluation_protocol": "physics_in_loop",
+            "baseline_handover_mode": "residual_gated",
+            "episodes_evaluated": 50,
+            "overall_metrics": {
+              "grasp_success_rate_pct": 62.0,
+              "terminal_placement_accuracy_cm": 0.7930243809521198,
+              "placement_accuracy_std_cm": 0.5496822026263848,
+              "terminal_error_cm": 1.8860684871673583,
+              "terminal_error_std_cm": 1.187425109721587,
+              "mppi_inference_latency_ms": 24.025909662504564,
+              "mean_joint_accel_rad_s2": 0.01030723424628377,
+              "std_joint_accel_rad_s2": 0.003965905046145654,
+              "mean_joint_jerk_rad_s3": 0.007473995992913842,
+              "std_joint_jerk_rad_s3": 0.0027093614883279904,
+              "mean_direction_flips": 22.98,
+              "std_direction_flips": 5.540721974616666
+            },
+            "handover_telemetry": {
+              "episodes_evaluated": 50,
+              "triggered_episodes": 0,
+              "episodes_with_w_gt_0_pct": 0.0,
+              "total_phi1_steps": 400,
+              "triggered_phi1_steps": 0,
+              "phi1_steps_with_w_gt_0_pct": 0.0,
+              "mean_nonzero_w": 0.0
+            }
+          }
+        },
+        "handover_telemetry_3seed": {
+          "episodes_with_w_gt_0_pct": [
+            0.0,
+            0.0
+          ],
+          "phi1_steps_with_w_gt_0_pct": [
+            0.0,
+            0.0
+          ],
+          "mean_nonzero_w_when_active": 0.0
+        }
+      },
       "spwm_n6_tier2": {
         "mean_std": {
           "grasp_success_rate_pct": [
@@ -756,6 +888,7 @@
           "42": {
             "checkpoint": "results/spwm_v0_12_4_train_m1/model.pt",
             "evaluation_protocol": "physics_in_loop",
+            "baseline_handover_mode": null,
             "episodes_evaluated": 50,
             "overall_metrics": {
               "grasp_success_rate_pct": 86.0,
@@ -784,6 +917,7 @@
           "101": {
             "checkpoint": "results/multiseed/seed_101_m1/model.pt",
             "evaluation_protocol": "physics_in_loop",
+            "baseline_handover_mode": null,
             "episodes_evaluated": 50,
             "overall_metrics": {
               "grasp_success_rate_pct": 56.00000000000001,
@@ -804,6 +938,7 @@
           "2024": {
             "checkpoint": "results/multiseed/seed_2024_m1/model.pt",
             "evaluation_protocol": "physics_in_loop",
+            "baseline_handover_mode": null,
             "episodes_evaluated": 50,
             "overall_metrics": {
               "grasp_success_rate_pct": 32.0,
@@ -821,124 +956,17 @@
             },
             "handover_telemetry": null
           }
-        }
-      },
-      "spwm_n25_val": {
-        "mean_std": {
-          "grasp_success_rate_pct": [
-            60.666666666666664,
-            2.3094010767585074
-          ],
-          "terminal_placement_accuracy_cm": [
-            0.8798704931139946,
-            0.10505539807183523
-          ],
-          "terminal_error_cm": [
-            2.006662103931109,
-            0.11581144347528279
-          ],
-          "mean_joint_accel_rad_s2": [
-            0.009308865414932371,
-            0.0034586698705177275
-          ],
-          "mean_joint_jerk_rad_s3": [
-            0.006634432549277941,
-            0.003263484407032791
-          ],
-          "mean_direction_flips": [
-            21.14,
-            8.549807015365904
-          ],
-          "mppi_inference_latency_ms": [
-            35.50311868491241,
-            1.4903537737959471
-          ]
         },
-        "per_seed": {
-          "42": {
-            "checkpoint": "results/spwm_v0_12_4_train_m1/checkpoint_phase_4.pt",
-            "evaluation_protocol": "physics_in_loop",
-            "episodes_evaluated": 50,
-            "overall_metrics": {
-              "grasp_success_rate_pct": 57.99999999999999,
-              "terminal_placement_accuracy_cm": 0.9966417002677918,
-              "placement_accuracy_std_cm": 0.7168366082198878,
-              "terminal_error_cm": 2.117010636925697,
-              "terminal_error_std_cm": 1.2261713068281301,
-              "mppi_inference_latency_ms": 36.37386128397549,
-              "mean_joint_accel_rad_s2": 0.005460824174806475,
-              "std_joint_accel_rad_s2": 0.0014449158194058374,
-              "mean_joint_jerk_rad_s3": 0.003033191980794072,
-              "std_joint_jerk_rad_s3": 0.0006583887773716086,
-              "mean_direction_flips": 11.82,
-              "std_direction_flips": 6.098163658020339
-            },
-            "handover_telemetry": {
-              "episodes_evaluated": 50,
-              "triggered_episodes": 0,
-              "episodes_with_w_gt_0_pct": 0.0,
-              "total_phi1_steps": 400,
-              "triggered_phi1_steps": 0,
-              "phi1_steps_with_w_gt_0_pct": 0.0,
-              "mean_nonzero_w": 0.0
-            }
-          },
-          "101": {
-            "checkpoint": "results/multiseed/seed_101_m1/checkpoint_phase_1.pt",
-            "evaluation_protocol": "physics_in_loop",
-            "episodes_evaluated": 50,
-            "overall_metrics": {
-              "grasp_success_rate_pct": 62.0,
-              "terminal_placement_accuracy_cm": 0.8499453981220723,
-              "placement_accuracy_std_cm": 0.5894733005655424,
-              "terminal_error_cm": 2.0169071877002716,
-              "terminal_error_std_cm": 1.1516123596745238,
-              "mppi_inference_latency_ms": 36.35324723590614,
-              "mean_joint_accel_rad_s2": 0.012158537823706865,
-              "std_joint_accel_rad_s2": 0.0038326392576793562,
-              "mean_joint_jerk_rad_s3": 0.00939610967412591,
-              "std_joint_jerk_rad_s3": 0.0024506745164746524,
-              "mean_direction_flips": 28.62,
-              "std_direction_flips": 8.126229137798171
-            },
-            "handover_telemetry": {
-              "episodes_evaluated": 50,
-              "triggered_episodes": 0,
-              "episodes_with_w_gt_0_pct": 0.0,
-              "total_phi1_steps": 400,
-              "triggered_phi1_steps": 0,
-              "phi1_steps_with_w_gt_0_pct": 0.0,
-              "mean_nonzero_w": 0.0
-            }
-          },
-          "2024": {
-            "checkpoint": "results/multiseed/seed_2024_m1/checkpoint_phase_2.pt",
-            "evaluation_protocol": "physics_in_loop",
-            "episodes_evaluated": 50,
-            "overall_metrics": {
-              "grasp_success_rate_pct": 62.0,
-              "terminal_placement_accuracy_cm": 0.7930243809521198,
-              "placement_accuracy_std_cm": 0.5496822026263848,
-              "terminal_error_cm": 1.8860684871673583,
-              "terminal_error_std_cm": 1.187425109721587,
-              "mppi_inference_latency_ms": 33.78224753485561,
-              "mean_joint_accel_rad_s2": 0.01030723424628377,
-              "std_joint_accel_rad_s2": 0.003965905046145654,
-              "mean_joint_jerk_rad_s3": 0.007473995992913842,
-              "std_joint_jerk_rad_s3": 0.0027093614883279904,
-              "mean_direction_flips": 22.98,
-              "std_direction_flips": 5.540721974616666
-            },
-            "handover_telemetry": {
-              "episodes_evaluated": 50,
-              "triggered_episodes": 0,
-              "episodes_with_w_gt_0_pct": 0.0,
-              "total_phi1_steps": 400,
-              "triggered_phi1_steps": 0,
-              "phi1_steps_with_w_gt_0_pct": 0.0,
-              "mean_nonzero_w": 0.0
-            }
-          }
+        "handover_telemetry_3seed": {
+          "episodes_with_w_gt_0_pct": [
+            0.0,
+            0.0
+          ],
+          "phi1_steps_with_w_gt_0_pct": [
+            0.0,
+            0.0
+          ],
+          "mean_nonzero_w_when_active": 0.0
         }
       },
       "ann_rate": {
@@ -976,6 +1004,7 @@
           "42": {
             "checkpoint": "results/ann_ablation/seed_42_m1/model.pt",
             "evaluation_protocol": "physics_in_loop",
+            "baseline_handover_mode": null,
             "episodes_evaluated": 50,
             "overall_metrics": {
               "grasp_success_rate_pct": 34.0,
@@ -996,6 +1025,7 @@
           "101": {
             "checkpoint": "results/ann_ablation/seed_101_m1/model.pt",
             "evaluation_protocol": "physics_in_loop",
+            "baseline_handover_mode": null,
             "episodes_evaluated": 50,
             "overall_metrics": {
               "grasp_success_rate_pct": 30.0,
@@ -1016,6 +1046,7 @@
           "2024": {
             "checkpoint": "results/ann_ablation/seed_2024_m1/model.pt",
             "evaluation_protocol": "physics_in_loop",
+            "baseline_handover_mode": null,
             "episodes_evaluated": 50,
             "overall_metrics": {
               "grasp_success_rate_pct": 48.0,
@@ -1039,51 +1070,52 @@
         "mean_std": {
           "grasp_success_rate_pct": [
             15.333333333333334,
-            4.618802153517006
+            7.023769168568492
           ],
           "terminal_placement_accuracy_cm": [
-            1.3101576902468999,
-            0.015239180448274645
+            1.2335922479629515,
+            0.05552042269442134
           ],
           "terminal_error_cm": [
-            2.8772510814666745,
-            0.10043628738006709
+            2.738770661751429,
+            0.06877343601692858
           ],
           "mean_joint_accel_rad_s2": [
-            0.019980563490341108,
-            0.00044725536859862214
+            0.02037182800471783,
+            0.000592333680216826
           ],
           "mean_joint_jerk_rad_s3": [
-            0.020594383161514997,
-            0.0002908916650769286
+            0.02138510186225176,
+            0.0004846155447845476
           ],
           "mean_direction_flips": [
-            36.23333333333333,
-            0.9737213838328386
+            36.85999999999999,
+            1.2150720143267217
           ],
           "mppi_inference_latency_ms": [
-            52.36163894086636,
-            2.3005863220714606
+            46.81975616126076,
+            0.1485665027581289
           ]
         },
         "per_seed": {
           "42": {
             "checkpoint": "results/baselines/continuous_rssm/model.pt",
             "evaluation_protocol": "physics_in_loop",
+            "baseline_handover_mode": "open_loop",
             "episodes_evaluated": 50,
             "overall_metrics": {
-              "grasp_success_rate_pct": 18.0,
-              "terminal_placement_accuracy_cm": 1.3266203773021699,
-              "placement_accuracy_std_cm": 0.7567385234666243,
-              "terminal_error_cm": 2.989941152334213,
-              "terminal_error_std_cm": 2.314479426505856,
-              "mppi_inference_latency_ms": 53.49043995589559,
-              "mean_joint_accel_rad_s2": 0.020397072955965996,
-              "std_joint_accel_rad_s2": 0.005150112805367512,
-              "mean_joint_jerk_rad_s3": 0.020926078390330075,
-              "std_joint_jerk_rad_s3": 0.004612915595826576,
-              "mean_direction_flips": 36.48,
-              "std_direction_flips": 8.70457351051733
+              "grasp_success_rate_pct": 16.0,
+              "terminal_placement_accuracy_cm": 1.2976850962638855,
+              "placement_accuracy_std_cm": 0.6328096448883076,
+              "terminal_error_cm": 2.7923242807388307,
+              "terminal_error_std_cm": 1.2528453059283846,
+              "mppi_inference_latency_ms": 46.82606889366672,
+              "mean_joint_accel_rad_s2": 0.021038663629442452,
+              "std_joint_accel_rad_s2": 0.004804290298606692,
+              "mean_joint_jerk_rad_s3": 0.02193130200728774,
+              "std_joint_jerk_rad_s3": 0.004306558567727457,
+              "mean_direction_flips": 36.24,
+              "std_direction_flips": 9.049994475136435
             },
             "handover_telemetry": {
               "episodes_evaluated": 50,
@@ -1098,20 +1130,21 @@
           "101": {
             "checkpoint": "results/multiseed_rssm/seed_101/continuous_rssm/model.pt",
             "evaluation_protocol": "physics_in_loop",
+            "baseline_handover_mode": "open_loop",
             "episodes_evaluated": 50,
             "overall_metrics": {
-              "grasp_success_rate_pct": 10.0,
-              "terminal_placement_accuracy_cm": 1.29654419362545,
-              "placement_accuracy_std_cm": 0.7349282199575204,
-              "terminal_error_cm": 2.7971750795841217,
-              "terminal_error_std_cm": 1.2842201852756545,
-              "mppi_inference_latency_ms": 53.87979782665941,
-              "mean_joint_accel_rad_s2": 0.02003674639388919,
-              "std_joint_accel_rad_s2": 0.005475541541558765,
-              "mean_joint_jerk_rad_s3": 0.020382691603153945,
-              "std_joint_jerk_rad_s3": 0.0051559219643164565,
-              "mean_direction_flips": 35.16,
-              "std_direction_flips": 8.398476052237097
+              "grasp_success_rate_pct": 8.0,
+              "terminal_placement_accuracy_cm": 1.2002819275856018,
+              "placement_accuracy_std_cm": 0.5980547321361083,
+              "terminal_error_cm": 2.7627756690979,
+              "terminal_error_std_cm": 1.3512200627382058,
+              "mppi_inference_latency_ms": 46.96506567598321,
+              "mean_joint_accel_rad_s2": 0.020170155689120294,
+              "std_joint_accel_rad_s2": 0.004630519878358685,
+              "mean_joint_jerk_rad_s3": 0.021006639190018175,
+              "std_joint_jerk_rad_s3": 0.0047702734702861245,
+              "mean_direction_flips": 36.08,
+              "std_direction_flips": 9.397531590795532
             },
             "handover_telemetry": {
               "episodes_evaluated": 50,
@@ -1126,20 +1159,21 @@
           "2024": {
             "checkpoint": "results/multiseed_rssm/seed_2024/continuous_rssm/model.pt",
             "evaluation_protocol": "physics_in_loop",
+            "baseline_handover_mode": "open_loop",
             "episodes_evaluated": 50,
             "overall_metrics": {
-              "grasp_success_rate_pct": 18.0,
-              "terminal_placement_accuracy_cm": 1.3073084998130797,
-              "placement_accuracy_std_cm": 0.7205506123520404,
-              "terminal_error_cm": 2.8446370124816895,
-              "terminal_error_std_cm": 1.6639887935850126,
-              "mppi_inference_latency_ms": 49.71467904004407,
-              "mean_joint_accel_rad_s2": 0.019507871121168138,
-              "std_joint_accel_rad_s2": 0.0060982226813745795,
-              "mean_joint_jerk_rad_s3": 0.02047437949106097,
-              "std_joint_jerk_rad_s3": 0.0055033501945377225,
-              "mean_direction_flips": 37.06,
-              "std_direction_flips": 8.598627797503507
+              "grasp_success_rate_pct": 22.0,
+              "terminal_placement_accuracy_cm": 1.2028097200393677,
+              "placement_accuracy_std_cm": 0.6313406366226356,
+              "terminal_error_cm": 2.661212035417557,
+              "terminal_error_std_cm": 1.5630930624192183,
+              "mppi_inference_latency_ms": 46.66813391413238,
+              "mean_joint_accel_rad_s2": 0.019906664695590735,
+              "std_joint_accel_rad_s2": 0.005206586521354414,
+              "mean_joint_jerk_rad_s3": 0.021217364389449357,
+              "std_joint_jerk_rad_s3": 0.004626785958574825,
+              "mean_direction_flips": 38.26,
+              "std_direction_flips": 8.62278377323704
             },
             "handover_telemetry": {
               "episodes_evaluated": 50,
@@ -1151,151 +1185,333 @@
               "mean_nonzero_w": 0.0
             }
           }
+        },
+        "handover_telemetry_3seed": {
+          "episodes_with_w_gt_0_pct": [
+            0.0,
+            0.0
+          ],
+          "phi1_steps_with_w_gt_0_pct": [
+            0.0,
+            0.0
+          ],
+          "mean_nonzero_w_when_active": 0.0
         }
       },
-      "rssm_online": {
+      "rssm_ungated": {
         "mean_std": {
           "grasp_success_rate_pct": [
             0.0,
             0.0
           ],
           "terminal_placement_accuracy_cm": [
-            1.5289842367172242,
-            0.06375312364798832
+            1.425072744091352,
+            0.03429525285538392
           ],
           "terminal_error_cm": [
-            22.434701797167463,
-            0.5797279333300245
+            25.49343025525411,
+            1.3050838203645958
           ],
           "mean_joint_accel_rad_s2": [
-            0.031191026711215573,
-            0.0008520616038234162
+            0.03153110054632028,
+            0.0006715274430858012
           ],
           "mean_joint_jerk_rad_s3": [
-            0.02875449779753884,
-            0.00014085841965964314
+            0.029558277900020278,
+            0.0004172700652986988
           ],
           "mean_direction_flips": [
-            36.126666666666665,
-            0.4518111699961975
+            36.49333333333333,
+            0.7757147241952662
           ],
           "mppi_inference_latency_ms": [
-            35.14400501011499,
-            0.7717180625877539
+            46.936845150350116,
+            0.33605994404428824
           ]
         },
         "per_seed": {
           "42": {
             "checkpoint": "results/baselines/continuous_rssm/model.pt",
             "evaluation_protocol": "physics_in_loop",
+            "baseline_handover_mode": "ungated",
             "episodes_evaluated": 50,
             "overall_metrics": {
               "grasp_success_rate_pct": 0.0,
-              "terminal_placement_accuracy_cm": 1.4853565365076065,
-              "placement_accuracy_std_cm": 0.8072306821662141,
-              "terminal_error_cm": 23.064797267913818,
-              "terminal_error_std_cm": 10.191853322128246,
-              "mppi_inference_latency_ms": 35.43504671945729,
-              "mean_joint_accel_rad_s2": 0.031375364810228346,
-              "std_joint_accel_rad_s2": 0.007305338172597787,
-              "mean_joint_jerk_rad_s3": 0.02885244209319353,
-              "std_joint_jerk_rad_s3": 0.0060618628680671055,
-              "mean_direction_flips": 36.08,
-              "std_direction_flips": 8.728894546275605
+              "terminal_placement_accuracy_cm": 1.456915372610092,
+              "placement_accuracy_std_cm": 0.888517029752088,
+              "terminal_error_cm": 24.710977087020876,
+              "terminal_error_std_cm": 10.710275307660488,
+              "mppi_inference_latency_ms": 46.55402094512669,
+              "mean_joint_accel_rad_s2": 0.0310553040727973,
+              "std_joint_accel_rad_s2": 0.006334347208369975,
+              "mean_joint_jerk_rad_s3": 0.02920039013028145,
+              "std_joint_jerk_rad_s3": 0.004958710804918712,
+              "mean_direction_flips": 36.16,
+              "std_direction_flips": 9.016340721157336
             },
-            "handover_telemetry": null
+            "handover_telemetry": {
+              "episodes_evaluated": 50,
+              "triggered_episodes": 50,
+              "episodes_with_w_gt_0_pct": 100.0,
+              "total_phi1_steps": 400,
+              "triggered_phi1_steps": 400,
+              "phi1_steps_with_w_gt_0_pct": 100.0,
+              "mean_nonzero_w": 1.0
+            }
           },
           "101": {
             "checkpoint": "results/multiseed_rssm/seed_101/continuous_rssm/model.pt",
             "evaluation_protocol": "physics_in_loop",
+            "baseline_handover_mode": "ungated",
             "episodes_evaluated": 50,
             "overall_metrics": {
               "grasp_success_rate_pct": 0.0,
-              "terminal_placement_accuracy_cm": 1.6021491199731828,
-              "placement_accuracy_std_cm": 1.2447488731995244,
-              "terminal_error_cm": 22.315407094955443,
-              "terminal_error_std_cm": 10.553710423116314,
-              "mppi_inference_latency_ms": 35.727881036909295,
-              "mean_joint_accel_rad_s2": 0.03193583052605391,
-              "std_joint_accel_rad_s2": 0.008043311584610484,
-              "mean_joint_jerk_rad_s3": 0.028817981332540512,
-              "std_joint_jerk_rad_s3": 0.006339214528534832,
-              "mean_direction_flips": 35.7,
-              "std_direction_flips": 7.867019766086774
+              "terminal_placement_accuracy_cm": 1.3887627166509628,
+              "placement_accuracy_std_cm": 0.7836427217228974,
+              "terminal_error_cm": 27.000035276412962,
+              "terminal_error_std_cm": 11.571441732882644,
+              "mppi_inference_latency_ms": 47.07329811439202,
+              "mean_joint_accel_rad_s2": 0.03229924626648426,
+              "std_joint_accel_rad_s2": 0.006498370430261997,
+              "mean_joint_jerk_rad_s3": 0.030016598887741566,
+              "std_joint_jerk_rad_s3": 0.005532750884270267,
+              "mean_direction_flips": 35.94,
+              "std_direction_flips": 8.951893654417482
             },
-            "handover_telemetry": null
+            "handover_telemetry": {
+              "episodes_evaluated": 50,
+              "triggered_episodes": 50,
+              "episodes_with_w_gt_0_pct": 100.0,
+              "total_phi1_steps": 400,
+              "triggered_phi1_steps": 400,
+              "phi1_steps_with_w_gt_0_pct": 100.0,
+              "mean_nonzero_w": 1.0
+            }
           },
           "2024": {
             "checkpoint": "results/multiseed_rssm/seed_2024/continuous_rssm/model.pt",
             "evaluation_protocol": "physics_in_loop",
+            "baseline_handover_mode": "ungated",
             "episodes_evaluated": 50,
             "overall_metrics": {
               "grasp_success_rate_pct": 0.0,
-              "terminal_placement_accuracy_cm": 1.4994470536708833,
-              "placement_accuracy_std_cm": 0.9216384459318591,
-              "terminal_error_cm": 21.923901028633118,
-              "terminal_error_std_cm": 11.209971466939866,
-              "mppi_inference_latency_ms": 34.269087273978386,
-              "mean_joint_accel_rad_s2": 0.030261884797364472,
-              "std_joint_accel_rad_s2": 0.008483142166426698,
-              "mean_joint_jerk_rad_s3": 0.02859306996688247,
-              "std_joint_jerk_rad_s3": 0.006732266722885297,
-              "mean_direction_flips": 36.6,
-              "std_direction_flips": 8.12403840463596
+              "terminal_placement_accuracy_cm": 1.4295401430130006,
+              "placement_accuracy_std_cm": 0.8761971421556884,
+              "terminal_error_cm": 24.769278402328492,
+              "terminal_error_std_cm": 10.309742604307631,
+              "mppi_inference_latency_ms": 47.18321639153165,
+              "mean_joint_accel_rad_s2": 0.03123875129967928,
+              "std_joint_accel_rad_s2": 0.007419252910420967,
+              "mean_joint_jerk_rad_s3": 0.02945784468203783,
+              "std_joint_jerk_rad_s3": 0.006067063371662604,
+              "mean_direction_flips": 37.38,
+              "std_direction_flips": 8.66
             },
-            "handover_telemetry": null
+            "handover_telemetry": {
+              "episodes_evaluated": 50,
+              "triggered_episodes": 50,
+              "episodes_with_w_gt_0_pct": 100.0,
+              "total_phi1_steps": 400,
+              "triggered_phi1_steps": 400,
+              "phi1_steps_with_w_gt_0_pct": 100.0,
+              "mean_nonzero_w": 1.0
+            }
           }
+        },
+        "handover_telemetry_3seed": {
+          "episodes_with_w_gt_0_pct": [
+            100.0,
+            0.0
+          ],
+          "phi1_steps_with_w_gt_0_pct": [
+            100.0,
+            0.0
+          ],
+          "mean_nonzero_w_when_active": 1.0
+        }
+      },
+      "rssm_residual_gated": {
+        "mean_std": {
+          "grasp_success_rate_pct": [
+            15.333333333333334,
+            5.033222956847166
+          ],
+          "terminal_placement_accuracy_cm": [
+            1.233093837896983,
+            0.046829598001233756
+          ],
+          "terminal_error_cm": [
+            2.7240475718180335,
+            0.10990075377541059
+          ],
+          "mean_joint_accel_rad_s2": [
+            0.020493890543778735,
+            0.0006706944714435922
+          ],
+          "mean_joint_jerk_rad_s3": [
+            0.021609529219567773,
+            0.0005316353717258448
+          ],
+          "mean_direction_flips": [
+            36.940000000000005,
+            1.2257242756835658
+          ],
+          "mppi_inference_latency_ms": [
+            46.472593615331895,
+            0.1711331627137406
+          ]
+        },
+        "per_seed": {
+          "42": {
+            "checkpoint": "results/baselines/continuous_rssm/model.pt",
+            "evaluation_protocol": "physics_in_loop",
+            "baseline_handover_mode": "residual_gated",
+            "episodes_evaluated": 50,
+            "overall_metrics": {
+              "grasp_success_rate_pct": 16.0,
+              "terminal_placement_accuracy_cm": 1.2852557504177093,
+              "placement_accuracy_std_cm": 0.6163579389948347,
+              "terminal_error_cm": 2.8026852571964262,
+              "terminal_error_std_cm": 1.250732118205452,
+              "mppi_inference_latency_ms": 46.27922801228423,
+              "mean_joint_accel_rad_s2": 0.02125625854358077,
+              "std_joint_accel_rad_s2": 0.0052680983475184295,
+              "mean_joint_jerk_rad_s3": 0.02221311992034316,
+              "std_joint_jerk_rad_s3": 0.004852316653278585,
+              "mean_direction_flips": 36.42,
+              "std_direction_flips": 8.913113933973918
+            },
+            "handover_telemetry": {
+              "episodes_evaluated": 50,
+              "triggered_episodes": 9,
+              "episodes_with_w_gt_0_pct": 18.0,
+              "total_phi1_steps": 400,
+              "triggered_phi1_steps": 9,
+              "phi1_steps_with_w_gt_0_pct": 2.25,
+              "mean_nonzero_w": 0.18157258285416497
+            }
+          },
+          "101": {
+            "checkpoint": "results/multiseed_rssm/seed_101/continuous_rssm/model.pt",
+            "evaluation_protocol": "physics_in_loop",
+            "baseline_handover_mode": "residual_gated",
+            "episodes_evaluated": 50,
+            "overall_metrics": {
+              "grasp_success_rate_pct": 10.0,
+              "terminal_placement_accuracy_cm": 1.2193563985824585,
+              "placement_accuracy_std_cm": 0.6733557358778788,
+              "terminal_error_cm": 2.770985679626465,
+              "terminal_error_std_cm": 1.329820118983065,
+              "mppi_inference_latency_ms": 46.53400791747006,
+              "mean_joint_accel_rad_s2": 0.02023072073236108,
+              "std_joint_accel_rad_s2": 0.004711884963105292,
+              "mean_joint_jerk_rad_s3": 0.021210806742310524,
+              "std_joint_jerk_rad_s3": 0.00497133476627864,
+              "mean_direction_flips": 36.06,
+              "std_direction_flips": 9.491912346835068
+            },
+            "handover_telemetry": {
+              "episodes_evaluated": 50,
+              "triggered_episodes": 20,
+              "episodes_with_w_gt_0_pct": 40.0,
+              "total_phi1_steps": 400,
+              "triggered_phi1_steps": 27,
+              "phi1_steps_with_w_gt_0_pct": 6.75,
+              "mean_nonzero_w": 0.22636996290198078
+            }
+          },
+          "2024": {
+            "checkpoint": "results/multiseed_rssm/seed_2024/continuous_rssm/model.pt",
+            "evaluation_protocol": "physics_in_loop",
+            "baseline_handover_mode": "residual_gated",
+            "episodes_evaluated": 50,
+            "overall_metrics": {
+              "grasp_success_rate_pct": 20.0,
+              "terminal_placement_accuracy_cm": 1.1946693646907807,
+              "placement_accuracy_std_cm": 0.6255705025940155,
+              "terminal_error_cm": 2.59847177863121,
+              "terminal_error_std_cm": 1.4417185983615668,
+              "mppi_inference_latency_ms": 46.604544916241395,
+              "mean_joint_accel_rad_s2": 0.019994692355394365,
+              "std_joint_accel_rad_s2": 0.005334068808050576,
+              "mean_joint_jerk_rad_s3": 0.02140466099604964,
+              "std_joint_jerk_rad_s3": 0.0048616737052424785,
+              "mean_direction_flips": 38.34,
+              "std_direction_flips": 8.564134515524614
+            },
+            "handover_telemetry": {
+              "episodes_evaluated": 50,
+              "triggered_episodes": 17,
+              "episodes_with_w_gt_0_pct": 34.0,
+              "total_phi1_steps": 400,
+              "triggered_phi1_steps": 24,
+              "phi1_steps_with_w_gt_0_pct": 6.0,
+              "mean_nonzero_w": 0.21099277816712858
+            }
+          }
+        },
+        "handover_telemetry_3seed": {
+          "episodes_with_w_gt_0_pct": [
+            30.666666666666668,
+            11.372481406154654
+          ],
+          "phi1_steps_with_w_gt_0_pct": [
+            5.0,
+            2.4109126902482387
+          ],
+          "mean_nonzero_w_when_active": 0.20631177464109143
         }
       },
       "deep_gru_open_loop": {
         "mean_std": {
           "grasp_success_rate_pct": [
-            1.3333333333333333,
-            2.3094010767585034
+            77.33333333333333,
+            4.163331998932265
           ],
           "terminal_placement_accuracy_cm": [
-            10.56911430199941,
-            7.8332178543025
+            1.142497578263283,
+            0.31404892460065076
           ],
           "terminal_error_cm": [
-            16.720466453234355,
-            11.307909064116105
+            1.8994051045179365,
+            0.17642912388300128
           ],
           "mean_joint_accel_rad_s2": [
-            0.007771262118282417,
-            0.006861198470924401
+            0.004498507350217551,
+            0.00012105405328595289
           ],
           "mean_joint_jerk_rad_s3": [
-            0.006221064189837005,
-            0.007792868260752681
+            0.002675323402121042,
+            0.00018613435682786266
           ],
           "mean_direction_flips": [
-            14.666666666666666,
-            14.897212267177151
+            10.793333333333331,
+            0.6331929669013493
           ],
           "mppi_inference_latency_ms": [
-            67.4003965856917,
-            1.6174098859533237
+            57.845663712604754,
+            0.2935253213907278
           ]
         },
         "per_seed": {
           "42": {
             "checkpoint": "results/baselines/deep_gru/model.pt",
             "evaluation_protocol": "physics_in_loop",
+            "baseline_handover_mode": "open_loop",
             "episodes_evaluated": 50,
             "overall_metrics": {
-              "grasp_success_rate_pct": 4.0,
-              "terminal_placement_accuracy_cm": 1.676134810447693,
-              "placement_accuracy_std_cm": 0.8117443861694015,
-              "terminal_error_cm": 5.672766432762146,
-              "terminal_error_std_cm": 2.2391999765559203,
-              "mppi_inference_latency_ms": 65.53380835354476,
-              "mean_joint_accel_rad_s2": 0.015632247226312755,
-              "std_joint_accel_rad_s2": 0.004271736979986495,
-              "mean_joint_jerk_rad_s3": 0.015213804496452212,
-              "std_joint_jerk_rad_s3": 0.003654658887291699,
-              "mean_direction_flips": 31.64,
-              "std_direction_flips": 6.492333940887515
+              "grasp_success_rate_pct": 82.0,
+              "terminal_placement_accuracy_cm": 0.8277105885744095,
+              "placement_accuracy_std_cm": 0.619948305625996,
+              "terminal_error_cm": 1.7091500055789948,
+              "terminal_error_std_cm": 0.8538347073403084,
+              "mppi_inference_latency_ms": 57.99607291789624,
+              "mean_joint_accel_rad_s2": 0.004467548907268792,
+              "std_joint_accel_rad_s2": 0.0025332651658058424,
+              "mean_joint_jerk_rad_s3": 0.002733891133684665,
+              "std_joint_jerk_rad_s3": 0.0015915138679954569,
+              "mean_direction_flips": 11.52,
+              "std_direction_flips": 4.00119982005398
             },
             "handover_telemetry": {
               "episodes_evaluated": 50,
@@ -1310,20 +1526,21 @@
           "101": {
             "checkpoint": "results/multiseed_rssm/seed_101/deep_gru/model.pt",
             "evaluation_protocol": "physics_in_loop",
+            "baseline_handover_mode": "open_loop",
             "episodes_evaluated": 50,
             "overall_metrics": {
-              "grasp_success_rate_pct": 0.0,
-              "terminal_placement_accuracy_cm": 16.445809898376464,
-              "placement_accuracy_std_cm": 4.091952617443522,
-              "terminal_error_cm": 28.271757926940918,
-              "terminal_error_std_cm": 5.337323594145242,
-              "mppi_inference_latency_ms": 68.38755179985513,
-              "mean_joint_accel_rad_s2": 0.004695011512376368,
-              "std_joint_accel_rad_s2": 0.0019015618294956774,
-              "mean_joint_jerk_rad_s3": 0.0020017537102103235,
-              "std_joint_jerk_rad_s3": 0.0010274453240716615,
-              "mean_direction_flips": 8.6,
-              "std_direction_flips": 1.5231546211727816
+              "grasp_success_rate_pct": 74.0,
+              "terminal_placement_accuracy_cm": 1.143978949189186,
+              "placement_accuracy_std_cm": 1.0157706090458067,
+              "terminal_error_cm": 2.0576158034801484,
+              "terminal_error_std_cm": 2.307079695708016,
+              "mppi_inference_latency_ms": 57.50741934581636,
+              "mean_joint_accel_rad_s2": 0.004632034294772893,
+              "std_joint_accel_rad_s2": 0.0036805739683259996,
+              "mean_joint_jerk_rad_s3": 0.0028251299168914556,
+              "std_joint_jerk_rad_s3": 0.002693590173884474,
+              "mean_direction_flips": 10.5,
+              "std_direction_flips": 5.99749947894954
             },
             "handover_telemetry": {
               "episodes_evaluated": 50,
@@ -1338,20 +1555,21 @@
           "2024": {
             "checkpoint": "results/multiseed_rssm/seed_2024/deep_gru/model.pt",
             "evaluation_protocol": "physics_in_loop",
+            "baseline_handover_mode": "open_loop",
             "episodes_evaluated": 50,
             "overall_metrics": {
-              "grasp_success_rate_pct": 0.0,
-              "terminal_placement_accuracy_cm": 13.585398197174072,
-              "placement_accuracy_std_cm": 4.602458838522156,
-              "terminal_error_cm": 16.216875,
-              "terminal_error_std_cm": 5.664685795497017,
-              "mppi_inference_latency_ms": 68.27982960367521,
-              "mean_joint_accel_rad_s2": 0.0029865276161581277,
-              "std_joint_accel_rad_s2": 0.0009849739567156495,
-              "mean_joint_jerk_rad_s3": 0.0014476343628484756,
-              "std_joint_jerk_rad_s3": 0.0007935315657924097,
-              "mean_direction_flips": 3.76,
-              "std_direction_flips": 1.3350655414622912
+              "grasp_success_rate_pct": 76.0,
+              "terminal_placement_accuracy_cm": 1.4558031970262528,
+              "placement_accuracy_std_cm": 1.0356276483254638,
+              "terminal_error_cm": 1.9314495044946671,
+              "terminal_error_std_cm": 1.4135605930042352,
+              "mppi_inference_latency_ms": 58.03349887410164,
+              "mean_joint_accel_rad_s2": 0.004395938848610967,
+              "std_joint_accel_rad_s2": 0.0036332558167753008,
+              "mean_joint_jerk_rad_s3": 0.002466949155787006,
+              "std_joint_jerk_rad_s3": 0.002610848934958039,
+              "mean_direction_flips": 10.36,
+              "std_direction_flips": 4.353205715332093
             },
             "handover_telemetry": {
               "episodes_evaluated": 50,
@@ -1363,77 +1581,98 @@
               "mean_nonzero_w": 0.0
             }
           }
+        },
+        "handover_telemetry_3seed": {
+          "episodes_with_w_gt_0_pct": [
+            0.0,
+            0.0
+          ],
+          "phi1_steps_with_w_gt_0_pct": [
+            0.0,
+            0.0
+          ],
+          "mean_nonzero_w_when_active": 0.0
         }
       },
-      "deep_gru_online": {
+      "deep_gru_ungated": {
         "mean_std": {
           "grasp_success_rate_pct": [
             0.0,
             0.0
           ],
           "terminal_placement_accuracy_cm": [
-            6.027755393187205,
-            4.003672646431791
+            1.4674344965815544,
+            0.5106457690318531
           ],
           "terminal_error_cm": [
-            10.87074866215388,
-            3.973647019419447
+            7.351427071889241,
+            1.3439473080339845
           ],
           "mean_joint_accel_rad_s2": [
-            0.016541417293871444,
-            0.009718487664175204
+            0.006980255008675158,
+            0.00042445948743814776
           ],
           "mean_joint_jerk_rad_s3": [
-            0.013497935300692918,
-            0.009453182248594585
+            0.004832257371939098,
+            0.00042073079965799826
           ],
           "mean_direction_flips": [
-            19.673333333333336,
-            10.000986617995913
+            15.079999999999998,
+            0.647147587494537
           ],
           "mppi_inference_latency_ms": [
-            60.30913028220712,
-            18.88364182181519
+            57.07348911329685,
+            0.5185482382876814
           ]
         },
         "per_seed": {
           "42": {
             "checkpoint": "results/baselines/deep_gru/model.pt",
             "evaluation_protocol": "physics_in_loop",
+            "baseline_handover_mode": "ungated",
             "episodes_evaluated": 50,
             "overall_metrics": {
               "grasp_success_rate_pct": 0.0,
-              "terminal_placement_accuracy_cm": 1.8828691363334655,
-              "placement_accuracy_std_cm": 0.9129360328992964,
-              "terminal_error_cm": 14.958965482711791,
-              "terminal_error_std_cm": 5.8198658353174295,
-              "mppi_inference_latency_ms": 39.408694524453786,
-              "mean_joint_accel_rad_s2": 0.02738728191703558,
-              "std_joint_accel_rad_s2": 0.0058359002251519515,
-              "mean_joint_jerk_rad_s3": 0.02424047663807869,
-              "std_joint_jerk_rad_s3": 0.005460746571514626,
-              "mean_direction_flips": 31.22,
-              "std_direction_flips": 6.394654017224075
+              "terminal_placement_accuracy_cm": 0.9433116026222705,
+              "placement_accuracy_std_cm": 0.7225897143886602,
+              "terminal_error_cm": 6.630777020454406,
+              "terminal_error_std_cm": 4.461640380623032,
+              "mppi_inference_latency_ms": 57.61593215447252,
+              "mean_joint_accel_rad_s2": 0.0069884296925738455,
+              "std_joint_accel_rad_s2": 0.004147339068371963,
+              "mean_joint_jerk_rad_s3": 0.004795440048910677,
+              "std_joint_jerk_rad_s3": 0.002581380012349003,
+              "mean_direction_flips": 15.54,
+              "std_direction_flips": 4.205757957847788
             },
-            "handover_telemetry": null
+            "handover_telemetry": {
+              "episodes_evaluated": 50,
+              "triggered_episodes": 50,
+              "episodes_with_w_gt_0_pct": 100.0,
+              "total_phi1_steps": 400,
+              "triggered_phi1_steps": 400,
+              "phi1_steps_with_w_gt_0_pct": 100.0,
+              "mean_nonzero_w": 1.0
+            }
           },
           "101": {
             "checkpoint": "results/multiseed_rssm/seed_101/deep_gru/model.pt",
             "evaluation_protocol": "physics_in_loop",
+            "baseline_handover_mode": "ungated",
             "episodes_evaluated": 50,
             "overall_metrics": {
               "grasp_success_rate_pct": 0.0,
-              "terminal_placement_accuracy_cm": 9.873425269126892,
-              "placement_accuracy_std_cm": 3.3191995640740144,
-              "terminal_error_cm": 10.630728125572205,
-              "terminal_error_std_cm": 4.086173291146598,
-              "mppi_inference_latency_ms": 65.37689822572655,
-              "mean_joint_accel_rad_s2": 0.013613363318145276,
-              "std_joint_accel_rad_s2": 0.00319403673953568,
-              "mean_joint_jerk_rad_s3": 0.009803270976990462,
-              "std_joint_jerk_rad_s3": 0.0019610861700191558,
-              "mean_direction_flips": 14.06,
-              "std_direction_flips": 1.7596590578859306
+              "terminal_placement_accuracy_cm": 1.4955504468083383,
+              "placement_accuracy_std_cm": 0.974366769362752,
+              "terminal_error_cm": 8.90200080871582,
+              "terminal_error_std_cm": 3.847520169336552,
+              "mppi_inference_latency_ms": 56.582702259057896,
+              "mean_joint_accel_rad_s2": 0.0074005681113339964,
+              "std_joint_accel_rad_s2": 0.005858706618872085,
+              "mean_joint_jerk_rad_s3": 0.005270186914131046,
+              "std_joint_jerk_rad_s3": 0.004484711997640233,
+              "mean_direction_flips": 15.36,
+              "std_direction_flips": 5.172078885709305
             },
             "handover_telemetry": {
               "episodes_evaluated": 50,
@@ -1448,20 +1687,21 @@
           "2024": {
             "checkpoint": "results/multiseed_rssm/seed_2024/deep_gru/model.pt",
             "evaluation_protocol": "physics_in_loop",
+            "baseline_handover_mode": "ungated",
             "episodes_evaluated": 50,
             "overall_metrics": {
               "grasp_success_rate_pct": 0.0,
-              "terminal_placement_accuracy_cm": 6.326971774101257,
-              "placement_accuracy_std_cm": 3.9962240007220133,
-              "terminal_error_cm": 7.022552378177643,
-              "terminal_error_std_cm": 4.266232180960101,
-              "mppi_inference_latency_ms": 76.14179809644102,
-              "mean_joint_accel_rad_s2": 0.008623606646433473,
-              "std_joint_accel_rad_s2": 0.0019381415625095385,
-              "mean_joint_jerk_rad_s3": 0.0064500582870095965,
-              "std_joint_jerk_rad_s3": 0.0014334850317962446,
-              "mean_direction_flips": 13.74,
-              "std_direction_flips": 0.7952358140828417
+              "terminal_placement_accuracy_cm": 1.9634414403140545,
+              "placement_accuracy_std_cm": 1.1926076903006835,
+              "terminal_error_cm": 6.521503386497497,
+              "terminal_error_std_cm": 2.9093178808336364,
+              "mppi_inference_latency_ms": 57.02183292636013,
+              "mean_joint_accel_rad_s2": 0.0065517672221176325,
+              "std_joint_accel_rad_s2": 0.005410815833356076,
+              "mean_joint_jerk_rad_s3": 0.004431145152775571,
+              "std_joint_jerk_rad_s3": 0.003884288999617533,
+              "mean_direction_flips": 14.34,
+              "std_direction_flips": 5.0541468122720765
             },
             "handover_telemetry": {
               "episodes_evaluated": 50,
@@ -1473,132 +1713,914 @@
               "mean_nonzero_w": 1.0
             }
           }
+        },
+        "handover_telemetry_3seed": {
+          "episodes_with_w_gt_0_pct": [
+            100.0,
+            0.0
+          ],
+          "phi1_steps_with_w_gt_0_pct": [
+            100.0,
+            0.0
+          ],
+          "mean_nonzero_w_when_active": 1.0
+        }
+      },
+      "deep_gru_residual_gated": {
+        "mean_std": {
+          "grasp_success_rate_pct": [
+            76.66666666666667,
+            5.033222956847166
+          ],
+          "terminal_placement_accuracy_cm": [
+            1.142546683549881,
+            0.3141746410639535
+          ],
+          "terminal_error_cm": [
+            1.9001078454653422,
+            0.1792502651931432
+          ],
+          "mean_joint_accel_rad_s2": [
+            0.004493320606804143,
+            0.0001224338129939779
+          ],
+          "mean_joint_jerk_rad_s3": [
+            0.0026687012903857978,
+            0.0001826580482518807
+          ],
+          "mean_direction_flips": [
+            10.786666666666667,
+            0.6057502235520298
+          ],
+          "mppi_inference_latency_ms": [
+            57.65735650555458,
+            0.21359715146433306
+          ]
+        },
+        "per_seed": {
+          "42": {
+            "checkpoint": "results/baselines/deep_gru/model.pt",
+            "evaluation_protocol": "physics_in_loop",
+            "baseline_handover_mode": "residual_gated",
+            "episodes_evaluated": 50,
+            "overall_metrics": {
+              "grasp_success_rate_pct": 82.0,
+              "terminal_placement_accuracy_cm": 0.8276583582162857,
+              "placement_accuracy_std_cm": 0.6198663417549084,
+              "terminal_error_cm": 1.7074048507213593,
+              "terminal_error_std_cm": 0.8542619093890267,
+              "mppi_inference_latency_ms": 57.71581469443712,
+              "mean_joint_accel_rad_s2": 0.004455102609936148,
+              "std_joint_accel_rad_s2": 0.002510365616416541,
+              "mean_joint_jerk_rad_s3": 0.0027215255866758527,
+              "std_joint_jerk_rad_s3": 0.0015617256914884875,
+              "mean_direction_flips": 11.48,
+              "std_direction_flips": 3.9255063367672713
+            },
+            "handover_telemetry": {
+              "episodes_evaluated": 50,
+              "triggered_episodes": 5,
+              "episodes_with_w_gt_0_pct": 10.0,
+              "total_phi1_steps": 400,
+              "triggered_phi1_steps": 8,
+              "phi1_steps_with_w_gt_0_pct": 2.0,
+              "mean_nonzero_w": 0.09825952008366584
+            }
+          },
+          "101": {
+            "checkpoint": "results/multiseed_rssm/seed_101/deep_gru/model.pt",
+            "evaluation_protocol": "physics_in_loop",
+            "baseline_handover_mode": "residual_gated",
+            "episodes_evaluated": 50,
+            "overall_metrics": {
+              "grasp_success_rate_pct": 72.0,
+              "terminal_placement_accuracy_cm": 1.143978949189186,
+              "placement_accuracy_std_cm": 1.0157706090458067,
+              "terminal_error_cm": 2.06187970995903,
+              "terminal_error_std_cm": 2.30758448331492,
+              "mppi_inference_latency_ms": 57.83563818969626,
+              "mean_joint_accel_rad_s2": 0.004630304866004735,
+              "std_joint_accel_rad_s2": 0.0036767455708153303,
+              "mean_joint_jerk_rad_s3": 0.002819125670939684,
+              "std_joint_jerk_rad_s3": 0.0026801469632155425,
+              "mean_direction_flips": 10.52,
+              "std_direction_flips": 6.067091560212356
+            },
+            "handover_telemetry": {
+              "episodes_evaluated": 50,
+              "triggered_episodes": 2,
+              "episodes_with_w_gt_0_pct": 4.0,
+              "total_phi1_steps": 400,
+              "triggered_phi1_steps": 2,
+              "phi1_steps_with_w_gt_0_pct": 0.5,
+              "mean_nonzero_w": 0.04547070369124412
+            }
+          },
+          "2024": {
+            "checkpoint": "results/multiseed_rssm/seed_2024/deep_gru/model.pt",
+            "evaluation_protocol": "physics_in_loop",
+            "baseline_handover_mode": "residual_gated",
+            "episodes_evaluated": 50,
+            "overall_metrics": {
+              "grasp_success_rate_pct": 76.0,
+              "terminal_placement_accuracy_cm": 1.4560027432441711,
+              "placement_accuracy_std_cm": 1.0354441619455195,
+              "terminal_error_cm": 1.9310389757156372,
+              "terminal_error_std_cm": 1.4129652875940601,
+              "mppi_inference_latency_ms": 57.42061663253034,
+              "mean_joint_accel_rad_s2": 0.004394554344471544,
+              "std_joint_accel_rad_s2": 0.003631740816377271,
+              "mean_joint_jerk_rad_s3": 0.0024654526135418566,
+              "std_joint_jerk_rad_s3": 0.0026099877867713536,
+              "mean_direction_flips": 10.36,
+              "std_direction_flips": 4.353205715332093
+            },
+            "handover_telemetry": {
+              "episodes_evaluated": 50,
+              "triggered_episodes": 2,
+              "episodes_with_w_gt_0_pct": 4.0,
+              "total_phi1_steps": 400,
+              "triggered_phi1_steps": 2,
+              "phi1_steps_with_w_gt_0_pct": 0.5,
+              "mean_nonzero_w": 0.01992271870374679
+            }
+          }
+        },
+        "handover_telemetry_3seed": {
+          "episodes_with_w_gt_0_pct": [
+            6.0,
+            3.4641016151377544
+          ],
+          "phi1_steps_with_w_gt_0_pct": [
+            1.0,
+            0.8660254037844386
+          ],
+          "mean_nonzero_w_when_active": 0.05455098082621892
         }
       }
     },
-    "disentangled_ablation": [
+    "disentangled_ablation_3seed": [
       {
-        "label": "1. SPWM-Base (Phase 1 Warmup, Unsmoothed MPPI)",
-        "checkpoint": "results/spwm_v0_12_4_train_m1/checkpoint_phase_1.pt",
-        "evaluation_protocol": "physics_in_loop",
-        "overall_metrics": {
-          "grasp_success_rate_pct": 62.0,
-          "terminal_placement_accuracy_cm": 1.270518583357334,
-          "placement_accuracy_std_cm": 1.1433059847844562,
-          "terminal_error_cm": 2.51325437605381,
-          "terminal_error_std_cm": 1.591850890790287,
-          "mppi_inference_latency_ms": 21.678928387231593,
-          "mean_joint_accel_rad_s2": 0.007099576396867633,
-          "std_joint_accel_rad_s2": 0.001774520067574007,
-          "mean_joint_jerk_rad_s3": 0.004990413328632712,
-          "std_joint_jerk_rad_s3": 0.0013068799665881348,
-          "mean_direction_flips": 16.04,
-          "std_direction_flips": 8.304119459641703
+        "mean_std": {
+          "grasp_success_rate_pct": [
+            45.333333333333336,
+            16.041612554021285
+          ],
+          "terminal_placement_accuracy_cm": [
+            1.026371354262034,
+            0.21267911327447728
+          ],
+          "terminal_error_cm": [
+            2.502900831302007,
+            0.10674231587914605
+          ],
+          "mean_joint_accel_rad_s2": [
+            0.009831757796928286,
+            0.002547908271341173
+          ],
+          "mean_joint_jerk_rad_s3": [
+            0.007646870988731583,
+            0.002496011682578312
+          ],
+          "mean_direction_flips": [
+            23.03333333333333,
+            6.83585644475755
+          ],
+          "mppi_inference_latency_ms": [
+            26.607863672024582,
+            0.31494921572578505
+          ]
         },
-        "handover_telemetry": null,
+        "per_seed": {
+          "42": {
+            "checkpoint": "results/spwm_v0_12_4_train_m1/checkpoint_phase_1.pt",
+            "evaluation_protocol": "physics_in_loop",
+            "baseline_handover_mode": "open_loop",
+            "episodes_evaluated": 50,
+            "overall_metrics": {
+              "grasp_success_rate_pct": 62.0,
+              "terminal_placement_accuracy_cm": 1.270518583357334,
+              "placement_accuracy_std_cm": 1.1433059847844562,
+              "terminal_error_cm": 2.51325437605381,
+              "terminal_error_std_cm": 1.591850890790287,
+              "mppi_inference_latency_ms": 26.800422591444175,
+              "mean_joint_accel_rad_s2": 0.007099576396867633,
+              "std_joint_accel_rad_s2": 0.001774520067574007,
+              "mean_joint_jerk_rad_s3": 0.004990413328632712,
+              "std_joint_jerk_rad_s3": 0.0013068799665881348,
+              "mean_direction_flips": 16.04,
+              "std_direction_flips": 8.304119459641703
+            },
+            "handover_telemetry": {
+              "episodes_evaluated": 50,
+              "triggered_episodes": 0,
+              "episodes_with_w_gt_0_pct": 0.0,
+              "total_phi1_steps": 400,
+              "triggered_phi1_steps": 0,
+              "phi1_steps_with_w_gt_0_pct": 0.0,
+              "mean_nonzero_w": 0.0
+            }
+          },
+          "101": {
+            "checkpoint": "results/multiseed/seed_101_m1/checkpoint_phase_1.pt",
+            "evaluation_protocol": "physics_in_loop",
+            "baseline_handover_mode": "open_loop",
+            "episodes_evaluated": 50,
+            "overall_metrics": {
+              "grasp_success_rate_pct": 44.0,
+              "terminal_placement_accuracy_cm": 0.8813520839810371,
+              "placement_accuracy_std_cm": 0.6318976317589341,
+              "terminal_error_cm": 2.391359003186226,
+              "terminal_error_std_cm": 1.2452452117898576,
+              "mppi_inference_latency_ms": 26.778761691530867,
+              "mean_joint_accel_rad_s2": 0.012142954394221306,
+              "std_joint_accel_rad_s2": 0.004002151102285214,
+              "mean_joint_jerk_rad_s3": 0.009943345058709384,
+              "std_joint_jerk_rad_s3": 0.0026217121504472653,
+              "mean_direction_flips": 29.7,
+              "std_direction_flips": 7.1449282711585
+            },
+            "handover_telemetry": {
+              "episodes_evaluated": 50,
+              "triggered_episodes": 0,
+              "episodes_with_w_gt_0_pct": 0.0,
+              "total_phi1_steps": 400,
+              "triggered_phi1_steps": 0,
+              "phi1_steps_with_w_gt_0_pct": 0.0,
+              "mean_nonzero_w": 0.0
+            }
+          },
+          "2024": {
+            "checkpoint": "results/multiseed/seed_2024_m1/checkpoint_phase_1.pt",
+            "evaluation_protocol": "physics_in_loop",
+            "baseline_handover_mode": "open_loop",
+            "episodes_evaluated": 50,
+            "overall_metrics": {
+              "grasp_success_rate_pct": 30.0,
+              "terminal_placement_accuracy_cm": 0.927243395447731,
+              "placement_accuracy_std_cm": 0.6572480428206486,
+              "terminal_error_cm": 2.6040891146659852,
+              "terminal_error_std_cm": 1.6592857961072656,
+              "mppi_inference_latency_ms": 26.244406733098714,
+              "mean_joint_accel_rad_s2": 0.01025274259969592,
+              "std_joint_accel_rad_s2": 0.003239719861131902,
+              "mean_joint_jerk_rad_s3": 0.008006854578852654,
+              "std_joint_jerk_rad_s3": 0.002396611082899919,
+              "mean_direction_flips": 23.36,
+              "std_direction_flips": 6.314301228164522
+            },
+            "handover_telemetry": {
+              "episodes_evaluated": 50,
+              "triggered_episodes": 0,
+              "episodes_with_w_gt_0_pct": 0.0,
+              "total_phi1_steps": 400,
+              "triggered_phi1_steps": 0,
+              "phi1_steps_with_w_gt_0_pct": 0.0,
+              "mean_nonzero_w": 0.0
+            }
+          }
+        },
+        "handover_telemetry_3seed": {
+          "episodes_with_w_gt_0_pct": [
+            0.0,
+            0.0
+          ],
+          "phi1_steps_with_w_gt_0_pct": [
+            0.0,
+            0.0
+          ],
+          "mean_nonzero_w_when_active": 0.0
+        },
+        "label": "1. SPWM-Base (Phase 1 Warmup, Unsmoothed)",
         "bold": false
       },
       {
-        "label": "2. + Smooth MPPI Controls",
-        "checkpoint": "results/spwm_v0_12_4_train_m1/checkpoint_phase_1.pt",
-        "evaluation_protocol": "physics_in_loop",
-        "overall_metrics": {
-          "grasp_success_rate_pct": 62.0,
-          "terminal_placement_accuracy_cm": 1.088925544321537,
-          "placement_accuracy_std_cm": 0.9806278517950008,
-          "terminal_error_cm": 2.2633657586574554,
-          "terminal_error_std_cm": 1.7920521176335729,
-          "mppi_inference_latency_ms": 22.35479484997801,
-          "mean_joint_accel_rad_s2": 0.00728669355623424,
-          "std_joint_accel_rad_s2": 0.001994464166249948,
-          "mean_joint_jerk_rad_s3": 0.004507547407411039,
-          "std_joint_jerk_rad_s3": 0.001292394719881764,
-          "mean_direction_flips": 15.34,
-          "std_direction_flips": 7.783598139678076
+        "mean_std": {
+          "grasp_success_rate_pct": [
+            51.333333333333336,
+            9.451631252505216
+          ],
+          "terminal_placement_accuracy_cm": [
+            1.0174584152301154,
+            0.07739428773724741
+          ],
+          "terminal_error_cm": [
+            2.413362322449684,
+            0.131995777812547
+          ],
+          "mean_joint_accel_rad_s2": [
+            0.009906536138926942,
+            0.0024003560204176517
+          ],
+          "mean_joint_jerk_rad_s3": [
+            0.007045794217847287,
+            0.002429997855850162
+          ],
+          "mean_direction_flips": [
+            21.993333333333336,
+            6.660010010002488
+          ],
+          "mppi_inference_latency_ms": [
+            27.186699187828037,
+            0.15842402005752645
+          ]
         },
-        "handover_telemetry": null,
+        "per_seed": {
+          "42": {
+            "checkpoint": "results/spwm_v0_12_4_train_m1/checkpoint_phase_1.pt",
+            "evaluation_protocol": "physics_in_loop",
+            "baseline_handover_mode": "open_loop",
+            "episodes_evaluated": 50,
+            "overall_metrics": {
+              "grasp_success_rate_pct": 62.0,
+              "terminal_placement_accuracy_cm": 1.088925544321537,
+              "placement_accuracy_std_cm": 0.9806278517950008,
+              "terminal_error_cm": 2.2633657586574554,
+              "terminal_error_std_cm": 1.7920521176335729,
+              "mppi_inference_latency_ms": 27.004514395112366,
+              "mean_joint_accel_rad_s2": 0.00728669355623424,
+              "std_joint_accel_rad_s2": 0.001994464166249948,
+              "mean_joint_jerk_rad_s3": 0.004507547407411039,
+              "std_joint_jerk_rad_s3": 0.001292394719881764,
+              "mean_direction_flips": 15.34,
+              "std_direction_flips": 7.783598139678076
+            },
+            "handover_telemetry": {
+              "episodes_evaluated": 50,
+              "triggered_episodes": 0,
+              "episodes_with_w_gt_0_pct": 0.0,
+              "total_phi1_steps": 400,
+              "triggered_phi1_steps": 0,
+              "phi1_steps_with_w_gt_0_pct": 0.0,
+              "mean_nonzero_w": 0.0
+            }
+          },
+          "101": {
+            "checkpoint": "results/multiseed/seed_101_m1/checkpoint_phase_1.pt",
+            "evaluation_protocol": "physics_in_loop",
+            "baseline_handover_mode": "open_loop",
+            "episodes_evaluated": 50,
+            "overall_metrics": {
+              "grasp_success_rate_pct": 44.0,
+              "terminal_placement_accuracy_cm": 0.9352575194835663,
+              "placement_accuracy_std_cm": 0.6859384826701114,
+              "terminal_error_cm": 2.464937143921852,
+              "terminal_error_std_cm": 1.2342414829049078,
+              "mppi_inference_latency_ms": 27.26348437940824,
+              "mean_joint_accel_rad_s2": 0.012000056598335505,
+              "std_joint_accel_rad_s2": 0.0037190684706323927,
+              "mean_joint_jerk_rad_s3": 0.009350710520520807,
+              "std_joint_jerk_rad_s3": 0.002442366979561876,
+              "mean_direction_flips": 28.66,
+              "std_direction_flips": 8.320120191439544
+            },
+            "handover_telemetry": {
+              "episodes_evaluated": 50,
+              "triggered_episodes": 0,
+              "episodes_with_w_gt_0_pct": 0.0,
+              "total_phi1_steps": 400,
+              "triggered_phi1_steps": 0,
+              "phi1_steps_with_w_gt_0_pct": 0.0,
+              "mean_nonzero_w": 0.0
+            }
+          },
+          "2024": {
+            "checkpoint": "results/multiseed/seed_2024_m1/checkpoint_phase_1.pt",
+            "evaluation_protocol": "physics_in_loop",
+            "baseline_handover_mode": "open_loop",
+            "episodes_evaluated": 50,
+            "overall_metrics": {
+              "grasp_success_rate_pct": 48.0,
+              "terminal_placement_accuracy_cm": 1.0281921818852424,
+              "placement_accuracy_std_cm": 0.6377036954563536,
+              "terminal_error_cm": 2.5117840647697447,
+              "terminal_error_std_cm": 1.6509070359593174,
+              "mppi_inference_latency_ms": 27.2920987889635,
+              "mean_joint_accel_rad_s2": 0.010432858262211084,
+              "std_joint_accel_rad_s2": 0.003465216091106268,
+              "mean_joint_jerk_rad_s3": 0.007279124725610018,
+              "std_joint_jerk_rad_s3": 0.0022355287885564954,
+              "mean_direction_flips": 21.98,
+              "std_direction_flips": 5.948075318958226
+            },
+            "handover_telemetry": {
+              "episodes_evaluated": 50,
+              "triggered_episodes": 0,
+              "episodes_with_w_gt_0_pct": 0.0,
+              "total_phi1_steps": 400,
+              "triggered_phi1_steps": 0,
+              "phi1_steps_with_w_gt_0_pct": 0.0,
+              "mean_nonzero_w": 0.0
+            }
+          }
+        },
+        "handover_telemetry_3seed": {
+          "episodes_with_w_gt_0_pct": [
+            0.0,
+            0.0
+          ],
+          "phi1_steps_with_w_gt_0_pct": [
+            0.0,
+            0.0
+          ],
+          "mean_nonzero_w_when_active": 0.0
+        },
+        "label": "2. + Smooth MPPI Controls (Pre-DAgger)",
         "bold": false
       },
       {
-        "label": "3. + Phase 1 Curriculum (4-Stage, No Handover/Lookahead)",
-        "checkpoint": "results/spwm_v0_12_4_train_m1/model.pt",
-        "evaluation_protocol": "physics_in_loop",
-        "overall_metrics": {
-          "grasp_success_rate_pct": 72.0,
-          "terminal_placement_accuracy_cm": 0.9845381462574005,
-          "placement_accuracy_std_cm": 0.9663701539547177,
-          "terminal_error_cm": 1.8471522986888886,
-          "terminal_error_std_cm": 1.3105550973311277,
-          "mppi_inference_latency_ms": 22.50886656506723,
-          "mean_joint_accel_rad_s2": 0.005996449659578502,
-          "std_joint_accel_rad_s2": 0.001733545237341892,
-          "mean_joint_jerk_rad_s3": 0.003658297834917903,
-          "std_joint_jerk_rad_s3": 0.0009730792173353034,
-          "mean_direction_flips": 14.24,
-          "std_direction_flips": 7.8601781150302195
+        "mean_std": {
+          "grasp_success_rate_pct": [
+            38.0,
+            19.078784028338916
+          ],
+          "terminal_placement_accuracy_cm": [
+            1.5255670695503554,
+            0.5931443681847731
+          ],
+          "terminal_error_cm": [
+            3.2744056106607116,
+            1.1318006892038883
+          ],
+          "mean_joint_accel_rad_s2": [
+            0.0058877142627413075,
+            0.0008819400178644788
+          ],
+          "mean_joint_jerk_rad_s3": [
+            0.0035392556875012814,
+            0.0008280183162976543
+          ],
+          "mean_direction_flips": [
+            11.166666666666666,
+            0.6463229326995401
+          ],
+          "mppi_inference_latency_ms": [
+            27.422173555313975,
+            0.18268943009863092
+          ]
         },
-        "handover_telemetry": null,
+        "per_seed": {
+          "42": {
+            "checkpoint": "results/spwm_v0_12_4_train_m1/checkpoint_phase_4.pt",
+            "evaluation_protocol": "physics_in_loop",
+            "baseline_handover_mode": "open_loop",
+            "episodes_evaluated": 50,
+            "overall_metrics": {
+              "grasp_success_rate_pct": 56.00000000000001,
+              "terminal_placement_accuracy_cm": 1.1886036065220833,
+              "placement_accuracy_std_cm": 1.0840099983177816,
+              "terminal_error_cm": 2.372771575152874,
+              "terminal_error_std_cm": 1.4912734211279743,
+              "mppi_inference_latency_ms": 27.322396415769973,
+              "mean_joint_accel_rad_s2": 0.005483685848303139,
+              "std_joint_accel_rad_s2": 0.001604663932872117,
+              "mean_joint_jerk_rad_s3": 0.0030811078241094947,
+              "std_joint_jerk_rad_s3": 0.0007820425899183598,
+              "mean_direction_flips": 11.88,
+              "std_direction_flips": 5.891145898719535
+            },
+            "handover_telemetry": {
+              "episodes_evaluated": 50,
+              "triggered_episodes": 0,
+              "episodes_with_w_gt_0_pct": 0.0,
+              "total_phi1_steps": 400,
+              "triggered_phi1_steps": 0,
+              "phi1_steps_with_w_gt_0_pct": 0.0,
+              "mean_nonzero_w": 0.0
+            }
+          },
+          "101": {
+            "checkpoint": "results/multiseed/seed_101_m1/checkpoint_phase_4.pt",
+            "evaluation_protocol": "physics_in_loop",
+            "baseline_handover_mode": "open_loop",
+            "episodes_evaluated": 50,
+            "overall_metrics": {
+              "grasp_success_rate_pct": 18.0,
+              "terminal_placement_accuracy_cm": 1.1776555788516998,
+              "placement_accuracy_std_cm": 0.7053943270776382,
+              "terminal_error_cm": 4.544530171155929,
+              "terminal_error_std_cm": 2.1922424790505866,
+              "mppi_inference_latency_ms": 27.311099956586432,
+              "mean_joint_accel_rad_s2": 0.006899289446882903,
+              "std_joint_accel_rad_s2": 0.00269182361761365,
+              "mean_joint_jerk_rad_s3": 0.004495096248574555,
+              "std_joint_jerk_rad_s3": 0.0013739281474203257,
+              "mean_direction_flips": 11.0,
+              "std_direction_flips": 3.7202150475476548
+            },
+            "handover_telemetry": {
+              "episodes_evaluated": 50,
+              "triggered_episodes": 0,
+              "episodes_with_w_gt_0_pct": 0.0,
+              "total_phi1_steps": 400,
+              "triggered_phi1_steps": 0,
+              "phi1_steps_with_w_gt_0_pct": 0.0,
+              "mean_nonzero_w": 0.0
+            }
+          },
+          "2024": {
+            "checkpoint": "results/multiseed/seed_2024_m1/checkpoint_phase_4.pt",
+            "evaluation_protocol": "physics_in_loop",
+            "baseline_handover_mode": "open_loop",
+            "episodes_evaluated": 50,
+            "overall_metrics": {
+              "grasp_success_rate_pct": 40.0,
+              "terminal_placement_accuracy_cm": 2.210442023277283,
+              "placement_accuracy_std_cm": 1.5042453738644626,
+              "terminal_error_cm": 2.9059150856733322,
+              "terminal_error_std_cm": 1.5601189634804675,
+              "mppi_inference_latency_ms": 27.633024293585517,
+              "mean_joint_accel_rad_s2": 0.005280167493037879,
+              "std_joint_accel_rad_s2": 0.0019914505240249524,
+              "mean_joint_jerk_rad_s3": 0.003041562989819795,
+              "std_joint_jerk_rad_s3": 0.0010705033743340885,
+              "mean_direction_flips": 10.62,
+              "std_direction_flips": 3.6654604076432196
+            },
+            "handover_telemetry": {
+              "episodes_evaluated": 50,
+              "triggered_episodes": 0,
+              "episodes_with_w_gt_0_pct": 0.0,
+              "total_phi1_steps": 400,
+              "triggered_phi1_steps": 0,
+              "phi1_steps_with_w_gt_0_pct": 0.0,
+              "mean_nonzero_w": 0.0
+            }
+          }
+        },
+        "handover_telemetry_3seed": {
+          "episodes_with_w_gt_0_pct": [
+            0.0,
+            0.0
+          ],
+          "phi1_steps_with_w_gt_0_pct": [
+            0.0,
+            0.0
+          ],
+          "mean_nonzero_w_when_active": 0.0
+        },
+        "label": "3. + Phase 3/4 Curriculum (AR(1)+DAgger, No Lookahead/Handover)",
         "bold": false
       },
       {
-        "label": "4a. + 2-Stage SE(3) Lookahead (Handover Disabled, $w_t \\equiv 0$)",
-        "checkpoint": "results/spwm_v0_12_4_train_m1/best_model.pt",
-        "evaluation_protocol": "physics_in_loop",
-        "overall_metrics": {
-          "grasp_success_rate_pct": 86.0,
-          "terminal_placement_accuracy_cm": 0.8552020224928856,
-          "placement_accuracy_std_cm": 0.7991095820631844,
-          "terminal_error_cm": 1.5668222349882126,
-          "terminal_error_std_cm": 1.004804437956763,
-          "mppi_inference_latency_ms": 36.57298823552262,
-          "mean_joint_accel_rad_s2": 0.0058662799885496495,
-          "std_joint_accel_rad_s2": 0.0014419035578661795,
-          "mean_joint_jerk_rad_s3": 0.003542280187830329,
-          "std_joint_jerk_rad_s3": 0.000713988545542795,
-          "mean_direction_flips": 14.02,
-          "std_direction_flips": 7.643271550847844
+        "mean_std": {
+          "grasp_success_rate_pct": [
+            60.666666666666664,
+            2.3094010767585074
+          ],
+          "terminal_placement_accuracy_cm": [
+            0.8798704931139946,
+            0.10505539807183523
+          ],
+          "terminal_error_cm": [
+            2.006662103931109,
+            0.11581144347528279
+          ],
+          "mean_joint_accel_rad_s2": [
+            0.009308865414932371,
+            0.0034586698705177275
+          ],
+          "mean_joint_jerk_rad_s3": [
+            0.006634432549277941,
+            0.003263484407032791
+          ],
+          "mean_direction_flips": [
+            21.14,
+            8.549807015365904
+          ],
+          "mppi_inference_latency_ms": [
+            28.034092626839513,
+            0.24046964122825348
+          ]
         },
-        "handover_telemetry": {
-          "episodes_evaluated": 50,
-          "triggered_episodes": 0,
-          "episodes_with_w_gt_0_pct": 0.0,
-          "total_phi1_steps": 400,
-          "triggered_phi1_steps": 0,
-          "phi1_steps_with_w_gt_0_pct": 0.0,
-          "mean_nonzero_w": 0.0
+        "per_seed": {
+          "42": {
+            "checkpoint": "results/spwm_v0_12_4_train_m1/checkpoint_phase_4.pt",
+            "evaluation_protocol": "physics_in_loop",
+            "baseline_handover_mode": "open_loop",
+            "episodes_evaluated": 50,
+            "overall_metrics": {
+              "grasp_success_rate_pct": 57.99999999999999,
+              "terminal_placement_accuracy_cm": 0.9966417002677918,
+              "placement_accuracy_std_cm": 0.7168366082198878,
+              "terminal_error_cm": 2.117010636925697,
+              "terminal_error_std_cm": 1.2261713068281301,
+              "mppi_inference_latency_ms": 27.770463703774798,
+              "mean_joint_accel_rad_s2": 0.005460824174806475,
+              "std_joint_accel_rad_s2": 0.0014449158194058374,
+              "mean_joint_jerk_rad_s3": 0.003033191980794072,
+              "std_joint_jerk_rad_s3": 0.0006583887773716086,
+              "mean_direction_flips": 11.82,
+              "std_direction_flips": 6.098163658020339
+            },
+            "handover_telemetry": {
+              "episodes_evaluated": 50,
+              "triggered_episodes": 0,
+              "episodes_with_w_gt_0_pct": 0.0,
+              "total_phi1_steps": 400,
+              "triggered_phi1_steps": 0,
+              "phi1_steps_with_w_gt_0_pct": 0.0,
+              "mean_nonzero_w": 0.0
+            }
+          },
+          "101": {
+            "checkpoint": "results/multiseed/seed_101_m1/checkpoint_phase_1.pt",
+            "evaluation_protocol": "physics_in_loop",
+            "baseline_handover_mode": "open_loop",
+            "episodes_evaluated": 50,
+            "overall_metrics": {
+              "grasp_success_rate_pct": 62.0,
+              "terminal_placement_accuracy_cm": 0.8499453981220723,
+              "placement_accuracy_std_cm": 0.5894733005655424,
+              "terminal_error_cm": 2.0169071877002716,
+              "terminal_error_std_cm": 1.1516123596745238,
+              "mppi_inference_latency_ms": 28.09040548875141,
+              "mean_joint_accel_rad_s2": 0.012158537823706865,
+              "std_joint_accel_rad_s2": 0.0038326392576793562,
+              "mean_joint_jerk_rad_s3": 0.00939610967412591,
+              "std_joint_jerk_rad_s3": 0.0024506745164746524,
+              "mean_direction_flips": 28.62,
+              "std_direction_flips": 8.126229137798171
+            },
+            "handover_telemetry": {
+              "episodes_evaluated": 50,
+              "triggered_episodes": 0,
+              "episodes_with_w_gt_0_pct": 0.0,
+              "total_phi1_steps": 400,
+              "triggered_phi1_steps": 0,
+              "phi1_steps_with_w_gt_0_pct": 0.0,
+              "mean_nonzero_w": 0.0
+            }
+          },
+          "2024": {
+            "checkpoint": "results/multiseed/seed_2024_m1/checkpoint_phase_2.pt",
+            "evaluation_protocol": "physics_in_loop",
+            "baseline_handover_mode": "open_loop",
+            "episodes_evaluated": 50,
+            "overall_metrics": {
+              "grasp_success_rate_pct": 62.0,
+              "terminal_placement_accuracy_cm": 0.7930243809521198,
+              "placement_accuracy_std_cm": 0.5496822026263848,
+              "terminal_error_cm": 1.8860684871673583,
+              "terminal_error_std_cm": 1.187425109721587,
+              "mppi_inference_latency_ms": 28.241408687992333,
+              "mean_joint_accel_rad_s2": 0.01030723424628377,
+              "std_joint_accel_rad_s2": 0.003965905046145654,
+              "mean_joint_jerk_rad_s3": 0.007473995992913842,
+              "std_joint_jerk_rad_s3": 0.0027093614883279904,
+              "mean_direction_flips": 22.98,
+              "std_direction_flips": 5.540721974616666
+            },
+            "handover_telemetry": {
+              "episodes_evaluated": 50,
+              "triggered_episodes": 0,
+              "episodes_with_w_gt_0_pct": 0.0,
+              "total_phi1_steps": 400,
+              "triggered_phi1_steps": 0,
+              "phi1_steps_with_w_gt_0_pct": 0.0,
+              "mean_nonzero_w": 0.0
+            }
+          }
         },
+        "handover_telemetry_3seed": {
+          "episodes_with_w_gt_0_pct": [
+            0.0,
+            0.0
+          ],
+          "phi1_steps_with_w_gt_0_pct": [
+            0.0,
+            0.0
+          ],
+          "mean_nonzero_w_when_active": 0.0
+        },
+        "label": "4a. + 2-Stage SE(3) Lookahead (Val-Sel., $w_t \\equiv 0$)",
         "bold": false
       },
       {
-        "label": "4b. + Residual Handover \\& 2-Stage Lookahead (Full)",
-        "checkpoint": "results/spwm_v0_12_4_train_m1/model.pt",
-        "evaluation_protocol": "physics_in_loop",
-        "overall_metrics": {
-          "grasp_success_rate_pct": 86.0,
-          "terminal_placement_accuracy_cm": 0.8552020224928856,
-          "placement_accuracy_std_cm": 0.7991095820631844,
-          "terminal_error_cm": 1.5668222349882126,
-          "terminal_error_std_cm": 1.004804437956763,
-          "mppi_inference_latency_ms": 36.65447710343201,
-          "mean_joint_accel_rad_s2": 0.0058662799885496495,
-          "std_joint_accel_rad_s2": 0.0014419035578661795,
-          "mean_joint_jerk_rad_s3": 0.003542280187830329,
-          "std_joint_jerk_rad_s3": 0.000713988545542795,
-          "mean_direction_flips": 14.02,
-          "std_direction_flips": 7.643271550847844
+        "mean_std": {
+          "grasp_success_rate_pct": [
+            60.666666666666664,
+            2.3094010767585074
+          ],
+          "terminal_placement_accuracy_cm": [
+            0.8798704931139946,
+            0.10505539807183523
+          ],
+          "terminal_error_cm": [
+            2.006662103931109,
+            0.11581144347528279
+          ],
+          "mean_joint_accel_rad_s2": [
+            0.009308865414932371,
+            0.0034586698705177275
+          ],
+          "mean_joint_jerk_rad_s3": [
+            0.006634432549277941,
+            0.003263484407032791
+          ],
+          "mean_direction_flips": [
+            21.14,
+            8.549807015365904
+          ],
+          "mppi_inference_latency_ms": [
+            26.649352693166346,
+            2.271980219747186
+          ]
         },
-        "handover_telemetry": {
-          "episodes_evaluated": 50,
-          "triggered_episodes": 0,
-          "episodes_with_w_gt_0_pct": 0.0,
-          "total_phi1_steps": 400,
-          "triggered_phi1_steps": 0,
-          "phi1_steps_with_w_gt_0_pct": 0.0,
-          "mean_nonzero_w": 0.0
+        "per_seed": {
+          "42": {
+            "checkpoint": "results/spwm_v0_12_4_train_m1/checkpoint_phase_4.pt",
+            "evaluation_protocol": "physics_in_loop",
+            "baseline_handover_mode": "residual_gated",
+            "episodes_evaluated": 50,
+            "overall_metrics": {
+              "grasp_success_rate_pct": 57.99999999999999,
+              "terminal_placement_accuracy_cm": 0.9966417002677918,
+              "placement_accuracy_std_cm": 0.7168366082198878,
+              "terminal_error_cm": 2.117010636925697,
+              "terminal_error_std_cm": 1.2261713068281301,
+              "mppi_inference_latency_ms": 27.953717743547482,
+              "mean_joint_accel_rad_s2": 0.005460824174806475,
+              "std_joint_accel_rad_s2": 0.0014449158194058374,
+              "mean_joint_jerk_rad_s3": 0.003033191980794072,
+              "std_joint_jerk_rad_s3": 0.0006583887773716086,
+              "mean_direction_flips": 11.82,
+              "std_direction_flips": 6.098163658020339
+            },
+            "handover_telemetry": {
+              "episodes_evaluated": 50,
+              "triggered_episodes": 0,
+              "episodes_with_w_gt_0_pct": 0.0,
+              "total_phi1_steps": 400,
+              "triggered_phi1_steps": 0,
+              "phi1_steps_with_w_gt_0_pct": 0.0,
+              "mean_nonzero_w": 0.0
+            }
+          },
+          "101": {
+            "checkpoint": "results/multiseed/seed_101_m1/checkpoint_phase_1.pt",
+            "evaluation_protocol": "physics_in_loop",
+            "baseline_handover_mode": "residual_gated",
+            "episodes_evaluated": 50,
+            "overall_metrics": {
+              "grasp_success_rate_pct": 62.0,
+              "terminal_placement_accuracy_cm": 0.8499453981220723,
+              "placement_accuracy_std_cm": 0.5894733005655424,
+              "terminal_error_cm": 2.0169071877002716,
+              "terminal_error_std_cm": 1.1516123596745238,
+              "mppi_inference_latency_ms": 27.968430673446996,
+              "mean_joint_accel_rad_s2": 0.012158537823706865,
+              "std_joint_accel_rad_s2": 0.0038326392576793562,
+              "mean_joint_jerk_rad_s3": 0.00939610967412591,
+              "std_joint_jerk_rad_s3": 0.0024506745164746524,
+              "mean_direction_flips": 28.62,
+              "std_direction_flips": 8.126229137798171
+            },
+            "handover_telemetry": {
+              "episodes_evaluated": 50,
+              "triggered_episodes": 0,
+              "episodes_with_w_gt_0_pct": 0.0,
+              "total_phi1_steps": 400,
+              "triggered_phi1_steps": 0,
+              "phi1_steps_with_w_gt_0_pct": 0.0,
+              "mean_nonzero_w": 0.0
+            }
+          },
+          "2024": {
+            "checkpoint": "results/multiseed/seed_2024_m1/checkpoint_phase_2.pt",
+            "evaluation_protocol": "physics_in_loop",
+            "baseline_handover_mode": "residual_gated",
+            "episodes_evaluated": 50,
+            "overall_metrics": {
+              "grasp_success_rate_pct": 62.0,
+              "terminal_placement_accuracy_cm": 0.7930243809521198,
+              "placement_accuracy_std_cm": 0.5496822026263848,
+              "terminal_error_cm": 1.8860684871673583,
+              "terminal_error_std_cm": 1.187425109721587,
+              "mppi_inference_latency_ms": 24.025909662504564,
+              "mean_joint_accel_rad_s2": 0.01030723424628377,
+              "std_joint_accel_rad_s2": 0.003965905046145654,
+              "mean_joint_jerk_rad_s3": 0.007473995992913842,
+              "std_joint_jerk_rad_s3": 0.0027093614883279904,
+              "mean_direction_flips": 22.98,
+              "std_direction_flips": 5.540721974616666
+            },
+            "handover_telemetry": {
+              "episodes_evaluated": 50,
+              "triggered_episodes": 0,
+              "episodes_with_w_gt_0_pct": 0.0,
+              "total_phi1_steps": 400,
+              "triggered_phi1_steps": 0,
+              "phi1_steps_with_w_gt_0_pct": 0.0,
+              "mean_nonzero_w": 0.0
+            }
+          }
         },
+        "handover_telemetry_3seed": {
+          "episodes_with_w_gt_0_pct": [
+            0.0,
+            0.0
+          ],
+          "phi1_steps_with_w_gt_0_pct": [
+            0.0,
+            0.0
+          ],
+          "mean_nonzero_w_when_active": 0.0
+        },
+        "label": "4b. + Residual Rejection Gate (Full SPWM, Val-Sel.)",
         "bold": true
       }
     ],
+    "baseline_training_budgets": {
+      "rssm": {
+        "42": {
+          "model_name": "Continuous RSSM",
+          "seed": 42,
+          "device": "mps",
+          "enable_dagger_ar1": true,
+          "base_epochs": 60,
+          "ar1_dagger_epochs": 16,
+          "total_epochs": 76,
+          "best_epoch": 61,
+          "best_val_loss": 0.4348871593291943,
+          "wall_clock_sec": 778.0765965420287,
+          "ar1_target_alpha": 0.25,
+          "dagger_generations_collected": 3
+        },
+        "101": {
+          "model_name": "Continuous RSSM",
+          "seed": 101,
+          "device": "mps",
+          "enable_dagger_ar1": true,
+          "base_epochs": 60,
+          "ar1_dagger_epochs": 16,
+          "total_epochs": 76,
+          "best_epoch": 61,
+          "best_val_loss": 0.44028351398614735,
+          "wall_clock_sec": 775.8391683750087,
+          "ar1_target_alpha": 0.25,
+          "dagger_generations_collected": 3
+        },
+        "2024": {
+          "model_name": "Continuous RSSM",
+          "seed": 2024,
+          "device": "mps",
+          "enable_dagger_ar1": true,
+          "base_epochs": 60,
+          "ar1_dagger_epochs": 17,
+          "total_epochs": 77,
+          "best_epoch": 62,
+          "best_val_loss": 0.4504756721166464,
+          "wall_clock_sec": 826.2417404999724,
+          "ar1_target_alpha": 0.25,
+          "dagger_generations_collected": 3
+        }
+      },
+      "deep_gru": {
+        "42": {
+          "model_name": "Deep GRU",
+          "seed": 42,
+          "device": "mps",
+          "enable_dagger_ar1": true,
+          "base_epochs": 59,
+          "ar1_dagger_epochs": 40,
+          "total_epochs": 99,
+          "best_epoch": 90,
+          "best_val_loss": 0.5676361459952134,
+          "wall_clock_sec": 2026.1408703329507,
+          "ar1_target_alpha": 0.25,
+          "dagger_generations_collected": 8
+        },
+        "101": {
+          "model_name": "Deep GRU",
+          "seed": 101,
+          "device": "mps",
+          "enable_dagger_ar1": true,
+          "base_epochs": 0,
+          "ar1_dagger_epochs": 80,
+          "total_epochs": 80,
+          "best_epoch": 68,
+          "best_val_loss": 0.5387146770954132,
+          "wall_clock_sec": 4026.366101166932,
+          "ar1_target_alpha": 0.25,
+          "dagger_generations_collected": 14
+        },
+        "2024": {
+          "model_name": "Deep GRU",
+          "seed": 2024,
+          "device": "mps",
+          "enable_dagger_ar1": true,
+          "base_epochs": 0,
+          "ar1_dagger_epochs": 80,
+          "total_epochs": 80,
+          "best_epoch": 80,
+          "best_val_loss": 0.5893793037304511,
+          "wall_clock_sec": 4009.184660000028,
+          "ar1_target_alpha": 0.25,
+          "dagger_generations_collected": 14
+        }
+      }
+    },
     "robustness_3seed_spwm": {
       "conditions": [
         {
@@ -2709,6 +3731,7 @@
       }
     },
     "energy_summary": {
+      "framing_note": "SPWM's primary advantage over ANN-Rate is closed-loop dynamical stability (+23.4 pp PIL grasp success) and 1.0% sensory noise retention (4.3x better), not E2E energy savings (1.0979 mJ/step matches ANN-Rate; 48.14 nJ Loihi-2 core reduction is 0.004% of E2E power). The 4.94x Loihi-2 recurrent core reduction (12.22 +- 0.19 nJ/step, 0.244 mW @ 20 Hz, SOPs excluding passive leak) is an always-on standby state-estimation benefit when batched MPPI rollouts are dormant; the 1.93x E2E reduction vs. Continuous RSSM (2.1236 mJ/step) comes from M1's compact MLP rollout architecture.",
       "spwm_3seed": {
         "spike_rate_pct": [
           12.151117412707743,
@@ -2828,6 +3851,98 @@
           "e2e_all_gpu_energy_mj": 100.18334453760001,
           "e2e_power_20hz_mw": 2003.6668907520004
         }
+      }
+    },
+    "forensic_summary_3seed": {
+      "Continuous RSSM Un-Gated (3-Seed Aggregate)": {
+        "total_episodes": 150,
+        "success_total": 0,
+        "reach_le_3cm_total": 144,
+        "a_distance_failure_gt_3cm_total": 6,
+        "b_velocity_failure_all_total": 150,
+        "b_velocity_failure_given_reach_total": 144,
+        "c_post_contact_impulse_divergence_total": 143,
+        "excl_never_reached_total": 6,
+        "excl_post_contact_div_plus_vel_total": 143,
+        "excl_post_contact_div_spatial_only_total": 0,
+        "excl_post_tc_reach_then_div_total": 1,
+        "excl_vel_only_total": 0,
+        "excl_rot_only_total": 0
+      },
+      "Continuous RSSM Residual-Gated (3-Seed Aggregate)": {
+        "total_episodes": 150,
+        "success_total": 23,
+        "reach_le_3cm_total": 148,
+        "a_distance_failure_gt_3cm_total": 2,
+        "b_velocity_failure_all_total": 24,
+        "b_velocity_failure_given_reach_total": 24,
+        "c_post_contact_impulse_divergence_total": 50,
+        "excl_never_reached_total": 2,
+        "excl_post_contact_div_plus_vel_total": 12,
+        "excl_post_contact_div_spatial_only_total": 38,
+        "excl_post_tc_reach_then_div_total": 22,
+        "excl_vel_only_total": 3,
+        "excl_rot_only_total": 50
+      },
+      "Deep GRU Un-Gated (3-Seed Aggregate)": {
+        "total_episodes": 150,
+        "success_total": 0,
+        "reach_le_3cm_total": 132,
+        "a_distance_failure_gt_3cm_total": 18,
+        "b_velocity_failure_all_total": 18,
+        "b_velocity_failure_given_reach_total": 17,
+        "c_post_contact_impulse_divergence_total": 123,
+        "excl_never_reached_total": 18,
+        "excl_post_contact_div_plus_vel_total": 17,
+        "excl_post_contact_div_spatial_only_total": 106,
+        "excl_post_tc_reach_then_div_total": 3,
+        "excl_vel_only_total": 0,
+        "excl_rot_only_total": 6
+      },
+      "Deep GRU Residual-Gated (3-Seed Aggregate)": {
+        "total_episodes": 150,
+        "success_total": 115,
+        "reach_le_3cm_total": 141,
+        "a_distance_failure_gt_3cm_total": 9,
+        "b_velocity_failure_all_total": 0,
+        "b_velocity_failure_given_reach_total": 0,
+        "c_post_contact_impulse_divergence_total": 9,
+        "excl_never_reached_total": 9,
+        "excl_post_contact_div_plus_vel_total": 0,
+        "excl_post_contact_div_spatial_only_total": 9,
+        "excl_post_tc_reach_then_div_total": 11,
+        "excl_vel_only_total": 0,
+        "excl_rot_only_total": 6
+      },
+      "ANN-Rate (3-Seed Aggregate)": {
+        "total_episodes": 150,
+        "success_total": 56,
+        "reach_le_3cm_total": 146,
+        "a_distance_failure_gt_3cm_total": 4,
+        "b_velocity_failure_all_total": 2,
+        "b_velocity_failure_given_reach_total": 2,
+        "c_post_contact_impulse_divergence_total": 56,
+        "excl_never_reached_total": 4,
+        "excl_post_contact_div_plus_vel_total": 0,
+        "excl_post_contact_div_spatial_only_total": 56,
+        "excl_post_tc_reach_then_div_total": 17,
+        "excl_vel_only_total": 1,
+        "excl_rot_only_total": 16
+      },
+      "SPWM N=25 Val-Sel (3-Seed Aggregate)": {
+        "total_episodes": 150,
+        "success_total": 91,
+        "reach_le_3cm_total": 148,
+        "a_distance_failure_gt_3cm_total": 2,
+        "b_velocity_failure_all_total": 2,
+        "b_velocity_failure_given_reach_total": 2,
+        "c_post_contact_impulse_divergence_total": 28,
+        "excl_never_reached_total": 2,
+        "excl_post_contact_div_plus_vel_total": 1,
+        "excl_post_contact_div_spatial_only_total": 27,
+        "excl_post_tc_reach_then_div_total": 6,
+        "excl_vel_only_total": 0,
+        "excl_rot_only_total": 23
       }
     }
   }

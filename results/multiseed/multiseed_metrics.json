@@ -95,7 +95,37 @@
     }
   },
   "pil_50ep_mean_std": {
-    "SPWM-v0.12.4": {
+    "SPWM-v0.12.4 (N=25 Val-Selected)": {
+      "grasp_success_rate_pct": [
+        60.666666666666664,
+        2.3094010767585074
+      ],
+      "terminal_placement_accuracy_cm": [
+        0.8798704931139946,
+        0.10505539807183523
+      ],
+      "terminal_error_cm": [
+        2.006662103931109,
+        0.11581144347528279
+      ],
+      "mean_joint_accel_rad_s2": [
+        0.009308865414932371,
+        0.0034586698705177275
+      ],
+      "mean_joint_jerk_rad_s3": [
+        0.006634432549277941,
+        0.003263484407032791
+      ],
+      "mean_direction_flips": [
+        21.14,
+        8.549807015365904
+      ],
+      "mppi_inference_latency_ms": [
+        26.649352693166346,
+        2.271980219747186
+      ]
+    },
+    "SPWM-v0.12.4 (N=6 Tier-2)": {
       "grasp_success_rate_pct": [
         58.0,
         27.055498516937366
@@ -121,8 +151,8 @@
         7.574545090850891
       ],
       "mppi_inference_latency_ms": [
-        23.067443259943843,
-        0.23469874288645293
+        27.510263026675336,
+        7.919433452921299
       ]
     },
     "ANN-Rate": {
@@ -155,184 +185,184 @@
         0.07683415875005363
       ]
     },
-    "Continuous RSSM": {
-      "grasp_success_rate_pct": [
-        0.0,
-        0.0
-      ],
-      "terminal_placement_accuracy_cm": [
-        1.5289842367172242,
-        0.06375312364798832
-      ],
-      "terminal_error_cm": [
-        22.434701797167463,
-        0.5797279333300245
-      ],
-      "mean_joint_accel_rad_s2": [
-        0.031191026711215573,
-        0.0008520616038234162
-      ],
-      "mean_joint_jerk_rad_s3": [
-        0.02875449779753884,
-        0.00014085841965964314
-      ],
-      "mean_direction_flips": [
-        36.126666666666665,
-        0.4518111699961975
-      ],
-      "mppi_inference_latency_ms": [
-        35.14400501011499,
-        0.7717180625877539
-      ]
-    },
-    "SPWM-v0.12.4 (N=25 Val-Selected)": {
-      "grasp_success_rate_pct": [
-        60.666666666666664,
-        2.3094010767585074
-      ],
-      "terminal_placement_accuracy_cm": [
-        0.8798704931139946,
-        0.10505539807183523
-      ],
-      "terminal_error_cm": [
-        2.006662103931109,
-        0.11581144347528279
-      ],
-      "mean_joint_accel_rad_s2": [
-        0.009308865414932371,
-        0.0034586698705177275
-      ],
-      "mean_joint_jerk_rad_s3": [
-        0.006634432549277941,
-        0.003263484407032791
-      ],
-      "mean_direction_flips": [
-        21.14,
-        8.549807015365904
-      ],
-      "mppi_inference_latency_ms": [
-        35.50311868491241,
-        1.4903537737959471
-      ]
-    },
     "Continuous RSSM (Open-Loop PIL)": {
       "grasp_success_rate_pct": [
         15.333333333333334,
-        4.618802153517006
+        7.023769168568492
       ],
       "terminal_placement_accuracy_cm": [
-        1.3101576902468999,
-        0.015239180448274645
+        1.2335922479629515,
+        0.05552042269442134
       ],
       "terminal_error_cm": [
-        2.8772510814666745,
-        0.10043628738006709
+        2.738770661751429,
+        0.06877343601692858
       ],
       "mean_joint_accel_rad_s2": [
-        0.019980563490341108,
-        0.00044725536859862214
+        0.02037182800471783,
+        0.000592333680216826
       ],
       "mean_joint_jerk_rad_s3": [
-        0.020594383161514997,
-        0.0002908916650769286
+        0.02138510186225176,
+        0.0004846155447845476
       ],
       "mean_direction_flips": [
-        36.23333333333333,
-        0.9737213838328386
+        36.85999999999999,
+        1.2150720143267217
       ],
       "mppi_inference_latency_ms": [
-        52.36163894086636,
-        2.3005863220714606
+        46.81975616126076,
+        0.1485665027581289
       ]
     },
-    "Continuous RSSM (Online Posterior)": {
+    "Continuous RSSM (Un-Gated Online)": {
       "grasp_success_rate_pct": [
         0.0,
         0.0
       ],
       "terminal_placement_accuracy_cm": [
-        1.5289842367172242,
-        0.06375312364798832
+        1.425072744091352,
+        0.03429525285538392
       ],
       "terminal_error_cm": [
-        22.434701797167463,
-        0.5797279333300245
+        25.49343025525411,
+        1.3050838203645958
       ],
       "mean_joint_accel_rad_s2": [
-        0.031191026711215573,
-        0.0008520616038234162
+        0.03153110054632028,
+        0.0006715274430858012
       ],
       "mean_joint_jerk_rad_s3": [
-        0.02875449779753884,
-        0.00014085841965964314
+        0.029558277900020278,
+        0.0004172700652986988
       ],
       "mean_direction_flips": [
-        36.126666666666665,
-        0.4518111699961975
+        36.49333333333333,
+        0.7757147241952662
       ],
       "mppi_inference_latency_ms": [
-        35.14400501011499,
-        0.7717180625877539
+        46.936845150350116,
+        0.33605994404428824
+      ]
+    },
+    "Continuous RSSM (Residual-Gated Online)": {
+      "grasp_success_rate_pct": [
+        15.333333333333334,
+        5.033222956847166
+      ],
+      "terminal_placement_accuracy_cm": [
+        1.233093837896983,
+        0.046829598001233756
+      ],
+      "terminal_error_cm": [
+        2.7240475718180335,
+        0.10990075377541059
+      ],
+      "mean_joint_accel_rad_s2": [
+        0.020493890543778735,
+        0.0006706944714435922
+      ],
+      "mean_joint_jerk_rad_s3": [
+        0.021609529219567773,
+        0.0005316353717258448
+      ],
+      "mean_direction_flips": [
+        36.940000000000005,
+        1.2257242756835658
+      ],
+      "mppi_inference_latency_ms": [
+        46.472593615331895,
+        0.1711331627137406
       ]
     },
     "Deep GRU (Open-Loop PIL)": {
       "grasp_success_rate_pct": [
-        1.3333333333333333,
-        2.3094010767585034
+        77.33333333333333,
+        4.163331998932265
       ],
       "terminal_placement_accuracy_cm": [
-        10.56911430199941,
-        7.8332178543025
+        1.142497578263283,
+        0.31404892460065076
       ],
       "terminal_error_cm": [
-        16.720466453234355,
-        11.307909064116105
+        1.8994051045179365,
+        0.17642912388300128
       ],
       "mean_joint_accel_rad_s2": [
-        0.007771262118282417,
-        0.006861198470924401
+        0.004498507350217551,
+        0.00012105405328595289
       ],
       "mean_joint_jerk_rad_s3": [
-        0.006221064189837005,
-        0.007792868260752681
+        0.002675323402121042,
+        0.00018613435682786266
       ],
       "mean_direction_flips": [
-        14.666666666666666,
-        14.897212267177151
+        10.793333333333331,
+        0.6331929669013493
       ],
       "mppi_inference_latency_ms": [
-        67.4003965856917,
-        1.6174098859533237
+        57.845663712604754,
+        0.2935253213907278
       ]
     },
-    "Deep GRU (Online Observation)": {
+    "Deep GRU (Un-Gated Online)": {
       "grasp_success_rate_pct": [
         0.0,
         0.0
       ],
       "terminal_placement_accuracy_cm": [
-        6.027755393187205,
-        4.003672646431791
+        1.4674344965815544,
+        0.5106457690318531
       ],
       "terminal_error_cm": [
-        10.87074866215388,
-        3.973647019419447
+        7.351427071889241,
+        1.3439473080339845
       ],
       "mean_joint_accel_rad_s2": [
-        0.016541417293871444,
-        0.009718487664175204
+        0.006980255008675158,
+        0.00042445948743814776
       ],
       "mean_joint_jerk_rad_s3": [
-        0.013497935300692918,
-        0.009453182248594585
+        0.004832257371939098,
+        0.00042073079965799826
       ],
       "mean_direction_flips": [
-        19.673333333333336,
-        10.000986617995913
+        15.079999999999998,
+        0.647147587494537
       ],
       "mppi_inference_latency_ms": [
-        60.30913028220712,
-        18.88364182181519
+        57.07348911329685,
+        0.5185482382876814
+      ]
+    },
+    "Deep GRU (Residual-Gated Online)": {
+      "grasp_success_rate_pct": [
+        76.66666666666667,
+        5.033222956847166
+      ],
+      "terminal_placement_accuracy_cm": [
+        1.142546683549881,
+        0.3141746410639535
+      ],
+      "terminal_error_cm": [
+        1.9001078454653422,
+        0.1792502651931432
+      ],
+      "mean_joint_accel_rad_s2": [
+        0.004493320606804143,
+        0.0001224338129939779
+      ],
+      "mean_joint_jerk_rad_s3": [
+        0.0026687012903857978,
+        0.0001826580482518807
+      ],
+      "mean_direction_flips": [
+        10.786666666666667,
+        0.6057502235520298
+      ],
+      "mppi_inference_latency_ms": [
+        57.65735650555458,
+        0.21359715146433306
       ]
     }
   },
@@ -999,5 +1029,287 @@
         }
       }
     ]
+  },
+  "disentangled_ablation_3seed": [
+    {
+      "label": "1. SPWM-Base (Phase 1 Warmup, Unsmoothed)",
+      "mean_std": {
+        "grasp_success_rate_pct": [
+          45.333333333333336,
+          16.041612554021285
+        ],
+        "terminal_placement_accuracy_cm": [
+          1.026371354262034,
+          0.21267911327447728
+        ],
+        "terminal_error_cm": [
+          2.502900831302007,
+          0.10674231587914605
+        ],
+        "mean_joint_accel_rad_s2": [
+          0.009831757796928286,
+          0.002547908271341173
+        ],
+        "mean_joint_jerk_rad_s3": [
+          0.007646870988731583,
+          0.002496011682578312
+        ],
+        "mean_direction_flips": [
+          23.03333333333333,
+          6.83585644475755
+        ],
+        "mppi_inference_latency_ms": [
+          26.607863672024582,
+          0.31494921572578505
+        ]
+      },
+      "per_seed_success_pct": {
+        "42": 62.0,
+        "101": 44.0,
+        "2024": 30.0
+      }
+    },
+    {
+      "label": "2. + Smooth MPPI Controls (Pre-DAgger)",
+      "mean_std": {
+        "grasp_success_rate_pct": [
+          51.333333333333336,
+          9.451631252505216
+        ],
+        "terminal_placement_accuracy_cm": [
+          1.0174584152301154,
+          0.07739428773724741
+        ],
+        "terminal_error_cm": [
+          2.413362322449684,
+          0.131995777812547
+        ],
+        "mean_joint_accel_rad_s2": [
+          0.009906536138926942,
+          0.0024003560204176517
+        ],
+        "mean_joint_jerk_rad_s3": [
+          0.007045794217847287,
+          0.002429997855850162
+        ],
+        "mean_direction_flips": [
+          21.993333333333336,
+          6.660010010002488
+        ],
+        "mppi_inference_latency_ms": [
+          27.186699187828037,
+          0.15842402005752645
+        ]
+      },
+      "per_seed_success_pct": {
+        "42": 62.0,
+        "101": 44.0,
+        "2024": 48.0
+      }
+    },
+    {
+      "label": "3. + Phase 3/4 Curriculum (AR(1)+DAgger, No Lookahead/Handover)",
+      "mean_std": {
+        "grasp_success_rate_pct": [
+          38.0,
+          19.078784028338916
+        ],
+        "terminal_placement_accuracy_cm": [
+          1.5255670695503554,
+          0.5931443681847731
+        ],
+        "terminal_error_cm": [
+          3.2744056106607116,
+          1.1318006892038883
+        ],
+        "mean_joint_accel_rad_s2": [
+          0.0058877142627413075,
+          0.0008819400178644788
+        ],
+        "mean_joint_jerk_rad_s3": [
+          0.0035392556875012814,
+          0.0008280183162976543
+        ],
+        "mean_direction_flips": [
+          11.166666666666666,
+          0.6463229326995401
+        ],
+        "mppi_inference_latency_ms": [
+          27.422173555313975,
+          0.18268943009863092
+        ]
+      },
+      "per_seed_success_pct": {
+        "42": 56.00000000000001,
+        "101": 18.0,
+        "2024": 40.0
+      }
+    },
+    {
+      "label": "4a. + 2-Stage SE(3) Lookahead (Val-Sel., $w_t \\equiv 0$)",
+      "mean_std": {
+        "grasp_success_rate_pct": [
+          60.666666666666664,
+          2.3094010767585074
+        ],
+        "terminal_placement_accuracy_cm": [
+          0.8798704931139946,
+          0.10505539807183523
+        ],
+        "terminal_error_cm": [
+          2.006662103931109,
+          0.11581144347528279
+        ],
+        "mean_joint_accel_rad_s2": [
+          0.009308865414932371,
+          0.0034586698705177275
+        ],
+        "mean_joint_jerk_rad_s3": [
+          0.006634432549277941,
+          0.003263484407032791
+        ],
+        "mean_direction_flips": [
+          21.14,
+          8.549807015365904
+        ],
+        "mppi_inference_latency_ms": [
+          28.034092626839513,
+          0.24046964122825348
+        ]
+      },
+      "per_seed_success_pct": {
+        "42": 57.99999999999999,
+        "101": 62.0,
+        "2024": 62.0
+      }
+    },
+    {
+      "label": "4b. + Residual Rejection Gate (Full SPWM, Val-Sel.)",
+      "mean_std": {
+        "grasp_success_rate_pct": [
+          60.666666666666664,
+          2.3094010767585074
+        ],
+        "terminal_placement_accuracy_cm": [
+          0.8798704931139946,
+          0.10505539807183523
+        ],
+        "terminal_error_cm": [
+          2.006662103931109,
+          0.11581144347528279
+        ],
+        "mean_joint_accel_rad_s2": [
+          0.009308865414932371,
+          0.0034586698705177275
+        ],
+        "mean_joint_jerk_rad_s3": [
+          0.006634432549277941,
+          0.003263484407032791
+        ],
+        "mean_direction_flips": [
+          21.14,
+          8.549807015365904
+        ],
+        "mppi_inference_latency_ms": [
+          26.649352693166346,
+          2.271980219747186
+        ]
+      },
+      "per_seed_success_pct": {
+        "42": 57.99999999999999,
+        "101": 62.0,
+        "2024": 62.0
+      }
+    }
+  ],
+  "baseline_training_budgets": {
+    "rssm": {
+      "42": {
+        "model_name": "Continuous RSSM",
+        "seed": 42,
+        "device": "mps",
+        "enable_dagger_ar1": true,
+        "base_epochs": 60,
+        "ar1_dagger_epochs": 16,
+        "total_epochs": 76,
+        "best_epoch": 61,
+        "best_val_loss": 0.4348871593291943,
+        "wall_clock_sec": 778.0765965420287,
+        "ar1_target_alpha": 0.25,
+        "dagger_generations_collected": 3
+      },
+      "101": {
+        "model_name": "Continuous RSSM",
+        "seed": 101,
+        "device": "mps",
+        "enable_dagger_ar1": true,
+        "base_epochs": 60,
+        "ar1_dagger_epochs": 16,
+        "total_epochs": 76,
+        "best_epoch": 61,
+        "best_val_loss": 0.44028351398614735,
+        "wall_clock_sec": 775.8391683750087,
+        "ar1_target_alpha": 0.25,
+        "dagger_generations_collected": 3
+      },
+      "2024": {
+        "model_name": "Continuous RSSM",
+        "seed": 2024,
+        "device": "mps",
+        "enable_dagger_ar1": true,
+        "base_epochs": 60,
+        "ar1_dagger_epochs": 17,
+        "total_epochs": 77,
+        "best_epoch": 62,
+        "best_val_loss": 0.4504756721166464,
+        "wall_clock_sec": 826.2417404999724,
+        "ar1_target_alpha": 0.25,
+        "dagger_generations_collected": 3
+      }
+    },
+    "deep_gru": {
+      "42": {
+        "model_name": "Deep GRU",
+        "seed": 42,
+        "device": "mps",
+        "enable_dagger_ar1": true,
+        "base_epochs": 59,
+        "ar1_dagger_epochs": 40,
+        "total_epochs": 99,
+        "best_epoch": 90,
+        "best_val_loss": 0.5676361459952134,
+        "wall_clock_sec": 2026.1408703329507,
+        "ar1_target_alpha": 0.25,
+        "dagger_generations_collected": 8
+      },
+      "101": {
+        "model_name": "Deep GRU",
+        "seed": 101,
+        "device": "mps",
+        "enable_dagger_ar1": true,
+        "base_epochs": 0,
+        "ar1_dagger_epochs": 80,
+        "total_epochs": 80,
+        "best_epoch": 68,
+        "best_val_loss": 0.5387146770954132,
+        "wall_clock_sec": 4026.366101166932,
+        "ar1_target_alpha": 0.25,
+        "dagger_generations_collected": 14
+      },
+      "2024": {
+        "model_name": "Deep GRU",
+        "seed": 2024,
+        "device": "mps",
+        "enable_dagger_ar1": true,
+        "base_epochs": 0,
+        "ar1_dagger_epochs": 80,
+        "total_epochs": 80,
+        "best_epoch": 80,
+        "best_val_loss": 0.5893793037304511,
+        "wall_clock_sec": 4009.184660000028,
+        "ar1_target_alpha": 0.25,
+        "dagger_generations_collected": 14
+      }
+    }
   }
 }

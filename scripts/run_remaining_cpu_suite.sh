@@ -94,15 +94,15 @@ for s_pair in \
   fi
 done
 
-echo ">>> SSOT Robustness + Figures 1-4"
-"$PYTHON_BIN" scripts/run_ssot_benchmark_and_plot.py \
+echo ">>> SSOT Robustness Stress Test"
+"$PYTHON_BIN" experiments/benchmark_robustness_stress_test.py \
+  --config results/spwm_v0_12_4_train_m1/config.yaml \
+  --checkpoint results/spwm_v0_12_4_train_m1/best_model.pt \
+  --output-dir results/robustness_benchmark \
+  --num-mppi-episodes 50 \
+  --num-sensor-trajectories 400 \
   --physics-in-loop \
-  --mppi-episodes 50 \
-  --robustness-episodes 50 \
-  --sensor-trajectories 400
-
-echo ">>> Heft Shock Timeseries"
-"$PYTHON_BIN" scripts/plot_heft_shock_timeseries.py --traj-id 3622
+  --device cpu
 
 # --- Part 6: Verification ---
 echo ">>> AST Fallback Scan"

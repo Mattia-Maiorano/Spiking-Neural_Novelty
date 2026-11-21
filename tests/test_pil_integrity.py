@@ -7,6 +7,7 @@ Integrity tests for Physics-in-the-Loop (PIL) closed-loop evaluation:
 
 from __future__ import annotations
 
+import pytest
 import torch
 
 from experiments.benchmark_mppi_control import (
@@ -15,6 +16,7 @@ from experiments.benchmark_mppi_control import (
     _DeepGRUPredictorAdapter,
     _RSSMDecoderAdapter,
     _RSSMPredictorAdapter,
+    _compute_residual_handover_weight,
     run_episode,
 )
 from spwm.contracts.config import ExperimentConfig, MPPIConfig
@@ -215,3 +217,84 @@ def test_baselines_receive_online_observations_in_pil(monkeypatch):
     )
     assert calls_gru == 0
     assert ep_gru_ol.handover_weights_phi1 == [0.0] * 8
+
+
+def test_baselines_residual_gated_handover_in_pil(monkeypatch):
+    """Verify RSSM and Deep GRU apply the identical FK residual gate vs ungated and open_loop modes."""
+    device = torch.device("cpu")
+    cfg = ExperimentConfig(
+        mppi=MPPIConfig(num_samples=8, horizon=4, num_iterations=1),
+    )
+    fk = DifferentiableForwardKinematics().to(device)
+    events, q_gt, p_gt, actions, flags = _make_synthetic_episode(t_seq=35, t_c=22)
+
+    rssm = ContinuousRSSM().to(device)
+    rssm.eval()
+    p_rssm = _RSSMPredictorAdapter(rssm)
+    d_rssm = _RSSMDecoderAdapter(rssm)
+    wrapper_rssm = _BaselineModelWrapper(rssm, "rssm", p_rssm, d_rssm)
+    ctrl_rssm = LatentMPPIController(p_rssm, d_rssm, cfg.mppi, fk, device=device)
+
+    gru = DeepGRUPredictor().to(device)
+    gru.eval()
+    p_gru = _DeepGRUPredictorAdapter(gru)
+    d_gru = _DeepGRUDecoderAdapter(gru)
+    wrapper_gru = _BaselineModelWrapper(gru, "deep_gru", p_gru, d_gru)
+    ctrl_gru = LatentMPPIController(p_gru, d_gru, cfg.mppi, fk, device=device)
+
+    gate_calls = 0
+    orig_gate = _compute_residual_handover_weight
+
+    def spy_gate(fk_arg, decoder_arg, z_pred, z_obs, target_final_mat, t, t_c, dist_threshold=0.026):
+        nonlocal gate_calls
+        gate_calls += 1
+        return orig_gate(fk_arg, decoder_arg, z_pred, z_obs, target_final_mat, t, t_c, dist_threshold=dist_threshold)
+
+    monkeypatch.setattr("experiments.benchmark_mppi_control._compute_residual_handover_weight", spy_gate)
+
+    ep_rssm_rg = run_episode(
+        model=wrapper_rssm, controller=ctrl_rssm, fk=fk, events=events, q_gt=q_gt,
+        phase_flags=flags, traj_id=2, payload_mass=2.5, payload_shape="Box",
+        device=device, actions=actions, approach_window=10, p_gt=p_gt,
+        physics_in_loop=True, baseline_handover_mode="residual_gated",
+    )
+    assert gate_calls == 8
+    assert all(0.0 <= w <= 0.85 for w in ep_rssm_rg.handover_weights_phi1)
+
+    gate_calls = 0
+    ep_gru_rg = run_episode(
+        model=wrapper_gru, controller=ctrl_gru, fk=fk, events=events, q_gt=q_gt,
+        phase_flags=flags, traj_id=3, payload_mass=2.5, payload_shape="Box",
+        device=device, actions=actions, approach_window=10, p_gt=p_gt,
+        physics_in_loop=True, baseline_handover_mode="residual_gated",
+    )
+    assert gate_calls == 8
+    assert all(0.0 <= w <= 0.85 for w in ep_gru_rg.handover_weights_phi1)
+
+    # Ungated mode forces w_t = 1.0 without invoking the residual gate
+    gate_calls = 0
+    ep_rssm_ug = run_episode(
+        model=wrapper_rssm, controller=ctrl_rssm, fk=fk, events=events, q_gt=q_gt,
+        phase_flags=flags, traj_id=2, payload_mass=2.5, payload_shape="Box",
+        device=device, actions=actions, approach_window=10, p_gt=p_gt,
+        physics_in_loop=True, baseline_handover_mode="ungated",
+    )
+    assert gate_calls == 0
+    assert ep_rssm_ug.handover_weights_phi1 == [1.0] * 8
+
+    # Open-loop baseline mode keeps w_t = 0.0
+    ep_gru_ol_mode = run_episode(
+        model=wrapper_gru, controller=ctrl_gru, fk=fk, events=events, q_gt=q_gt,
+        phase_flags=flags, traj_id=3, payload_mass=2.5, payload_shape="Box",
+        device=device, actions=actions, approach_window=10, p_gt=p_gt,
+        physics_in_loop=True, baseline_handover_mode="open_loop",
+    )
+    assert ep_gru_ol_mode.handover_weights_phi1 == [0.0] * 8
+
+    with pytest.raises(ValueError):
+        run_episode(
+            model=wrapper_rssm, controller=ctrl_rssm, fk=fk, events=events, q_gt=q_gt,
+            phase_flags=flags, traj_id=2, payload_mass=2.5, payload_shape="Box",
+            device=device, actions=actions, approach_window=10, p_gt=p_gt,
+            physics_in_loop=True, baseline_handover_mode="invalid_mode",
+        )

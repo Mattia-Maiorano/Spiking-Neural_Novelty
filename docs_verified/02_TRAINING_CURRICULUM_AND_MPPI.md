@@ -49,7 +49,7 @@ Implemented in [M1PhaseStrategy](file:///Users/Mattia/Desktop/Studies/Temp/spwm/
 ## 3. Open-Loop Soft-Fade vs. Closed-Loop Residual Handover
 
 1. **Open-Loop Rollout Soft-Fade ([rollout.py](file:///Users/Mattia/Desktop/Studies/Temp/spwm/models/rollout.py#L208-L277)):** During `phase_flags == 1`, `rollout_latent` blends $\mathbf{z}_{t+1} = (1 - w_t)\mathbf{z}_{\text{pred}} + w_t \mathbf{z}_{\text{grounded}}$ where $w_t = \operatorname{clamp}(g_{\text{steps}} / 4, 0, 1) \cdot w_{\max}$ ($w_{\max} = 0.60$, reaching `0.15 -> 0.30 -> 0.45 -> 0.60` only while `act_val > activity_threshold` in `dynamics.py:192-195`). Upon entering `phase_flags == 2`, `fade_counter == 1` applies $0.50\,w_{\max} = 0.30$, then drops to `0.00`.
-2. **Closed-Loop PIL Residual-Gated Handover ([benchmark_mppi_control.py](file:///Users/Mattia/Desktop/Studies/Temp/experiments/benchmark_mppi_control.py#L234-L256,L423-L445), [mppi_scorer.py](file:///Users/Mattia/Desktop/Studies/Temp/spwm/evaluation/mppi_scorer.py#L381-L394)):** During $\phi_t = 1$, causal `OnlineEventCameraStream` produces $\mathbf{z}_{\text{obs}}$ via `step_grounded`. Decoded SE(3) errors `dist_pred`, `dist_obs`, `rot_obs` against `target_final_mat` govern $w_t$:
+2. **Closed-Loop PIL Residual-Gated Handover ([benchmark_mppi_control.py](file:///Users/Mattia/Desktop/Studies/Temp/experiments/benchmark_mppi_control.py#L234-L256,L415-L455), [mppi_scorer.py](file:///Users/Mattia/Desktop/Studies/Temp/spwm/evaluation/mppi_scorer.py#L381-L394)):** During $\phi_t = 1$, causal `OnlineEventCameraStream` produces $\mathbf{z}_{\text{obs}}$ via `step_grounded` (for `SPWM` / `ANN-Rate`) or `step_online` (for `ContinuousRSSM` / `DeepGRUPredictor`). Under the shared residual-gated regime (`--baseline-handover-mode residual_gated`, default), decoded SE(3) errors `dist_pred`, `dist_obs`, `rot_obs` against `target_final_mat` govern $w_t$ identically across all architectures:
    * If `dist_pred > tau` (`0.026 m` default; passed via `--handover-dist-threshold`, while `mppi_scorer.py:388` hardcodes `0.026`) **and** `dist_obs < 0.025 m` **and** `rot_obs < 0.049 rad`: $w_t = 0.85$.
    * Else if `dist_obs < dist_pred` and `t <= t_c + 2` (where $t_c = \texttt{p1\_indices[0]} = t_{\text{contact}} - 7$ is the $\phi_t=1$ sensory-window onset and $t_{\text{grasp}} = t_c + 7 = t_{\text{contact}}$): $w_t = 0.40 \cdot \operatorname{clip}((\text{dist\_pred} - 0.032)/0.04,\, 0,\, 1)$.
    * Otherwise: $w_t = 0.00$ (rejecting corrupted post-$t_c$ (post-attachment) event bursts where `dist_obs` is `0.16–0.22 m` while `M1` remains within `1.39–1.74 cm` median).
@@ -79,7 +79,7 @@ Implemented in [M1PhaseStrategy](file:///Users/Mattia/Desktop/Studies/Temp/spwm/
   --config results/spwm_v0_12_4_train_representation/config.yaml \
   --mode train_representation --epochs 160 --output-dir results/spwm_v0_12_4_train_representation
 
-# 2. Phase 1: Action-Conditioned Attractor M1 (240 epochs, canonical Seed 42)
+# 2. Phase 1: Action-Conditioned Attractor M1 (240 epochs, Seed 42)
 .venv/bin/python experiments/train.py \
   --config results/spwm_v0_12_4_train_m1/config.yaml \
   --mode train_m1 --epochs 240 --weighted-sampling \
@@ -93,14 +93,19 @@ Implemented in [M1PhaseStrategy](file:///Users/Mattia/Desktop/Studies/Temp/spwm/
 # 4. Parameter-Matched ANN-Rate Ablation (per seed, 160 rep + 240 M1 epochs)
 .venv/bin/python experiments/train_ann_ablation.py --seed 42 --output-dir results/ann_ablation
 
-# 5. Continuous Recurrent Baselines (60 epochs, Seeds 42, 101, 2024)
+# 5. Equalized Continuous Recurrent Baselines (Multi-Step SE(3) + AR(1) + ClosedLoopBuffer DAgger)
 .venv/bin/python experiments/train_baselines.py \
-  --epochs 60 --total-trajectories 4000 --lr 3e-4 --seed 42 --output-dir results/baselines
+  --config results/spwm_v0_12_4_train_m1/config.yaml \
+  --checkpoint results/spwm_v0_12_4_train_m1/model.pt \
+  --m1-metrics results/spwm_v0_12_4_train_m1/metrics_spwm_v0_12_4.json \
+  --models deep_gru --seed 101 --epochs 80 --patience 20 --lr 3e-4 \
+  --enable-dagger-ar1 --ar1-warmup-epochs 10 --ar1-ramp-epochs 20 --ar1-target-alpha 0.25 \
+  --dagger-start-epoch 15 --dagger-frequency 5 --device mps --output-dir results/multiseed_rssm/seed_101
 ```
 
 ---
 
-## 6. Baselines & Online Observation Update Specifications
+## 6. Baselines & Three PIL Operating Regimes
 
 1. **Reactive Behavior Cloning (`ReactiveBCPolicy`, `322,210` params; [benchmark_classical_and_bc.py](file:///Users/Mattia/Desktop/Studies/Temp/experiments/benchmark_classical_and_bc.py#L44-L105,L295-L373)):**
    * **Architecture:** Dual-stream `EventEncoder` (`15,904` params, `4x32x32 -> 128`) + `GRUCell(134, 242)` (`274,428` params on `[enc_out, prev_action]`) + `MLP(242 -> 128 -> SiLU -> 6 -> Tanh)` (`31,878` params).
@@ -108,7 +113,12 @@ Implemented in [M1PhaseStrategy](file:///Users/Mattia/Desktop/Studies/Temp/spwm/
 2. **Privileged State-Oracle Jacobian-IK + PD (`mode == "fixed_pd"`; [benchmark_classical_and_bc.py](file:///Users/Mattia/Desktop/Studies/Temp/experiments/benchmark_classical_and_bc.py#L108-L138,L231-L242)):**
    * Reads `q_curr = stepper.q` directly without vision (`OnlineEventCameraStream` is never called) and uses oracle `t_c` for `payload_attached = (t >= t_c)`.
    * Computes 6D SE(3) error `[p_err, 0.35 * rot_err]` via `fk.forward_homogeneous(q_curr)`, autograd Jacobian $J \in \mathbb{R}^{6 \times 6}$, and Levenberg–Marquardt update $dq = J^\top(JJ^\top + \lambda^2 I_6)^{-1}\text{err}_{6\text{d}}$ ($\lambda = 0.05$, $\lambda^2 = 0.0025$), setting $q_{\text{des}} = \operatorname{clamp}(q_{\text{curr}} + 0.65\,dq, -3.14, 3.14)$ and $\dot{q}_{\text{des}} = \mathbf{0}$ with fixed gains `kp = 18.0`, `kd = 0.80` calibrated to `mean_calib_mass = 2.85 kg`.
-3. **Online Observation Updates During $\phi_t = 1$ (`ContinuousRSSM` & `DeepGRUPredictor`; [benchmark_mppi_control.py](file:///Users/Mattia/Desktop/Studies/Temp/experiments/benchmark_mppi_control.py#L160-L193,L415-L422)):**
-   * Unlike `SPWM` and `ANN-Rate` (which use `_compute_residual_handover_weight` to gate `(1 - w_t)*z_pred + w_t*z_obs`), `ContinuousRSSM` and `DeepGRUPredictor` perform an unconditional hard replacement **`curr_z = z_obs`** ($w_t = 1.0$) during `phase_flags[t] == 1` using `ev_online` and `u_pd_t`:
+3. **Equalized Baseline Training & 3 PIL Operating Regimes (`ContinuousRSSM` & `DeepGRUPredictor`; [train_baselines.py](file:///Users/Mattia/Desktop/Studies/Temp/experiments/train_baselines.py), [benchmark_mppi_control.py](file:///Users/Mattia/Desktop/Studies/Temp/experiments/benchmark_mppi_control.py#L160-L193,L415-L445)):**
+   * **Equalized AR(1) + DAgger Training (`--enable-dagger-ar1`):** Perturbs 80-step rollout actions with MPPI-matched `sample_ar1_noise` ($\beta=0.90$, $\sigma=0.08$, shoulder `1.6x`, elbow `1.4x`, ramped $\alpha \to 0.25$), collects `N=6` stratified validation MPPI trajectories every `5` epochs into a 3-generation FIFO `ClosedLoopBuffer`, and mixes BPTT replay (`dagger_ratio` `0.10 -> 0.50`) alongside teacher-forcing + 80-step SE(3) rollout supervision.
+   * **Causal Candidate Update (`step_online`) During $\phi_t = 1$:**
      * **`ContinuousRSSM`:** `h_next = gru_cell([s, u_pd_t], h)`, `e_step, _ = encoder(ev_online)`, `post_mu, _ = _get_stats(posterior_net([h_next, e_step]))`, `z_obs = [h_next, post_mu]`.
      * **`DeepGRUPredictor`:** `e_step, _ = encoder(ev_online)`, `h1_next = gru1([e_step, u_pd_t], h1)`, `h2_next = gru2(h1_next, h2)`, `z_obs = [h1_next, h2_next]`.
+   * **Three Evaluated PIL Operating Regimes (`--baseline-handover-mode`):**
+     * **`open_loop` (`--disable-handover`, $w_t \equiv 0$):** Evolves strictly via prior/feedback dynamics without online `ev_online` updates.
+     * **`ungated` (`--baseline-handover-mode ungated`, $w_t \equiv 1.0$):** Forces unconditional replacement `curr_z = z_obs` on every $\phi_t=1$ step.
+     * **`residual_gated` (`--baseline-handover-mode residual_gated`, default):** Applies `_compute_residual_handover_weight(fk, physical_decoder, z_pred, z_obs, target_final_mat, t, t_c)` identically to `SPWM` and `ANN-Rate` (`curr_z = (1 - w_t)*z_pred + w_t*z_obs`).

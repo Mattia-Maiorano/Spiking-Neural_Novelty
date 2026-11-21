@@ -1,0 +1,14 @@
+{
+  "model_name": "Deep GRU",
+  "seed": 42,
+  "device": "mps",
+  "enable_dagger_ar1": true,
+  "base_epochs": 59,
+  "ar1_dagger_epochs": 40,
+  "total_epochs": 99,
+  "best_epoch": 90,
+  "best_val_loss": 0.5676361459952134,
+  "wall_clock_sec": 2026.1408703329507,
+  "ar1_target_alpha": 0.25,
+  "dagger_generations_collected": 8
+}

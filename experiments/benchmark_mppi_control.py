@@ -241,7 +241,7 @@ def _compute_residual_handover_weight(
     t_c: int,
     dist_threshold: float = 0.026,
 ) -> float:
-    """Shared causal residual-gated handover rule for SPWM and ANN-Rate during phi_t == 1."""
+    """Shared causal residual-gated handover rule for SPWM, ANN-Rate, RSSM, and Deep GRU during phi_t == 1."""
     dec_pred = physical_decoder(z_pred)
     ee_pred_now = fk(dec_pred[:, :6])[0].detach()
     dist_pred = float(torch.norm(ee_pred_now - target_final_mat[:3, 3]).item())
@@ -294,8 +294,14 @@ def run_episode(
     physics_in_loop: bool = False,
     physics_damping_scale: float = 1.0,
     handover_dist_threshold: float = 0.026,
+    baseline_handover_mode: str = "residual_gated",
 ) -> EpisodeResult:
     """Executes closed-loop latent MPPI reaching on a single test trajectory."""
+    if baseline_handover_mode not in ("open_loop", "ungated", "residual_gated"):
+        raise ValueError(
+            f"Unsupported baseline_handover_mode={baseline_handover_mode!r}; "
+            "expected 'open_loop', 'ungated', or 'residual_gated'."
+        )
     p1_indices = (phase_flags == 1).nonzero()
     t_c = int(p1_indices[0].item()) if len(p1_indices) > 0 else 50
     t_grasp = min(t_c + 7, q_gt.shape[0] - 1)
@@ -412,10 +418,24 @@ def run_episode(
                             if int(phase_flags[t].item()) == 1:
                                 handover_weights_phi1.append(0.0)
                             curr_z = z_pred
-                    elif use_handover and int(phase_flags[t].item()) == 1:
+                    elif use_handover and baseline_handover_mode != "open_loop" and int(phase_flags[t].item()) == 1:
                         z_obs, dyn_state = model.step_online(ev_online, u_pd_t, curr_z, dyn_state)
-                        handover_weights_phi1.append(1.0)
-                        curr_z = z_obs
+                        if baseline_handover_mode == "ungated":
+                            handover_weights_phi1.append(1.0)
+                            curr_z = z_obs
+                        else:
+                            w_t = _compute_residual_handover_weight(
+                                fk,
+                                model.physical_decoder,
+                                z_pred,
+                                z_obs,
+                                target_final_mat,
+                                t,
+                                t_c,
+                                dist_threshold=handover_dist_threshold,
+                            )
+                            handover_weights_phi1.append(float(w_t))
+                            curr_z = (1.0 - w_t) * z_pred + w_t * z_obs
                     else:
                         if int(phase_flags[t].item()) == 1:
                             handover_weights_phi1.append(0.0)
@@ -696,6 +716,16 @@ def main() -> None:
         default=0.026,
         help="Residual handover distance trigger threshold d_pred > tau (m, default: 0.026).",
     )
+    parser.add_argument(
+        "--baseline-handover-mode",
+        type=str,
+        default="residual_gated",
+        choices=("open_loop", "ungated", "residual_gated"),
+        help=(
+            "Online sensory handover regime for RSSM/Deep GRU during phi_t == 1 in PIL: "
+            "'open_loop' (w_t=0), 'ungated' (w_t=1.0), or 'residual_gated' (shared FK gate)."
+        ),
+    )
     args = parser.parse_args()
 
     cfg = ExperimentConfig.load(args.config)
@@ -835,6 +865,7 @@ def main() -> None:
             use_lookahead=not args.disable_lookahead,
             physics_in_loop=args.physics_in_loop,
             handover_dist_threshold=args.handover_dist_threshold,
+            baseline_handover_mode=args.baseline_handover_mode,
         )
         results.append(ep_res)
 
@@ -900,9 +931,11 @@ def main() -> None:
             }
 
     handover_telemetry = summarize_handover_telemetry(results)
+    effective_baseline_mode = "open_loop" if args.disable_handover else args.baseline_handover_mode
     summary = {
         "benchmark_name": f"{args.model_label} Closed-Loop Latent MPPI Control Benchmark",
         "evaluation_protocol": "physics_in_loop" if args.physics_in_loop else "latent_grounded",
+        "baseline_handover_mode": effective_baseline_mode,
         "split": args.split,
         "handover_dist_threshold": float(args.handover_dist_threshold),
         "checkpoint": str(args.checkpoint),

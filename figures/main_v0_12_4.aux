@@ -1,103 +1,50 @@
 \relax 
-\citation{hafner2019dreamer,hafner2025dreamerv3}
-\citation{cho2014learning}
-\citation{shi2015convolutional}
-\@writefile{toc}{\contentsline {section}{\numberline {1}Introduction}{1}{}\protected@file@percent }
-\citation{gallego2020event}
-\citation{maass1997networks}
-\citation{finn2016spatial}
-\citation{bellec2018long,bellec2020solution}
-\citation{orchard2021loihi2}
-\citation{ha2018world}
-\citation{hafner2019dreamer,hafner2025dreamerv3}
-\citation{cho2014learning}
-\citation{wu2023daydreamer}
-\citation{bengio2015scheduled}
-\citation{greydanus2019hamiltonian,zhong2020symplectic}
-\citation{gallego2020event}
-\citation{maass1997networks}
-\citation{orchard2021loihi2}
-\citation{sanket2020evdodge}
-\citation{tieck2018controlling}
-\citation{neftci2019surrogate}
-\citation{bellec2020solution}
-\citation{sun2025spikingwm}
-\@writefile{toc}{\contentsline {section}{\numberline {2}Related Work}{3}{}\protected@file@percent }
-\@writefile{toc}{\contentsline {subsection}{\numberline {2.1}World Models in Robotics}{3}{}\protected@file@percent }
-\citation{williams2016aggressive}
-\citation{todorov2012mujoco}
-\citation{hafner2019learning,hansen2024tdmpc2}
-\citation{finn2016spatial}
-\@writefile{toc}{\contentsline {subsection}{\numberline {2.2}Neuromorphic Visuomotor Control}{4}{}\protected@file@percent }
-\@writefile{toc}{\contentsline {subsection}{\numberline {2.3}Latent Sampling-based Planning}{4}{}\protected@file@percent }
-\@writefile{toc}{\contentsline {section}{\numberline {3}Methodology: SPWM}{4}{}\protected@file@percent }
-\@writefile{toc}{\contentsline {subsection}{\numberline {3.1}Continuous-Time Latent POMDP and Dual-Camera Neuromorphic Encoding}{4}{}\protected@file@percent }
-\citation{bellec2020solution}
-\@writefile{lof}{\contentsline {figure}{\numberline {1}{\ignorespaces \textbf  {End-to-End SPWM Architecture.} Four-stage dataflow: (1) \textit  {Perceptual Bottleneck}: Dual event-camera streams $\mathbf  {E}_t \in \{0, 1\}^{B \times 4 \times 32 \times 32}$ processed via Conv2D + residual wrist fusion ($\mathbf  {F}_t \in \mathbb  {R}^{B \times 16 \times 8 \times 8}$) and SpatialSoftmax ($\tau = 1.0$) extracting topological keypoints $\mathbf  {k}_t \in [-1, 1]^{32}$ and visual embedding $\mathbf  {x}_t \in \mathbb  {R}^{128}$ ($15{,}904$ params); (2) \textit  {Recurrent Spiking Dynamics}: Predictive coding error $\boldsymbol  {\epsilon }_t = \mathbf  {x}_t - \mathbf  {W}_{\text  {sens}}\mathbf  {z}_{t-1}$ ($16{,}384$ params) and motor action $\mathbf  {u}_t$ driving a two-tier ALIF core ($N=256$, reactive pool $\beta _1=0.90$ and deep pool $\beta _2=0.985$) with firing-rate homeostasis, producing spikes $\mathbf  {s}_t \in \{0,1\}^{256}$ and membrane states $\mathbf  {V}_t \in \mathbb  {R}^{256}$; (3) \textit  {Phase-Space Partitioning}: LayerNorm fusion into $\mathbf  {p}_{t} \in \mathbb  {R}^{96}$ and direct velocity slicing $\mathbf  {v}_p = \mathbf  {p}_{t}[..., :32]$ into $\mathbf  {q}_{t} \in \mathbb  {R}^{32}$ regulated by the Anti-Evanescence Stasis Gate $K_{\text  {gate}}$ ($117{,}312$ active params); (4) \textit  {Predictor \& Decoder}: Action-conditioned dissipative surrogate $M_1$ ($158{,}944$ params) and zero-lag kinematic decoder ($9{,}356$ params) feeding Differentiable Forward Kinematics (FK) and Residual-Gated Sensory Handover (Eq.~\ref {eq:handover}).}}{5}{}\protected@file@percent }
-\newlabel{fig:architecture}{{1}{5}{}{figure.1}{}}
-\@writefile{toc}{\contentsline {subsection}{\numberline {3.2}Recurrent Spiking Dynamics and Anti-Evanescence Stasis Gating}{5}{}\protected@file@percent }
-\@writefile{toc}{\contentsline {subsection}{\numberline {3.3}Dissipative Attractor Surrogate ($M_1$) and Residual-Gated Latent MPPI}{6}{}\protected@file@percent }
-\newlabel{eq:mppi_cost}{{7}{7}{}{equation.7}{}}
-\newlabel{eq:handover}{{8}{7}{}{equation.8}{}}
-\@writefile{toc}{\contentsline {subsection}{\numberline {3.4}Decoupled Two-Phase Curriculum}{7}{}\protected@file@percent }
-\@writefile{toc}{\contentsline {section}{\numberline {4}Experimental Setup}{8}{}\protected@file@percent }
-\@writefile{lot}{\contentsline {table}{\numberline {1}{\ignorespaces \textbf  {Multi-Horizon Open-Loop Rollout ($N=400$ Test Trajectories `[3600, 3999]`, $H=100$, $t_{\text  {start}}=4$).} Symmetric Position ($\text  {rad}^2$) and Velocity ($\text  {rad}^2/\text  {s}^2$) MSE across horizons $H \in \{1, 10, 50, 100\}$. Mean $\pm $ seed std across 3 seeds ($42, 101, 2024$) for SPWM ($160+240$ ep on Seeds 42/101; $160+260$ ep on Seed 2024, best checkpoint at Ep 130), \texttt  {ANN-Rate} ($160+240$ ep), and Continuous RSSM (60 end-to-end epochs/seed); Seed 42 for Deep GRU (59 ep) and Continuous ConvLSTM (54 ep).}}{9}{}\protected@file@percent }
-\newlabel{tab:open_loop_rollout}{{1}{9}{}{table.1}{}}
-\@writefile{toc}{\contentsline {section}{\numberline {5}Results and Analysis}{9}{}\protected@file@percent }
-\@writefile{toc}{\contentsline {subsection}{\numberline {5.1}Multi-Horizon Open-Loop Rollout Stability}{9}{}\protected@file@percent }
-\@writefile{toc}{\contentsline {subsection}{\numberline {5.2}Closed-Loop Physics-in-the-Loop Control \& Forensic Failure Analysis}{9}{}\protected@file@percent }
-\@writefile{lof}{\contentsline {figure}{\numberline {2}{\ignorespaces \textbf  {Multi-Horizon Rollout: Open-Loop vs.\ Phasic Handover ($N=400$, $H=100$).} Decoded joint-space L2 error $\|\hat  {\mathbf  {q}}_h - \mathbf  {q}^*_h\|_2$ (mean $\pm $ IQR) across 400 unseen test trajectories at $12.27\%$ measured ALIF spike rate. SPWM Pure Open-Loop ($0.1115\,\text  {rad}$ mean; $0.0899\,\text  {rad}$ at $h=80$, $0.1116\,\text  {rad}$ at $h=100$) avoids the late-horizon divergence of un-gated Phasic Sensory Handover ($0.1482\,\text  {rad}$ mean; $0.1827\,\text  {rad}$ at $h=80$).}}{10}{}\protected@file@percent }
-\newlabel{fig:rollout_handover}{{2}{10}{}{figure.2}{}}
-\@writefile{lof}{\contentsline {figure}{\numberline {3}{\ignorespaces \textbf  {Closed-Loop Latent MPPI 50-Episode PIL Benchmark (SPWM Seed 42, $86.0\%$ Overall).} (a) Stratification across elevation planes ($86.4\%$ Low, $77.8\%$ Mid, $100.0\%$ High), with Grasp Success Rate (\%) and Min Placement Error (cm); (b) Minimum placement error vs.\ payload mass ($0.86 \pm 0.80\,\text  {cm}$ overall; $82.4\%$ Light, $100.0\%$ Medium, $75.0\%$ Heavy); (c) Inference latency distribution ($36.7\,\text  {ms}$ under 2-thread CPU limit; $23.3\,\text  {ms}$ unthrottled).}}{10}{}\protected@file@percent }
-\newlabel{fig:mppi_bench}{{3}{10}{}{figure.3}{}}
-\@writefile{toc}{\contentsline {subsection}{\numberline {5.3}Disentangled 5-Stage Architectural Ablation \& Handover Gate Verification}{10}{}\protected@file@percent }
-\@writefile{lot}{\contentsline {table}{\numberline {2}{\ignorespaces \textbf  {Closed-Loop Physics-in-the-Loop (PIL) Manipulation Benchmark (`50` Test Episodes `[3600, 3649]`, Payload Attached at Sensory-Window Onset $t \ge t_c$, $t_{\text  {grasp}} = t_c + 7$).} Continuous recurrent baselines (RSSM, Deep GRU) are reported under \textit  {both} Open-Loop PIL (no sensory overwrite during $\phi _t=1$) and Online Observation Update during $\phi _t=1$. SPWM is reported under $N=6$ Tier-2 checkpoint selection, expanded $N=25$ validation-split (`[3200, 3224]`) selection, and Canonical Seed 42. $^*$Unthrottled CPU latency (from \texttt  {multiseed\_metrics.json} / \texttt  {physics\_in\_loop/spwm/}); primary values for SPWM, Open-Loop RSSM, and Open-Loop Deep GRU reflect 2-thread \texttt  {OMP\_NUM\_THREADS=2} evaluation, while Online RSSM, Online Seed-42 Deep GRU, \texttt  {ANN-Rate}, and Oracle PD / Reactive BC ran unthrottled ($^\dagger $mixed unthrottled Seed 42 and 2-thread Seeds 101/2024).}}{11}{}\protected@file@percent }
-\newlabel{tab:pil_control}{{2}{11}{}{table.2}{}}
-\@writefile{lot}{\contentsline {table}{\numberline {3}{\ignorespaces \textbf  {Disentangled 5-Stage SPWM Architectural Ablation in PIL (`50` Test Episodes `[3600, 3649]`, $t \ge t_c$).} Stage 4a isolates \texttt  {+ 2-Stage SE(3) Lookahead} with Residual Handover disabled ($w_t \equiv 0$); Stage 4b enables both.}}{11}{}\protected@file@percent }
-\newlabel{tab:spwm_ablation}{{3}{11}{}{table.3}{}}
-\@writefile{toc}{\contentsline {subsection}{\numberline {5.4}Zero-Shot Sim-to-Real PIL Robustness Stress Test}{11}{}\protected@file@percent }
-\citation{orchard2021loihi2}
-\@writefile{lof}{\contentsline {figure}{\numberline {4}{\ignorespaces \textbf  {Post-Contact Heft Shock Timeseries Around Sensory-Window Onset $t_c = t_{\text  {contact}} - 7$.} While Continuous RSSM reaches $\le 3\,\text  {cm}$ prior to $t_c$ ($3.13\,\text  {cm}$ mean at $t_c$), payload engagement at $t \ge t_c$ and un-gated online sensory updates trigger severe divergence across the 7-step loaded transition through $t_{\text  {grasp}} = t_c + 7 = t_{\text  {contact}}$ ($23.06\,\text  {cm}$ at $t_c+7$, velocity $7.41\,\text  {rad/s}$), whereas SPWM dampens the impulse to $1.57\,\text  {cm}$ ($0.33\,\text  {rad/s}$).}}{12}{}\protected@file@percent }
-\newlabel{fig:heft_shock}{{4}{12}{}{figure.4}{}}
-\@writefile{toc}{\contentsline {subsection}{\numberline {5.5}Neuromorphic Core vs.\ Full-System Energy Efficiency}{12}{}\protected@file@percent }
-\@writefile{lot}{\contentsline {table}{\numberline {4}{\ignorespaces \textbf  {Zero-Shot Physical \& Sensory Robustness Stress Test in PIL (`50` Test Episodes `[3600, 3649]`, $t \ge t_c$, evaluating $N=6$ Tier-2 selected checkpoints).} Symmetric 3-seed comparison ($42, 101, 2024$) of frozen SPWM vs.\ parameter-matched \texttt  {ANN-Rate}, alongside Canonical Seed 42 and SPWM $\phi _t=1$ step handover activation ($w_t > 0$).}}{13}{}\protected@file@percent }
-\newlabel{tab:pil_robustness}{{4}{13}{}{table.4}{}}
-\@writefile{lof}{\contentsline {figure}{\numberline {5}{\ignorespaces \textbf  {Zero-Shot PIL Robustness Matrix (50 Test Episodes `[3600, 3649]`, Seed 42).} Closed-loop PIL grasp success rate and placement errors across nominal ($86.0\%$, $0.86\,\text  {cm}$ min, $1.57\,\text  {cm}$ term), $1.0\%$ sensory noise ($72.0\%$, $1.86\,\text  {cm}$), $4.80\,\text  {kg}$ payload extrapolation ($78.0\%$, $1.78\,\text  {cm}$), $0.80\times $ friction ($70.0\%$, $2.07\,\text  {cm}$), and $1.20\times $ friction ($76.0\%$, $1.97\,\text  {cm}$).}}{13}{}\protected@file@percent }
-\newlabel{fig:robustness}{{5}{13}{}{figure.5}{}}
-\@writefile{toc}{\contentsline {section}{\numberline {6}Conclusion and Limitations}{13}{}\protected@file@percent }
-\@writefile{lot}{\contentsline {table}{\numberline {5}{\ignorespaces \textbf  {Recurrent State-Estimator Core vs.\ Full End-to-End Closed-Loop Step Energy.} Recurrent core compares Loihi-2 SOPs ($1.5\,\text  {pJ/SOP}$, 3-seed SPWM spike rate $12.15 \pm 0.19\%$; Seed 42: $12.27\%$, $8{,}229$ SOPs, $12.34\,\text  {nJ/step}$) against Jetson Orin GPU MACs ($0.9\,\text  {pJ/MAC}$). End-to-end energy includes the shared encoder ($882{,}688$ MACs, $794.4\,\text  {nJ}$) and $7{,}680$ batched MPPI rollouts.}}{14}{}\protected@file@percent }
-\newlabel{tab:energy_audit}{{5}{14}{}{table.5}{}}
-\@writefile{lof}{\contentsline {figure}{\numberline {6}{\ignorespaces \textbf  {Recurrent Core vs.\ Full-System Closed-Loop Energy.} (a) Recurrent state-estimator core step energy (log scale): Intel Loihi-2 SOP execution ($12.34\,\text  {nJ/step}$ on Seed 42; $12.22 \pm 0.19\,\text  {nJ/step}$ 3-seed mean) achieves a $4.9\times $ reduction over dense Orin GPU MACs ($60.36\,\text  {nJ/step}$). (b) Full end-to-end closed-loop step energy including perceptual encoder and $7{,}680$ batched MPPI rollouts on Jetson Orin ($1.098\,\text  {mJ/step}$ for SPWM).}}{14}{}\protected@file@percent }
-\newlabel{fig:energy}{{6}{14}{}{figure.6}{}}
-\bibstyle{corlabbrvnat}
-\bibdata{main}
-\bibcite{hafner2019dreamer}{{1}{2019}{{Hafner et~al.}}{{Hafner, Lillicrap, Ba, and Norouzi}}}
-\bibcite{hafner2025dreamerv3}{{2}{2023}{{Hafner et~al.}}{{Hafner, Pasukonis, Ba, and Lillicrap}}}
-\bibcite{cho2014learning}{{3}{2014}{{Cho et~al.}}{{Cho, van Merrienboer, Gulcehre, Bahdanau, Bougares, Schwenk, and Bengio}}}
-\bibcite{shi2015convolutional}{{4}{2015}{{Shi et~al.}}{{Shi, Chen, Wang, Yeung, Wong, and Woo}}}
-\bibcite{gallego2020event}{{5}{2020}{{Gallego et~al.}}{{Gallego, Delbr{\"u}ck, Orchard, Bartolozzi, Taba, Censi, Leutenegger, Catalini, and Scaramuzza}}}
-\bibcite{maass1997networks}{{6}{1997}{{Maass}}{{}}}
-\bibcite{finn2016spatial}{{7}{2016}{{Finn et~al.}}{{Finn, Tan, Duan, Darrell, and Levine}}}
-\bibcite{bellec2018long}{{8}{2018}{{Bellec et~al.}}{{Bellec, Salaj, Subramoney, Legenstein, and Maass}}}
-\bibcite{bellec2020solution}{{9}{2020}{{Bellec et~al.}}{{Bellec, Scherr, Subramoney, Hajek, Salaj, Legenstein, and Maass}}}
-\bibcite{orchard2021loihi2}{{10}{2021}{{Orchard et~al.}}{{Orchard, Frady, Rubin, Sanborn, Shrestha, Sommer, and Davies}}}
-\bibcite{ha2018world}{{11}{2018}{{Ha and Schmidhuber}}{{}}}
-\bibcite{wu2023daydreamer}{{12}{2023}{{Wu et~al.}}{{Wu, Escontrela, Hafner, Goldberg, and Abbeel}}}
-\bibcite{bengio2015scheduled}{{13}{2015}{{Bengio et~al.}}{{Bengio, Vinyals, Jaitly, and Shazeer}}}
-\bibcite{greydanus2019hamiltonian}{{14}{2019}{{Greydanus et~al.}}{{Greydanus, Dzamba, and Yosinski}}}
-\bibcite{zhong2020symplectic}{{15}{2020}{{Zhong et~al.}}{{Zhong, Dey, and Chakraborty}}}
-\bibcite{sanket2020evdodge}{{16}{2020}{{Sanket et~al.}}{{Sanket, Parameshwara, Singh, Kurmi, Ferm{\"u}ller, and Aloimonos}}}
-\bibcite{tieck2018controlling}{{17}{2018}{{Tieck et~al.}}{{Tieck, Steffen, Kaiser, Roennau, and Dillmann}}}
-\bibcite{neftci2019surrogate}{{18}{2019}{{Neftci et~al.}}{{Neftci, Mostafa, and Zenke}}}
-\bibcite{sun2025spikingwm}{{19}{2025}{{Sun et~al.}}{{Sun, Zhao, and Wang}}}
-\bibcite{williams2016aggressive}{{20}{2016}{{Williams et~al.}}{{Williams, Drews, Goldfain, Rehg, and Theodorou}}}
-\bibcite{todorov2012mujoco}{{21}{2012}{{Todorov et~al.}}{{Todorov, Erez, and Tassa}}}
-\bibcite{hafner2019learning}{{22}{2019}{{Hafner et~al.}}{{Hafner, Lillicrap, Fischer, Villegas, Ha, Lee, and Davidson}}}
-\bibcite{hansen2024tdmpc2}{{23}{2023}{{Hansen et~al.}}{{Hansen, Su, and Wang}}}
-\@writefile{toc}{\contentsline {section}{\numberline {A}Forensic Failure Decomposition \& Validation Selection Diagnostics}{16}{}\protected@file@percent }
-\@writefile{toc}{\contentsline {section}{\numberline {B}Latent MPPI, Architecture \& Training Hyperparameters}{16}{}\protected@file@percent }
-\@writefile{lot}{\contentsline {table}{\numberline {6}{\ignorespaces \textbf  {Forensic Failure-Mode Decomposition (50 PIL Episodes `[3600, 3649]`) \& $N=25$ Validation Checkpoint Selection (`[3200, 3224]` $\to $ `[3600, 3649]`).} Panel (a) decomposes closed-loop PIL episodes into overall reach ($\min _t e \le 3.0\,\text  {cm}$), total velocity violations ($\|\dot  {\mathbf  {q}}(t_{\text  {grasp}})\|_2 \ge \tau _{\text  {vel}}$, where $\tau _{\text  {vel}} = \max (1.5, 1.1\|\dot  {\mathbf  {q}}^*_{t_{\text  {grasp}}}\|_2)\,\text  {rad/s}$), and mutually exclusive failure modes: post-contact impulse divergence ($> 3.0\,\text  {cm}$ at $t_{\text  {grasp}} = t_c + 7$, split into \texttt  {Div + Vel} vs.\ \texttt  {Spatial}) and \texttt  {Other Fails} (reaching $\le 3\,\text  {cm}$ only post-$t_c$ then diverging, or settling within $3\,\text  {cm}$ but failing velocity/rotation gates: $1/50$ post-$t_c$ reach for Deep GRU; $7/50$ post-$t_c$ reach + $1/50$ vel-only + $6/50$ rot-only $= 14/50$ for \texttt  {ANN-Rate}; $4/50$ post-$t_c$ reach for SPWM; plus $1, 6, 2, 7, 0$, and $1$ episodes for RSSM Seeds 42/101/2024, Deep GRU, \texttt  {ANN-Rate}, and SPWM, respectively, that never reached $\le 3\,\text  {cm}$, so mutually exclusive outcomes sum to $100\%$). Panel (b) reports all 15 saved SPWM checkpoints evaluated on $N=25$ validation trajectories (`[3200, 3224]`) and the resulting test performance (`[3600, 3649]`) of $N=6$ Tier-2 vs.\ $N=25$ validation winners. Note that on Seed 42 at Ep 200, \texttt  {best\_model.pt} ($80.0\%$ val) stores EMA weights ($\tau =0.990$), whereas \texttt  {checkpoint\_phase\_3.pt} ($88.0\%$ val) stores raw un-averaged weights at the Latch Phase 3 boundary.}}{17}{}\protected@file@percent }
-\newlabel{tab:forensic_diagnostics}{{6}{17}{}{table.6}{}}
-\@writefile{lot}{\contentsline {table}{\numberline {7}{\ignorespaces \textbf  {Verified SPWM Submodule Parameter Census and Hyperparameters.} Total checkpoint parameter count ($392{,}141$) includes a $66{,}049$-parameter training-only terminal value head (\texttt  {LatentCritic}, $w_{\text  {critic}}=0.0$ at inference) and $8{,}192$ legacy \texttt  {dynamics.W\_vel.weight} parameters retained for \texttt  {strict=True} checkpoint compatibility, leaving $317{,}900$ active inference parameters.}}{17}{}\protected@file@percent }
-\newlabel{tab:hyperparams}{{7}{17}{}{table.7}{}}
-\gdef \@abspage@last{17}
+\providecommand\hyper@newdestlabel[2]{}
+\providecommand\HyField@AuxAddToFields[1]{}
+\providecommand\HyField@AuxAddToCoFields[2]{}
+\@writefile{toc}{\contentsline {section}{\numberline {1}Introduction}{2}{section.1}\protected@file@percent }
+\@writefile{toc}{\contentsline {paragraph}{Architectural Insight.}{2}{section*.1}\protected@file@percent }
+\@writefile{toc}{\contentsline {section}{\numberline {2}Related Work}{3}{section.2}\protected@file@percent }
+\@writefile{toc}{\contentsline {paragraph}{Latent World Models for Control.}{3}{section*.2}\protected@file@percent }
+\@writefile{toc}{\contentsline {paragraph}{Neuromorphic Perception and Spiking Control.}{3}{section*.3}\protected@file@percent }
+\@writefile{toc}{\contentsline {paragraph}{Latent Sampling-Based Planning.}{4}{section*.4}\protected@file@percent }
+\@writefile{toc}{\contentsline {section}{\numberline {3}Methodology: Spiking Predictive World Model (SPWM)}{4}{section.3}\protected@file@percent }
+\@writefile{toc}{\contentsline {subsection}{\numberline {3.1}Hybrid Decoupled Phase-Space Architecture \& Dual-Camera Fusion}{4}{subsection.3.1}\protected@file@percent }
+\@writefile{toc}{\contentsline {subsection}{\numberline {3.2}Dual-Timescale ALIF Estimator \& Anti-Evanescence Stasis Gate}{4}{subsection.3.2}\protected@file@percent }
+\@writefile{toc}{\contentsline {paragraph}{Solving the Event-Stasis Paradox.}{5}{section*.5}\protected@file@percent }
+\@writefile{toc}{\contentsline {subsection}{\numberline {3.3}Dissipative Attractor Surrogate ($M_1$) vs.\ Conservative Priors}{5}{subsection.3.3}\protected@file@percent }
+\@writefile{toc}{\contentsline {subsection}{\numberline {3.4}Decoupled 2-Phase / 4-Latch Training Curriculum}{6}{subsection.3.4}\protected@file@percent }
+\@writefile{toc}{\contentsline {subsection}{\numberline {3.5}Smooth Latent MPPI, 2-Stage $\text  {SE}(3)$ Lookahead \& Quality-Gated Rejection}{6}{subsection.3.5}\protected@file@percent }
+\@writefile{toc}{\contentsline {paragraph}{Residual-Gated Sensory Handover as a Quality-Verified Rejection Gate.}{7}{section*.6}\protected@file@percent }
+\@writefile{toc}{\contentsline {section}{\numberline {4}Experimental Setup}{7}{section.4}\protected@file@percent }
+\@writefile{toc}{\contentsline {paragraph}{Dataset \& Simulation Environment.}{7}{section*.7}\protected@file@percent }
+\@writefile{toc}{\contentsline {paragraph}{Causal Physics-in-the-Loop (PIL) Protocol.}{7}{section*.8}\protected@file@percent }
+\@writefile{lot}{\contentsline {table}{\numberline {1}{\ignorespaces Multi-Horizon Open-Loop Rollout MSE ($N=400$ Test Split $[3600, 3999]$, $t_{\text  {start}}=4$). Position ($\text  {rad}^2$) and Velocity ($\text  {rad}^2/\text  {s}^2$) MSE (mean $\pm $ seed std across 3 equalized seeds where applicable).}}{8}{table.1}\protected@file@percent }
+\newlabel{tab:open_loop}{{1}{8}{Multi-Horizon Open-Loop Rollout MSE ($N=400$ Test Split $[3600, 3999]$, $t_{\text {start}}=4$). Position ($\text {rad}^2$) and Velocity ($\text {rad}^2/\text {s}^2$) MSE (mean $\pm $ seed std across 3 equalized seeds where applicable)}{table.1}{}}
+\@writefile{toc}{\contentsline {paragraph}{Baselines \& Training-Budget Equalization.}{8}{section*.9}\protected@file@percent }
+\@writefile{toc}{\contentsline {section}{\numberline {5}Results and Analysis}{8}{section.5}\protected@file@percent }
+\@writefile{toc}{\contentsline {subsection}{\numberline {5.1}Multi-Horizon Open-Loop Velocity Stability}{8}{subsection.5.1}\protected@file@percent }
+\@writefile{toc}{\contentsline {subsection}{\numberline {5.2}Causal Physics-in-the-Loop (PIL) Manipulation Benchmark}{8}{subsection.5.2}\protected@file@percent }
+\@writefile{lot}{\contentsline {table}{\numberline {2}{\ignorespaces Causal Physics-in-the-Loop (PIL) Manipulation Benchmark (50 Unseen Test Episodes $[3600, 3649]$, Payload Attached at $t \ge t_c$, Evaluated through $t_{\text  {grasp}} = t_c + 7$). Equalized Continuous RSSM and Deep GRU (3 seeds, AR(1)+DAgger) are evaluated side-by-side under Open-Loop PIL ($w_t=0$), Un-Gated Online ($w_t=1.0$), and Residual-Gated Online (identical FK gate to SPWM). All 3-seed PIL latencies measured under \texttt  {OMP\_NUM\_THREADS=2}.}}{9}{table.2}\protected@file@percent }
+\newlabel{tab:pil_benchmark}{{2}{9}{Causal Physics-in-the-Loop (PIL) Manipulation Benchmark (50 Unseen Test Episodes $[3600, 3649]$, Payload Attached at $t \ge t_c$, Evaluated through $t_{\text {grasp}} = t_c + 7$). Equalized Continuous RSSM and Deep GRU (3 seeds, AR(1)+DAgger) are evaluated side-by-side under Open-Loop PIL ($w_t=0$), Un-Gated Online ($w_t=1.0$), and Residual-Gated Online (identical FK gate to SPWM). All 3-seed PIL latencies measured under \texttt {OMP\_NUM\_THREADS=2}}{table.2}{}}
+\@writefile{toc}{\contentsline {subsection}{\numberline {5.3}Forensic Post-Attachment Impulse Decomposition}{9}{subsection.5.3}\protected@file@percent }
+\@writefile{lot}{\contentsline {table}{\numberline {3}{\ignorespaces Zero-Shot PIL Physical \& Sensory Robustness (50 Test Episodes $[3600, 3649]$, $N=6$ Tier-2 Checkpoints). Symmetric 3-seed comparison ($42, 101, 2024$) of frozen SPWM vs.\ parameter-matched ANN-Rate, with SPWM $\phi _t=1$ handover step activation ($w_t > 0$).}}{10}{table.3}\protected@file@percent }
+\newlabel{tab:robustness}{{3}{10}{Zero-Shot PIL Physical \& Sensory Robustness (50 Test Episodes $[3600, 3649]$, $N=6$ Tier-2 Checkpoints). Symmetric 3-seed comparison ($42, 101, 2024$) of frozen SPWM vs.\ parameter-matched ANN-Rate, with SPWM $\phi _t=1$ handover step activation ($w_t > 0$)}{table.3}{}}
+\@writefile{toc}{\contentsline {subsection}{\numberline {5.4}Controlled Spiking Isolation (SPWM vs.\ ANN-Rate) \& Zero-Shot Robustness}{10}{subsection.5.4}\protected@file@percent }
+\@writefile{toc}{\contentsline {subsection}{\numberline {5.5}3-Seed 5-Stage Ablation \& Validation Selection Finding}{10}{subsection.5.5}\protected@file@percent }
+\@writefile{lot}{\contentsline {table}{\numberline {4}{\ignorespaces Full 3-Seed 5-Stage SPWM PIL Ablation (50 Test Episodes $[3600, 3649]$, $t \ge t_c$, Seeds $42, 101, 2024$). Stages 1--2 use pre-DAgger \texttt  {checkpoint\_phase\_1.pt}; Stage 3 uses \texttt  {checkpoint\_phase\_4.pt}; Stages 4a--4b apply lookahead and residual gating to the $N=25$ validation-selected checkpoints.}}{11}{table.4}\protected@file@percent }
+\newlabel{tab:ablation}{{4}{11}{Full 3-Seed 5-Stage SPWM PIL Ablation (50 Test Episodes $[3600, 3649]$, $t \ge t_c$, Seeds $42, 101, 2024$). Stages 1--2 use pre-DAgger \texttt {checkpoint\_phase\_1.pt}; Stage 3 uses \texttt {checkpoint\_phase\_4.pt}; Stages 4a--4b apply lookahead and residual gating to the $N=25$ validation-selected checkpoints}{table.4}{}}
+\@writefile{toc}{\contentsline {paragraph}{Methodological Finding on DAgger Checkpoint Selection.}{11}{section*.10}\protected@file@percent }
+\@writefile{toc}{\contentsline {subsection}{\numberline {5.6}Standby Core vs.\ Full-System Energy Profiling}{11}{subsection.5.6}\protected@file@percent }
+\@writefile{lot}{\contentsline {table}{\numberline {5}{\ignorespaces Standby Recurrent Core vs.\ Full End-to-End Closed-Loop Energy Profile (Intel Loihi-2 $1.5\,\text  {pJ/SOP}$ excluding passive membrane leak vs.\ Jetson Orin $0.9\,\text  {pJ/MAC}$, $7{,}680$ MPPI Rollouts/Step).}}{12}{table.5}\protected@file@percent }
+\newlabel{tab:energy}{{5}{12}{Standby Recurrent Core vs.\ Full End-to-End Closed-Loop Energy Profile (Intel Loihi-2 $1.5\,\text {pJ/SOP}$ excluding passive membrane leak vs.\ Jetson Orin $0.9\,\text {pJ/MAC}$, $7{,}680$ MPPI Rollouts/Step)}{table.5}{}}
+\@writefile{toc}{\contentsline {section}{\numberline {6}Discussion, Limitations, and Outlook}{12}{section.6}\protected@file@percent }
+\@writefile{toc}{\contentsline {section}{\numberline {A}Forensic Failure Decomposition \& $N=25$ Validation Selection}{13}{appendix.A}\protected@file@percent }
+\@writefile{lot}{\contentsline {table}{\numberline {6}{\ignorespaces Forensic Episode-by-Episode Failure Decomposition (150 PIL Test Episodes $= 3\text  { seeds} \times 50\text  { episodes}$ $[3600, 3649]$ per Model). Mutually exclusive outcomes plus episodes that never reached $\le 3.0\,\text  {cm}$ sum to $100\%$.}}{13}{table.6}\protected@file@percent }
+\newlabel{tab:forensic}{{6}{13}{Forensic Episode-by-Episode Failure Decomposition (150 PIL Test Episodes $= 3\text { seeds} \times 50\text { episodes}$ $[3600, 3649]$ per Model). Mutually exclusive outcomes plus episodes that never reached $\le 3.0\,\text {cm}$ sum to $100\%$}{table.6}{}}
+\@writefile{lot}{\contentsline {table}{\numberline {7}{\ignorespaces 15-Checkpoint $N=25$ Validation Sweep ($[3200, 3224]$) vs.\ $N=50$ Test Evaluation ($[3600, 3649]$) \& Module Convergence. On Seed 42 at Ep 200, \texttt  {best\_model.pt} stores EMA weights ($\tau = 0.990$), while \texttt  {phase\_3} stores raw un-averaged weights at the Latch Phase 3 boundary.}}{13}{table.7}\protected@file@percent }
+\newlabel{tab:val_sweep}{{7}{13}{15-Checkpoint $N=25$ Validation Sweep ($[3200, 3224]$) vs.\ $N=50$ Test Evaluation ($[3600, 3649]$) \& Module Convergence. On Seed 42 at Ep 200, \texttt {best\_model.pt} stores EMA weights ($\tau = 0.990$), while \texttt {phase\_3} stores raw un-averaged weights at the Latch Phase 3 boundary}{table.7}{}}
+\@writefile{toc}{\contentsline {section}{\numberline {B}Verified Parameter Census, Hyperparameters \& Compute Stack}{13}{appendix.B}\protected@file@percent }
+\@writefile{lot}{\contentsline {table}{\numberline {8}{\ignorespaces Verified Parameter Census, Hyperparameters, and Compute Stack.}}{13}{table.8}\protected@file@percent }
+\newlabel{tab:appendix_b}{{8}{13}{Verified Parameter Census, Hyperparameters, and Compute Stack}{table.8}{}}
+\gdef \@abspage@last{13}

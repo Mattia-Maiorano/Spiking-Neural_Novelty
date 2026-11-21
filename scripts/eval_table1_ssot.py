@@ -216,19 +216,29 @@ def main() -> None:
             rssm_per_seed[seed] = res
     rssm_res = _aggregate_multiseed_rollout(rssm_per_seed, horizons)
 
-    # 4. Deep GRU
-    gru = DeepGRUPredictor(
-        in_channels=cfg.model.in_channels,
-        height=cfg.environment.height,
-        width=cfg.environment.width,
-        encoder_dim=cfg.model.encoder_dim,
-        hidden_dim=164,
-        action_dim=cfg.environment.action_dim,
-        joint_count=cfg.environment.joint_count,
-    ).to(device)
-    gru.load_state_dict(_load_state(Path("results/baselines/deep_gru/model.pt"), device), strict=True)
-    gru_res = evaluate_model_rollout(gru, loader, device, horizons)
-    gru_res["parameter_count"] = sum(p.numel() for p in gru.parameters())
+    # 4. Deep GRU (Seeds 42, 101, 2024)
+    gru_ckpts = {
+        42: Path("results/baselines/deep_gru/model.pt"),
+        101: Path("results/multiseed_rssm/seed_101/deep_gru/model.pt"),
+        2024: Path("results/multiseed_rssm/seed_2024/deep_gru/model.pt"),
+    }
+    gru_per_seed: Dict[int, Dict[str, Any]] = {}
+    for seed, ckpt_path in gru_ckpts.items():
+        if ckpt_path.is_file():
+            gru = DeepGRUPredictor(
+                in_channels=cfg.model.in_channels,
+                height=cfg.environment.height,
+                width=cfg.environment.width,
+                encoder_dim=cfg.model.encoder_dim,
+                hidden_dim=164,
+                action_dim=cfg.environment.action_dim,
+                joint_count=cfg.environment.joint_count,
+            ).to(device)
+            gru.load_state_dict(_load_state(ckpt_path, device), strict=True)
+            res = evaluate_model_rollout(gru, loader, device, horizons)
+            res["parameter_count"] = sum(p.numel() for p in gru.parameters())
+            gru_per_seed[seed] = res
+    gru_res = _aggregate_multiseed_rollout(gru_per_seed, horizons)
 
     # 5. Continuous ConvLSTM
     conv = ContinuousConvLSTM(

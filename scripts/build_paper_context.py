@@ -15,21 +15,24 @@ OUTPUT_PATH = REPO_ROOT / "PAPER_CONTEXT.md"
 
 SECTION_1_FILES: list[tuple[str, str]] = [
     (
-        "docs/CORL_FINAL_BENCHMARK_SUMMARY.md",
-        "CoRL final grounded multi-seed, 50-episode PIL, ablation, robustness, and energy summary + LaTeX tables",
+        "results/corl_final_benchmark_summary.md",
+        "CoRL final grounded 3-seed, 50-episode PIL, 5-stage ablation, equalized baselines, robustness, and energy summary + LaTeX tables",
     ),
-    ("docs/FIGURE_METRICS.md", "Master SSOT figure & 50-episode PIL summary table"),
     (
         "results/spwm_v0_12_4_train_m1/comparative_metrics_v0_12_4.json",
-        "Multi-seed N=400 open-loop baseline comparison (SPWM, ANN-Rate, RSSM across 3 seeds + Deep GRU, ConvLSTM)",
+        "Multi-seed N=400 open-loop baseline comparison (SPWM, ANN-Rate, Continuous RSSM, and equalized Deep GRU across 3 seeds + ConvLSTM)",
     ),
     (
         "results/multiseed/multiseed_metrics.json",
-        "3-seed (42, 101, 2024) SPWM, ANN-Rate, and Continuous RSSM open-loop, 50-ep PIL, and energy summary",
+        "3-seed (42, 101, 2024) SPWM, ANN-Rate, Continuous RSSM, and equalized Deep GRU open-loop, 50-ep PIL (open-loop, ungated, residual-gated), 5-stage ablation, and energy summary",
+    ),
+    (
+        "results/diagnostics/forensic_rssm_gru_failure.json",
+        "Forensic audit of RSSM vs. equalized Deep GRU across Open-Loop, Un-Gated Online (w_t=1.0), and Residual-Gated Online PIL regimes",
     ),
     (
         "results/energy_profiling/energy_profiling_metrics.json",
-        "Neuromorphic SOPs (Loihi-2) vs. GPU MACs (Jetson Orin) profiling across SPWM and baselines",
+        "Neuromorphic SOPs (Loihi-2 standby recurrent core) vs. GPU MACs (Jetson Orin E2E MPPI) profiling across SPWM and baselines",
     ),
     (
         "results/baselines/classical_and_bc_pil/classical_bc_pil_metrics.json",
@@ -59,12 +62,12 @@ SECTION_1_FILES: list[tuple[str, str]] = [
 
 SECTION_2_FILES: list[tuple[str, str]] = [
     (
-        "docs/DOSSIER.md",
-        "High-level system narrative, CoRL grounded PIL benchmarks, multi-seed validation, and deploy-ready architecture",
+        "docs_verified/README.md",
+        "Verified master overview, CoRL grounded PIL benchmarks, 3-seed validation, and documentation index",
     ),
-    ("docs/Architecture.md", "Detailed neural architecture specification"),
-    ("docs/TRAINING_AND_LOSSES.md", "Loss formulations and 2-phase / 4-latch curriculum details"),
-    ("docs/WORLD.md", "Unity PhysX 4 environment, payload distribution, and dataset splits"),
+    ("docs_verified/01_SYSTEM_AND_ARCHITECTURE.md", "Verified system, Unity PhysX environment, and neural architecture specification"),
+    ("docs_verified/02_TRAINING_CURRICULUM_AND_MPPI.md", "Verified loss formulations, 2-phase/4-latch curriculum, MPPI controls, and equalized baseline training regimes"),
+    ("docs_verified/03_BENCHMARKS_EVIDENCE_AND_REPLICATION.md", "Verified SSOT benchmarks, residual-gated baseline fairness, 3-seed ablation, neuromorphic standby energy framing, and replication commands"),
     ("results/spwm_v0_12_4_train_m1/config.yaml", "Exact hyperparameters used for the v0.12.4 run"),
 ]
 

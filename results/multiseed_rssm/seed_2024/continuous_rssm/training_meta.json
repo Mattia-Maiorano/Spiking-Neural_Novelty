@@ -1,0 +1,14 @@
+{
+  "model_name": "Continuous RSSM",
+  "seed": 2024,
+  "device": "mps",
+  "enable_dagger_ar1": true,
+  "base_epochs": 60,
+  "ar1_dagger_epochs": 17,
+  "total_epochs": 77,
+  "best_epoch": 62,
+  "best_val_loss": 0.4504756721166464,
+  "wall_clock_sec": 826.2417404999724,
+  "ar1_target_alpha": 0.25,
+  "dagger_generations_collected": 3
+}

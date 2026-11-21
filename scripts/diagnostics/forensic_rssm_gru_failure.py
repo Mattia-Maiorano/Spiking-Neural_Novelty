@@ -235,12 +235,24 @@ def main() -> None:
     gt_meta = load_gt_episode_metadata(dataset_dir, traj_ids)
 
     targets = [
-        ("Continuous RSSM (Seed 42)", REPO_ROOT / "results/mppi_benchmark/physics_in_loop/rssm/mppi_benchmark_metrics.json"),
-        ("Continuous RSSM (Seed 101)", REPO_ROOT / "results/multiseed_rssm/seed_101/mppi_pil/mppi_benchmark_metrics.json"),
-        ("Continuous RSSM (Seed 2024)", REPO_ROOT / "results/multiseed_rssm/seed_2024/mppi_pil/mppi_benchmark_metrics.json"),
-        ("Deep GRU (Seed 42)", REPO_ROOT / "results/mppi_benchmark/physics_in_loop/deep_gru/mppi_benchmark_metrics.json"),
+        ("Continuous RSSM Un-Gated (Seed 42)", REPO_ROOT / "results/mppi_benchmark/physics_in_loop/rssm_ungated/mppi_benchmark_metrics.json"),
+        ("Continuous RSSM Un-Gated (Seed 101)", REPO_ROOT / "results/multiseed_rssm/seed_101/mppi_pil_ungated/mppi_benchmark_metrics.json"),
+        ("Continuous RSSM Un-Gated (Seed 2024)", REPO_ROOT / "results/multiseed_rssm/seed_2024/mppi_pil_ungated/mppi_benchmark_metrics.json"),
+        ("Continuous RSSM Residual-Gated (Seed 42)", REPO_ROOT / "results/mppi_benchmark/physics_in_loop/rssm_residual_gated/mppi_benchmark_metrics.json"),
+        ("Continuous RSSM Residual-Gated (Seed 101)", REPO_ROOT / "results/multiseed_rssm/seed_101/mppi_pil_residual_gated/mppi_benchmark_metrics.json"),
+        ("Continuous RSSM Residual-Gated (Seed 2024)", REPO_ROOT / "results/multiseed_rssm/seed_2024/mppi_pil_residual_gated/mppi_benchmark_metrics.json"),
+        ("Deep GRU Un-Gated (Seed 42)", REPO_ROOT / "results/mppi_benchmark/physics_in_loop/deep_gru_ungated/mppi_benchmark_metrics.json"),
+        ("Deep GRU Un-Gated (Seed 101)", REPO_ROOT / "results/multiseed_rssm/seed_101/deep_gru_mppi_pil_ungated/mppi_benchmark_metrics.json"),
+        ("Deep GRU Un-Gated (Seed 2024)", REPO_ROOT / "results/multiseed_rssm/seed_2024/deep_gru_mppi_pil_ungated/mppi_benchmark_metrics.json"),
+        ("Deep GRU Residual-Gated (Seed 42)", REPO_ROOT / "results/mppi_benchmark/physics_in_loop/deep_gru_residual_gated/mppi_benchmark_metrics.json"),
+        ("Deep GRU Residual-Gated (Seed 101)", REPO_ROOT / "results/multiseed_rssm/seed_101/deep_gru_mppi_pil_residual_gated/mppi_benchmark_metrics.json"),
+        ("Deep GRU Residual-Gated (Seed 2024)", REPO_ROOT / "results/multiseed_rssm/seed_2024/deep_gru_mppi_pil_residual_gated/mppi_benchmark_metrics.json"),
         ("ANN-Rate (Seed 42)", REPO_ROOT / "results/ann_ablation/seed_42_mppi_pil/mppi_benchmark_metrics.json"),
-        ("SPWM-v0.12.4 (Seed 42)", REPO_ROOT / "results/mppi_benchmark/mppi_benchmark_metrics.json"),
+        ("ANN-Rate (Seed 101)", REPO_ROOT / "results/ann_ablation/seed_101_mppi_pil/mppi_benchmark_metrics.json"),
+        ("ANN-Rate (Seed 2024)", REPO_ROOT / "results/ann_ablation/seed_2024_mppi_pil/mppi_benchmark_metrics.json"),
+        ("SPWM N=25 Val-Sel (Seed 42)", REPO_ROOT / "results/ablations/multiseed/stage4b_full_seed42/mppi_benchmark_metrics.json"),
+        ("SPWM N=25 Val-Sel (Seed 101)", REPO_ROOT / "results/ablations/multiseed/stage4b_full_seed101/mppi_benchmark_metrics.json"),
+        ("SPWM N=25 Val-Sel (Seed 2024)", REPO_ROOT / "results/ablations/multiseed/stage4b_full_seed2024/mppi_benchmark_metrics.json"),
     ]
 
     report: Dict[str, Any] = {}
@@ -268,20 +280,55 @@ def main() -> None:
         prof_str = " -> ".join(f"{k}:{prof[k]['mean_cm']:.2f}" for k in ["t_c-2", "t_c-1", "t_c", "t_c+1", "t_c+2", "t_c+4", "t_c+7"])
         print(f"  Step profile (cm): {prof_str}")
 
-    # Aggregate 3-seed Continuous RSSM
-    rssm_keys = ["Continuous RSSM (Seed 42)", "Continuous RSSM (Seed 101)", "Continuous RSSM (Seed 2024)"]
-    rssm_agg = {
-        "total_episodes": 150,
-        "a_distance_failure_gt_3cm_total": sum(report[k]["failure_modes_non_exclusive"]["a_distance_failure_gt_3cm"]["count"] for k in rssm_keys),
-        "b_velocity_failure_given_reach_total": sum(report[k]["failure_modes_non_exclusive"]["b_velocity_failure_given_reach_le_3cm"]["count"] for k in rssm_keys),
-        "c_post_contact_impulse_divergence_total": sum(report[k]["failure_modes_non_exclusive"]["c_post_contact_impulse_divergence"]["count"] for k in rssm_keys),
-        "excl_never_reached_total": sum(report[k]["failure_modes_mutually_exclusive"]["1_distance_never_reached_3cm"]["count"] for k in rssm_keys),
-        "excl_post_contact_div_plus_vel_total": sum(report[k]["failure_modes_mutually_exclusive"]["2a_post_contact_div_plus_vel_violation"]["count"] for k in rssm_keys),
-        "excl_post_contact_div_spatial_only_total": sum(report[k]["failure_modes_mutually_exclusive"]["2b_post_contact_div_spatial_only"]["count"] for k in rssm_keys),
-        "excl_post_tc_reach_then_div_total": sum(report[k]["failure_modes_mutually_exclusive"]["3_reached_post_tc_then_diverged"]["count"] for k in rssm_keys),
-        "excl_vel_only_total": sum(report[k]["failure_modes_mutually_exclusive"]["4_settling_passed_vel_failed_only"]["count"] for k in rssm_keys),
+    # Aggregate 3-seed summaries across all equalized models & SPWM/ANN-Rate
+    agg_groups = {
+        "Continuous RSSM Un-Gated (3-Seed Aggregate)": [
+            "Continuous RSSM Un-Gated (Seed 42)",
+            "Continuous RSSM Un-Gated (Seed 101)",
+            "Continuous RSSM Un-Gated (Seed 2024)",
+        ],
+        "Continuous RSSM Residual-Gated (3-Seed Aggregate)": [
+            "Continuous RSSM Residual-Gated (Seed 42)",
+            "Continuous RSSM Residual-Gated (Seed 101)",
+            "Continuous RSSM Residual-Gated (Seed 2024)",
+        ],
+        "Deep GRU Un-Gated (3-Seed Aggregate)": [
+            "Deep GRU Un-Gated (Seed 42)",
+            "Deep GRU Un-Gated (Seed 101)",
+            "Deep GRU Un-Gated (Seed 2024)",
+        ],
+        "Deep GRU Residual-Gated (3-Seed Aggregate)": [
+            "Deep GRU Residual-Gated (Seed 42)",
+            "Deep GRU Residual-Gated (Seed 101)",
+            "Deep GRU Residual-Gated (Seed 2024)",
+        ],
+        "ANN-Rate (3-Seed Aggregate)": [
+            "ANN-Rate (Seed 42)",
+            "ANN-Rate (Seed 101)",
+            "ANN-Rate (Seed 2024)",
+        ],
+        "SPWM N=25 Val-Sel (3-Seed Aggregate)": [
+            "SPWM N=25 Val-Sel (Seed 42)",
+            "SPWM N=25 Val-Sel (Seed 101)",
+            "SPWM N=25 Val-Sel (Seed 2024)",
+        ],
     }
-    report["Continuous RSSM (3-Seed Aggregate)"] = rssm_agg
+    for agg_name, keys in agg_groups.items():
+        report[agg_name] = {
+            "total_episodes": 150,
+            "success_total": sum(report[k]["n_success"] for k in keys),
+            "reach_le_3cm_total": 150 - sum(report[k]["failure_modes_non_exclusive"]["a_distance_failure_gt_3cm"]["count"] for k in keys),
+            "a_distance_failure_gt_3cm_total": sum(report[k]["failure_modes_non_exclusive"]["a_distance_failure_gt_3cm"]["count"] for k in keys),
+            "b_velocity_failure_all_total": sum(report[k]["failure_modes_non_exclusive"]["b_velocity_failure_all_episodes"]["count"] for k in keys),
+            "b_velocity_failure_given_reach_total": sum(report[k]["failure_modes_non_exclusive"]["b_velocity_failure_given_reach_le_3cm"]["count"] for k in keys),
+            "c_post_contact_impulse_divergence_total": sum(report[k]["failure_modes_non_exclusive"]["c_post_contact_impulse_divergence"]["count"] for k in keys),
+            "excl_never_reached_total": sum(report[k]["failure_modes_mutually_exclusive"]["1_distance_never_reached_3cm"]["count"] for k in keys),
+            "excl_post_contact_div_plus_vel_total": sum(report[k]["failure_modes_mutually_exclusive"]["2a_post_contact_div_plus_vel_violation"]["count"] for k in keys),
+            "excl_post_contact_div_spatial_only_total": sum(report[k]["failure_modes_mutually_exclusive"]["2b_post_contact_div_spatial_only"]["count"] for k in keys),
+            "excl_post_tc_reach_then_div_total": sum(report[k]["failure_modes_mutually_exclusive"]["3_reached_post_tc_then_diverged"]["count"] for k in keys),
+            "excl_vel_only_total": sum(report[k]["failure_modes_mutually_exclusive"]["4_settling_passed_vel_failed_only"]["count"] for k in keys),
+            "excl_rot_only_total": sum(report[k]["failure_modes_mutually_exclusive"]["5_settling_and_vel_passed_rot_failed_only"]["count"] for k in keys),
+        }
 
     out_path = REPO_ROOT / "results/diagnostics/forensic_rssm_gru_failure.json"
     out_path.parent.mkdir(parents=True, exist_ok=True)

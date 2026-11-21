@@ -14,6 +14,7 @@ and compiles a publication-ready comparative metrics table and degradation figur
 from __future__ import annotations
 import argparse
 import json
+import sys
 import time
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
@@ -27,18 +28,37 @@ import torch.nn as nn
 import torch.nn.functional as F
 from torch.utils.data import DataLoader
 
-from spwm.contracts.config import ExperimentConfig
+REPO_ROOT = Path(__file__).resolve().parent.parent
+if str(REPO_ROOT) not in sys.path:
+    sys.path.insert(0, str(REPO_ROOT))
+
+from experiments.benchmark_mppi_control import (
+    _BaselineModelWrapper,
+    _DeepGRUDecoderAdapter,
+    _DeepGRUPredictorAdapter,
+    _RSSMDecoderAdapter,
+    _RSSMPredictorAdapter,
+)
+from spwm.contracts.config import ExperimentConfig, MPPIConfig
+from spwm.contracts.states import ClosedLoopTrajectory
 from spwm.contracts.version import GLOBAL_VERSION
 from spwm.data.datasets import create_dataloaders_from_config
+from spwm.evaluation.mppi import LatentMPPIController
 from spwm.models.baselines import (
     ContinuousConvLSTM,
     ContinuousRSSM,
     DeepGRUPredictor,
 )
-from spwm.models.kinematics import DifferentiableForwardKinematics
+from spwm.models.kinematics import DifferentiableForwardKinematics, classify_elevation
 from spwm.models.rollout import compute_rollout_schedule
 from spwm.training.losses import _decoded_kinematic_temporal_loss
 from spwm.training.metrics import position_error, velocity_error
+from spwm.training.noise import (
+    compute_dagger_ratio,
+    compute_mppi_noise_alpha,
+    sample_ar1_noise,
+)
+from spwm.training.replay_buffer import ClosedLoopBuffer
 from spwm.utils.reproducibility import set_seed
 
 
@@ -132,6 +152,164 @@ def compute_equalized_kinematic_loss(
     return total, raw_pos_mse, raw_vel_mse
 
 
+def _build_baseline_adapters(
+    model: nn.Module,
+) -> Tuple[str, nn.Module, nn.Module]:
+    """Constructs predictor and decoder adapters for ContinuousRSSM or DeepGRUPredictor."""
+    if isinstance(model, ContinuousRSSM):
+        return "rssm", _RSSMPredictorAdapter(model), _RSSMDecoderAdapter(model)
+    if isinstance(model, DeepGRUPredictor):
+        return "deep_gru", _DeepGRUPredictorAdapter(model), _DeepGRUDecoderAdapter(model)
+    raise ValueError(
+        f"DAgger/AR(1) closed-loop equalization requires ContinuousRSSM or DeepGRUPredictor, got {type(model).__name__}"
+    )
+
+
+def build_stratified_val_batches(
+    val_dataset: Any,
+    fk: DifferentiableForwardKinematics,
+    device: torch.device,
+    num_trajectories: int = 6,
+) -> List[Dict[str, Any]]:
+    """Extracts a balanced Low/Mid/High validation subset for baseline DAgger collection."""
+    target_planes = ("Low", "Mid", "High")
+    target_per_plane = max(1, num_trajectories // len(target_planes))
+    by_plane: Dict[str, List[Dict[str, Any]]] = {p: [] for p in target_planes}
+    other_items: List[Dict[str, Any]] = []
+
+    for idx in range(len(val_dataset)):
+        item = val_dataset[idx]
+        q = item["joint_positions"]
+        pf = item["phase_flags"]
+        p1 = (pf == 1).nonzero()
+        tc = int(p1[0].item()) if len(p1) > 0 else 50
+        with torch.no_grad():
+            t_mat = fk.forward_homogeneous(q[tc : tc + 1].to(device))[0]
+            plane = classify_elevation(float(t_mat[1, 3].item()))
+
+        batch_dict = {
+            "events": item["events"].unsqueeze(0),
+            "joint_positions": item["joint_positions"].unsqueeze(0),
+            "phase_flags": item["phase_flags"].unsqueeze(0),
+            "actions": item["actions"].unsqueeze(0),
+            "trajectory_id": int(item["trajectory_id"]),
+            "elevation_plane": plane,
+        }
+        if plane in by_plane and len(by_plane[plane]) < target_per_plane:
+            by_plane[plane].append(batch_dict)
+        else:
+            other_items.append(batch_dict)
+
+        if all(len(by_plane[p]) >= target_per_plane for p in target_planes):
+            break
+
+    selected: List[Dict[str, Any]] = []
+    for k in range(target_per_plane):
+        for p in target_planes:
+            if k < len(by_plane[p]):
+                selected.append(by_plane[p][k])
+    if len(selected) < num_trajectories:
+        for item in other_items:
+            if len(selected) >= num_trajectories:
+                break
+            selected.append(item)
+    return selected
+
+
+@torch.no_grad()
+def collect_baseline_dagger_trajectories(
+    model: nn.Module,
+    fixed_batches: List[Dict[str, Any]],
+    fk: DifferentiableForwardKinematics,
+    device: torch.device,
+    mppi_cfg: MPPIConfig,
+    base_seed: int = 42000,
+    approach_window: int = 20,
+) -> List[ClosedLoopTrajectory]:
+    """Collects closed-loop MPPI validation trajectories into ClosedLoopTrajectory objects."""
+    was_training = model.training
+    model.eval()
+    model_type, predictor, decoder = _build_baseline_adapters(model)
+    wrapper = _BaselineModelWrapper(model, model_type, predictor.to(device), decoder.to(device))
+    controller = LatentMPPIController(
+        predictor=predictor.to(device),
+        physical_decoder=decoder.to(device),
+        config=mppi_cfg,
+        forward_kinematics=fk,
+        device=device,
+    )
+
+    trajectories: List[ClosedLoopTrajectory] = []
+    for batch in fixed_batches:
+        events = batch["events"].to(device)
+        q_gt = batch["joint_positions"][0].to(device)
+        phase_flags = batch["phase_flags"][0].to(device)
+        actions = batch["actions"].to(device)
+        traj_id = int(batch["trajectory_id"])
+
+        p1_indices = (phase_flags == 1).nonzero()
+        t_c = int(p1_indices[0].item()) if len(p1_indices) > 0 else 50
+        t_grasp = min(t_c + 7, q_gt.shape[0] - 1)
+        t_start = max(5, t_c - approach_window)
+        max_t = min(t_grasp + 1, events.shape[1] - 1)
+
+        z_gt_seq = wrapper.ground_sequence(events, max_t=max_t, actions=actions)
+        z_start = z_gt_seq[:, t_start]
+
+        q_reachable_grasp = decoder(z_gt_seq[:, t_c])[..., :6]
+        target_grasp_mat = fk.forward_homogeneous(q_reachable_grasp)[0].detach()
+        q_reachable_final = decoder(z_gt_seq[:, t_grasp])[..., :6]
+        target_final_mat = fk.forward_homogeneous(q_reachable_final)[0].detach()
+
+        dec_start = decoder(z_start)
+        initial_bias = dec_start[0, :6] / 3.14
+        controller.reset(initial_action_bias=initial_bias, seed=base_seed + traj_id)
+        prev_u = initial_bias.clone()
+        curr_z = z_start.clone()
+
+        traj_z: List[torch.Tensor] = []
+        traj_u: List[torch.Tensor] = []
+        traj_targets: List[torch.Tensor] = []
+
+        for t in range(t_start, t_grasp + 1):
+            target_pose_plan = torch.stack(
+                [target_grasp_mat if (t + tau) <= t_c else target_final_mat for tau in range(controller.horizon)],
+                dim=0,
+            )
+            res = controller.plan_step(curr_z, target_pose_plan, prev_action=prev_u)
+            u_exec = res.action
+            prev_u = u_exec
+            controller.prev_action = u_exec.clone()
+
+            z_pred = predictor(curr_z, u_exec.unsqueeze(0)).predicted_latent
+            z_gt_next = z_gt_seq[:, min(t + 1, max_t)]
+            if int(phase_flags[t].item()) == 1:
+                z_next = 0.40 * z_pred + 0.60 * z_gt_next
+            else:
+                z_next = z_pred
+
+            traj_z.append(curr_z[0].detach().cpu())
+            traj_u.append(u_exec.detach().cpu())
+            traj_targets.append(z_gt_next[0].detach().cpu())
+            curr_z = z_next
+
+        trajectories.append(
+            ClosedLoopTrajectory(
+                z_init=traj_z[0],
+                actions=torch.stack(traj_u),
+                targets=torch.stack(traj_targets),
+                length=len(traj_u),
+                trajectory_id=traj_id,
+                is_expert=False,
+                elevation_plane=str(batch["elevation_plane"]),
+            )
+        )
+
+    if was_training:
+        model.train()
+    return trajectories
+
+
 def train_single_baseline(
     model_name: str,
     model: nn.Module,
@@ -144,19 +322,100 @@ def train_single_baseline(
     weight_decay: float,
     save_dir: Path,
     joint_count: int = 6,
+    enable_dagger_ar1: bool = False,
+    mppi_cfg: Optional[MPPIConfig] = None,
+    ar1_warmup_epochs: int = 10,
+    ar1_ramp_epochs: int = 20,
+    ar1_target_alpha: float = 0.25,
+    dagger_frequency: int = 5,
+    dagger_start_epoch: int = 10,
+    dagger_horizon: int = 10,
+    seed: int = 42,
+    prior_epochs: int = 0,
+    prior_history: Optional[List[Dict[str, float]]] = None,
 ) -> Dict[str, Any]:
-    chronicle.log_info(f"--- Training {model_name} (Equalized SE(3) + Multi-Step Rollout) on {device} ({epochs} epochs max) ---")
+    regime_desc = "Equalized SE(3) + Multi-Step Rollout + AR(1) + DAgger" if enable_dagger_ar1 else "Equalized SE(3) + Multi-Step Rollout"
+    chronicle.log_info(f"--- Training {model_name} ({regime_desc}) on {device} ({epochs} epochs max, prior={prior_epochs}) ---")
     model = model.to(device)
     fk = DifferentiableForwardKinematics(joint_count=joint_count).to(device)
     optimizer = torch.optim.AdamW(model.parameters(), lr=lr, weight_decay=weight_decay)
     scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(optimizer, T_max=max(1, epochs), eta_min=1e-5)
 
     best_val_loss = float("inf")
+    best_epoch = 0
     epochs_no_improve = 0
     best_model_path = save_dir / "model.pt"
-    history: List[Dict[str, float]] = []
+    history: List[Dict[str, float]] = list(prior_history) if prior_history is not None else []
+    train_start_time = time.perf_counter()
+
+    replay_buffer: Optional[ClosedLoopBuffer] = None
+    dagger_val_batches: List[Dict[str, Any]] = []
+    dagger_generations = 0
+    pred_adapter: Optional[nn.Module] = None
+    dec_adapter: Optional[nn.Module] = None
+    active_mppi_cfg = mppi_cfg if mppi_cfg is not None else MPPIConfig()
+
+    if enable_dagger_ar1:
+        _, pred_adapter, dec_adapter = _build_baseline_adapters(model)
+        pred_adapter = pred_adapter.to(device)
+        dec_adapter = dec_adapter.to(device)
+        replay_buffer = ClosedLoopBuffer(capacity=50_000, max_eval_generations=3)
+        dagger_val_batches = build_stratified_val_batches(val_loader.dataset, fk, device, num_trajectories=6)
+        chronicle.log_info(
+            f"[{model_name}] DAgger + AR(1) enabled: {len(dagger_val_batches)} stratified val trajectories, "
+            f"alpha->{ar1_target_alpha}, dagger_freq={dagger_frequency}, start_ep={dagger_start_epoch}"
+        )
 
     for ep in range(1, epochs + 1):
+        alpha = (
+            compute_mppi_noise_alpha(
+                ep,
+                warmup_epochs=ar1_warmup_epochs,
+                ramp_epochs=ar1_ramp_epochs,
+                target_alpha=ar1_target_alpha,
+            )
+            if enable_dagger_ar1
+            else 0.0
+        )
+        dagger_ratio = 0.0
+        if enable_dagger_ar1 and replay_buffer is not None and len(replay_buffer) > 0:
+            dagger_ratio = compute_dagger_ratio(
+                ep,
+                warmup_epochs=max(0, dagger_start_epoch - 1),
+                ramp_end_epoch=max(dagger_start_epoch + 1, int(round(epochs * 0.75))),
+                min_ratio=0.10,
+                max_ratio=0.50,
+            )
+
+        if (
+            enable_dagger_ar1
+            and replay_buffer is not None
+            and ep >= dagger_start_epoch
+            and ((ep - dagger_start_epoch) % max(1, dagger_frequency) == 0)
+        ):
+            cl_trajs = collect_baseline_dagger_trajectories(
+                model=model,
+                fixed_batches=dagger_val_batches,
+                fk=fk,
+                device=device,
+                mppi_cfg=active_mppi_cfg,
+                base_seed=42000,
+            )
+            replay_buffer.push_trajectories(cl_trajs)
+            replay_buffer.save(save_dir / "closed_loop_buffer.pt")
+            dagger_generations += 1
+            dagger_ratio = compute_dagger_ratio(
+                ep,
+                warmup_epochs=max(0, dagger_start_epoch - 1),
+                ramp_end_epoch=max(dagger_start_epoch + 1, int(round(epochs * 0.75))),
+                min_ratio=0.10,
+                max_ratio=0.50,
+            )
+            chronicle.log_info(
+                f"[{model_name}] Ep {ep:02d}: Collected {len(cl_trajs)} DAgger trajectories "
+                f"(buffer={len(replay_buffer)} transitions, gen={dagger_generations}, ratio={dagger_ratio:.2f})"
+            )
+
         model.train()
         train_losses: List[float] = []
 
@@ -178,7 +437,26 @@ def train_single_baseline(
 
             t_start = 4
             roll_h = min(80, events.shape[1] - t_start - 1)
-            roll_res = model.rollout_train(events=events, actions=actions, horizon=roll_h, t_start=t_start)
+            rollout_actions = actions
+            if enable_dagger_ar1 and alpha > 0.0:
+                rollout_actions = actions.clone()
+                ar1 = sample_ar1_noise(
+                    batch_size=events.shape[0],
+                    horizon=roll_h,
+                    action_dim=actions.shape[-1],
+                    device=device,
+                    beta=active_mppi_cfg.noise_beta,
+                    base_sigma=float(active_mppi_cfg.noise_sigma),
+                    shoulder_multiplier=active_mppi_cfg.shoulder_sigma_multiplier,
+                    elbow_multiplier=active_mppi_cfg.elbow_sigma_multiplier,
+                )
+                rollout_actions[:, t_start : t_start + roll_h] = torch.clamp(
+                    rollout_actions[:, t_start : t_start + roll_h] + alpha * ar1,
+                    -1.0,
+                    1.0,
+                )
+
+            roll_res = model.rollout_train(events=events, actions=rollout_actions, horizon=roll_h, t_start=t_start)
             roll_loss, _, _ = compute_equalized_kinematic_loss(
                 fk,
                 roll_res.positions,
@@ -188,6 +466,41 @@ def train_single_baseline(
             )
 
             total_loss = 0.5 * tf_loss + 1.0 * roll_loss
+
+            if (
+                enable_dagger_ar1
+                and dagger_ratio > 0.0
+                and replay_buffer is not None
+                and len(replay_buffer) > 0
+                and pred_adapter is not None
+                and dec_adapter is not None
+            ):
+                cl_batch = replay_buffer.sample_trajectories(
+                    batch_size=min(16, events.shape[0]),
+                    horizon=dagger_horizon,
+                    device=device,
+                )
+                curr_cl_z = cl_batch["z_init"]
+                cl_acts = cl_batch["actions"]
+                cl_preds: List[torch.Tensor] = []
+                for h_idx in range(cl_acts.shape[1]):
+                    curr_cl_z = pred_adapter(curr_cl_z, cl_acts[:, h_idx]).predicted_latent
+                    cl_preds.append(curr_cl_z)
+                cl_pred = torch.stack(cl_preds, dim=1)
+                cl_target = cl_batch["targets"]
+                cl_lat_loss = F.mse_loss(cl_pred, cl_target)
+                cl_kin = dec_adapter(cl_pred)
+                with torch.no_grad():
+                    tgt_kin = dec_adapter(cl_target)
+                cl_kin_loss, _, _ = compute_equalized_kinematic_loss(
+                    fk,
+                    cl_kin[..., :joint_count],
+                    cl_kin[..., joint_count : 2 * joint_count],
+                    tgt_kin[..., :joint_count],
+                    tgt_kin[..., joint_count : 2 * joint_count],
+                )
+                total_loss = total_loss + dagger_ratio * (cl_lat_loss + 0.5 * cl_kin_loss)
+
             total_loss.backward()
             torch.nn.utils.clip_grad_norm_(model.parameters(), max_norm=1.0)
             optimizer.step()
@@ -229,11 +542,14 @@ def train_single_baseline(
         dt_ep = time.perf_counter() - t0
 
         record = {
-            "epoch": ep,
+            "epoch": prior_epochs + ep,
+            "stage_epoch": ep,
             "train_loss": mean_train,
             "val_loss": mean_val,
             "val_pos_mse": float(np.mean(val_pos_losses)),
             "val_vel_mse": float(np.mean(val_vel_losses)),
+            "ar1_alpha": float(alpha),
+            "dagger_ratio": float(dagger_ratio),
             "duration": dt_ep,
         }
         history.append(record)
@@ -241,6 +557,7 @@ def train_single_baseline(
         is_best = mean_val < best_val_loss
         if is_best:
             best_val_loss = mean_val
+            best_epoch = prior_epochs + ep
             epochs_no_improve = 0
             torch.save({"model_state": model.state_dict(), "history": history}, best_model_path)
             star = " *"
@@ -249,13 +566,31 @@ def train_single_baseline(
             star = ""
 
         chronicle.log_info(
-            f"[{model_name}] Ep {ep:02d}/{epochs:02d} | Train: {mean_train:.4f} | ValRoll: {mean_val:.4f} "
-            f"(Pos: {record['val_pos_mse']:.5f}, Vel: {record['val_vel_mse']:.5f}) | {dt_ep:.1f}s{star}"
+            f"[{model_name}] Ep {ep:02d}/{epochs:02d} (tot={prior_epochs + ep}) | Train: {mean_train:.4f} | "
+            f"ValRoll: {mean_val:.4f} (Pos: {record['val_pos_mse']:.5f}, Vel: {record['val_vel_mse']:.5f}) | "
+            f"a={alpha:.2f} d={dagger_ratio:.2f} | {dt_ep:.1f}s{star}"
         )
 
         if epochs_no_improve >= patience:
             chronicle.log_info(f"[{model_name}] Early stopping triggered after {patience} epochs without improvement.")
             break
+
+    wall_clock_sec = time.perf_counter() - train_start_time
+    meta = {
+        "model_name": model_name,
+        "seed": int(seed),
+        "device": str(device),
+        "enable_dagger_ar1": bool(enable_dagger_ar1),
+        "base_epochs": int(prior_epochs),
+        "ar1_dagger_epochs": int(len(history) - prior_epochs) if enable_dagger_ar1 else 0,
+        "total_epochs": int(len(history)),
+        "best_epoch": int(best_epoch),
+        "best_val_loss": float(best_val_loss),
+        "wall_clock_sec": float(wall_clock_sec),
+        "ar1_target_alpha": float(ar1_target_alpha) if enable_dagger_ar1 else 0.0,
+        "dagger_generations_collected": int(dagger_generations),
+    }
+    (save_dir / "training_meta.json").write_text(json.dumps(meta, indent=2) + "\n", encoding="utf-8")
 
     # Load best checkpoint strictly
     if best_model_path.exists():
@@ -263,7 +598,7 @@ def train_single_baseline(
         model.load_state_dict(ckpt["model_state"], strict=True)
     model.eval()
 
-    return {"history": history, "best_val_loss": best_val_loss}
+    return {"history": history, "best_val_loss": best_val_loss, "training_meta": meta}
 
 
 @torch.no_grad()
@@ -437,6 +772,23 @@ def main() -> None:
         choices=["all", "rssm", "deep_gru", "convlstm"],
         help="Subset of baseline models to train and evaluate.",
     )
+    parser.add_argument(
+        "--enable-dagger-ar1",
+        action="store_true",
+        help="Enable AR(1) MPPI-matched action noise injection and ClosedLoopBuffer DAgger replay.",
+    )
+    parser.add_argument(
+        "--init-checkpoint",
+        type=Path,
+        default=None,
+        help="Optional pre-trained baseline checkpoint to load strictly before AR(1)+DAgger fine-tuning.",
+    )
+    parser.add_argument("--ar1-warmup-epochs", type=int, default=10, help="AR(1) noise warmup epochs.")
+    parser.add_argument("--ar1-ramp-epochs", type=int, default=20, help="AR(1) noise ramp epochs.")
+    parser.add_argument("--ar1-target-alpha", type=float, default=0.25, help="Target AR(1) action noise scale.")
+    parser.add_argument("--dagger-frequency", type=int, default=5, help="Epochs between DAgger val trajectory collection.")
+    parser.add_argument("--dagger-start-epoch", type=int, default=10, help="First epoch to collect DAgger trajectories.")
+    parser.add_argument("--dagger-horizon", type=int, default=10, help="DAgger BPTT unroll horizon.")
     args = parser.parse_args()
 
     set_seed(args.seed)
@@ -511,6 +863,9 @@ def main() -> None:
         selected_names = [key_map[k] for k in args.models]
         models = {k: v for k, v in all_models.items() if k in selected_names}
 
+    if args.init_checkpoint is not None and len(models) != 1:
+        raise ValueError("--init-checkpoint requires selecting exactly one model via --models.")
+
     benchmark_results: Dict[str, Dict[str, Any]] = {}
 
     # 1. Train and evaluate each baseline
@@ -518,6 +873,19 @@ def main() -> None:
         model_slug = name.lower().replace(" ", "_").replace("-", "_")
         model_dir = output_dir / model_slug
         model_dir.mkdir(parents=True, exist_ok=True)
+
+        prior_epochs = 0
+        prior_history: List[Dict[str, float]] = []
+        if args.init_checkpoint is not None:
+            init_ckpt = torch.load(args.init_checkpoint, map_location=device, weights_only=False)
+            init_state = init_ckpt["model_state"] if isinstance(init_ckpt, dict) and "model_state" in init_ckpt else init_ckpt
+            model.load_state_dict(init_state, strict=True)
+            if isinstance(init_ckpt, dict) and "history" in init_ckpt:
+                prior_history = list(init_ckpt["history"])
+                prior_epochs = len(prior_history)
+            chronicle.log_info(
+                f"[{name}] Strictly loaded init checkpoint {args.init_checkpoint} (prior_epochs={prior_epochs})"
+            )
 
         params = get_parameter_count(model)
         latency_ms = measure_inference_latency_ms(model, device)
@@ -535,6 +903,17 @@ def main() -> None:
             weight_decay=args.weight_decay,
             save_dir=model_dir,
             joint_count=6,
+            enable_dagger_ar1=args.enable_dagger_ar1,
+            mppi_cfg=cfg.mppi,
+            ar1_warmup_epochs=args.ar1_warmup_epochs,
+            ar1_ramp_epochs=args.ar1_ramp_epochs,
+            ar1_target_alpha=args.ar1_target_alpha,
+            dagger_frequency=args.dagger_frequency,
+            dagger_start_epoch=args.dagger_start_epoch,
+            dagger_horizon=args.dagger_horizon,
+            seed=args.seed,
+            prior_epochs=prior_epochs,
+            prior_history=prior_history,
         )
 
         eval_res = evaluate_baseline_rollout(
@@ -554,6 +933,7 @@ def main() -> None:
             "position_error_per_horizon": eval_res["position_error_per_horizon"],
             "velocity_error_per_horizon": eval_res["velocity_error_per_horizon"],
             "best_val_loss": train_res["best_val_loss"],
+            "training_meta": train_res["training_meta"],
         }
         chronicle.log_success(
             f"[{name}] Evaluated: Pos MSE (H=100): {eval_res['position_mse_per_horizon'][100]:.5f} | "
@@ -597,8 +977,12 @@ def main() -> None:
     else:
         final_benchmarks = benchmark_results
 
-    # 3. Save comparative metrics JSON
+    # 3. Save comparative metrics JSON (preserving sibling model entries on subset runs)
     metrics_path = output_dir / "comparative_metrics.json"
+    if "all" not in args.models and metrics_path.is_file():
+        existing_benchmarks = json.loads(metrics_path.read_text(encoding="utf-8"))
+        existing_benchmarks.update(final_benchmarks)
+        final_benchmarks = existing_benchmarks
     with open(metrics_path, "w", encoding="utf-8") as f:
         json.dump(final_benchmarks, f, indent=2)
     chronicle.log_success(f"Comparative benchmark metrics saved to: {metrics_path}")

@@ -4,46 +4,58 @@
 
 ## 1. SSOT Metrics & Benchmark Data
 
-### `docs/CORL_FINAL_BENCHMARK_SUMMARY.md`
-> CoRL final grounded multi-seed, 50-episode PIL, ablation, robustness, and energy summary + LaTeX tables
+### `results/corl_final_benchmark_summary.md`
+> CoRL final grounded 3-seed, 50-episode PIL, 5-stage ablation, equalized baselines, robustness, and energy summary + LaTeX tables
 
 # SPWM-v0.12.4 — CoRL Final Grounded Benchmark Summary
 
-All closed-loop control metrics below are evaluated under strict **Physics-in-the-Loop (PIL)** execution (`ArticulatedArmPhysicsStepper`, rigid payload attached at contact onset $t \ge t_c$, causal `OnlineEventCameraStream`, and **zero** ground-truth `z_gt_next` leakage) across `50` unseen test episodes (`[3600, 3649]`) under identical MPPI settings ($K=256, H=10, N_{\text{iter}}=3$, slew clamp $0.10$). All learned world-model baselines are evaluated across Seeds `42, 101, 2024`, and both **Open-Loop PIL** (no online sensory overwrite during $\phi_t=1$) and **Online Observation Update** during $\phi_t=1$ are reported transparently for `Continuous RSSM` and `Deep GRU`.
+All closed-loop control metrics below are evaluated under strict **Physics-in-the-Loop (PIL)** execution (`ArticulatedArmPhysicsStepper`, rigid payload attached at contact onset $t \ge t_c$, causal `OnlineEventCameraStream`, and **zero** ground-truth `z_gt_next` leakage) across `50` unseen test episodes (`[3600, 3649]`) under identical MPPI settings ($K=256, H=10, N_{\text{iter}}=3$, slew clamp $0.10$). All multi-seed evaluations aggregate Seeds `42, 101, 2024` as `mean ± std`. Both `Continuous RSSM` and `Deep GRU` are trained with equalized multi-step SE(3) rollout + AR(1) action perturbations + `ClosedLoopBuffer` DAgger replay across all 3 seeds, and evaluated under all three causal PIL regimes (**Open-Loop**, **Un-Gated Online $w_t=1.0$**, and **Residual-Gated Online** using the exact same FK rejection gate as SPWM). Headline SPWM results lead strictly with the **$N=25$ validation-selected (`[3200, 3224]`) 3-seed `mean ± std`**.
 
 ---
 
-## 1. Publication-Ready LaTeX Tables
+## 1. Equalized Training Budgets & Wall-Clock Provenance
 
-### Table 1: Multi-Horizon Open-Loop Rollout ($N=400$, $H=100$, $t_{\text{start}}=4$; Symmetric Horizons, Multi-Seed Mean $\pm$ Std)
+| Model | Seed 42 (Ep / Best / Time) | Seed 101 (Ep / Best / Time) | Seed 2024 (Ep / Best / Time) | Regime |
+| :--- | :---: | :---: | :---: | :--- |
+| **SPWM-v0.12.4** | `160+240` / Ep `240` (`N=25` sel.) / `10.40 h` | `160+240` / Ep `96` (`N=25` sel.) / `5.86 h` | `160+260` / Ep `102` (`N=25` sel.) / `6.41 h` | 2-Phase / 4-Latch (`MPS`) |
+| **ANN-Rate** | `160+240` / `best_model` / — | `160+240` / `best_model` / — | `160+240` / `best_model` / — | Identical to SPWM (`MPS`) |
+| **Continuous RSSM** | `60+16=76` / Ep `61` / `13.0 m` (+60 ep base) | `60+16=76` / Ep `61` / `12.9 m` (+60 ep base) | `60+17=77` / Ep `62` / `13.8 m` (+60 ep base) | 80-step SE(3) + AR(1) + DAgger (`MPS`) |
+| **Deep GRU** | `59+40=99` / Ep `90` / `33.8 m` (+59 ep base) | `80` (scratch) / Ep `68` / `67.1 m` | `80` (scratch) / Ep `80` / `66.8 m` | 80-step SE(3) + AR(1) + DAgger (`MPS`) |
+| **Continuous ConvLSTM** | `60` / Ep `54` / `86.9 m` | — | — | 80-step SE(3) (`MPS`, open-loop only) |
+
+---
+
+## 2. Publication-Ready LaTeX Tables
+
+### Table 1: Multi-Horizon Open-Loop Rollout ($N=400$, $H=100$, $t_{\text{start}}=4$; Equalized 3-Seed Mean $\pm$ Std)
 
 ```latex
 \begin{table}[t]
 \centering
-\caption{\textbf{Multi-Horizon Open-Loop Rollout ($N=400$, $H=100$, $t_{\text{start}}=4$).} Symmetric Position and Velocity MSE horizons ($H \in \{1, 10, 50, 100\}$). Mean $\pm$ seed std across 3 seeds ($42, 101, 2024$) with full $160+240$ training budget for SPWM, ANN-Rate, and Continuous RSSM; single seed ($42$) for Deep GRU and Continuous ConvLSTM.}
+\caption{\textbf{Multi-Horizon Open-Loop Rollout ($N=400$, $H=100$, $t_{\text{start}}=4$).} Symmetric Position and Velocity MSE horizons ($H \in \{1, 10, 50, 100\}$). Mean $\pm$ seed std across 3 seeds ($42, 101, 2024$) for SPWM, ANN-Rate, Continuous RSSM, and Equalized Deep GRU; single seed ($42$) for Continuous ConvLSTM.}
 \label{tab:open_loop_rollout}
 \resizebox{\textwidth}{!}{%
 \begin{tabular}{lccccccccc}
 \toprule
 \textbf{Model Architecture} & \textbf{Params (Act.)} & \textbf{Pos H=1} & \textbf{Pos H=10} & \textbf{Pos H=50} & \textbf{Pos H=100} & \textbf{Vel H=1} & \textbf{Vel H=10} & \textbf{Vel H=50} & \textbf{Vel H=100} \\
 \midrule
-Continuous ConvLSTM & 296.9k & 0.00002 & \textbf{0.00012} & \textbf{0.00150} & 0.00707 & 0.00147 & \textbf{0.00553} & \textbf{0.01095} & 0.33696 \\
-Deep GRU & 338.9k & 0.00003 & 0.00029 & 0.00173 & 0.00650 & 0.00097 & 0.00643 & 0.01605 & 0.11191 \\
-Continuous RSSM (3 seeds) & 380.5k & \textbf{0.00001 $\pm$ 0.00001} & 0.00029 $\pm$ 0.00006 & 0.00166 $\pm$ 0.00002 & \textbf{0.00145 $\pm$ 0.00009} & \textbf{0.00033 $\pm$ 0.00017} & 0.01659 $\pm$ 0.00244 & 0.02262 $\pm$ 0.00088 & 0.02101 $\pm$ 0.00044 \\
+Continuous ConvLSTM (Seed 42) & 296.9k & \textbf{0.00002} & \textbf{0.00012} & \textbf{0.00150} & 0.00707 & 0.00147 & \textbf{0.00553} & \textbf{0.01095} & 0.33696 \\
+Deep GRU (Equalized, 3 seeds) & 338.9k & 0.00003 $\pm$ 0.00001 & 0.00147 $\pm$ 0.00044 & 0.00195 $\pm$ 0.00003 & 0.00469 $\pm$ 0.00048 & 0.00203 $\pm$ 0.00019 & 0.01852 $\pm$ 0.00237 & 0.01332 $\pm$ 0.00024 & 0.08716 $\pm$ 0.01445 \\
+Continuous RSSM (Equalized, 3 seeds) & 380.5k & 0.00007 $\pm$ 0.00004 & 0.00033 $\pm$ 0.00006 & 0.00174 $\pm$ 0.00004 & \textbf{0.00152 $\pm$ 0.00014} & 0.00153 $\pm$ 0.00186 & 0.01660 $\pm$ 0.00201 & 0.02256 $\pm$ 0.00088 & 0.02130 $\pm$ 0.00082 \\
 ANN-Rate (Leaky, 3 seeds) & 392.1k (317.9k) & 0.00028 $\pm$ 0.00012 & 0.00249 $\pm$ 0.00032 & 0.00341 $\pm$ 0.00264 & 0.00210 $\pm$ 0.00063 & 0.00193 $\pm$ 0.00069 & 0.03356 $\pm$ 0.00511 & 0.02440 $\pm$ 0.01698 & 0.01183 $\pm$ 0.00715 \\
-\textbf{SPWM-v0.12.4 (3 seeds)} & \textbf{392.1k (317.9k)} & 0.00018 $\pm$ 0.00011 & 0.00348 $\pm$ 0.00265 & 0.00315 $\pm$ 0.00144 & 0.00240 $\pm$ 0.00037 & 0.00139 $\pm$ 0.00076 & 0.04507 $\pm$ 0.02601 & 0.02466 $\pm$ 0.01271 & \textbf{0.00971 $\pm$ 0.00177} \\
+\textbf{SPWM-v0.12.4 (3 seeds)} & \textbf{392.1k (317.9k)} & 0.00018 $\pm$ 0.00011 & 0.00348 $\pm$ 0.00265 & 0.00315 $\pm$ 0.00144 & 0.00240 $\pm$ 0.00037 & \textbf{0.00139 $\pm$ 0.00076} & 0.04507 $\pm$ 0.02601 & 0.02466 $\pm$ 0.01271 & \textbf{0.00971 $\pm$ 0.00177} \\
 \bottomrule
 \end{tabular}%
 }
 \end{table}
 ```
 
-### Table 2: Closed-Loop Physics-in-the-Loop (PIL) Benchmark (`50` Test Episodes `[3600, 3649]`, $t \ge t_c$)
+### Table 2: Closed-Loop Physics-in-the-Loop (PIL) Benchmark (`50` Test Episodes `[3600, 3649]`, $t \ge t_c$, 3-Regime Comparison)
 
 ```latex
 \begin{table}[t]
 \centering
-\caption{\textbf{Closed-Loop Physics-in-the-Loop (PIL) Manipulation Benchmark (`50` Test Episodes, Payload Attached at Contact Onset $t \ge t_c$).} Continuous recurrent baselines (RSSM, Deep GRU) are reported under \textit{both} Open-Loop PIL (no sensory overwrite during $\phi_t=1$) and Online Observation Update during $\phi_t=1$. SPWM is reported under original $N=6$ Tier-2 checkpoint selection, expanded $N=25$ validation-split (`[3200, 3224]`) selection, and Canonical Seed $42$.}
+\caption{\textbf{Closed-Loop Physics-in-the-Loop (PIL) Manipulation Benchmark (`50` Test Episodes, Payload Attached at $t \ge t_c$).} Equalized Continuous RSSM and Deep GRU (3 seeds, AR(1)+DAgger) are reported side-by-side across all three regimes: Open-Loop PIL ($w_t=0$), Un-Gated Online Observation ($w_t=1.0$), and Residual-Gated Online Observation (identical FK rejection gate to SPWM). SPWM leads with $N=25$ validation-split (`[3200, 3224]`) checkpoint selection across all 3 seeds (with $N=6$ Tier-2 selection noted for variance comparison).}
 \label{tab:pil_control}
 \resizebox{\textwidth}{!}{%
 \begin{tabular}{lccccccc}
@@ -53,81 +65,92 @@ ANN-Rate (Leaky, 3 seeds) & 392.1k (317.9k) & 0.00028 $\pm$ 0.00012 & 0.00249 $\
 \textit{Privileged Jacobian-IK + PD (Oracle)} & \textit{96.0} & \textit{0.01 $\pm$ 0.03} & \textit{0.43 $\pm$ 0.73} & \textit{0.00771} & \textit{0.00497} & \textit{10.46} & \textit{22.7} \\
 \midrule
 Reactive BC (50 ep, Seed 42) & 0.0 & 13.13 $\pm$ 6.27 & 15.66 $\pm$ 8.15 & 0.00140 & 0.00135 & 13.98 & 1.9 \\
-Deep GRU (Open-Loop PIL, 3 seeds) & 1.3 $\pm$ 2.3 & 10.57 $\pm$ 7.83 & 16.72 $\pm$ 11.31 & 0.00777 & 0.00622 & 14.67 & 67.4 \\
-Deep GRU (Online Obs., 3 seeds) & 0.0 $\pm$ 0.0 & 6.03 $\pm$ 4.00 & 10.87 $\pm$ 3.97 & 0.01654 & 0.01350 & 19.67 & 60.3 \\
-Continuous RSSM (Open-Loop PIL, 3 seeds) & 15.3 $\pm$ 4.6 & 1.31 $\pm$ 0.02 & 2.88 $\pm$ 0.10 & 0.01998 & 0.02059 & 36.23 & 52.4 \\
-Continuous RSSM (Online Post., 3 seeds) & 0.0 $\pm$ 0.0 & 1.53 $\pm$ 0.06 & 22.43 $\pm$ 0.58 & 0.03119 & 0.02875 & 36.13 & 35.1 \\
-ANN-Rate (3 seeds) & 37.3 $\pm$ 9.5 & 1.07 $\pm$ 0.28 & 2.98 $\pm$ 0.46 & 0.01148 & 0.00938 & 26.00 & 24.6 \\
-\textbf{SPWM-v0.12.4 ($N=6$ Tier-2, 3 seeds)} & \textbf{58.0 $\pm$ 27.1} & \textbf{0.90 $\pm$ 0.04} & \textbf{2.23 $\pm$ 0.68} & \textbf{0.00860} & \textbf{0.00608} & \textbf{19.37} & \textbf{27.5} \\
-\textbf{SPWM-v0.12.4 ($N=25$ Val-Sel., 3 seeds)} & \textbf{60.7 $\pm$ 2.3} & \textbf{0.88 $\pm$ 0.11} & \textbf{2.01 $\pm$ 0.12} & \textbf{0.00931} & \textbf{0.00663} & \textbf{21.14} & \textbf{35.5} \\
-\textbf{SPWM-v0.12.4 (Canonical Seed 42)} & \textbf{86.0} & \textbf{0.86 $\pm$ 0.80} & \textbf{1.57 $\pm$ 1.00} & \textbf{0.00587} & \textbf{0.00354} & \textbf{14.02} & \textbf{36.7} \\
+\midrule
+Continuous RSSM (Open-Loop PIL, $w_t=0$) & 15.3 $\pm$ 7.0 & 1.23 $\pm$ 0.06 & 2.74 $\pm$ 0.07 & 0.02037 & 0.02139 & 36.86 & 46.8 \\
+Continuous RSSM (Un-Gated Online, $w_t=1.0$) & 0.0 $\pm$ 0.0 & 1.43 $\pm$ 0.03 & 25.49 $\pm$ 1.31 & 0.03153 & 0.02956 & 36.49 & 46.9 \\
+Continuous RSSM (Residual-Gated Online) & 15.3 $\pm$ 5.0 & 1.23 $\pm$ 0.05 & 2.72 $\pm$ 0.11 & 0.02049 & 0.02161 & 36.94 & 46.5 \\
+\midrule
+Deep GRU (Open-Loop PIL, $w_t=0$) & 77.3 $\pm$ 4.2 & 1.14 $\pm$ 0.31 & 1.90 $\pm$ 0.18 & 0.00450 & 0.00268 & 10.79 & 57.8 \\
+Deep GRU (Un-Gated Online, $w_t=1.0$) & 0.0 $\pm$ 0.0 & 1.47 $\pm$ 0.51 & 7.35 $\pm$ 1.34 & 0.00698 & 0.00483 & 15.08 & 57.1 \\
+Deep GRU (Residual-Gated Online) & 76.7 $\pm$ 5.0 & 1.14 $\pm$ 0.31 & 1.90 $\pm$ 0.18 & 0.00449 & 0.00267 & 10.79 & 57.7 \\
+\midrule
+ANN-Rate (Leaky Rate, 3 seeds) & 37.3 $\pm$ 9.5 & 1.07 $\pm$ 0.28 & 2.98 $\pm$ 0.46 & 0.01148 & 0.00938 & 26.00 & 24.6 \\
+\textbf{SPWM-v0.12.4 ($N=25$ Val-Sel., 3 seeds)} & \textbf{60.7 $\pm$ 2.3} & \textbf{0.88 $\pm$ 0.11} & \textbf{2.01 $\pm$ 0.12} & \textbf{0.00931} & \textbf{0.00663} & \textbf{21.14} & \textbf{26.6} \\
+SPWM-v0.12.4 ($N=6$ Tier-2, 3 seeds) & 58.0 $\pm$ 27.1 & 0.90 $\pm$ 0.04 & 2.23 $\pm$ 0.68 & 0.00860 & 0.00608 & 19.37 & 27.5 \\
 \bottomrule
 \end{tabular}%
 }
 \end{table}
 ```
 
-> **Note on Single-Seed vs. 3-Seed Deep GRU:** On Canonical Seed 42 alone, `Deep GRU (Open-Loop PIL)` scores `4.0%` (`min=1.68 cm`, `term=5.67 cm`) and `Deep GRU (Online Obs.)` scores `0.0%` (`min=1.88 cm`, `term=14.96 cm`).
+> **Critical Findings from Baseline Equalization & Shared FK Residual Gating:**
+> 1. **Why un-gated online baselines collapsed (`0.0%`):** Forcing unconditional overwrites (`w_t = 1.0`) from Python's domain-gapped 2D `OnlineEventCameraStream` causes both `Continuous RSSM` (`0.0%`, term `25.49 ± 1.31 cm`) and `Deep GRU` (`0.0%`, term `7.35 ± 1.34 cm`) to fail. Applying the identical causal FK residual rejection gate restores `Continuous RSSM` to its open-loop ceiling (`15.3 ± 5.0%` vs `15.3 ± 7.0%`, term `2.72 ± 0.11 cm`), confirming RSSM's `15.3%` limit is architectural (MPPI jitter `|Δ²q| = 0.02049`, `36.94` flips). Conversely, equalized `Deep GRU` recovers to **`76.7 ± 5.0%`** (`82.0% / 72.0% / 76.0%`; `77.3 ± 4.2%` open-loop) with `0/150` velocity violations.
+> 2. **Architectural Trade-Off vs. Equalized Deep GRU:** While equalized `Deep GRU` achieves higher nominal PIL grasp success (`76.7 ± 5.0%` vs. `60.7 ± 2.3%` for SPWM) and smoother controls (`|Δ²q| = 0.00449` vs. `0.00931`), `Deep GRU` exceeds the `50.0 ms` (`20 Hz`) real-time budget at **`57.7 ms/step`** (`2.17×` slower than SPWM's `26.6 ms/step` under identical `OMP_NUM_THREADS=2`), exhibits **`9.0×` higher $H=100$ open-loop velocity MSE** (`0.08716` vs. `0.00971 rad²/s²`), and consumes **`22.1×` higher standby core energy** (`269.57 nJ/step` on Orin vs. `12.22 nJ/step` on Loihi-2) and **`1.59×` higher E2E step energy** (`1.7490 mJ` vs. `1.0979 mJ`).
+> 3. **Controlled Spiking Isolation (`SPWM` vs. `ANN-Rate`):** Under identical parameter budget (`317.9k` active), `(q, p)` factorization, `160+240` training curriculum, and MPPI controller, SPWM's discrete ALIF thresholding outperforms `ANN-Rate` by **`+23.4 pp`** (`60.7 ± 2.3%` vs. `37.3 ± 9.5%`) and delivers `4.3×` better relative retention under `1.0%` sensory noise.
 
-### Table 3: Disentangled 5-Stage SPWM Architectural Ablation in PIL (`50` Test Episodes `[3600, 3649]`, $t \ge t_c$)
+### Table 3: Full 3-Seed 5-Stage SPWM Architectural Ablation in PIL (`50` Test Episodes `[3600, 3649]`, $t \ge t_c$, Seeds `42, 101, 2024`)
 
 ```latex
 \begin{table}[t]
 \centering
-\caption{\textbf{Disentangled SPWM Architectural Ablation in PIL (`50` Episodes `[3600, 3649]`, $t \ge t_c$).} Stage 4a isolates `+ 2-Stage SE(3) Lookahead` with Residual Handover strictly disabled ($w_t \equiv 0$); Stage 4b enables both.}
+\caption{\textbf{3-Seed 5-Stage SPWM Architectural Ablation in PIL (`50` Episodes `[3600, 3649]`, $t \ge t_c$, Seeds `42, 101, 2024`).} Stages 1--2 evaluate pre-DAgger Phase 1 warmup weights (`checkpoint\_phase\_1.pt`), Stage 3 evaluates Phase 3/4 AR(1)+DAgger curriculum weights (`checkpoint\_phase\_4.pt`) without lookahead/handover, and Stages 4a--4b apply 2-Stage $\text{SE}(3)$ Lookahead and Residual Handover to the $N=25$ validation-selected checkpoints (`42: phase\_4`, `101: phase\_1`, `2024: phase\_2`).}
 \label{tab:spwm_ablation}
-\begin{tabular}{lcccccc}
+\resizebox{\textwidth}{!}{%
+\begin{tabular}{lccccccc}
 \toprule
-\textbf{Ablation Stage} & \textbf{PIL Success (\%)} & \textbf{Min Err (cm)} & \textbf{Term Err (cm)} & $|\Delta^2 q|$ & $|\Delta^3 q|$ & \textbf{Flips} \\
+\textbf{Ablation Stage} & \textbf{Seeds (42 / 101 / 2024)} & \textbf{PIL Succ (\%)} & \textbf{Min Err (cm)} & \textbf{Term Err (cm)} & $|\Delta^2 q|$ & $|\Delta^3 q|$ & \textbf{Flips} \\
 \midrule
-1. SPWM-Base (Phase 1 Warmup, Unsmoothed MPPI) & 62.0 & 1.27 $\pm$ 1.14 & 2.51 $\pm$ 1.59 & 0.00710 & 0.00499 & 16.04 \\
-2. + Smooth MPPI Controls & 62.0 & 1.09 $\pm$ 0.98 & 2.26 $\pm$ 1.79 & 0.00729 & 0.00451 & 15.34 \\
-3. + Phase 1 Curriculum (4-Stage, No Handover/Lookahead) & 72.0 & 0.98 $\pm$ 0.97 & 1.85 $\pm$ 1.31 & 0.00600 & 0.00366 & 14.24 \\
-4a. + 2-Stage SE(3) Lookahead (Handover Disabled, $w_t \equiv 0$) & 86.0 & 0.86 $\pm$ 0.80 & 1.57 $\pm$ 1.00 & 0.00587 & 0.00354 & 14.02 \\
-\textbf{4b. + Residual Handover \& 2-Stage Lookahead (Full)} & \textbf{86.0} & \textbf{0.86 $\pm$ 0.80} & \textbf{1.57 $\pm$ 1.00} & 0.00587 & 0.00354 & 14.02 \\
+1. SPWM-Base (Phase 1 Warmup, Unsmoothed) & 62 / 44 / 30 & 45.3 $\pm$ 16.0 & 1.03 $\pm$ 0.21 & 2.50 $\pm$ 0.11 & 0.00983 & 0.00765 & 23.03 \\
+2. + Smooth MPPI Controls (Pre-DAgger) & 62 / 44 / 48 & 51.3 $\pm$ 9.5 & 1.02 $\pm$ 0.08 & 2.41 $\pm$ 0.13 & 0.00991 & 0.00705 & 21.99 \\
+3. + Phase 3/4 Curriculum (AR(1)+DAgger, No Lookahead/Handover) & 56 / 18 / 40 & 38.0 $\pm$ 19.1 & 1.53 $\pm$ 0.59 & 3.27 $\pm$ 1.13 & 0.00589 & 0.00354 & 11.17 \\
+4a. + 2-Stage SE(3) Lookahead (Val-Sel., $w_t \equiv 0$) & 58 / 62 / 62 & 60.7 $\pm$ 2.3 & 0.88 $\pm$ 0.11 & 2.01 $\pm$ 0.12 & 0.00931 & 0.00663 & 21.14 \\
+\textbf{4b. + Residual Rejection Gate (Full SPWM, Val-Sel.)} & 58 / 62 / 62 & \textbf{60.7 $\pm$ 2.3} & \textbf{0.88 $\pm$ 0.11} & \textbf{2.01 $\pm$ 0.12} & 0.00931 & 0.00663 & 21.14 \\
 \bottomrule
-\end{tabular}
+\end{tabular}%
+}
 \end{table}
 ```
+
+> **Honest Negative/Mixed-Result Diagnostic (Stage 2 vs. Stage 3):** Comparing Stage 2 (`51.3 ± 9.5%`) against Stage 3 (`38.0 ± 19.1%`) across all 3 seeds shows that while Phase 3/4 AR(1)+DAgger replay substantially smooths control trajectories (`|Δ²q|: 0.00991 -> 0.00589 rad/step²`, `|Δ³q|: 0.00705 -> 0.00354 rad/step³`, flips `21.99 -> 11.17`), it **degrades 3-seed mean PIL grasp success by `-13.3 pp`** (`56.0% / 18.0% / 40.0%`) and **doubles inter-seed standard deviation (`9.5% -> 19.1%`)**. Because on-policy DAgger overfitting can raise single-seed performance (e.g., Seed 42 validation `92.0%`) while destabilizing other seeds (`18.0%` on Seed 101 at `phase_4`), **$N=25$ validation-split (`[3200, 3224]`) checkpoint selection** is mandatory to select pre-overfit checkpoints where needed (`101: phase_1`, `2024: phase_2`), enabling 2-Stage SE(3) Lookahead (`Stage 4a/4b`) to achieve **`60.7 ± 2.3%`** (`58.0% / 62.0% / 62.0%`).
 
 ### Table 4: Symmetric 3-Seed Zero-Shot Sim-to-Real PIL Robustness Stress Test — SPWM vs. ANN-Rate (`50` Test Episodes, $t \ge t_c$)
 
 ```latex
 \begin{table}[t]
 \centering
-\caption{\textbf{Zero-Shot Physical \& Sensory Robustness Stress Test in PIL (`50` Test Episodes `[3600, 3649]`, $t \ge t_c$).} Completely symmetric 3-seed comparison ($42, 101, 2024$) of frozen SPWM-v0.12.4 vs. parameter-matched ANN-Rate, alongside Canonical Seed $42$. Relative success retention ($\Delta_{\text{rel}}$) is computed against each model's Nominal Baseline.}
+\caption{\textbf{Zero-Shot Physical \& Sensory Robustness Stress Test in PIL (`50` Test Episodes `[3600, 3649]`, $t \ge t_c$, $N=6$ Tier-2 Checkpoints).} Symmetric 3-seed comparison ($42, 101, 2024$) of frozen SPWM-v0.12.4 vs. parameter-matched ANN-Rate. Relative success retention ($\Delta_{\text{rel}}$) is computed against each model's Nominal Baseline.}
 \label{tab:pil_robustness}
 \resizebox{\textwidth}{!}{%
-\begin{tabular}{lccccccc}
+\begin{tabular}{lcccccc}
 \toprule
-\textbf{Perturbation Condition} & \multicolumn{2}{c}{\textbf{SPWM-v0.12.4 (Seed 42)}} & \multicolumn{2}{c}{\textbf{SPWM-v0.12.4 (3-Seed Mean $\pm$ Std)}} & \multicolumn{3}{c}{\textbf{ANN-Rate (3-Seed Mean $\pm$ Std)}} \\
-\cmidrule(lr){2-3} \cmidrule(lr){4-5} \cmidrule(lr){6-8}
- & \textbf{Succ (\%)} & \textbf{Term Err (cm)} & \textbf{Succ (\%)} & \textbf{Term Err (cm)} & \textbf{Succ (\%)} & \textbf{Min Err (cm)} & \textbf{Term Err (cm)} \\
+\textbf{Perturbation Condition} & \multicolumn{3}{c}{\textbf{SPWM-v0.12.4 (3-Seed Mean $\pm$ Std)}} & \multicolumn{3}{c}{\textbf{ANN-Rate (3-Seed Mean $\pm$ Std)}} \\
+\cmidrule(lr){2-4} \cmidrule(lr){5-7}
+ & \textbf{Succ (\%)} & \textbf{Min Err (cm)} & \textbf{Term Err (cm)} & \textbf{Succ (\%)} & \textbf{Min Err (cm)} & \textbf{Term Err (cm)} \\
 \midrule
-Nominal Baseline & \textbf{86.0} & \textbf{1.57} & \textbf{58.0 $\pm$ 27.1} & \textbf{2.23 $\pm$ 0.68} & 37.3 $\pm$ 9.5 & 1.07 $\pm$ 0.28 & 2.98 $\pm$ 0.46 \\
-Sensory Noise Injection (1.0\%) & \textbf{72.0 (-16.3\% rel)} & \textbf{1.86} & \textbf{55.3 $\pm$ 19.4 (-4.6\% rel)} & \textbf{2.34 $\pm$ 0.63} & 30.0 $\pm$ 3.5 (-19.6\% rel) & 1.04 $\pm$ 0.18 & 3.36 $\pm$ 0.53 \\
-Payload Extrapolation (4.80 kg) & \textbf{78.0 (-9.3\% rel)} & \textbf{1.78} & \textbf{39.3 $\pm$ 33.7 (-32.2\% rel)} & \textbf{2.50 $\pm$ 0.62} & 26.7 $\pm$ 16.2 (-28.6\% rel) & 1.36 $\pm$ 0.20 & 3.64 $\pm$ 0.80 \\
-Actuator Drift (0.80$\times$ Friction) & \textbf{70.0 (-18.6\% rel)} & \textbf{2.07} & \textbf{40.7 $\pm$ 27.3 (-29.9\% rel)} & \textbf{2.61 $\pm$ 0.54} & 30.7 $\pm$ 14.0 (-17.9\% rel) & 1.42 $\pm$ 0.22 & 3.74 $\pm$ 0.83 \\
-Actuator Drift (1.20$\times$ Friction) & \textbf{76.0 (-11.6\% rel)} & \textbf{1.97} & \textbf{44.0 $\pm$ 28.0 (-24.1\% rel)} & \textbf{2.53 $\pm$ 0.56} & 33.3 $\pm$ 16.7 (-10.7\% rel) & 1.34 $\pm$ 0.21 & 3.51 $\pm$ 1.21 \\
+Nominal Baseline & \textbf{58.0 $\pm$ 27.1} & \textbf{0.90 $\pm$ 0.04} & \textbf{2.23 $\pm$ 0.68} & 37.3 $\pm$ 9.5 & 1.07 $\pm$ 0.28 & 2.98 $\pm$ 0.46 \\
+Sensory Noise Injection (1.0\%) & \textbf{55.3 $\pm$ 19.4 (-4.6\% rel)} & \textbf{0.90 $\pm$ 0.09} & \textbf{2.34 $\pm$ 0.63} & 30.0 $\pm$ 3.5 (-19.6\% rel) & 1.04 $\pm$ 0.18 & 3.36 $\pm$ 0.53 \\
+Payload Extrapolation (4.80 kg) & \textbf{39.3 $\pm$ 33.7 (-32.2\% rel)} & \textbf{1.18 $\pm$ 0.15} & \textbf{2.50 $\pm$ 0.62} & 26.7 $\pm$ 16.2 (-28.6\% rel) & 1.36 $\pm$ 0.20 & 3.64 $\pm$ 0.80 \\
+Actuator Drift (0.80$\times$ Friction) & \textbf{40.7 $\pm$ 27.3 (-29.9\% rel)} & \textbf{1.19 $\pm$ 0.11} & \textbf{2.61 $\pm$ 0.54} & 30.7 $\pm$ 14.0 (-17.9\% rel) & 1.42 $\pm$ 0.22 & 3.74 $\pm$ 0.83 \\
+Actuator Drift (1.20$\times$ Friction) & \textbf{44.0 $\pm$ 28.0 (-24.1\% rel)} & \textbf{1.22 $\pm$ 0.11} & \textbf{2.53 $\pm$ 0.56} & 33.3 $\pm$ 16.7 (-10.7\% rel) & 1.34 $\pm$ 0.21 & 3.51 $\pm$ 1.21 \\
 \bottomrule
 \end{tabular}%
 }
 \end{table}
 ```
 
-### Table 5: Recurrent State-Estimator Core vs. Full End-to-End Closed-Loop Step Energy Audit
+### Table 5: Standby Recurrent Core vs. Full End-to-End Closed-Loop Step Energy Audit
 
 ```latex
 \begin{table}[t]
 \centering
-\caption{\textbf{Recurrent State-Estimator Core vs. Full End-to-End Closed-Loop Step Energy.} Panel (a) isolates the recurrent state-estimator core (Loihi-2 SOPs at $1.5\,\text{pJ/SOP}$ vs. Jetson Orin GPU MACs at $0.9\,\text{pJ/MAC}$; 3-seed SPWM spike rate: $12.15 \pm 0.19\%$, $8,150 \pm 129$ SOPs/step). Panel (b) reports full end-to-end closed-loop step energy on Jetson Orin including the shared dual-stream Conv2D + SpatialSoftmax encoder ($882{,}688$ MACs, $794.4\,\text{nJ}$) and $K=256 \times H=10 \times N_{\text{iter}}=3 = 7{,}680$ batched MPPI rollouts ($1.219\,\text{GMACs}$ for SPWM/ANN-Rate).}
+\caption{\textbf{Standby Recurrent State-Estimator Core vs. Full End-to-End Closed-Loop Step Energy.} Panel (a) isolates the standby state-estimation core when dense GPU planning is dormant (Loihi-2 SOPs at $1.5\,\text{pJ/SOP}$ excluding passive membrane leak vs. Jetson Orin GPU MACs at $0.9\,\text{pJ/MAC}$; 3-seed SPWM spike rate: $12.15 \pm 0.19\%$, $8,150 \pm 129$ SOPs/step). Panel (b) reports full end-to-end closed-loop step energy including the shared Conv2D + SpatialSoftmax encoder ($882{,}688$ MACs, $794.4\,\text{nJ}$) and $K=256 \times H=10 \times N_{\text{iter}}=3 = 7{,}680$ batched GPU MPPI rollouts ($1.219\,\text{GMACs}$ / $1.0971\,\text{mJ}$ for SPWM and ANN-Rate).}
 \label{tab:energy_audit}
 \resizebox{\textwidth}{!}{%
 \begin{tabular}{lccccccc}
 \toprule
 \textbf{Model Architecture} & \textbf{Core Ops / Step} & \textbf{Core Energy (nJ)} & \textbf{Core Power @ 20Hz} & \textbf{Core vs. GPU} & \textbf{MPPI Rollout MACs} & \textbf{E2E Step Energy (mJ)} & \textbf{E2E Power @ 20Hz} \\
 \midrule
-\textbf{SPWM-v0.12.4 (Loihi-2 Core + Orin, 3 seeds)} & \textbf{8,150 $\pm$ 129 SOPs} & \textbf{12.22 $\pm$ 0.19} & \textbf{0.244 $\pm$ 0.004 mW} & \textbf{4.94 $\pm$ 0.08$\times$} & \textbf{1.219 G} & \textbf{1.0979} & \textbf{21.96 mW} \\
+\textbf{SPWM-v0.12.4 (Loihi-2 Standby Core + Orin, 3 seeds)} & \textbf{8,150 $\pm$ 129 SOPs} & \textbf{12.22 $\pm$ 0.19} & \textbf{0.244 $\pm$ 0.004 mW} & \textbf{4.94 $\pm$ 0.08$\times$} & 1.219 G & 1.0979 & 21.96 mW \\
 ANN-Rate (Orin GPU) & 67,072 MACs & 60.36 & 1.207 mW & 1.00$\times$ (Ref) & 1.219 G & 1.0979 & 21.96 mW \\
 Deep GRU (Orin GPU) & 299,520 MACs & 269.57 & 5.391 mW & 1.00$\times$ & 1.942 G & 1.7490 & 34.98 mW \\
 Continuous RSSM (Orin GPU) & 365,056 MACs & 328.55 & 6.571 mW & 1.00$\times$ & 2.358 G & 2.1236 & 42.47 mW \\
@@ -138,11 +161,13 @@ Continuous ConvLSTM (Orin GPU) & 2,359,296 MACs & 2123.37 & 42.467 mW & 1.00$\ti
 \end{table}
 ```
 
+> **Recalibrated Energy Interpretation:**
+> - **Primary Advantage Over `ANN-Rate`:** `SPWM`'s advantage over `ANN-Rate` is **closed-loop dynamical stability and noise robustness** (`+23.4 pp` 3-seed PIL grasp success, `4.3×` better relative retention under `1.0%` sensory noise), **not** end-to-end closed-loop energy savings: saving `48.14 nJ/step` on Loihi-2 (`60.36 -> 12.22 nJ/step`) atop `1.0971 mJ/step` of dense GPU MPPI rollouts is a **`0.004%`** end-to-end difference (`1.0979 mJ/step` / `21.96 mW` @ `20 Hz` for both).
+> - **Always-On Standby Benefit & `M1` Rollout Compactness:** The `4.94×` Loihi-2 recurrent core reduction (`12.22 ± 0.19 nJ/step`, `0.244 mW` @ `20 Hz`, computed from synaptic SOPs excluding passive membrane leak) is specifically an **always-on, sub-milliwatt standby state-estimation benefit** when batched MPPI planning is dormant. The `1.93×` E2E energy reduction vs. `Continuous RSSM` (`2.1236 mJ/step`) and `1.59×` reduction vs. `Deep GRU` (`1.7490 mJ/step`) stem from `M1`'s compact MLP rollout architecture (`1.219 GMACs` vs. `2.358 GMACs` and `1.942 GMACs`).
+
 ---
 
-## 2. Residual-Gated Handover ($w_t > 0$) Telemetry & Validation Threshold Sweep
-
-### 2.1 $w_t > 0$ Activation Across All 5 PIL Robustness Conditions (`[3600, 3649]`, Seeds `42, 101, 2024`)
+## 3. Residual-Gated Handover ($w_t > 0$) Telemetry & Validation Threshold Sweep
 
 | Perturbation Condition | Seed 42 (Ep% / Step% / Mean $w$) | Seed 101 (Ep% / Step% / Mean $w$) | Seed 2024 (Ep% / Step% / Mean $w$) | 3-Seed Mean Step $w_t > 0$ |
 | :--- | :---: | :---: | :---: | :---: |
@@ -152,38 +177,32 @@ Continuous ConvLSTM (Orin GPU) & 2,359,296 MACs & 2123.37 & 42.467 mW & 1.00$\ti
 | **Actuator Drift (0.80x Friction)** | `0.0% / 0.0% / 0.000` | `0.0% / 0.0% / 0.000` | `4.0% / 0.5% / 0.229` | `0.17 ± 0.29%` |
 | **Actuator Drift (1.20x Friction)** | `0.0% / 0.0% / 0.000` | `0.0% / 0.0% / 0.000` | `4.0% / 0.5% / 0.169` | `0.17 ± 0.29%` |
 
-### 2.2 Handover Trigger Threshold Sweep on Held-Out Validation Split (`[3200, 3249]`, $d_{\text{pred}} > \tau$)
-
 | Seed & Threshold $\tau$ | Nominal (Succ / Ep $w_t>0$) | 1.0% Noise (Succ / Ep $w_t>0$) | 4.80 kg Payload (Succ / Ep $w_t>0$) | 0.80$\times$ Friction (Succ / Ep $w_t>0$) | 1.20$\times$ Friction (Succ / Ep $w_t>0$) |
 | :--- | :---: | :---: | :---: | :---: | :---: |
-| **seed42 ($\tau=0.026 m$)** | `78.0% / 0.0%` | `78.0% / 0.0%` | `66.0% / 0.0%` | `70.0% / 0.0%` | `72.0% / 0.0%` |
-| **seed42 ($\tau=0.020 m$)** | `78.0% / 0.0%` | `78.0% / 0.0%` | `66.0% / 0.0%` | `70.0% / 0.0%` | `72.0% / 0.0%` |
-| **seed42 ($\tau=0.015 m$)** | `78.0% / 0.0%` | `78.0% / 0.0%` | `66.0% / 0.0%` | `70.0% / 0.0%` | `72.0% / 0.0%` |
-| **seed2024 ($\tau=0.026 m$)** | `46.0% / 0.0%` | `36.0% / 0.0%` | `42.0% / 0.0%` | `38.0% / 0.0%` | `38.0% / 0.0%` |
-| **seed2024 ($\tau=0.020 m$)** | `46.0% / 0.0%` | `36.0% / 0.0%` | `42.0% / 0.0%` | `38.0% / 0.0%` | `38.0% / 0.0%` |
-| **seed2024 ($\tau=0.015 m$)** | `46.0% / 0.0%` | `36.0% / 0.0%` | `42.0% / 0.0%` | `38.0% / 0.0%` | `38.0% / 0.0%` |
-
-**Scientific Takeaway (Task 1):**
-1. Disentangling Table 3 Stage 4 proves that **100% of the `+14.0 pp` nominal PIL jump (`72.0% -> 86.0%`)** comes from `2-Stage SE(3) Lookahead` (`Stage 4a` with $w_t \equiv 0$ achieves `86.0%`, identical to `Stage 4b` Full).
-2. Because post-contact event bursts (`ev_online` at $t \ge t_c$) yield raw sensory decoded distances of `dist_obs = 0.16–0.22 m` and `rot_obs = 0.39–0.64 rad` while `M1` predicts within `dist_pred = 1.39–1.74 cm` median, the residual gate's quality checks (`dist_obs < 0.025 and rot_obs < 0.049`, or `dist_obs < dist_pred` at $t \le t_c+2$) reject corrupted sensory bursts (`0.0%` false triggers on nominal episodes across all 3 seeds and across $\tau \in \{0.026, 0.020, 0.015\}\,\text{m}$), activating selectively only when heavy OOD dynamics degrade `z_pred` beyond `z_obs` (e.g., Seed `2024`: `4.0%` of episodes / `0.5%` of $\phi_t=1$ steps across `4.80 kg`, `0.80x`, and `1.20x` friction).
+| **seed42 ($\tau=0.026\,\text{m}$)** | `78.0% / 0.0%` | `78.0% / 0.0%` | `66.0% / 0.0%` | `70.0% / 0.0%` | `72.0% / 0.0%` |
+| **seed42 ($\tau=0.020\,\text{m}$)** | `78.0% / 0.0%` | `78.0% / 0.0%` | `66.0% / 0.0%` | `70.0% / 0.0%` | `72.0% / 0.0%` |
+| **seed42 ($\tau=0.015\,\text{m}$)** | `78.0% / 0.0%` | `78.0% / 0.0%` | `66.0% / 0.0%` | `70.0% / 0.0%` | `72.0% / 0.0%` |
+| **seed2024 ($\tau=0.026\,\text{m}$)** | `46.0% / 0.0%` | `36.0% / 0.0%` | `42.0% / 0.0%` | `38.0% / 0.0%` | `38.0% / 0.0%` |
+| **seed2024 ($\tau=0.020\,\text{m}$)** | `46.0% / 0.0%` | `36.0% / 0.0%` | `42.0% / 0.0%` | `38.0% / 0.0%` | `38.0% / 0.0%` |
+| **seed2024 ($\tau=0.015\,\text{m}$)** | `46.0% / 0.0%` | `36.0% / 0.0%` | `42.0% / 0.0%` | `38.0% / 0.0%` | `38.0% / 0.0%` |
 
 ---
 
-## 3. Diagnostic Proof: $N=6$ Tier-2 vs. $N=25$ Validation Checkpoint Selection (`[3200, 3224]` $\to$ `[3600, 3649]`)
+## 4. Diagnostic Proof: $N=6$ Tier-2 vs. $N=25$ Validation Checkpoint Selection (`[3200, 3224]` $\to$ `[3600, 3649]`)
 
 | Seed | Checkpoint | Epoch | Val $N=25$ Succ (%) | Test $N=50$ Succ (%) | Test Min Err (cm) | Test Term Err (cm) | Selection Policy |
 | :--- | :--- | :---: | :---: | :---: | :---: | :---: | :--- |
-| Seed 42 | `best_model.pt` | `200` | `80.0%` | — | — | — | Val-Only |
+| Seed 42 | `best_model.pt` | `200` | `80.0%` | **86.0%** | 0.86 | 1.57 | N=6 Tier-2 |
 | Seed 42 | `checkpoint_phase_1.pt` | `181` | `60.0%` | — | — | — | Val-Only |
 | Seed 42 | `checkpoint_phase_2.pt` | `188` | `52.0%` | — | — | — | Val-Only |
 | Seed 42 | `checkpoint_phase_3.pt` | `200` | `88.0%` | — | — | — | Val-Only |
 | Seed 42 | `checkpoint_phase_4.pt` | `240` | `92.0%` | **58.0%** | 1.00 | 2.12 | N=25 Val-Sel. |
-| Seed 101 | `best_model.pt` | `80` | `56.0%` | — | — | — | Val-Only |
+| Seed 101 | `best_model.pt` | `80` | `56.0%` | **56.0%** | 0.90 | 2.19 | N=6 Tier-2 |
 | Seed 101 | `checkpoint_phase_1.pt` | `96` | `68.0%` | **62.0%** | 0.85 | 2.02 | N=25 Val-Sel. |
 | Seed 101 | `checkpoint_phase_2.pt` | `104` | `52.0%` | — | — | — | Val-Only |
 | Seed 101 | `checkpoint_phase_3.pt` | `124` | `4.0%` | — | — | — | Val-Only |
 | Seed 101 | `checkpoint_phase_4.pt` | `240` | `40.0%` | — | — | — | Val-Only |
-| Seed 2024 | `best_model.pt` | `130` | `48.0%` | — | — | — | Val-Only |
+| Seed 2024 | `best_model.pt` | `130` | `48.0%` | **32.0%** | 0.94 | 2.93 | N=6 Tier-2 |
 | Seed 2024 | `checkpoint_phase_1.pt` | `94` | `64.0%` | — | — | — | Val-Only |
 | Seed 2024 | `checkpoint_phase_2.pt` | `102` | `80.0%` | **62.0%** | 0.79 | 1.89 | N=25 Val-Sel. |
 | Seed 2024 | `checkpoint_phase_3.pt` | `122` | `40.0%` | — | — | — | Val-Only |
@@ -194,115 +213,18 @@ Continuous ConvLSTM (Orin GPU) & 2,359,296 MACs & 2123.37 & 42.467 mW & 1.00$\ti
 
 ---
 
-## 4. SSOT & Zero-Leakage Verification Sign-Off
+## 5. SSOT & Zero-Leakage Verification Sign-Off
 
 - **Zero Test-Time State Leakage:** All PIL benchmarks executed strictly under `ArticulatedArmPhysicsStepper` (`payload_attached=(t >= t_c)`) and causal `OnlineEventCameraStream` with zero `z_gt_next` access (`tests/test_leakage.py` and `tests/test_pil_integrity.py` PASSED).
 - **Strict Validation/Test Isolation:** Handover threshold sweeps and `N=25` checkpoint selection used exclusively validation split `[3200, 3599]` trajectories; test evaluation used `[3600, 3999]`.
 - **Synchronized Artifacts:**
   - SSOT Master Metrics: [ssot_eval_metrics.json](file:///Users/Mattia/Desktop/Studies/Temp/results/ssot_eval_metrics.json)
   - Multi-Seed Summary: [multiseed_metrics.json](file:///Users/Mattia/Desktop/Studies/Temp/results/multiseed/multiseed_metrics.json)
-  - Nominal PIL Benchmark (Seed 42): [mppi_benchmark_metrics.json](file:///Users/Mattia/Desktop/Studies/Temp/results/mppi_benchmark/mppi_benchmark_metrics.json)
+  - Forensic Decomposition: [forensic_rssm_gru_failure.json](file:///Users/Mattia/Desktop/Studies/Temp/results/diagnostics/forensic_rssm_gru_failure.json)
   - PIL Robustness (Seeds 42, 101, 2024): [robustness_metrics.json](file:///Users/Mattia/Desktop/Studies/Temp/results/robustness_benchmark/robustness_metrics.json), [seed101](file:///Users/Mattia/Desktop/Studies/Temp/results/robustness_benchmark_pil_spwm_seed101/robustness_metrics.json), [seed2024](file:///Users/Mattia/Desktop/Studies/Temp/results/robustness_benchmark_pil_spwm_seed2024/robustness_metrics.json)
 
-### `docs/FIGURE_METRICS.md`
-> Master SSOT figure & 50-episode PIL summary table
-
-# Master Figure Metrics & Critical Analysis (SPWM)
-
-**Model**: `SPWM`
-**Generated**: `2026-11-20 14:39:03 UTC`
-**Generated By**: `scripts/run_ssot_benchmark_and_plot.py`
-
----
-
-## 1. Closed-Loop Latent MPPI Benchmark (`figures/fig1_mppi_benchmark.png`)
-- **Evaluated Episodes**: `50`
-- **Grasp Success Rate**: **`86.0%` (`43 / 50`)**
-- **Min Placement Error**: **`0.86 ± 0.80 cm`**
-- **Mean Terminal Error**: `1.57 cm`
-- **MPPI Step Latency**: **`36.7 ms / step`**
-
-| Stratification | Episodes | Success Rate | Min Placement Error (cm) |
-| :--- | :---: | :---: | :---: |
-| Low Plane | 22 | `86.4%` | `0.86 cm` |
-| Mid Plane | 18 | `77.8%` | `1.05 cm` |
-| High Plane | 10 | `100.0%` | `0.50 cm` |
-| Light (1.20 - 2.30 kg) | 17 | `82.4%` | `0.68 cm` |
-| Medium (2.30 - 3.40 kg) | 17 | `100.0%` | `0.77 cm` |
-| Heavy (3.40 - 4.50 kg) | 16 | `75.0%` | `1.14 cm` |
-
-## 2. Multi-Horizon Rollout: Open-Loop vs. Phasic Handover (`figures/fig2_rollout_open_vs_handover.png`)
-Evaluated on `400` unseen test trajectories (`H=100`):
-- **Pure Open-Loop Mean Error**: `0.1115 rad`
-- **Phasic Sensory Handover Mean Error**: `0.1482 rad`
-- **Measured ALIF Spike Rate**: `12.27%`
-
-| Horizon $h$ | Open-Loop Mean ± Std (rad) | Phasic Handover Mean ± Std (rad) |
-| :---: | :---: | :---: |
-| `h=1` | `0.0298 ± 0.0074` | `0.0298 ± 0.0074` |
-| `h=5` | `0.1109 ± 0.0131` | `0.1109 ± 0.0131` |
-| `h=10` | `0.1862 ± 0.0652` | `0.1865 ± 0.0663` |
-| `h=25` | `0.1160 ± 0.0413` | `0.1242 ± 0.0499` |
-| `h=50` | `0.1038 ± 0.0710` | `0.1496 ± 0.0662` |
-| `h=80` | `0.0899 ± 0.0500` | `0.1827 ± 0.0833` |
-| `h=100` | `0.1116 ± 0.0478` | `0.1420 ± 0.0641` |
-
-## 3. Zero-Shot Robustness & Domain Gap (`figures/fig3_robustness_domain.png`)
-
-| Perturbation Condition | Overall Success | Min Placement Error | Terminal Error |
-| :--- | :---: | :---: | :---: |
-| Nominal Baseline | `86.0%` | `0.86 cm` | `1.57 cm` |
-| Sensory Noise Injection (1.0%) | `72.0%` | `0.98 cm` | `1.86 cm` |
-| Payload Extrapolation (4.80 kg) | `78.0%` | `1.25 cm` | `1.78 cm` |
-| Actuator Drift (0.80x Friction) | `70.0%` | `1.32 cm` | `2.07 cm` |
-| Actuator Drift (1.20x Friction) | `76.0%` | `1.32 cm` | `1.97 cm` |
-
-## 4. Recurrent Step Energy (`figures/fig4_energy_efficiency.png`)
-- **SPWM (Loihi-2 SOPs @ `12.27%` spike rate)**: `12.34 nJ/step` (**`4.9x`** vs own GPU MACs)
-- **SPWM / ANN (Orin GPU MACs)**: `60.36 nJ/step`
-- **Deep GRU (Orin GPU MACs)**: `269.57 nJ/step`
-- **Continuous RSSM (Orin GPU MACs)**: `328.55 nJ/step`
-- **ConvLSTM (Orin GPU MACs)**: `2123.37 nJ/step`
-
-## 5. Critical Audit Summary
-- **Closed-Loop MPPI**: Strong success on nominal trajectories, with real-time latency under 50 ms.
-- **Mechanical OOD Gap**: Check Section 3 above for exact degradation under 4.80 kg payload and 0.80x/1.20x friction drift.
-- **Architectural Baselines**: Energy comparison uses measured spike sparsity for `SPWM` and analytical MAC counts for baselines (no stale Nov 4 checkpoints loaded).
-
-## 6. Symmetric 3-Seed PIL Benchmark & Open-Loop vs. Online Baseline Transparency
-
-| Method (50 Test Episodes `[3600, 3649]`) | PIL Success (%) | Min Err (cm) | Term Err (cm) | Flips |
-| :--- | :---: | :---: | :---: | :---: |
-| Deep GRU (Open-Loop PIL, 3 seeds) | `1.3 ± 2.3%` | `10.57 ± 7.83` | `16.72 ± 11.31` | `14.67` |
-| Deep GRU (Online Obs., 3 seeds) | `0.0 ± 0.0%` | `6.03 ± 4.00` | `10.87 ± 3.97` | `19.67` |
-| Continuous RSSM (Open-Loop PIL, 3 seeds) | `15.3 ± 4.6%` | `1.31 ± 0.02` | `2.88 ± 0.10` | `36.23` |
-| Continuous RSSM (Online Post., 3 seeds) | `0.0 ± 0.0%` | `1.53 ± 0.06` | `22.43 ± 0.58` | `36.13` |
-| ANN-Rate (3 seeds) | `37.3 ± 9.5%` | `1.07 ± 0.28` | `2.98 ± 0.46` | `26.00` |
-| SPWM-v0.12.4 (N=6 Tier-2, 3 seeds) | `58.0 ± 27.1%` | `0.90 ± 0.04` | `2.23 ± 0.68` | `19.37` |
-| SPWM-v0.12.4 (N=25 Val-Sel., 3 seeds) | `60.7 ± 2.3%` | `0.88 ± 0.11` | `2.01 ± 0.12` | `21.14` |
-
-## 7. Disentangled PIL Ablation & $w_t > 0$ Residual Handover Telemetry
-
-| Ablation Stage | PIL Success (%) | Min Err (cm) | Term Err (cm) |
-| :--- | :---: | :---: | :---: |
-| 1. SPWM-Base (Phase 1 Warmup, Unsmoothed MPPI) | `62.0%` | `1.27 ± 1.14` | `2.51 ± 1.59` |
-| 2. + Smooth MPPI Controls | `62.0%` | `1.09 ± 0.98` | `2.26 ± 1.79` |
-| 3. + Phase 1 Curriculum (4-Stage, No Handover/Lookahead) | `72.0%` | `0.98 ± 0.97` | `1.85 ± 1.31` |
-| 4a. + 2-Stage SE(3) Lookahead (Handover Disabled, $w_t \equiv 0$) | `86.0%` | `0.86 ± 0.80` | `1.57 ± 1.00` |
-| 4b. + Residual Handover & 2-Stage Lookahead (Full) | `86.0%` | `0.86 ± 0.80` | `1.57 ± 1.00` |
-
-## 8. Symmetric 3-Seed PIL Robustness & $w_t > 0$ Activation (`42, 101, 2024`)
-
-| Perturbation Condition | SPWM 3-Seed Succ (%) | SPWM Step $w_t>0$ (%) | ANN-Rate 3-Seed Succ (%) |
-| :--- | :---: | :---: | :---: |
-| Nominal Baseline | `58.0 ± 27.1%` (`+0.0%` rel) | `0.00 ± 0.00%` | `37.3 ± 9.5%` (`+0.0%` rel) |
-| Sensory Noise Injection (1.0%) | `55.3 ± 19.4%` (`-4.6%` rel) | `0.00 ± 0.00%` | `30.0 ± 3.5%` (`-19.6%` rel) |
-| Payload Extrapolation (4.80 kg) | `39.3 ± 33.7%` (`-32.2%` rel) | `0.17 ± 0.29%` | `26.7 ± 16.2%` (`-28.6%` rel) |
-| Actuator Drift (0.80x Friction) | `40.7 ± 27.3%` (`-29.9%` rel) | `0.17 ± 0.29%` | `30.7 ± 14.0%` (`-17.9%` rel) |
-| Actuator Drift (1.20x Friction) | `44.0 ± 28.0%` (`-24.1%` rel) | `0.17 ± 0.29%` | `33.3 ± 16.7%` (`-10.7%` rel) |
-
 ### `results/spwm_v0_12_4_train_m1/comparative_metrics_v0_12_4.json`
-> Multi-seed N=400 open-loop baseline comparison (SPWM, ANN-Rate, RSSM across 3 seeds + Deep GRU, ConvLSTM)
+> Multi-seed N=400 open-loop baseline comparison (SPWM, ANN-Rate, Continuous RSSM, and equalized Deep GRU across 3 seeds + ConvLSTM)
 
 ```yaml
 SPWM-v0.12.4:
@@ -436,70 +358,115 @@ Continuous RSSM:
   per_seed:
     42:
       n_test: 400
-      position_mse_per_horizon: {1:1.1047115549445152e-05,5:7.782228931318969e-05,10:0.00028833484975621104,25:0.0007284767343662679,50:0.0016406875802204013,100:0.0013894009171053767}
-      position_mse_std_per_horizon: {1:2.053100843113498e-06,5:0.0001476785691920668,10:0.0004684661980718374,25:0.0013536920305341482,50:0.006870720069855452,100:0.0028218142688274384}
-      velocity_mse_per_horizon: {1:0.0003805967280641198,5:0.01757270097732544,10:0.01381716225296259,25:0.018773185089230537,50:0.021656889468431473,100:0.02137739583849907}
-      velocity_mse_std_per_horizon: {1:0.00019588667782954872,5:0.04108833894133568,10:0.028213253244757652,25:0.06905478984117508,50:0.03594775125384331,100:0.02421518974006176}
-      position_error_per_horizon: {1:0.008107590489089489,5:0.017933493480086327,10:0.03429557383060455,25:0.05653560161590576,50:0.0694904774427414,100:0.0757109522819519}
-      position_error_std_per_horizon: {1:0.0007413943530991673,5:0.012055021710693836,10:0.023533442988991737,25:0.03427223116159439,50:0.07081806659698486,100:0.0510319322347641}
-      overall_l2_mean: 0.059326786547899246
-      curve_l2_mean: [0.008107587695121765,0.008698863908648491,0.009274079464375973,0.011939478106796741,0.017933497205376625,0.025027725845575333,0.030777525156736374,0.033932026475667953,0.03474843129515648,0.03429556265473366,0.03364067152142525,0.03363863006234169,0.03468073904514313,0.036500368267297745,0.038451068103313446,0.04049065709114075,0.04211186245083809,0.04355691745877266,0.04502175375819206,0.046581268310546875,0.048257455229759216,0.05017600581049919,0.05233413353562355,0.054575204849243164,0.05653561279177666,0.058538731187582016,0.06042276695370674,0.06232533976435661,0.06390896439552307,0.0653163269162178,0.06629958003759384,0.0668264627456665,0.06720654666423798,0.06754063069820404,0.06802953034639359,0.06853357702493668,0.06906825304031372,0.06960294395685196,0.06999396532773972,0.0703246146440506,0.07046444714069366,0.07042954862117767,0.0702747032046318,0.07028694450855255,0.07033053040504456,0.07020033150911331,0.07003451138734818,0.06987554579973221,0.06967595964670181,0.069490447640419,0.06935132294893265,0.06941309571266174,0.06961546093225479,0.06979136914014816,0.06993559002876282,0.06985041499137878,0.06951801478862762,0.0689489096403122,0.06837626546621323,0.0677192285656929,0.06699876487255096,0.06630528718233109,0.06576260924339294,0.06545061618089676,0.0653633177280426,0.06557390093803406,0.06558526307344437,0.06543806940317154,0.06528177112340927,0.06504087895154953,0.064705990254879,0.0640246644616127,0.06323449313640594,0.062481533735990524,0.061911746859550476,0.06154850125312805,0.06130773574113846,0.06124681979417801,0.06142561882734299,0.06190451234579086,0.0626421794295311,0.06355459243059158,0.06454749405384064,0.06553637236356735,0.06649858504533768,0.06746737658977509,0.06841041892766953,0.06931281834840775,0.07012094557285309,0.07075084745883942,0.07113517820835114,0.07133308053016663,0.07139123976230621,0.07140205055475235,0.07148651778697968,0.07176679372787476,0.07237637788057327,0.07332336902618408,0.07451117783784866,0.0757109522819519]
-      curve_l2_q25: [0.007531081326305866,0.007973164319992065,0.008334442973136902,0.009506259113550186,0.012442094273865223,0.016259603202342987,0.019733412191271782,0.02121257595717907,0.021603060886263847,0.020913004875183105,0.019735341891646385,0.019686726853251457,0.01958119496703148,0.019923191517591476,0.02055930905044079,0.02129511907696724,0.022245492786169052,0.023323513567447662,0.0247721616178751,0.02597140334546566,0.027621163055300713,0.029701760038733482,0.031040456146001816,0.03320404514670372,0.033541254699230194,0.03512135148048401,0.037134602665901184,0.03852836415171623,0.04033579304814339,0.0412699356675148,0.04198050498962402,0.04239725321531296,0.042862050235271454,0.04287435859441757,0.042239781469106674,0.04185037314891815,0.042503662407398224,0.0429297611117363,0.04220300167798996,0.042381733655929565,0.04243086278438568,0.04253331571817398,0.04184791445732117,0.0418037474155426,0.04199760779738426,0.041892096400260925,0.0415274016559124,0.04142031446099281,0.04063216224312782,0.03978312760591507,0.03984016925096512,0.04012942686676979,0.03987332433462143,0.039595827460289,0.04010400176048279,0.03987946733832359,0.04006662964820862,0.039988961070775986,0.0391034297645092,0.038615353405475616,0.038523878902196884,0.03839297220110893,0.03833802044391632,0.03726113587617874,0.03753310814499855,0.037809934467077255,0.037545446306467056,0.03781828656792641,0.037699244916439056,0.03719589114189148,0.03705110028386116,0.03630928695201874,0.03541330620646477,0.034684304147958755,0.03384719789028168,0.0335569903254509,0.03316663205623627,0.033655088394880295,0.033291153609752655,0.032646141946315765,0.033042147755622864,0.03332486376166344,0.03375932574272156,0.033674318343400955,0.03394240885972977,0.034950464963912964,0.03518466651439667,0.03568192198872566,0.03573102504014969,0.03546694666147232,0.03545527532696724,0.035181447863578796,0.034760378301143646,0.03504454717040062,0.03495309129357338,0.036451153457164764,0.03809649869799614,0.04031354933977127,0.04238855093717575,0.04462912306189537]
-      curve_l2_q75: [0.008622560650110245,0.009332895278930664,0.01000148057937622,0.011800278909504414,0.016323281452059746,0.022414125502109528,0.027764281257987022,0.0309610553085804,0.03329320251941681,0.034828487783670425,0.03702164441347122,0.038892507553100586,0.041251108050346375,0.04387499764561653,0.04761146754026413,0.04893859475851059,0.05284933000802994,0.057085081934928894,0.05840647220611572,0.060034267604351044,0.061835892498493195,0.0656394511461258,0.06692539155483246,0.06913094222545624,0.06864503026008606,0.07035452127456665,0.07331973314285278,0.07418011873960495,0.07534347474575043,0.07496266812086105,0.07668988406658173,0.07538587599992752,0.07484788447618484,0.07454381138086319,0.07524140924215317,0.07530339807271957,0.07470536977052689,0.07503669708967209,0.07615570724010468,0.07633020728826523,0.07565461844205856,0.07545334100723267,0.07504944503307343,0.074581578373909,0.07515255361795425,0.07679711282253265,0.07544480264186859,0.07543947547674179,0.07144632935523987,0.07104543596506119,0.07183923572301865,0.07231198251247406,0.07335963845252991,0.0724094957113266,0.0722615122795105,0.07229390740394592,0.07097683101892471,0.06775696575641632,0.06712447851896286,0.06618022918701172,0.06467961519956589,0.06440296769142151,0.06320817023515701,0.06248552352190018,0.0623408704996109,0.06235852837562561,0.06215332821011543,0.06296248733997345,0.06267869472503662,0.06230478733778,0.06292521953582764,0.06291763484477997,0.06275173276662827,0.06361745297908783,0.06466547399759293,0.06479378044605255,0.06650646030902863,0.0671820193529129,0.06908835470676422,0.07128438353538513,0.07409913837909698,0.07589136064052582,0.07937632501125336,0.0815962627530098,0.08327256143093109,0.08605019003152847,0.08659800887107849,0.08840642124414444,0.08991304785013199,0.09154067188501358,0.09298127144575119,0.09192179143428802,0.0916917622089386,0.09109526127576828,0.09069494903087616,0.09025762975215912,0.08865728974342346,0.0885014683008194,0.08832694590091705,0.08750899136066437]
+      position_mse_per_horizon: {1:2.2063661162974313e-05,5:9.420973947271705e-05,10:0.00031403437606059015,25:0.0008159067947417498,50:0.0016975541366264224,100:0.0013903399230912328}
+      position_mse_std_per_horizon: {1:3.963471499446314e-06,5:9.16668213903904e-05,10:0.0003905495104845613,25:0.001349463826045394,50:0.006731225643306971,100:0.0027804546989500523}
+      velocity_mse_per_horizon: {1:0.0005160506698302925,5:0.018466511741280556,10:0.01503689680248499,25:0.018678074702620506,50:0.021837402135133743,100:0.02143263630568981}
+      velocity_mse_std_per_horizon: {1:0.00019272186909802258,5:0.03378969430923462,10:0.02326388843357563,25:0.06908168643712997,50:0.035098034888505936,100:0.023902960121631622}
+      position_error_per_horizon: {1:0.011463386937975883,5:0.02229641005396843,10:0.0388997346162796,25:0.06143658980727196,50:0.07276146858930588,100:0.07697229087352753}
+      position_error_std_per_horizon: {1:0.0009862579172477126,5:0.008254001848399639,10:0.019261786714196205,25:0.03348112851381302,50:0.0699363574385643,100:0.04916609078645706}
+      overall_l2_mean: 0.06333083659410477
+      curve_l2_mean: [0.011463391594588757,0.011260421015322208,0.012365542352199554,0.015929721295833588,0.022296421229839325,0.02928614430129528,0.03493636101484299,0.0381774939596653,0.03919664025306702,0.03889975696802139,0.03826487064361572,0.038217298686504364,0.03908471390604973,0.040584150701761246,0.042181506752967834,0.043829113245010376,0.04525160416960716,0.04684450104832649,0.04872138798236847,0.05078807845711708,0.0528855174779892,0.055083855986595154,0.05736937001347542,0.059585753828287125,0.06143657863140106,0.06319081038236618,0.06478103995323181,0.06640522927045822,0.06776407361030579,0.06893851608037949,0.0697292909026146,0.0700710192322731,0.07026242464780807,0.0704326182603836,0.07077030837535858,0.07112441211938858,0.0715433657169342,0.0720292255282402,0.07242216914892197,0.0727837085723877,0.07293185591697693,0.07291039824485779,0.07280029356479645,0.07287564128637314,0.07302694022655487,0.07300973683595657,0.07297173887491226,0.07294511049985886,0.07285936921834946,0.07276146113872528,0.07269163429737091,0.07282735407352448,0.07312853634357452,0.07339350134134293,0.07365009933710098,0.07371819764375687,0.07354281097650528,0.07310511916875839,0.07264538109302521,0.07210807502269745,0.0715232864022255,0.07096678018569946,0.07057050615549088,0.07042660564184189,0.07052962481975555,0.07093211263418198,0.07111003994941711,0.07108928263187408,0.07101858407258987,0.07082027196884155,0.07048171013593674,0.06975945085287094,0.06889816373586655,0.0680384710431099,0.06733889132738113,0.06684746593236923,0.06648658961057663,0.06629940867424011,0.0663762241601944,0.06675851345062256,0.06741182506084442,0.06827273219823837,0.0692458227276802,0.07023739069700241,0.07121509313583374,0.07219618558883667,0.0731360986828804,0.07401766628026962,0.07478515803813934,0.0753595232963562,0.07566819339990616,0.075731560587883,0.07558576762676239,0.07530222833156586,0.07497826218605042,0.07473771274089813,0.07476350665092468,0.07515984028577805,0.07594364881515503,0.07697230577468872]
+      curve_l2_q25: [0.010706808418035507,0.010530298575758934,0.011923742480576038,0.014794009737670422,0.018410537391901016,0.02160072885453701,0.025295570492744446,0.026782436296343803,0.027612842619419098,0.02731100656092167,0.027227645739912987,0.027090301737189293,0.026997486129403114,0.026558347046375275,0.02642597258090973,0.02665811963379383,0.02687377855181694,0.02794378623366356,0.02921762876212597,0.030856337398290634,0.03270690143108368,0.03464135900139809,0.036643266677856445,0.03812652826309204,0.039326757192611694,0.04115968197584152,0.04286473989486694,0.04439994692802429,0.045362215489149094,0.0457846075296402,0.04602726921439171,0.045405659824609756,0.04494846612215042,0.04508977755904198,0.044802989810705185,0.04438367486000061,0.044127143919467926,0.04446050524711609,0.044314801692962646,0.04480468109250069,0.0432770699262619,0.04340970143675804,0.042841680347919464,0.04378228634595871,0.0435987263917923,0.04372811317443848,0.043370362371206284,0.043718092143535614,0.04397675022482872,0.04407918453216553,0.043996188789606094,0.04342690855264664,0.04383907467126846,0.04441108927130699,0.04456271603703499,0.0447361059486866,0.044320136308670044,0.04327201098203659,0.043457645922899246,0.04316595941781998,0.04305579513311386,0.04286554455757141,0.04281693696975708,0.04249044880270958,0.04264501482248306,0.042960528284311295,0.042576104402542114,0.04273608326911926,0.041710853576660156,0.04142852872610092,0.042193327099084854,0.04165973886847496,0.040922120213508606,0.0417061522603035,0.041548050940036774,0.040775712579488754,0.041922520846128464,0.04201730340719223,0.04230133071541786,0.042541950941085815,0.042059462517499924,0.04194073751568794,0.04261467233300209,0.04317449405789375,0.04361341893672943,0.044406741857528687,0.04507114738225937,0.04559807851910591,0.046338215470314026,0.04661919176578522,0.046180956065654755,0.04592975229024887,0.045918770134449005,0.04467355087399483,0.043579697608947754,0.04372145235538483,0.044027749449014664,0.04435843229293823,0.04609616845846176,0.047679442912340164]
+      curve_l2_q75: [0.011992122046649456,0.01178180892020464,0.012974120676517487,0.017195865511894226,0.02397281862795353,0.03125434368848801,0.03698160871863365,0.040470924228429794,0.04172009974718094,0.04124011471867561,0.03949274122714996,0.03826536238193512,0.03927238658070564,0.04327080026268959,0.04681115970015526,0.05087456852197647,0.0542360320687294,0.056107811629772186,0.05801183730363846,0.059569310396909714,0.06241707503795624,0.06650331616401672,0.0691382884979248,0.07184644043445587,0.07205390185117722,0.07330650091171265,0.07602091133594513,0.07630808651447296,0.0776982307434082,0.07672049850225449,0.07903577387332916,0.07942059636116028,0.07993744313716888,0.0798814445734024,0.08178628981113434,0.08079956471920013,0.08033742010593414,0.08031443506479263,0.08063353598117828,0.07828755676746368,0.07717481255531311,0.07691731303930283,0.0771571546792984,0.07494708895683289,0.07509515434503555,0.077145054936409,0.07732116430997849,0.07698553055524826,0.07607056200504303,0.07530353963375092,0.07525460422039032,0.07487420737743378,0.07516314089298248,0.07507163286209106,0.07473614066839218,0.07450307160615921,0.0737198144197464,0.07267578691244125,0.07227933406829834,0.07168915867805481,0.07050883024930954,0.06985761970281601,0.06950785219669342,0.07013852894306183,0.06894098967313766,0.06966210156679153,0.07089312374591827,0.07062169909477234,0.07136419415473938,0.07154961675405502,0.07123735547065735,0.07114848494529724,0.0707588717341423,0.07079441845417023,0.07062837481498718,0.07119211554527283,0.0711594969034195,0.07017752528190613,0.07029874622821808,0.07153740525245667,0.0729413852095604,0.07456962019205093,0.07627198100090027,0.07925388962030411,0.08051666617393494,0.08113344013690948,0.08276278525590897,0.08404087275266647,0.085039883852005,0.08603381365537643,0.08776761591434479,0.08726959675550461,0.08880430459976196,0.08915401250123978,0.08879334479570389,0.08825865387916565,0.08846672624349594,0.08709301054477692,0.08778393268585205,0.08817002177238464]
       parameter_count: 380460
     101:
       n_test: 400
-      position_mse_per_horizon: {1:1.7164862583740614e-05,5:6.777956878067926e-05,10:0.00022151265875436366,25:0.0007767981151118875,50:0.0016678088577464223,100:0.0014034160412847996}
-      position_mse_std_per_horizon: {1:3.7905515455349814e-06,5:8.066420559771359e-05,10:0.000395934417610988,25:0.0013947284314781427,50:0.0069656213745474815,100:0.002801139373332262}
-      velocity_mse_per_horizon: {1:0.00013509478594642133,5:0.018448902294039726,10:0.018411124125123024,25:0.020938100293278694,50:0.023396410048007965,100:0.020521879196166992}
-      velocity_mse_std_per_horizon: {1:7.221417763503268e-05,5:0.036811571568250656,10:0.035231467336416245,25:0.0705331489443779,50:0.03783918544650078,100:0.025686632841825485}
-      position_error_per_horizon: {1:0.010088545270264149,5:0.01842462830245495,10:0.029895668849349022,25:0.05928172543644905,50:0.07097908109426498,100:0.07551394402980804}
-      position_error_std_per_horizon: {1:0.0011001903330907226,5:0.008198203518986702,10:0.020864441990852356,25:0.0338595025241375,50:0.07048988342285156,100:0.05213578790426254}
-      overall_l2_mean: 0.06078660115599632
-      curve_l2_mean: [0.010088544338941574,0.010285843163728714,0.011017674580216408,0.013395359739661217,0.0184246227145195,0.023833855986595154,0.0277547650039196,0.02951379306614399,0.02987598441541195,0.02989567071199417,0.030260581523180008,0.03146184980869293,0.03367283567786217,0.03648529201745987,0.03913629427552223,0.04164757579565048,0.04369450733065605,0.04556206241250038,0.047415927052497864,0.04930795729160309,0.05122777074575424,0.05328356847167015,0.05543414130806923,0.05753772705793381,0.05928175523877144,0.06104864180088043,0.06272725015878677,0.06446466594934464,0.06593985855579376,0.06726392358541489,0.06818872690200806,0.06870774179697037,0.06913170218467712,0.0695488229393959,0.07015739381313324,0.0707760900259018,0.0714103952050209,0.0720134750008583,0.0724351555109024,0.07278791069984436,0.07292770594358444,0.07285710424184799,0.07263945043087006,0.07260996848344803,0.07259132713079453,0.07236257940530777,0.0720568522810936,0.07173125445842743,0.07134716212749481,0.07097908109426498,0.07071644067764282,0.0706806406378746,0.07081800699234009,0.07093837112188339,0.0710826888680458,0.0709848552942276,0.07067769765853882,0.07018387317657471,0.06984611600637436,0.0694831982254982,0.06910871714353561,0.06883116066455841,0.06869637221097946,0.06874360889196396,0.06893671303987503,0.06928632408380508,0.06932582706212997,0.06914424151182175,0.06892439723014832,0.06863264739513397,0.06828267872333527,0.06763502955436707,0.06691581010818481,0.06620999425649643,0.06560912728309631,0.06513924896717072,0.06473536789417267,0.06444820016622543,0.06434565037488937,0.06448467075824738,0.06483800709247589,0.06533490121364594,0.06588531285524368,0.0664292424917221,0.06696036458015442,0.06753599643707275,0.06814524531364441,0.06880193948745728,0.06947041302919388,0.07007554173469543,0.07054007053375244,0.07086852192878723,0.07109798491001129,0.07132383435964584,0.07162369042634964,0.0720662996172905,0.07275980710983276,0.0736730545759201,0.07466825842857361,0.07551398128271103]
-      curve_l2_q25: [0.009334898553788662,0.0094731654971838,0.010298391804099083,0.012011070735752583,0.014556827954947948,0.017366455867886543,0.018807100132107735,0.02035561017692089,0.020165370777249336,0.019191019237041473,0.018371742218732834,0.01736077480018139,0.017109930515289307,0.017830632627010345,0.019236523658037186,0.021410789340734482,0.023405829444527626,0.02583860605955124,0.028125571087002754,0.02978524938225746,0.03143925592303276,0.03298622742295265,0.0343935489654541,0.03612491488456726,0.03738704323768616,0.03921139985322952,0.04090677201747894,0.042130932211875916,0.043754942715168,0.045584049075841904,0.04576773941516876,0.04499319568276405,0.04609997197985649,0.04578300938010216,0.04508489370346069,0.04532748460769653,0.046609681099653244,0.04702078551054001,0.04678923636674881,0.04643669351935387,0.04641472175717354,0.04553959518671036,0.04462708160281181,0.0460556335747242,0.045188505202531815,0.0449054092168808,0.0447816401720047,0.04374488443136215,0.04367683082818985,0.04361053183674812,0.042842522263526917,0.042903877794742584,0.04239063709974289,0.041931189596652985,0.0423661544919014,0.041119396686553955,0.041040435433387756,0.040820732712745667,0.040664270520210266,0.040661100298166275,0.0400007963180542,0.0403754822909832,0.039927978068590164,0.03944891691207886,0.03985984995961189,0.03981093317270279,0.03898053243756294,0.039099425077438354,0.038809243589639664,0.038997478783130646,0.03974830359220505,0.0393441803753376,0.03865424171090126,0.03799382969737053,0.03796999901533127,0.03829077631235123,0.03856237232685089,0.03882193565368652,0.03781146556138992,0.03730817884206772,0.03651026263833046,0.036238040775060654,0.035806555300951004,0.036333732306957245,0.03607780486345291,0.03555184230208397,0.03572111576795578,0.035980962216854095,0.03569943457841873,0.03511756658554077,0.03444211930036545,0.03450734540820122,0.0342763215303421,0.034196868538856506,0.03442708030343056,0.03481927141547203,0.035863399505615234,0.03709409013390541,0.0393441803753376,0.040982697159051895]
-      curve_l2_q75: [0.01073444727808237,0.010946344584226608,0.012049959041178226,0.01512337289750576,0.019830526784062386,0.024785490706562996,0.028445910662412643,0.02961636520922184,0.028896672651171684,0.027403350919485092,0.031033817678689957,0.03481559827923775,0.03969107195734978,0.04379834607243538,0.0469011515378952,0.05124550312757492,0.05483821779489517,0.05677811801433563,0.0600840300321579,0.0613580122590065,0.06374992430210114,0.06634273380041122,0.06717447936534882,0.07084891945123672,0.07185253500938416,0.07340461015701294,0.07448837906122208,0.07416316866874695,0.07642967998981476,0.075322225689888,0.07711305469274521,0.07660697400569916,0.07558573782444,0.07718323171138763,0.07593122124671936,0.07801105827093124,0.07627685368061066,0.07642114907503128,0.07708358764648438,0.07690972089767456,0.07692422717809677,0.07654613256454468,0.0762995034456253,0.07568221539258957,0.07554872334003448,0.07567588984966278,0.07686668634414673,0.07571721076965332,0.0747050791978836,0.07286228984594345,0.07144677639007568,0.07186058163642883,0.07204599678516388,0.07125724852085114,0.07187892496585846,0.07161471992731094,0.0698077529668808,0.06944213062524796,0.06929438561201096,0.06817148625850677,0.06813312321901321,0.06701669096946716,0.06740853935480118,0.06706515699625015,0.0676698312163353,0.06757757067680359,0.06783325970172882,0.0680779293179512,0.06744495034217834,0.06768307089805603,0.06734026223421097,0.0673188641667366,0.06740090250968933,0.06876907497644424,0.06828505545854568,0.06790676712989807,0.0679883137345314,0.06821272522211075,0.06910717487335205,0.07107429206371307,0.07224243879318237,0.07433605939149857,0.07623586058616638,0.07819932699203491,0.08048951625823975,0.08171596378087997,0.08416202664375305,0.08541485667228699,0.08447176218032837,0.0853925421833992,0.08727199584245682,0.08794819563627243,0.08810940384864807,0.08794232457876205,0.08868084102869034,0.08845709264278412,0.09058965742588043,0.08997458219528198,0.09059584140777588,0.09161719679832458]
+      position_mse_per_horizon: {1:8.215529669541866e-05,5:0.00011103424913017079,10:0.00028387978090904653,25:0.0008655569981783628,50:0.001734933815896511,100:0.0015106787905097008}
+      position_mse_std_per_horizon: {1:8.075202458712738e-06,5:7.686603930778801e-05,10:0.0003137427265755832,25:0.0014106726739555597,50:0.006860995199531317,100:0.002764763543382287}
+      velocity_mse_per_horizon: {1:0.000393129390431568,5:0.018857905641198158,10:0.018870759755373,25:0.021117882803082466,50:0.0235483068972826,100:0.022047914564609528}
+      velocity_mse_std_per_horizon: {1:0.00017924248822964728,5:0.035433199256658554,10:0.03179612010717392,25:0.07052621245384216,50:0.0367245189845562,100:0.02574349381029606}
+      position_error_per_horizon: {1:0.02217557467520237,5:0.024929767474532127,10:0.038022179156541824,25:0.06363818049430847,50:0.07386959344148636,100:0.0818834900856018}
+      position_error_std_per_horizon: {1:0.0010842412011697888,5:0.006686719600111246,10:0.016049683094024658,25:0.03381603956222534,50:0.07037674635648727,100:0.04857127368450165}
+      overall_l2_mean: 0.06463415175676346
+      curve_l2_mean: [0.02217557467520237,0.022519782185554504,0.021268196403980255,0.02134619653224945,0.024929767474532127,0.030084123834967613,0.034351665526628494,0.036765679717063904,0.037748586386442184,0.03802219778299332,0.038079436868429184,0.03851339966058731,0.03968304768204689,0.04152459278702736,0.043563634157180786,0.045723069459199905,0.047672078013420105,0.04970746114850044,0.0518716536462307,0.054055824875831604,0.05613347515463829,0.05816299095749855,0.06018819659948349,0.062104735523462296,0.06363815069198608,0.06510812789201736,0.06647645682096481,0.06794299930334091,0.06917521357536316,0.07020923495292664,0.07086192816495895,0.07106232643127441,0.07115431129932404,0.07127255201339722,0.07158242911100388,0.07196565717458725,0.07246653735637665,0.07303754985332489,0.07351266592741013,0.0739436075091362,0.0741666778922081,0.07421586662530899,0.07418886572122574,0.07431687414646149,0.07448937743902206,0.07447195798158646,0.07440086454153061,0.07428263872861862,0.07408945262432098,0.07386959344148636,0.07367350906133652,0.07366431504487991,0.07379768043756485,0.07384556531906128,0.07389936596155167,0.07373137027025223,0.07335641980171204,0.07277841866016388,0.07230160385370255,0.07180947810411453,0.07129684090614319,0.07084783911705017,0.0705687552690506,0.07052921503782272,0.07072022557258606,0.07116913050413132,0.07137151807546616,0.07137823849916458,0.07135315239429474,0.07124015688896179,0.07103390991687775,0.0704914778470993,0.06984490156173706,0.06921077519655228,0.06872843950986862,0.0684373527765274,0.06825698167085648,0.06821110844612122,0.06834381073713303,0.0686885342001915,0.06921662390232086,0.06985123455524445,0.0704876258969307,0.07104960829019547,0.07152752578258514,0.07198023051023483,0.07241782546043396,0.07288189232349396,0.07335706800222397,0.0737975463271141,0.0741620659828186,0.07447237521409988,0.07477319240570068,0.07516074925661087,0.0757320374250412,0.07656165957450867,0.0777173787355423,0.07911773771047592,0.08058947324752808,0.0818834975361824]
+      curve_l2_q25: [0.02142200991511345,0.021511469036340714,0.020121518522500992,0.020040104165673256,0.021903734654188156,0.02474929578602314,0.02743758074939251,0.029013726860284805,0.029862750321626663,0.029128404334187508,0.028099093586206436,0.02711939997971058,0.025925733149051666,0.02529917098581791,0.02559799700975418,0.0266769640147686,0.028127841651439667,0.030252857133746147,0.032310597598552704,0.03421163931488991,0.03593031316995621,0.03727969527244568,0.038615599274635315,0.040322571992874146,0.041514404118061066,0.04275676608085632,0.0439876914024353,0.04524334892630577,0.045638151466846466,0.04548228532075882,0.045405805110931396,0.045486241579055786,0.04555794596672058,0.04456173628568649,0.04518052190542221,0.04434571415185928,0.04518081247806549,0.04498053342103958,0.044735267758369446,0.04464980587363243,0.04439767450094223,0.045171067118644714,0.04503820836544037,0.04477827250957489,0.044994551688432693,0.04566600173711777,0.045860882848501205,0.0465383417904377,0.04523240774869919,0.044406577944755554,0.044439900666475296,0.04444543272256851,0.044733427464962006,0.04410438984632492,0.04425183683633804,0.044058505445718765,0.043054260313510895,0.042643602937459946,0.04260507598519325,0.042310260236263275,0.04214991256594658,0.04139463230967522,0.0415591225028038,0.0409664548933506,0.04050596430897713,0.040875207632780075,0.04116823896765709,0.04097748175263405,0.04094898700714111,0.0409875363111496,0.04144670069217682,0.04135585576295853,0.0411725714802742,0.04188651964068413,0.041769202798604965,0.04340367019176483,0.04299554601311684,0.042404089123010635,0.04281574487686157,0.04246832802891731,0.04165758937597275,0.04095113277435303,0.04108492285013199,0.041072335094213486,0.041324030607938766,0.04164813831448555,0.041815102100372314,0.04221172630786896,0.042777713388204575,0.04336986690759659,0.043623246252536774,0.04378043860197067,0.04455389827489853,0.04434685781598091,0.044630810618400574,0.04577956721186638,0.04692927002906799,0.04864256829023361,0.05057816207408905,0.052479371428489685]
+      curve_l2_q75: [0.022851552814245224,0.023408476263284683,0.022298073396086693,0.022263208404183388,0.026056280359625816,0.03215770050883293,0.03728252276778221,0.04004466533660889,0.040243957191705704,0.038825441151857376,0.03693821281194687,0.038150765001773834,0.04140153527259827,0.04573214426636696,0.049856916069984436,0.05235422030091286,0.054701268672943115,0.05870203673839569,0.062114372849464417,0.06496500968933105,0.06659947335720062,0.07009994238615036,0.07240043580532074,0.07266846299171448,0.07349884510040283,0.07466162741184235,0.07708168029785156,0.07728710770606995,0.07966606318950653,0.0798368752002716,0.0819859653711319,0.08170922845602036,0.07989809662103653,0.08203247934579849,0.0825575441122055,0.08186204731464386,0.08020836859941483,0.08070351183414459,0.08052555471658707,0.07918630540370941,0.08026312291622162,0.07964617013931274,0.07930795848369598,0.07870477437973022,0.0781995952129364,0.07820981740951538,0.0785696730017662,0.0788830891251564,0.07707783579826355,0.07470253109931946,0.07340303808450699,0.07329452782869339,0.0743202343583107,0.0750918984413147,0.0746404230594635,0.07428595423698425,0.07436582446098328,0.07320328801870346,0.07231278717517853,0.07171672582626343,0.06905938684940338,0.06898946315050125,0.06990191340446472,0.06910283863544464,0.06965942680835724,0.07079338282346725,0.0712621659040451,0.07130321115255356,0.07107629626989365,0.0728839784860611,0.07237925380468369,0.07210999727249146,0.07190295308828354,0.07220416516065598,0.0719514787197113,0.07211747765541077,0.0715520828962326,0.07223184406757355,0.07253711670637131,0.07395287603139877,0.07666444778442383,0.07808207720518112,0.08079295605421066,0.08146101236343384,0.08211684972047806,0.08337569236755371,0.08411690592765808,0.08582539856433868,0.08816145360469818,0.08754836022853851,0.08796721696853638,0.08811815083026886,0.08888675272464752,0.08928724378347397,0.08987626433372498,0.0915708839893341,0.09079816192388535,0.09165550768375397,0.09356414526700974,0.09515539556741714]
       parameter_count: 380460
     2024:
       n_test: 400
-      position_mse_per_horizon: {1:4.571777935780119e-06,5:8.018337393878028e-05,10:0.0003485319030005485,25:0.0007857485325075686,50:0.001678152708336711,100:0.0015463936142623425}
-      position_mse_std_per_horizon: {1:2.52110021392582e-06,5:0.00012637331383302808,10:0.0005819029756821692,25:0.0013973700115457177,50:0.0068669975735247135,100:0.002907962305471301}
-      velocity_mse_per_horizon: {1:0.00046038630534894764,5:0.019562184810638428,10:0.017530547454953194,25:0.021769993007183075,50:0.022802336141467094,100:0.021133780479431152}
-      velocity_mse_std_per_horizon: {1:0.00017367077816743404,5:0.03632776811718941,10:0.036588169634342194,25:0.07024458795785904,50:0.03677477687597275,100:0.024696551263332367}
-      position_error_per_horizon: {1:0.00506953289732337,5:0.019116872921586037,10:0.03827961906790733,25:0.05953555926680565,50:0.07115690410137177,100:0.08037069439888}
-      position_error_std_per_horizon: {1:0.0013154877815395594,5:0.010753855109214783,10:0.025017237290740013,25:0.03420538455247879,50:0.07075035572052002,100:0.05309344083070755}
-      overall_l2_mean: 0.062049590051174164
-      curve_l2_mean: [0.005069531966000795,0.004908975213766098,0.006227485369890928,0.011192373000085354,0.019116874784231186,0.02755681239068508,0.034309271723032,0.038015853613615036,0.038844235241413116,0.03827960044145584,0.03768029808998108,0.03766752406954765,0.038376033306121826,0.039619192481040955,0.04107964038848877,0.0429428294301033,0.04482366889715195,0.04676855728030205,0.048703040927648544,0.050608180463314056,0.05240835249423981,0.054250773042440414,0.05614902451634407,0.058006707578897476,0.059535540640354156,0.06114688515663147,0.06269615888595581,0.06433916091918945,0.0657092034816742,0.06687725335359573,0.06761318445205688,0.06794918328523636,0.06820628046989441,0.06852223724126816,0.069081149995327,0.06967435032129288,0.07030393928289413,0.07093147933483124,0.0714065283536911,0.07180126011371613,0.07199282199144363,0.07202187180519104,0.07191110402345657,0.07197877764701843,0.07207407057285309,0.07196246087551117,0.0717955082654953,0.0716296136379242,0.07140367478132248,0.07115693390369415,0.07095561176538467,0.07095688581466675,0.07109904289245605,0.07120964676141739,0.07134648412466049,0.07123316079378128,0.07086421549320221,0.07024049013853073,0.06969309598207474,0.06910798698663712,0.0684984028339386,0.06796184182167053,0.06757907569408417,0.06740733981132507,0.06741683930158615,0.06763812154531479,0.06760574132204056,0.0674017071723938,0.06720241904258728,0.06696555018424988,0.06669995933771133,0.06616432219743729,0.06558191031217575,0.06505315750837326,0.06468901038169861,0.06452769041061401,0.064510278403759,0.06469117850065231,0.06513242423534393,0.06592594087123871,0.06700929254293442,0.06824707239866257,0.06953910738229752,0.07078748941421509,0.07196438312530518,0.07310609519481659,0.07416880130767822,0.07513486593961716,0.0759667381644249,0.07660592347383499,0.07701092958450317,0.07720964401960373,0.07726962864398956,0.07730462402105331,0.07740946859121323,0.07764814794063568,0.07811494171619415,0.07879777997732162,0.07960836589336395,0.08037068694829941]
-      curve_l2_q25: [0.004066551104187965,0.0040334658697247505,0.005754569545388222,0.009584629908204079,0.013938461430370808,0.018553614616394043,0.022277139127254486,0.023840120062232018,0.02460578642785549,0.02470465749502182,0.02428922802209854,0.02380649372935295,0.023807194083929062,0.02355719543993473,0.023772159591317177,0.02419227361679077,0.025224808603525162,0.02681795321404934,0.028588121756911278,0.030230998992919922,0.031876906752586365,0.0334191732108593,0.03454535827040672,0.036065857857465744,0.037089332938194275,0.038604699075222015,0.04030938073992729,0.041658464819192886,0.042304590344429016,0.04303717613220215,0.043585002422332764,0.04336119443178177,0.04296206682920456,0.04291653633117676,0.04232959449291229,0.04244561493396759,0.04287324100732803,0.04399971663951874,0.043641138821840286,0.043694254010915756,0.042921386659145355,0.0429641455411911,0.04303561896085739,0.04412125051021576,0.04365304857492447,0.04320921003818512,0.04304295778274536,0.04295359179377556,0.0425260066986084,0.04251904785633087,0.042241841554641724,0.04194233566522598,0.04225063696503639,0.04192780703306198,0.04207104817032814,0.04135608673095703,0.041682712733745575,0.04021969810128212,0.040414728224277496,0.040240053087472916,0.03949691727757454,0.039144083857536316,0.03973039239645004,0.03961316496133804,0.03956020995974541,0.04027348756790161,0.03896162658929825,0.03863350301980972,0.038736358284950256,0.03907814994454384,0.038526084274053574,0.03762831911444664,0.0366373136639595,0.036173202097415924,0.0357808843255043,0.03532785922288895,0.03532633185386658,0.035285331308841705,0.0360289141535759,0.03526869788765907,0.03520706295967102,0.03558417409658432,0.035614658147096634,0.036103256046772,0.03598800301551819,0.035841621458530426,0.03659699857234955,0.03662829101085663,0.036526814103126526,0.036575980484485626,0.03688238561153412,0.037391409277915955,0.037410393357276917,0.03809792548418045,0.03892138600349426,0.03994122892618179,0.041854407638311386,0.04331049695611,0.045829541981220245,0.04756541922688484]
-      curve_l2_q75: [0.005864206701517105,0.005502348765730858,0.006707940250635147,0.01196235604584217,0.019977178424596786,0.028098639100790024,0.03479757905006409,0.038978494703769684,0.04023384302854538,0.038853082805871964,0.036647308617830276,0.037083230912685394,0.04140476882457733,0.04342940077185631,0.047530509531497955,0.0500408336520195,0.053493931889534,0.05862390995025635,0.0590645894408226,0.060460325330495834,0.06280781328678131,0.06528928130865097,0.06742778420448303,0.06885872781276703,0.07037124782800674,0.07207221537828445,0.07339373975992203,0.07437393069267273,0.07689239829778671,0.07661904394626617,0.07823903113603592,0.07616159319877625,0.0757768452167511,0.07716699689626694,0.07949445396661758,0.07774301618337631,0.07806319743394852,0.07763514667749405,0.0771780014038086,0.07727358490228653,0.07685190439224243,0.0765673816204071,0.07551170885562897,0.0745185911655426,0.07612928003072739,0.07608431577682495,0.07643134891986847,0.07559187710285187,0.07540085166692734,0.0738663375377655,0.0718141719698906,0.07291330397129059,0.0732608288526535,0.07285494357347488,0.07297296077013016,0.07223202288150787,0.07174184173345566,0.06984268128871918,0.06842304766178131,0.06864039599895477,0.06729813665151596,0.06621648371219635,0.0652829185128212,0.06521019339561462,0.06565161049365997,0.06564453989267349,0.06578771770000458,0.0665445476770401,0.06621738523244858,0.06680759787559509,0.06689111143350601,0.06801870465278625,0.06835998594760895,0.06856605410575867,0.06894031167030334,0.07041102647781372,0.0708928033709526,0.07191711664199829,0.07492570579051971,0.0773291364312172,0.08084848523139954,0.08397465199232101,0.08606356382369995,0.0869181901216507,0.08964314311742783,0.09030958265066147,0.09228497743606567,0.09448376297950745,0.09591290354728699,0.09842764586210251,0.09758272022008896,0.09606470167636871,0.09648073464632034,0.09649094194173813,0.0964965969324112,0.09688510000705719,0.09655719995498657,0.09505068510770798,0.09533607959747314,0.09465479850769043]
+      position_mse_per_horizon: {1:0.00010488614498171955,5:0.00013294491509441286,10:0.000395959650631994,25:0.0009463678579777479,50:0.001785421627573669,100:0.001666970900259912}
+      position_mse_std_per_horizon: {1:1.6073785445769317e-05,5:0.00026270351372659206,10:0.0007350608939304948,25:0.0014478814555332065,50:0.0066442894749343395,100:0.0028185711707919836}
+      velocity_mse_per_horizon: {1:0.003669383004307747,5:0.018771443516016006,10:0.015883563086390495,25:0.021422648802399635,50:0.022301437333226204,100:0.020432692021131516}
+      velocity_mse_std_per_horizon: {1:0.0006319108651950955,5:0.043800048530101776,10:0.033365629613399506,25:0.07016664743423462,50:0.03567387908697128,100:0.023650331422686577}
+      position_error_per_horizon: {1:0.025013625621795654,5:0.021677441895008087,10:0.037732381373643875,25:0.06671080738306046,50:0.07743774354457855,100:0.08730346709489822}
+      position_error_std_per_horizon: {1:0.0019066949607804418,5:0.01810408942401409,10:0.030854905024170876,25:0.03504103794693947,50:0.06867258995771408,100:0.04878450185060501}
+      overall_l2_mean: 0.06770292669534683
+      curve_l2_mean: [0.025013618171215057,0.0258527509868145,0.024003420025110245,0.02181052416563034,0.021677443757653236,0.025605542585253716,0.03144880384206772,0.035616323351860046,0.03730694204568863,0.03773240000009537,0.038243114948272705,0.039483729749917984,0.0414951927959919,0.04387463256716728,0.04616905376315117,0.048462044447660446,0.050555456429719925,0.05273700878024101,0.055039893835783005,0.05733400955796242,0.05944924056529999,0.061460789293050766,0.06342564523220062,0.06524387001991272,0.06671081483364105,0.06813806295394897,0.06950914859771729,0.07098644226789474,0.07224526256322861,0.07332566380500793,0.07400134205818176,0.07429009675979614,0.07452792674303055,0.0748131275177002,0.07535705715417862,0.07597159594297409,0.07660792022943497,0.07727047055959702,0.07778457552194595,0.07822753489017487,0.07846102863550186,0.07851826399564743,0.0784294381737709,0.07846998423337936,0.07854724675416946,0.07841942459344864,0.07823078334331512,0.07802267372608185,0.0777459591627121,0.07743772119283676,0.0771661028265953,0.07712391018867493,0.07724764943122864,0.07733096927404404,0.07746310532093048,0.077341727912426,0.07696980983018875,0.07632386684417725,0.07575301826000214,0.07512931525707245,0.07447323203086853,0.07386676967144012,0.07340265065431595,0.07315363734960556,0.07309477031230927,0.07325299084186554,0.07315108180046082,0.072862409055233,0.07256502658128738,0.07221677899360657,0.07183174788951874,0.0711812674999237,0.07049546390771866,0.06988926976919174,0.06949136406183243,0.06933877617120743,0.06934013962745667,0.06952697783708572,0.06996291875839233,0.07071904838085175,0.07174072414636612,0.0728907510638237,0.0740627571940422,0.07516855001449585,0.07619459927082062,0.07716596126556396,0.07805836945772171,0.07888691127300262,0.07964495569467545,0.08030710369348526,0.08083856850862503,0.08125631511211395,0.08160852640867233,0.08197246491909027,0.08242229372262955,0.08302479982376099,0.08387483656406403,0.08495403081178665,0.08616068214178085,0.08730343729257584]
+      curve_l2_q25: [0.023613179102540016,0.024737058207392693,0.022497860714793205,0.01707969605922699,0.011395536363124847,0.011302144266664982,0.014526615850627422,0.01705843023955822,0.019098982214927673,0.020203087478876114,0.02070114202797413,0.02099858783185482,0.021282296627759933,0.022078411653637886,0.023901931941509247,0.026447147130966187,0.029238473623991013,0.032093700021505356,0.03470585495233536,0.03659098222851753,0.03840098902583122,0.04015958681702614,0.041595593094825745,0.04308026656508446,0.0440780371427536,0.04516495019197464,0.04667951539158821,0.0480002760887146,0.0481906458735466,0.04901433363556862,0.04855842888355255,0.04877590760588646,0.048453617841005325,0.04743613675236702,0.04750804603099823,0.047861531376838684,0.04893076792359352,0.049902889877557755,0.05006103962659836,0.0484580434858799,0.04857167974114418,0.04943676292896271,0.04913056641817093,0.04921618103981018,0.050028398633003235,0.04974409192800522,0.04916638880968094,0.04962688684463501,0.049345023930072784,0.04872285574674606,0.04882058873772621,0.04923488199710846,0.04932820051908493,0.04963402822613716,0.05006438121199608,0.04898582398891449,0.048772022128105164,0.048508550971746445,0.0483330674469471,0.047945961356163025,0.047199200838804245,0.046558529138565063,0.04627493768930435,0.04679782688617706,0.046331144869327545,0.046559736132621765,0.04630878567695618,0.04644467309117317,0.04646804928779602,0.04604135826230049,0.04546992853283882,0.046017877757549286,0.045383915305137634,0.04486546665430069,0.04417514428496361,0.043601129204034805,0.043397821485996246,0.04380577802658081,0.04413178935647011,0.04388004168868065,0.044190965592861176,0.0448312871158123,0.04511936753988266,0.04532402381300926,0.045193836092948914,0.04489027336239815,0.045434076339006424,0.04552561044692993,0.04563136398792267,0.045720916241407394,0.04525633528828621,0.046642906963825226,0.04684959352016449,0.048286743462085724,0.04816820099949837,0.04966282844543457,0.05173406004905701,0.054013241082429886,0.05604812875390053,0.05775152146816254]
+      curve_l2_q75: [0.026351969689130783,0.02699722722172737,0.024804510176181793,0.02214968577027321,0.022669440135359764,0.025024011731147766,0.029460005462169647,0.03410860523581505,0.039011623710393906,0.040608178824186325,0.04429183527827263,0.04666096344590187,0.04892049729824066,0.05365968123078346,0.05554701387882233,0.05819088965654373,0.06039087474346161,0.06393034011125565,0.06620930880308151,0.06723886728286743,0.07006188482046127,0.07433962821960449,0.07741791009902954,0.07668924331665039,0.07968840003013611,0.07955654710531235,0.08081738650798798,0.08224011212587357,0.08617272228002548,0.0853927880525589,0.08528177440166473,0.08490950614213943,0.08629712462425232,0.08653899282217026,0.08771806955337524,0.0889112651348114,0.08839239925146103,0.08797804266214371,0.08738331496715546,0.08865484595298767,0.08708669245243073,0.08587229996919632,0.08519189059734344,0.08399271219968796,0.08270064741373062,0.08331095427274704,0.08263412117958069,0.08279819786548615,0.08100994676351547,0.08022148907184601,0.08021578937768936,0.07907819747924805,0.07994373887777328,0.07789890468120575,0.07897844910621643,0.07939966768026352,0.07670139521360397,0.07614939659833908,0.07473192363977432,0.07351129502058029,0.07308050245046616,0.07221334427595139,0.07169175893068314,0.07142813503742218,0.07172993570566177,0.07152235507965088,0.0707235038280487,0.07058992981910706,0.07074785977602005,0.07072010636329651,0.07128963619470596,0.07144196331501007,0.07153022289276123,0.07225699722766876,0.07249279320240021,0.07377709448337555,0.07492520660161972,0.07690844684839249,0.07798361033201218,0.07968546450138092,0.08213973790407181,0.084759920835495,0.08830518275499344,0.08944187313318253,0.0908171534538269,0.09060566127300262,0.09275960177183151,0.09442757815122604,0.09526042640209198,0.09585133194923401,0.09737914800643921,0.10016489028930664,0.09979335218667984,0.09985164552927017,0.09895201027393341,0.10049264132976532,0.1002228632569313,0.10114771127700806,0.10098186880350113,0.102252297103405]
       parameter_count: 380460
-  position_mse_per_horizon: {1:1.0927918689655295e-05,5:7.526174401088308e-05,10:0.0002861264705037077,25:0.000763674460661908,50:0.0016622163821011782,100:0.0014464035242175062}
-  position_mse_std_per_horizon: {1:2.7882508675247664e-06,5:0.00011823869620760281,10:0.0004821011971216649,25:0.0013819301578526695,50:0.0069011130059758825,100:0.002843638649210334}
-  position_mse_seed_std_per_horizon: {1:6.297388439362177e-06,5:6.58641706726098e-06,10:6.353841205452143e-05,25:3.0808885815237175e-05,50:1.9348534675133935e-05,100:8.687703670603642e-05}
-  velocity_mse_per_horizon: {1:0.0003253592731198296,5:0.018527929360667866,10:0.016586277944346268,25:0.02049375946323077,50:0.022618545219302177,100:0.02101101850469907}
-  velocity_mse_std_per_horizon: {1:0.0001472572112106718,5:0.03807589287559191,10:0.03334429673850536,25:0.06994417558113734,50:0.03685390452543894,100:0.024866124615073204}
-  velocity_mse_seed_std_per_horizon: {1:0.00016953473234220445,5:0.0009970934954648544,10:0.0024382073542281698,25:0.0015470273120444626,50:0.0008842043253655836,100:0.0004407721159021721}
-  position_error_per_horizon: {1:0.007755222885559003,5:0.01849166490137577,10:0.034156953915953636,25:0.05845096210638682,50:0.07054215421279271,100:0.07719853023687999}
-  position_error_std_per_horizon: {1:0.0010523574892431498,5:0.010335693446298441,10:0.023138374090194702,25:0.03411237274607023,50:0.07068610191345215,100:0.052087053656578064}
-  position_error_seed_std_per_horizon: {1:0.0025279919889007797,5:0.0005945310377408356,10:0.004193693709293677,25:0.0016635991884255824,50:0.0009151083416532209,100:0.0027489401895750957}
-  overall_l2_mean: 0.06072099258502325
-  overall_l2_seed_std: 0.0013625869120171337
-  curve_l2_mean: [0.008107587695121765,0.008698863908648491,0.009274079464375973,0.011939478106796741,0.017933497205376625,0.025027725845575333,0.030777525156736374,0.033932026475667953,0.03474843129515648,0.03429556265473366,0.03364067152142525,0.03363863006234169,0.03468073904514313,0.036500368267297745,0.038451068103313446,0.04049065709114075,0.04211186245083809,0.04355691745877266,0.04502175375819206,0.046581268310546875,0.048257455229759216,0.05017600581049919,0.05233413353562355,0.054575204849243164,0.05653561279177666,0.058538731187582016,0.06042276695370674,0.06232533976435661,0.06390896439552307,0.0653163269162178,0.06629958003759384,0.0668264627456665,0.06720654666423798,0.06754063069820404,0.06802953034639359,0.06853357702493668,0.06906825304031372,0.06960294395685196,0.06999396532773972,0.0703246146440506,0.07046444714069366,0.07042954862117767,0.0702747032046318,0.07028694450855255,0.07033053040504456,0.07020033150911331,0.07003451138734818,0.06987554579973221,0.06967595964670181,0.069490447640419,0.06935132294893265,0.06941309571266174,0.06961546093225479,0.06979136914014816,0.06993559002876282,0.06985041499137878,0.06951801478862762,0.0689489096403122,0.06837626546621323,0.0677192285656929,0.06699876487255096,0.06630528718233109,0.06576260924339294,0.06545061618089676,0.0653633177280426,0.06557390093803406,0.06558526307344437,0.06543806940317154,0.06528177112340927,0.06504087895154953,0.064705990254879,0.0640246644616127,0.06323449313640594,0.062481533735990524,0.061911746859550476,0.06154850125312805,0.06130773574113846,0.06124681979417801,0.06142561882734299,0.06190451234579086,0.0626421794295311,0.06355459243059158,0.06454749405384064,0.06553637236356735,0.06649858504533768,0.06746737658977509,0.06841041892766953,0.06931281834840775,0.07012094557285309,0.07075084745883942,0.07113517820835114,0.07133308053016663,0.07139123976230621,0.07140205055475235,0.07148651778697968,0.07176679372787476,0.07237637788057327,0.07332336902618408,0.07451117783784866,0.0757109522819519]
-  curve_l2_q25: [0.007531081326305866,0.007973164319992065,0.008334442973136902,0.009506259113550186,0.012442094273865223,0.016259603202342987,0.019733412191271782,0.02121257595717907,0.021603060886263847,0.020913004875183105,0.019735341891646385,0.019686726853251457,0.01958119496703148,0.019923191517591476,0.02055930905044079,0.02129511907696724,0.022245492786169052,0.023323513567447662,0.0247721616178751,0.02597140334546566,0.027621163055300713,0.029701760038733482,0.031040456146001816,0.03320404514670372,0.033541254699230194,0.03512135148048401,0.037134602665901184,0.03852836415171623,0.04033579304814339,0.0412699356675148,0.04198050498962402,0.04239725321531296,0.042862050235271454,0.04287435859441757,0.042239781469106674,0.04185037314891815,0.042503662407398224,0.0429297611117363,0.04220300167798996,0.042381733655929565,0.04243086278438568,0.04253331571817398,0.04184791445732117,0.0418037474155426,0.04199760779738426,0.041892096400260925,0.0415274016559124,0.04142031446099281,0.04063216224312782,0.03978312760591507,0.03984016925096512,0.04012942686676979,0.03987332433462143,0.039595827460289,0.04010400176048279,0.03987946733832359,0.04006662964820862,0.039988961070775986,0.0391034297645092,0.038615353405475616,0.038523878902196884,0.03839297220110893,0.03833802044391632,0.03726113587617874,0.03753310814499855,0.037809934467077255,0.037545446306467056,0.03781828656792641,0.037699244916439056,0.03719589114189148,0.03705110028386116,0.03630928695201874,0.03541330620646477,0.034684304147958755,0.03384719789028168,0.0335569903254509,0.03316663205623627,0.033655088394880295,0.033291153609752655,0.032646141946315765,0.033042147755622864,0.03332486376166344,0.03375932574272156,0.033674318343400955,0.03394240885972977,0.034950464963912964,0.03518466651439667,0.03568192198872566,0.03573102504014969,0.03546694666147232,0.03545527532696724,0.035181447863578796,0.034760378301143646,0.03504454717040062,0.03495309129357338,0.036451153457164764,0.03809649869799614,0.04031354933977127,0.04238855093717575,0.04462912306189537]
-  curve_l2_q75: [0.008622560650110245,0.009332895278930664,0.01000148057937622,0.011800278909504414,0.016323281452059746,0.022414125502109528,0.027764281257987022,0.0309610553085804,0.03329320251941681,0.034828487783670425,0.03702164441347122,0.038892507553100586,0.041251108050346375,0.04387499764561653,0.04761146754026413,0.04893859475851059,0.05284933000802994,0.057085081934928894,0.05840647220611572,0.060034267604351044,0.061835892498493195,0.0656394511461258,0.06692539155483246,0.06913094222545624,0.06864503026008606,0.07035452127456665,0.07331973314285278,0.07418011873960495,0.07534347474575043,0.07496266812086105,0.07668988406658173,0.07538587599992752,0.07484788447618484,0.07454381138086319,0.07524140924215317,0.07530339807271957,0.07470536977052689,0.07503669708967209,0.07615570724010468,0.07633020728826523,0.07565461844205856,0.07545334100723267,0.07504944503307343,0.074581578373909,0.07515255361795425,0.07679711282253265,0.07544480264186859,0.07543947547674179,0.07144632935523987,0.07104543596506119,0.07183923572301865,0.07231198251247406,0.07335963845252991,0.0724094957113266,0.0722615122795105,0.07229390740394592,0.07097683101892471,0.06775696575641632,0.06712447851896286,0.06618022918701172,0.06467961519956589,0.06440296769142151,0.06320817023515701,0.06248552352190018,0.0623408704996109,0.06235852837562561,0.06215332821011543,0.06296248733997345,0.06267869472503662,0.06230478733778,0.06292521953582764,0.06291763484477997,0.06275173276662827,0.06361745297908783,0.06466547399759293,0.06479378044605255,0.06650646030902863,0.0671820193529129,0.06908835470676422,0.07128438353538513,0.07409913837909698,0.07589136064052582,0.07937632501125336,0.0815962627530098,0.08327256143093109,0.08605019003152847,0.08659800887107849,0.08840642124414444,0.08991304785013199,0.09154067188501358,0.09298127144575119,0.09192179143428802,0.0916917622089386,0.09109526127576828,0.09069494903087616,0.09025762975215912,0.08865728974342346,0.0885014683008194,0.08832694590091705,0.08750899136066437]
+  position_mse_per_horizon: {1:6.970170094670418e-05,5:0.0001127296345657669,10:0.0003312912692005436,25:0.0008759438836326202,50:0.001739303193365534,100:0.001522663204620282}
+  position_mse_std_per_horizon: {1:9.370819801309457e-06,5:0.00014374545814159015,10:0.00047978437699687976,25:0.0014026726518447201,50:0.006745503439257543,100:0.0027879298043747744}
+  position_mse_seed_std_per_horizon: {1:4.279263945798248e-05,5:1.942316159749303e-05,10:5.799848765192975e-05,25:6.584783821240204e-05,50:4.4096401054294876e-05,100:0.00013870434030161064}
+  velocity_mse_per_horizon: {1:0.001526187688189869,5:0.01869862029949824,10:0.016597073214749496,25:0.02040620210270087,50:0.022562382121880848,100:0.02130441429714362}
+  velocity_mse_std_per_horizon: {1:0.00033462507417425513,5:0.037674314031998314,10:0.029475212718049686,25:0.06992484877506892,50:0.03583214432001114,100:0.024432261784871418}
+  velocity_mse_seed_std_per_horizon: {1:0.0018570788977597217,5:0.00020560815127609284,10:0.0020140627628837575,25:0.0015043399920783647,50:0.0008847982331189538,100:0.0008152095613071585}
+  position_error_per_horizon: {1:0.01955086241165797,5:0.022967873141169548,10:0.0382180983821551,25:0.0639285258948803,50:0.07468960185845692,100:0.08205308268467586}
+  position_error_std_per_horizon: {1:0.0013257313597326477,5:0.011014936957508326,10:0.022055458277463913,25:0.03411273534099261,50:0.06966189791758855,100:0.048840622107187905}
+  position_error_seed_std_per_horizon: {1:0.007146263215619875,5:0.0017270067825320892,10:0.0006078376884471017,25:0.002649069288998305,50:0.002443603326494411,100:0.005167675663825986}
+  overall_l2_mean: 0.06522263834873836
+  overall_l2_seed_std: 0.002244667083343404
+  curve_l2_mean: [0.011463391594588757,0.011260421015322208,0.012365542352199554,0.015929721295833588,0.022296421229839325,0.02928614430129528,0.03493636101484299,0.0381774939596653,0.03919664025306702,0.03889975696802139,0.03826487064361572,0.038217298686504364,0.03908471390604973,0.040584150701761246,0.042181506752967834,0.043829113245010376,0.04525160416960716,0.04684450104832649,0.04872138798236847,0.05078807845711708,0.0528855174779892,0.055083855986595154,0.05736937001347542,0.059585753828287125,0.06143657863140106,0.06319081038236618,0.06478103995323181,0.06640522927045822,0.06776407361030579,0.06893851608037949,0.0697292909026146,0.0700710192322731,0.07026242464780807,0.0704326182603836,0.07077030837535858,0.07112441211938858,0.0715433657169342,0.0720292255282402,0.07242216914892197,0.0727837085723877,0.07293185591697693,0.07291039824485779,0.07280029356479645,0.07287564128637314,0.07302694022655487,0.07300973683595657,0.07297173887491226,0.07294511049985886,0.07285936921834946,0.07276146113872528,0.07269163429737091,0.07282735407352448,0.07312853634357452,0.07339350134134293,0.07365009933710098,0.07371819764375687,0.07354281097650528,0.07310511916875839,0.07264538109302521,0.07210807502269745,0.0715232864022255,0.07096678018569946,0.07057050615549088,0.07042660564184189,0.07052962481975555,0.07093211263418198,0.07111003994941711,0.07108928263187408,0.07101858407258987,0.07082027196884155,0.07048171013593674,0.06975945085287094,0.06889816373586655,0.0680384710431099,0.06733889132738113,0.06684746593236923,0.06648658961057663,0.06629940867424011,0.0663762241601944,0.06675851345062256,0.06741182506084442,0.06827273219823837,0.0692458227276802,0.07023739069700241,0.07121509313583374,0.07219618558883667,0.0731360986828804,0.07401766628026962,0.07478515803813934,0.0753595232963562,0.07566819339990616,0.075731560587883,0.07558576762676239,0.07530222833156586,0.07497826218605042,0.07473771274089813,0.07476350665092468,0.07515984028577805,0.07594364881515503,0.07697230577468872]
+  curve_l2_q25: [0.010706808418035507,0.010530298575758934,0.011923742480576038,0.014794009737670422,0.018410537391901016,0.02160072885453701,0.025295570492744446,0.026782436296343803,0.027612842619419098,0.02731100656092167,0.027227645739912987,0.027090301737189293,0.026997486129403114,0.026558347046375275,0.02642597258090973,0.02665811963379383,0.02687377855181694,0.02794378623366356,0.02921762876212597,0.030856337398290634,0.03270690143108368,0.03464135900139809,0.036643266677856445,0.03812652826309204,0.039326757192611694,0.04115968197584152,0.04286473989486694,0.04439994692802429,0.045362215489149094,0.0457846075296402,0.04602726921439171,0.045405659824609756,0.04494846612215042,0.04508977755904198,0.044802989810705185,0.04438367486000061,0.044127143919467926,0.04446050524711609,0.044314801692962646,0.04480468109250069,0.0432770699262619,0.04340970143675804,0.042841680347919464,0.04378228634595871,0.0435987263917923,0.04372811317443848,0.043370362371206284,0.043718092143535614,0.04397675022482872,0.04407918453216553,0.043996188789606094,0.04342690855264664,0.04383907467126846,0.04441108927130699,0.04456271603703499,0.0447361059486866,0.044320136308670044,0.04327201098203659,0.043457645922899246,0.04316595941781998,0.04305579513311386,0.04286554455757141,0.04281693696975708,0.04249044880270958,0.04264501482248306,0.042960528284311295,0.042576104402542114,0.04273608326911926,0.041710853576660156,0.04142852872610092,0.042193327099084854,0.04165973886847496,0.040922120213508606,0.0417061522603035,0.041548050940036774,0.040775712579488754,0.041922520846128464,0.04201730340719223,0.04230133071541786,0.042541950941085815,0.042059462517499924,0.04194073751568794,0.04261467233300209,0.04317449405789375,0.04361341893672943,0.044406741857528687,0.04507114738225937,0.04559807851910591,0.046338215470314026,0.04661919176578522,0.046180956065654755,0.04592975229024887,0.045918770134449005,0.04467355087399483,0.043579697608947754,0.04372145235538483,0.044027749449014664,0.04435843229293823,0.04609616845846176,0.047679442912340164]
+  curve_l2_q75: [0.011992122046649456,0.01178180892020464,0.012974120676517487,0.017195865511894226,0.02397281862795353,0.03125434368848801,0.03698160871863365,0.040470924228429794,0.04172009974718094,0.04124011471867561,0.03949274122714996,0.03826536238193512,0.03927238658070564,0.04327080026268959,0.04681115970015526,0.05087456852197647,0.0542360320687294,0.056107811629772186,0.05801183730363846,0.059569310396909714,0.06241707503795624,0.06650331616401672,0.0691382884979248,0.07184644043445587,0.07205390185117722,0.07330650091171265,0.07602091133594513,0.07630808651447296,0.0776982307434082,0.07672049850225449,0.07903577387332916,0.07942059636116028,0.07993744313716888,0.0798814445734024,0.08178628981113434,0.08079956471920013,0.08033742010593414,0.08031443506479263,0.08063353598117828,0.07828755676746368,0.07717481255531311,0.07691731303930283,0.0771571546792984,0.07494708895683289,0.07509515434503555,0.077145054936409,0.07732116430997849,0.07698553055524826,0.07607056200504303,0.07530353963375092,0.07525460422039032,0.07487420737743378,0.07516314089298248,0.07507163286209106,0.07473614066839218,0.07450307160615921,0.0737198144197464,0.07267578691244125,0.07227933406829834,0.07168915867805481,0.07050883024930954,0.06985761970281601,0.06950785219669342,0.07013852894306183,0.06894098967313766,0.06966210156679153,0.07089312374591827,0.07062169909477234,0.07136419415473938,0.07154961675405502,0.07123735547065735,0.07114848494529724,0.0707588717341423,0.07079441845417023,0.07062837481498718,0.07119211554527283,0.0711594969034195,0.07017752528190613,0.07029874622821808,0.07153740525245667,0.0729413852095604,0.07456962019205093,0.07627198100090027,0.07925388962030411,0.08051666617393494,0.08113344013690948,0.08276278525590897,0.08404087275266647,0.085039883852005,0.08603381365537643,0.08776761591434479,0.08726959675550461,0.08880430459976196,0.08915401250123978,0.08879334479570389,0.08825865387916565,0.08846672624349594,0.08709301054477692,0.08778393268585205,0.08817002177238464]
 Deep GRU:
   n_test: 400
-  position_mse_per_horizon: {1:3.21011793857906e-05,5:0.00017152960936073214,10:0.00028984053642489016,25:0.0008172226953320205,50:0.0017294100252911448,100:0.006496428977698088}
-  position_mse_std_per_horizon: {1:2.8276434022700414e-05,5:0.0001391393452649936,10:0.0005705562070943415,25:0.0014763829531148076,50:0.006650533992797136,100:0.004695885349065065}
-  velocity_mse_per_horizon: {1:0.0009749674936756492,5:0.021451838314533234,10:0.00642559165135026,25:0.014466039836406708,50:0.016050860285758972,100:0.1119101420044899}
-  velocity_mse_std_per_horizon: {1:0.0006495529087260365,5:0.03300777077674866,10:0.012833000160753727,25:0.06817463040351868,50:0.03229528293013573,100:0.04311258718371391}
-  position_error_per_horizon: {1:0.012598514556884766,5:0.029743056744337082,10:0.03474962338805199,25:0.05916468799114227,50:0.07322502881288528,100:0.18705406785011292}
-  position_error_std_per_horizon: {1:0.005821040365844965,5:0.012021996080875397,10:0.02305443026125431,25:0.0374549925327301,50:0.07081351429224014,100:0.06316130608320236}
-  overall_l2_mean: 0.08097754418849945
-  curve_l2_mean: [0.012598513625562191,0.015258174389600754,0.018540317192673683,0.023242034018039703,0.029743051156401634,0.035310760140419006,0.036781471222639084,0.03499768301844597,0.033886536955833435,0.03474961966276169,0.036513566970825195,0.03852149099111557,0.04043563827872276,0.04227655753493309,0.044075436890125275,0.04597121849656105,0.047567762434482574,0.04910867288708687,0.05064649507403374,0.052038855850696564,0.053308576345443726,0.0545850470662117,0.056038178503513336,0.05763979256153107,0.05916464701294899,0.06073261424899101,0.06223465874791145,0.0637972429394722,0.06521273404359818,0.06665307283401489,0.06778464466333389,0.06857061386108398,0.06925177574157715,0.0699581652879715,0.07088908553123474,0.07184896618127823,0.07263633608818054,0.0733795240521431,0.07398912310600281,0.07454218715429306,0.07495933771133423,0.07521489262580872,0.07536837458610535,0.07557374238967896,0.07561132311820984,0.07538516819477081,0.0749349519610405,0.07437577098608017,0.07376529276371002,0.07322505116462708,0.0727975144982338,0.07236179709434509,0.07193849980831146,0.07155062258243561,0.07122836261987686,0.07084067165851593,0.07051444053649902,0.07024618983268738,0.07013006508350372,0.0700749009847641,0.07014402002096176,0.07033330947160721,0.07075053453445435,0.07139717042446136,0.07219433784484863,0.07325345277786255,0.07417044043540955,0.07498987019062042,0.07583870738744736,0.07663854956626892,0.07739612460136414,0.07791205495595932,0.0784645527601242,0.0791497677564621,0.08008213341236115,0.08133723586797714,0.08285705745220184,0.08472613990306854,0.08710132539272308,0.09025368839502335,0.0941532626748085,0.09881401807069778,0.10428806394338608,0.11056151241064072,0.1175689697265625,0.12521392107009888,0.13329635560512543,0.1416066437959671,0.14990799129009247,0.1579163819551468,0.16534607112407684,0.17196553945541382,0.1775631308555603,0.18200549483299255,0.18522663414478302,0.18724702298641205,0.18822167813777924,0.18834953010082245,0.187879741191864,0.18705400824546814]
-  curve_l2_q25: [0.007814190350472927,0.009621464647352695,0.012138556689023972,0.015988187864422798,0.02219351939857006,0.025246135890483856,0.024631569162011147,0.022894054651260376,0.021371478214859962,0.022099267691373825,0.023139623925089836,0.024555858224630356,0.025378622114658356,0.026140375062823296,0.026956671848893166,0.02737623080611229,0.02843179553747177,0.029858360067009926,0.030763253569602966,0.0319182388484478,0.03231259435415268,0.03301651030778885,0.0332363024353981,0.03471849858760834,0.03588606044650078,0.03697602450847626,0.038165509700775146,0.039297573268413544,0.03959067165851593,0.04063885286450386,0.03986559808254242,0.040519751608371735,0.04047613590955734,0.04185201972723007,0.043050769716501236,0.04423215985298157,0.045153312385082245,0.04456302523612976,0.04337433725595474,0.0434490330517292,0.0428270660340786,0.04323691874742508,0.04306699335575104,0.04313129931688309,0.043424151837825775,0.04425211250782013,0.04394292086362839,0.043596889823675156,0.04270421713590622,0.042005639523267746,0.041321150958538055,0.03904299437999725,0.03890739381313324,0.03841600939631462,0.03799830377101898,0.038167554885149,0.038002848625183105,0.037842974066734314,0.0376444049179554,0.03774796426296234,0.03751777857542038,0.03766368329524994,0.03812972083687782,0.03864658623933792,0.038913361728191376,0.03837711736559868,0.03852317854762077,0.03979966789484024,0.040145162492990494,0.041197728365659714,0.04153407737612724,0.0423765666782856,0.0426647774875164,0.04444355517625809,0.04486236721277237,0.04691271111369133,0.049202609807252884,0.0526985339820385,0.05720309913158417,0.06302781403064728,0.06731417030096054,0.070578932762146,0.0754261314868927,0.08202967792749405,0.08858603239059448,0.09708546847105026,0.10661950707435608,0.11378888040781021,0.12146133184432983,0.12940704822540283,0.13696178793907166,0.1431354582309723,0.1464204490184784,0.1492474526166916,0.15063375234603882,0.15108564496040344,0.15113630890846252,0.1509472131729126,0.15022709965705872,0.14962612092494965]
-  curve_l2_q75: [0.01685800589621067,0.020589575171470642,0.024869918823242188,0.030288394540548325,0.03746037185192108,0.042246270924806595,0.04299652576446533,0.03988674655556679,0.03853175416588783,0.03953024744987488,0.04138602316379547,0.04447632655501366,0.04620887711644173,0.04910838603973389,0.05090256780385971,0.05427185446023941,0.0575750470161438,0.06033802777528763,0.06168169528245926,0.06302661448717117,0.0656195729970932,0.06759962439537048,0.06899873912334442,0.06884945929050446,0.07051171362400055,0.0714266374707222,0.07257422059774399,0.07337737828493118,0.07676693052053452,0.07688277214765549,0.08003126084804535,0.07950164377689362,0.08141788095235825,0.08113089203834534,0.08087874948978424,0.07963314652442932,0.08133117854595184,0.08176763355731964,0.08150479942560196,0.08350490033626556,0.08379247784614563,0.08301997184753418,0.08338889479637146,0.0824420154094696,0.08159865438938141,0.08204267919063568,0.080550916492939,0.08076902478933334,0.08064620941877365,0.08027041703462601,0.07880128175020218,0.07848658412694931,0.07923521846532822,0.07741406559944153,0.07734540104866028,0.07721991837024689,0.07652778923511505,0.0750190019607544,0.0736950933933258,0.07464390248060226,0.07488957047462463,0.07439583539962769,0.07446567714214325,0.07508321851491928,0.07615771889686584,0.07804906368255615,0.07860258221626282,0.08003031462430954,0.08253457397222519,0.08519819378852844,0.08725057542324066,0.09024398028850555,0.08985589444637299,0.09140077233314514,0.09231948852539062,0.09313605725765228,0.09358931332826614,0.0956636294722557,0.09913890808820724,0.10422002524137497,0.10748392343521118,0.11313218623399734,0.11759956181049347,0.12598420679569244,0.13540957868099213,0.14278632402420044,0.15007731318473816,0.1583637297153473,0.16547897458076477,0.17529703676700592,0.18754206597805023,0.19772717356681824,0.20869538187980652,0.21410878002643585,0.2164696305990219,0.21992480754852295,0.22305196523666382,0.22642993927001953,0.22624681890010834,0.22422750294208527]
+  seeds: [42,101,2024]
   parameter_count: 338868
+  per_seed:
+    42:
+      n_test: 400
+      position_mse_per_horizon: {1:2.4542090613977052e-05,5:0.00021902367006987333,10:0.0019723328296095133,25:0.0013728151097893715,50:0.0019572121091187,100:0.004653798881918192}
+      position_mse_std_per_horizon: {1:1.4353059668792412e-05,5:0.00042984579340554774,10:0.003479565493762493,25:0.0017829389544203877,50:0.006524883676320314,100:0.0041227745823562145}
+      velocity_mse_per_horizon: {1:0.002094642724841833,5:0.021876106038689613,10:0.016457831487059593,25:0.01365212444216013,50:0.013402590528130531,100:0.09914136677980423}
+      velocity_mse_std_per_horizon: {1:0.0016062709037214518,5:0.049819689244031906,10:0.01903422735631466,25:0.06862213462591171,50:0.030039796605706215,100:0.047812338918447495}
+      position_error_per_horizon: {1:0.011710223741829395,5:0.02823401428759098,10:0.08657421171665192,25:0.08041425049304962,50:0.08125118911266327,100:0.15600261092185974}
+      position_error_std_per_horizon: {1:0.003181696403771639,5:0.022737249732017517,10:0.06587035208940506,25:0.04207659140229225,50:0.07170437276363373,100:0.05988302081823349}
+      overall_l2_mean: 0.08895710855722427
+      curve_l2_mean: [0.011710227467119694,0.012936849147081375,0.015377569943666458,0.01958545856177807,0.028234023600816727,0.04267622530460358,0.059298738837242126,0.0732165053486824,0.08182910084724426,0.08657418191432953,0.08961499482393265,0.09140978753566742,0.09196840971708298,0.09147698432207108,0.09044458717107773,0.08945178240537643,0.08819460868835449,0.08673474192619324,0.08545838296413422,0.08448611199855804,0.083757184445858,0.0829358696937561,0.08213184028863907,0.08131557703018188,0.08041427284479141,0.07965745776891708,0.0790896788239479,0.07884010672569275,0.07868099957704544,0.07875554263591766,0.07873041182756424,0.0785391628742218,0.07835937291383743,0.07840542495250702,0.07889144122600555,0.079542376101017,0.08011084794998169,0.08068080991506577,0.0811728984117508,0.0816752016544342,0.0820375606417656,0.0822618305683136,0.08245564252138138,0.08274068683385849,0.08298899978399277,0.08301376551389694,0.08275522291660309,0.08226950466632843,0.08170945197343826,0.08125117421150208,0.08081015944480896,0.0803743377327919,0.07996569573879242,0.0794353261590004,0.07876868546009064,0.07803218066692352,0.07743567228317261,0.07697881758213043,0.07679542899131775,0.07671397924423218,0.07664503157138824,0.07668892294168472,0.0768790990114212,0.0772380456328392,0.07775942981243134,0.07860761135816574,0.07934582978487015,0.08000033348798752,0.08072824776172638,0.08145380765199661,0.08218353241682053,0.08273789286613464,0.08338665962219238,0.08413241058588028,0.08505832403898239,0.08625296503305435,0.08764424175024033,0.08928694576025009,0.09134231507778168,0.09401753544807434,0.09727959334850311,0.10104680061340332,0.10525057464838028,0.1097986027598381,0.11462610960006714,0.11968834698200226,0.12487402558326721,0.13008227944374084,0.13519816100597382,0.14006121456623077,0.14450667798519135,0.14839953184127808,0.15159574151039124,0.15400546789169312,0.1555834263563156,0.15635846555233002,0.15650928020477295,0.15628424286842346,0.15601080656051636,0.15600261092185974]
+      curve_l2_q25: [0.009478351101279259,0.01017272099852562,0.011766701005399227,0.012813815847039223,0.014714471995830536,0.02105771005153656,0.02959192730486393,0.03570323437452316,0.04157891497015953,0.0459580272436142,0.0509035661816597,0.054830849170684814,0.05883076786994934,0.06322035938501358,0.06523919105529785,0.06519902497529984,0.06491078436374664,0.0634026825428009,0.06086549535393715,0.05879303067922592,0.05807976424694061,0.05619264021515846,0.0556686669588089,0.053877055644989014,0.05286724865436554,0.05095981806516647,0.050490446388721466,0.04976462200284004,0.04864826425909996,0.046937014907598495,0.046399347484111786,0.04606068134307861,0.04640299081802368,0.046606190502643585,0.046461787074804306,0.046999938786029816,0.0487990640103817,0.04794653132557869,0.04746611416339874,0.04885627329349518,0.048191871494054794,0.04911239817738533,0.05130492523312569,0.05055953562259674,0.05122510343790054,0.04985232651233673,0.05001647025346756,0.04875965416431427,0.04944450780749321,0.048916496336460114,0.047622427344322205,0.0455724373459816,0.044093143194913864,0.04299855977296829,0.04349008575081825,0.04440745711326599,0.0435575433075428,0.04304378107190132,0.04369741678237915,0.04344150424003601,0.042374007403850555,0.0422545000910759,0.04376477748155594,0.04338464140892029,0.04405137896537781,0.04493892565369606,0.04532107338309288,0.04553879052400589,0.04663769528269768,0.047985754907131195,0.048659153282642365,0.04936990886926651,0.0505673922598362,0.05063352733850479,0.0518377311527729,0.05440463125705719,0.056664399802684784,0.05902652442455292,0.06143798679113388,0.06467253714799881,0.06892421841621399,0.07348835468292236,0.07855933904647827,0.08242770284414291,0.0866125226020813,0.0902511477470398,0.09454748034477234,0.09872601181268692,0.10228566825389862,0.1060367003083229,0.11041051149368286,0.11355872452259064,0.1152787059545517,0.1163279116153717,0.11691883206367493,0.1171337142586708,0.11542949080467224,0.11400089412927628,0.11176669597625732,0.11026079952716827]
+      curve_l2_q75: [0.013284844346344471,0.01524124201387167,0.018666885793209076,0.023900197818875313,0.03136380761861801,0.042843908071517944,0.05621318146586418,0.06756602227687836,0.08025629818439484,0.09607288241386414,0.1096610426902771,0.10977985709905624,0.11112401634454727,0.10960274934768677,0.1086910218000412,0.10805574059486389,0.10617788136005402,0.10511156916618347,0.1042959913611412,0.10445041209459305,0.10358647257089615,0.10140027105808258,0.09799876809120178,0.09696739166975021,0.09690972417593002,0.09774155914783478,0.09638267755508423,0.0979766696691513,0.09671938419342041,0.09487634897232056,0.09408587962388992,0.09302689135074615,0.09196697175502777,0.09100266546010971,0.09215012192726135,0.09111463278532028,0.09219571202993393,0.09213030338287354,0.09413235634565353,0.0922267884016037,0.08976743370294571,0.09047317504882812,0.08932207524776459,0.08870378136634827,0.0895615667104721,0.08990523964166641,0.08989108353853226,0.08835598826408386,0.08773985505104065,0.0888194665312767,0.08867103606462479,0.08900199830532074,0.0877770334482193,0.08821802586317062,0.08771126717329025,0.08656007051467896,0.0856020376086235,0.0844317227602005,0.08313164114952087,0.08299274742603302,0.08381546288728714,0.08391959965229034,0.0837290957570076,0.08385282754898071,0.08322902768850327,0.08326134085655212,0.0851469486951828,0.0870918557047844,0.08997106552124023,0.09159211069345474,0.09327829629182816,0.09528878331184387,0.09671689569950104,0.09797121584415436,0.09987909346818924,0.10112786293029785,0.10443564504384995,0.10539252310991287,0.10756756365299225,0.11068210005760193,0.11334045231342316,0.11855312436819077,0.12043701112270355,0.12440324574708939,0.1334417462348938,0.14018753170967102,0.14696422219276428,0.1512857973575592,0.15781660377979279,0.1628587543964386,0.1698557436466217,0.17386232316493988,0.17761224508285522,0.18128591775894165,0.18289829790592194,0.18311011791229248,0.1842355728149414,0.1833610087633133,0.18251270055770874,0.18482831120491028]
+      parameter_count: 338868
+    101:
+      n_test: 400
+      position_mse_per_horizon: {1:2.3439408323611133e-05,5:0.00017956715601030737,10:0.0012532277032732964,25:0.001081736758351326,50:0.0019159243674948812,100:0.00423949770629406}
+      position_mse_std_per_horizon: {1:1.703918314888142e-05,5:0.0003713626938406378,10:0.0019962964579463005,25:0.0015464599709957838,50:0.006341207306832075,100:0.004080161452293396}
+      velocity_mse_per_horizon: {1:0.0018174861324951053,5:0.02370626851916313,10:0.02111205644905567,25:0.014078030362725258,50:0.013050921261310577,100:0.0912385955452919}
+      velocity_mse_std_per_horizon: {1:0.001223776489496231,5:0.045546598732471466,10:0.020694399252533913,25:0.06875663250684738,50:0.030163472518324852,100:0.052103668451309204}
+      position_error_per_horizon: {1:0.01123877614736557,5:0.025826405733823776,10:0.07329756021499634,25:0.07052647322416306,50:0.08197269588708878,100:0.14699159562587738}
+      position_error_std_per_horizon: {1:0.003785015782341361,5:0.020258326083421707,10:0.04633394628763199,25:0.03894146531820297,50:0.06910878419876099,100:0.06189066544175148}
+      overall_l2_mean: 0.08914615958929062
+      curve_l2_mean: [0.01123877428472042,0.011844051070511341,0.012667122296988964,0.016294652596116066,0.025826405733823776,0.040827080607414246,0.05653553456068039,0.06750869005918503,0.07230140268802643,0.07329759001731873,0.0728687196969986,0.07229311764240265,0.07199030369520187,0.07158941775560379,0.07093757390975952,0.07036393880844116,0.06972451508045197,0.06926092505455017,0.06914464384317398,0.06925182044506073,0.06939729303121567,0.06946372985839844,0.06967507302761078,0.07005839049816132,0.07052646577358246,0.071259506046772,0.07221019268035889,0.073382169008255,0.07438769191503525,0.07539388537406921,0.07615213096141815,0.07655409723520279,0.07678425312042236,0.07714854180812836,0.07779243588447571,0.07859160751104355,0.0793847069144249,0.08023303747177124,0.08097298443317413,0.08171214908361435,0.08230435103178024,0.08263632655143738,0.08279716223478317,0.08286480605602264,0.08292464911937714,0.08285543322563171,0.08268513530492783,0.08247075974941254,0.08221497386693954,0.08197271078824997,0.08170467615127563,0.08150961995124817,0.08145491778850555,0.08136109262704849,0.08120652288198471,0.08096244186162949,0.08086512237787247,0.08098075538873672,0.08133473247289658,0.08174627274274826,0.08217579871416092,0.08256710320711136,0.08294285088777542,0.08332400023937225,0.08372404426336288,0.08444345742464066,0.0852392315864563,0.08622612804174423,0.08752462267875671,0.08899804949760437,0.090575210750103,0.09199881553649902,0.09352265298366547,0.09511109441518784,0.09674500674009323,0.09845361113548279,0.10018011182546616,0.10203460603952408,0.10420738160610199,0.10692386329174042,0.1103467345237732,0.11449728906154633,0.11927357316017151,0.12446604669094086,0.1298629343509674,0.13525961339473724,0.14041416347026825,0.14513900876045227,0.14925985038280487,0.15260034799575806,0.15502075850963593,0.15649265050888062,0.15702416002750397,0.1566752940416336,0.1555449664592743,0.15379716455936432,0.15172357857227325,0.14965353906154633,0.14795561134815216,0.1469915509223938]
+      curve_l2_q25: [0.008638028055429459,0.009165991097688675,0.009596358053386211,0.011016931384801865,0.015241501852869987,0.02296299859881401,0.0321667455136776,0.03882893919944763,0.04179370403289795,0.042216069996356964,0.041563138365745544,0.041510917246341705,0.04101485759019852,0.04095544293522835,0.04195144772529602,0.041504889726638794,0.041718240827322006,0.04205187410116196,0.041416607797145844,0.0421038419008255,0.04447555169463158,0.044814638793468475,0.044189341366291046,0.045703258365392685,0.04489276185631752,0.04595150426030159,0.04750441014766693,0.0490308478474617,0.048266682773828506,0.05006607994437218,0.05007074400782585,0.04986527934670448,0.05066395923495293,0.050395675003528595,0.0508139468729496,0.050888631492853165,0.050955306738615036,0.051571883261203766,0.05072538182139397,0.05043904483318329,0.050733186304569244,0.05174729600548744,0.052304498851299286,0.05135372653603554,0.05103050544857979,0.050969913601875305,0.0513087622821331,0.050652552396059036,0.05002020671963692,0.04878579080104828,0.048006363213062286,0.04936375096440315,0.049175698310136795,0.05024247616529465,0.048841867595911026,0.048371072858572006,0.04821430891752243,0.04798029363155365,0.04805177450180054,0.04744621366262436,0.04651441425085068,0.047181807458400726,0.047390926629304886,0.046395689249038696,0.046744346618652344,0.046564217656850815,0.04808192327618599,0.04890597611665726,0.04882551729679108,0.050793662667274475,0.05119464546442032,0.05225048586726189,0.05306253582239151,0.055359143763780594,0.05780249834060669,0.060561541467905045,0.06345884501934052,0.0663452222943306,0.06851711869239807,0.07197882235050201,0.07780885696411133,0.08237416297197342,0.08864971995353699,0.0941423624753952,0.1001323014497757,0.10664144903421402,0.11042776703834534,0.11301994323730469,0.11721226572990417,0.11870421469211578,0.12024298310279846,0.12040376663208008,0.12044231593608856,0.11920767277479172,0.1172320544719696,0.1171397864818573,0.1139373630285263,0.11264052987098694,0.11068189144134521,0.10750554502010345]
+      curve_l2_q75: [0.01304228138178587,0.013721121475100517,0.015036608092486858,0.01761803962290287,0.025815576314926147,0.04150030016899109,0.059706952422857285,0.07530149817466736,0.08366412669420242,0.08705153316259384,0.09017851203680038,0.09231261909008026,0.09421632438898087,0.09456846863031387,0.09368759393692017,0.09145050495862961,0.09176283329725266,0.0911899134516716,0.0897754356265068,0.09085094928741455,0.08981397747993469,0.0878232792019844,0.0858825072646141,0.08458341658115387,0.08438457548618317,0.08360615372657776,0.08389055728912354,0.08404474705457687,0.08624939620494843,0.08908791840076447,0.08789053559303284,0.08890308439731598,0.08829624205827713,0.0900033712387085,0.0906226709485054,0.09173242747783661,0.09112173318862915,0.09150096774101257,0.09100955724716187,0.08903421461582184,0.09336140006780624,0.09367889910936356,0.09215410053730011,0.09119847416877747,0.09195853769779205,0.09056804329156876,0.09033956378698349,0.08920812606811523,0.08897276222705841,0.08765741437673569,0.08979298174381256,0.08908908069133759,0.089836485683918,0.08921618014574051,0.09092600643634796,0.09080357849597931,0.09032393991947174,0.0893627479672432,0.09002777189016342,0.0914711058139801,0.09120956063270569,0.09225961565971375,0.09276837855577469,0.0934581607580185,0.09542185068130493,0.09739552438259125,0.09794236719608307,0.09983742237091064,0.10361383855342865,0.10631503909826279,0.10914389789104462,0.11084230989217758,0.11226879805326462,0.11622411012649536,0.11717759072780609,0.11935977637767792,0.12145267426967621,0.12463758885860443,0.12601904571056366,0.12943412363529205,0.13164857029914856,0.13557055592536926,0.1398913860321045,0.14334514737129211,0.15007904171943665,0.15347690880298615,0.1597646325826645,0.16800488531589508,0.17321552336215973,0.17876674234867096,0.18233293294906616,0.18486237525939941,0.18289311230182648,0.18250657618045807,0.1812165081501007,0.1756214201450348,0.17329992353916168,0.1704956293106079,0.1681998074054718,0.1697857677936554]
+      parameter_count: 338868
+    2024:
+      n_test: 400
+      position_mse_per_horizon: {1:3.842426303890534e-05,5:0.00020339724142104387,10:0.001175960642285645,25:0.0010834869462996721,50:0.001962520182132721,100:0.0051902965642511845}
+      position_mse_std_per_horizon: {1:3.0613755370723084e-05,5:0.00032832121360115707,10:0.0018107081996276975,25:0.001689327065832913,50:0.006606964394450188,100:0.004954804200679064}
+      velocity_mse_per_horizon: {1:0.0021718856878578663,5:0.02230638451874256,10:0.01799813285470009,25:0.013865874148905277,50:0.013516302220523357,100:0.07110939174890518}
+      velocity_mse_std_per_horizon: {1:0.0021509325597435236,5:0.04418591782450676,10:0.021508410573005676,25:0.06727899610996246,50:0.030661223456263542,100:0.037223707884550095}
+      position_error_per_horizon: {1:0.013924850150942802,5:0.029514361172914505,10:0.0710960403084755,25:0.07031835615634918,50:0.08257610350847244,100:0.16136150062084198}
+      position_error_std_per_horizon: {1:0.0060534393414855,5:0.018689194694161415,10:0.044733840972185135,25:0.03944934904575348,50:0.07040107250213623,100:0.07144398987293243}
+      overall_l2_mean: 0.08897868543863297
+      curve_l2_mean: [0.013924852944910526,0.014872239902615547,0.015689656138420105,0.019171901047229767,0.029514366760849953,0.045407820492982864,0.060022301971912384,0.06824436038732529,0.0707014873623848,0.07109605520963669,0.07113202661275864,0.07111858576536179,0.07105720043182373,0.07068359106779099,0.0699249804019928,0.0692322850227356,0.06855546683073044,0.06809072196483612,0.06798465549945831,0.06819100677967072,0.06862647831439972,0.06905266642570496,0.06944490224123001,0.06989064812660217,0.07031834870576859,0.07085787504911423,0.07151325047016144,0.07233712822198868,0.07299380004405975,0.07369774580001831,0.07419382780790329,0.07445386052131653,0.07468011975288391,0.07506773620843887,0.07580100744962692,0.07673685252666473,0.07765968143939972,0.07858816534280777,0.07941465079784393,0.08020975440740585,0.08076827228069305,0.08118198066949844,0.0815584659576416,0.08189767599105835,0.08216748386621475,0.08237769454717636,0.08251936733722687,0.0825929194688797,0.08258935809135437,0.08257613331079483,0.08255971968173981,0.08249306678771973,0.08249881118535995,0.08246167004108429,0.08244118094444275,0.08238495886325836,0.08246821165084839,0.08260126411914825,0.08292637765407562,0.08325991034507751,0.08355852961540222,0.0837797075510025,0.08392559736967087,0.08400676399469376,0.08410792052745819,0.08448299765586853,0.08480515331029892,0.08520239591598511,0.08586888015270233,0.08671726286411285,0.08772389590740204,0.08860934525728226,0.08953270316123962,0.0904858335852623,0.09153842180967331,0.09274248778820038,0.09401817619800568,0.09542778879404068,0.09709308296442032,0.09929551184177399,0.10205817967653275,0.10547208040952682,0.10968277603387833,0.11472178250551224,0.12050662189722061,0.12684588134288788,0.13345763087272644,0.14010319113731384,0.14654229581356049,0.15251344442367554,0.15777988731861115,0.16214703023433685,0.16543683409690857,0.16754913330078125,0.1684560775756836,0.16822515428066254,0.16707482933998108,0.16529013216495514,0.16324365139007568,0.1613614708185196]
+      curve_l2_q25: [0.008477547205984592,0.00938932690769434,0.009773625060915947,0.012314432300627232,0.018852708861231804,0.028017157688736916,0.036750972270965576,0.04055752605199814,0.03922395408153534,0.04210568219423294,0.04323580116033554,0.04420129209756851,0.045895788818597794,0.045006826519966125,0.04511681944131851,0.04298758506774902,0.043237559497356415,0.04396779462695122,0.042808935046195984,0.04246344044804573,0.04342418164014816,0.04444987699389458,0.04473096877336502,0.04514193907380104,0.0452212393283844,0.0462275967001915,0.04555004835128784,0.045996878296136856,0.046029046177864075,0.04534747079014778,0.045499175786972046,0.04524621739983559,0.044775594025850296,0.04514714330434799,0.04641600325703621,0.046498045325279236,0.04627298563718796,0.047090619802474976,0.04721161723136902,0.04679461568593979,0.048983246088027954,0.04888589680194855,0.049465615302324295,0.049162231385707855,0.049555398523807526,0.048993632197380066,0.048204533755779266,0.049556758254766464,0.04861825332045555,0.04952693358063698,0.05054754763841629,0.050890013575553894,0.050220049917697906,0.05013694986701012,0.050312064588069916,0.04918643459677696,0.04928601533174515,0.05003434792160988,0.050747670233249664,0.05028873682022095,0.049098484218120575,0.04941931739449501,0.04934161901473999,0.04928651824593544,0.04784180223941803,0.047758445143699646,0.048179443925619125,0.04904688522219658,0.049359969794750214,0.049939896911382675,0.051069166511297226,0.05204012244939804,0.05418839678168297,0.056071795523166656,0.05742776021361351,0.05914097651839256,0.06103789061307907,0.0642847865819931,0.06530337780714035,0.0688333660364151,0.07136064767837524,0.0747344121336937,0.07914109528064728,0.08290889859199524,0.08775060623884201,0.09336122125387192,0.09772971272468567,0.10358566790819168,0.10812216997146606,0.11047311872243881,0.11359808593988419,0.11576518416404724,0.11604916304349899,0.11634388566017151,0.1162186935544014,0.11580854654312134,0.11510532349348068,0.11380229890346527,0.1117027997970581,0.1085132360458374]
+      curve_l2_q75: [0.018680432811379433,0.01994846947491169,0.02028585597872734,0.023746374994516373,0.032998234033584595,0.04925020411610603,0.06601551920175552,0.07845433801412582,0.08407580852508545,0.0860472097992897,0.08615969121456146,0.0864633321762085,0.08785860240459442,0.0894412100315094,0.09032823890447617,0.09083650261163712,0.08793377876281738,0.08576411008834839,0.08533895015716553,0.08491832762956619,0.08383559435606003,0.08393016457557678,0.0843227282166481,0.08190329372882843,0.0818115621805191,0.08288028836250305,0.08313153684139252,0.08604252338409424,0.08699044585227966,0.08660098910331726,0.08635241538286209,0.08565466105937958,0.08664882183074951,0.08704563975334167,0.08960002660751343,0.0898253470659256,0.09047313779592514,0.0908408910036087,0.08992411196231842,0.0903966873884201,0.09066899120807648,0.09013424068689346,0.09182862192392349,0.09177367389202118,0.09267101436853409,0.09422723203897476,0.09338058531284332,0.09087806940078735,0.0909152626991272,0.0898841917514801,0.08991137146949768,0.09114443510770798,0.09163010120391846,0.09261927753686905,0.09284602850675583,0.09229244291782379,0.09194978326559067,0.0906514823436737,0.09159543365240097,0.09203959256410599,0.09193725883960724,0.09230310469865799,0.0927271917462349,0.09173080325126648,0.09206432104110718,0.09246170520782471,0.092209093272686,0.09480850398540497,0.09685541689395905,0.10046649724245071,0.10216927528381348,0.1050114557147026,0.10571903735399246,0.1076243445277214,0.10884363949298859,0.10995379090309143,0.11168262362480164,0.1136883944272995,0.11614967882633209,0.11851979047060013,0.12021775543689728,0.12551698088645935,0.12896084785461426,0.13426388800144196,0.14240388572216034,0.14954975247383118,0.1580910086631775,0.16638526320457458,0.17837825417518616,0.18739336729049683,0.195977121591568,0.20366749167442322,0.20741644501686096,0.20988234877586365,0.21371497213840485,0.2121884524822235,0.20864373445510864,0.2047862410545349,0.1995030641555786,0.19920778274536133]
+      parameter_count: 338868
+  position_mse_per_horizon: {1:2.8801920658831175e-05,5:0.00020066268916707486,10:0.0014671737250561516,25:0.0011793462714801233,50:0.0019452188862487674,100:0.004694531050821145}
+  position_mse_std_per_horizon: {1:2.0668666062798973e-05,5:0.0003765099002824475,10:0.0024288567171121636,25:0.0016729086637496948,50:0.006491018459200859,100:0.004385913411776225}
+  position_mse_seed_std_per_horizon: {1:8.35141195953715e-06,5:1.986988820943507e-05,10:0.0004391831512743664,25:0.00016755121407202987,50:2.550824438386319e-05,100:0.0004767063553811688}
+  velocity_mse_per_horizon: {1:0.0020280048483982682,5:0.0226295863588651,10:0.01852267359693845,25:0.013865342984596888,50:0.013323271336654821,100:0.0871631180246671}
+  velocity_mse_std_per_horizon: {1:0.0016603266509870689,5:0.046517401933670044,10:0.020412345727284748,25:0.06821925441424052,50:0.030288164193431538,100:0.045713238418102264}
+  velocity_mse_seed_std_per_horizon: {1:0.00018636044683089688,5:0.0009569316842529526,10:0.0023710355842791204,25:0.00021295345710917497,50:0.00024261803292773183,100:0.014453547792811128}
+  position_error_per_horizon: {1:0.01229128334671259,5:0.027858260398109753,10:0.07698927074670792,25:0.07375302662452062,50:0.0819333295027415,100:0.1547852357228597}
+  position_error_std_per_horizon: {1:0.0043400505091995,5:0.02056159016986688,10:0.052312713116407394,25:0.0401558019220829,50:0.07040474315484364,100:0.0644058920443058}
+  position_error_seed_std_per_horizon: {1:0.0014342144492695697,5:0.0018724708460413808,10:0.008373469563011809,25:0.005769727528096472,50:0.0006633338700971255,100:0.00726188984854717}
+  overall_l2_mean: 0.08902731786171596
+  overall_l2_seed_std: 0.0001034838519409168
+  curve_l2_mean: [0.011710227467119694,0.012936849147081375,0.015377569943666458,0.01958545856177807,0.028234023600816727,0.04267622530460358,0.059298738837242126,0.0732165053486824,0.08182910084724426,0.08657418191432953,0.08961499482393265,0.09140978753566742,0.09196840971708298,0.09147698432207108,0.09044458717107773,0.08945178240537643,0.08819460868835449,0.08673474192619324,0.08545838296413422,0.08448611199855804,0.083757184445858,0.0829358696937561,0.08213184028863907,0.08131557703018188,0.08041427284479141,0.07965745776891708,0.0790896788239479,0.07884010672569275,0.07868099957704544,0.07875554263591766,0.07873041182756424,0.0785391628742218,0.07835937291383743,0.07840542495250702,0.07889144122600555,0.079542376101017,0.08011084794998169,0.08068080991506577,0.0811728984117508,0.0816752016544342,0.0820375606417656,0.0822618305683136,0.08245564252138138,0.08274068683385849,0.08298899978399277,0.08301376551389694,0.08275522291660309,0.08226950466632843,0.08170945197343826,0.08125117421150208,0.08081015944480896,0.0803743377327919,0.07996569573879242,0.0794353261590004,0.07876868546009064,0.07803218066692352,0.07743567228317261,0.07697881758213043,0.07679542899131775,0.07671397924423218,0.07664503157138824,0.07668892294168472,0.0768790990114212,0.0772380456328392,0.07775942981243134,0.07860761135816574,0.07934582978487015,0.08000033348798752,0.08072824776172638,0.08145380765199661,0.08218353241682053,0.08273789286613464,0.08338665962219238,0.08413241058588028,0.08505832403898239,0.08625296503305435,0.08764424175024033,0.08928694576025009,0.09134231507778168,0.09401753544807434,0.09727959334850311,0.10104680061340332,0.10525057464838028,0.1097986027598381,0.11462610960006714,0.11968834698200226,0.12487402558326721,0.13008227944374084,0.13519816100597382,0.14006121456623077,0.14450667798519135,0.14839953184127808,0.15159574151039124,0.15400546789169312,0.1555834263563156,0.15635846555233002,0.15650928020477295,0.15628424286842346,0.15601080656051636,0.15600261092185974]
+  curve_l2_q25: [0.009478351101279259,0.01017272099852562,0.011766701005399227,0.012813815847039223,0.014714471995830536,0.02105771005153656,0.02959192730486393,0.03570323437452316,0.04157891497015953,0.0459580272436142,0.0509035661816597,0.054830849170684814,0.05883076786994934,0.06322035938501358,0.06523919105529785,0.06519902497529984,0.06491078436374664,0.0634026825428009,0.06086549535393715,0.05879303067922592,0.05807976424694061,0.05619264021515846,0.0556686669588089,0.053877055644989014,0.05286724865436554,0.05095981806516647,0.050490446388721466,0.04976462200284004,0.04864826425909996,0.046937014907598495,0.046399347484111786,0.04606068134307861,0.04640299081802368,0.046606190502643585,0.046461787074804306,0.046999938786029816,0.0487990640103817,0.04794653132557869,0.04746611416339874,0.04885627329349518,0.048191871494054794,0.04911239817738533,0.05130492523312569,0.05055953562259674,0.05122510343790054,0.04985232651233673,0.05001647025346756,0.04875965416431427,0.04944450780749321,0.048916496336460114,0.047622427344322205,0.0455724373459816,0.044093143194913864,0.04299855977296829,0.04349008575081825,0.04440745711326599,0.0435575433075428,0.04304378107190132,0.04369741678237915,0.04344150424003601,0.042374007403850555,0.0422545000910759,0.04376477748155594,0.04338464140892029,0.04405137896537781,0.04493892565369606,0.04532107338309288,0.04553879052400589,0.04663769528269768,0.047985754907131195,0.048659153282642365,0.04936990886926651,0.0505673922598362,0.05063352733850479,0.0518377311527729,0.05440463125705719,0.056664399802684784,0.05902652442455292,0.06143798679113388,0.06467253714799881,0.06892421841621399,0.07348835468292236,0.07855933904647827,0.08242770284414291,0.0866125226020813,0.0902511477470398,0.09454748034477234,0.09872601181268692,0.10228566825389862,0.1060367003083229,0.11041051149368286,0.11355872452259064,0.1152787059545517,0.1163279116153717,0.11691883206367493,0.1171337142586708,0.11542949080467224,0.11400089412927628,0.11176669597625732,0.11026079952716827]
+  curve_l2_q75: [0.013284844346344471,0.01524124201387167,0.018666885793209076,0.023900197818875313,0.03136380761861801,0.042843908071517944,0.05621318146586418,0.06756602227687836,0.08025629818439484,0.09607288241386414,0.1096610426902771,0.10977985709905624,0.11112401634454727,0.10960274934768677,0.1086910218000412,0.10805574059486389,0.10617788136005402,0.10511156916618347,0.1042959913611412,0.10445041209459305,0.10358647257089615,0.10140027105808258,0.09799876809120178,0.09696739166975021,0.09690972417593002,0.09774155914783478,0.09638267755508423,0.0979766696691513,0.09671938419342041,0.09487634897232056,0.09408587962388992,0.09302689135074615,0.09196697175502777,0.09100266546010971,0.09215012192726135,0.09111463278532028,0.09219571202993393,0.09213030338287354,0.09413235634565353,0.0922267884016037,0.08976743370294571,0.09047317504882812,0.08932207524776459,0.08870378136634827,0.0895615667104721,0.08990523964166641,0.08989108353853226,0.08835598826408386,0.08773985505104065,0.0888194665312767,0.08867103606462479,0.08900199830532074,0.0877770334482193,0.08821802586317062,0.08771126717329025,0.08656007051467896,0.0856020376086235,0.0844317227602005,0.08313164114952087,0.08299274742603302,0.08381546288728714,0.08391959965229034,0.0837290957570076,0.08385282754898071,0.08322902768850327,0.08326134085655212,0.0851469486951828,0.0870918557047844,0.08997106552124023,0.09159211069345474,0.09327829629182816,0.09528878331184387,0.09671689569950104,0.09797121584415436,0.09987909346818924,0.10112786293029785,0.10443564504384995,0.10539252310991287,0.10756756365299225,0.11068210005760193,0.11334045231342316,0.11855312436819077,0.12043701112270355,0.12440324574708939,0.1334417462348938,0.14018753170967102,0.14696422219276428,0.1512857973575592,0.15781660377979279,0.1628587543964386,0.1698557436466217,0.17386232316493988,0.17761224508285522,0.18128591775894165,0.18289829790592194,0.18311011791229248,0.1842355728149414,0.1833610087633133,0.18251270055770874,0.18482831120491028]
 Continuous ConvLSTM:
   n_test: 400
   position_mse_per_horizon: {1:2.1441708668135107e-05,5:7.792786345817149e-05,10:0.00011915400682482868,25:0.0005929369363002479,50:0.0014975055819377303,100:0.0070694806054234505}
@@ -516,7 +483,7 @@ Continuous ConvLSTM:
 ```
 
 ### `results/multiseed/multiseed_metrics.json`
-> 3-seed (42, 101, 2024) SPWM, ANN-Rate, and Continuous RSSM open-loop, 50-ep PIL, and energy summary
+> 3-seed (42, 101, 2024) SPWM, ANN-Rate, Continuous RSSM, and equalized Deep GRU open-loop, 50-ep PIL (open-loop, ungated, residual-gated), 5-stage ablation, and energy summary
 
 ```yaml
 seeds: [42,101,2024]
@@ -536,14 +503,22 @@ open_loop_spwm:
       position_mse_per_horizon: {1:8.75631085364148e-05,5:0.0006210815627127886,10:0.002461647614836693,25:0.0017300095641985536,50:0.002026821719482541,100:0.002009366638958454}
       velocity_mse_per_horizon: {1:0.0021625349763780832,5:0.04693954437971115,10:0.034473713487386703,25:0.01722436025738716,50:0.01493775099515915,100:0.008667011745274067}
 pil_50ep_mean_std:
-  SPWM-v0.12.4:
+  SPWM-v0.12.4 (N=25 Val-Selected):
+    grasp_success_rate_pct: [60.666666666666664,2.3094010767585074]
+    terminal_placement_accuracy_cm: [0.8798704931139946,0.10505539807183523]
+    terminal_error_cm: [2.006662103931109,0.11581144347528279]
+    mean_joint_accel_rad_s2: [0.009308865414932371,0.0034586698705177275]
+    mean_joint_jerk_rad_s3: [0.006634432549277941,0.003263484407032791]
+    mean_direction_flips: [21.14,8.549807015365904]
+    mppi_inference_latency_ms: [26.649352693166346,2.271980219747186]
+  SPWM-v0.12.4 (N=6 Tier-2):
     grasp_success_rate_pct: [58.0,27.055498516937366]
     terminal_placement_accuracy_cm: [0.8992845916748048,0.0417493623118023]
     terminal_error_cm: [2.231203550299009,0.6846823009200784]
     mean_joint_accel_rad_s2: [0.008598180722134809,0.003043671174468545]
     mean_joint_jerk_rad_s3: [0.00608342978792886,0.0029084716855952435]
     mean_direction_flips: [19.373333333333335,7.574545090850891]
-    mppi_inference_latency_ms: [23.067443259943843,0.23469874288645293]
+    mppi_inference_latency_ms: [27.510263026675336,7.919433452921299]
   ANN-Rate:
     grasp_success_rate_pct: [37.333333333333336,9.451631252505218]
     terminal_placement_accuracy_cm: [1.0678065086901187,0.2828632725018437]
@@ -552,54 +527,54 @@ pil_50ep_mean_std:
     mean_joint_jerk_rad_s3: [0.009379258422801892,0.0010705614356774748]
     mean_direction_flips: [26.0,1.94648400969543]
     mppi_inference_latency_ms: [24.616702500178565,0.07683415875005363]
-  Continuous RSSM:
-    grasp_success_rate_pct: [0.0,0.0]
-    terminal_placement_accuracy_cm: [1.5289842367172242,0.06375312364798832]
-    terminal_error_cm: [22.434701797167463,0.5797279333300245]
-    mean_joint_accel_rad_s2: [0.031191026711215573,0.0008520616038234162]
-    mean_joint_jerk_rad_s3: [0.02875449779753884,0.00014085841965964314]
-    mean_direction_flips: [36.126666666666665,0.4518111699961975]
-    mppi_inference_latency_ms: [35.14400501011499,0.7717180625877539]
-  SPWM-v0.12.4 (N=25 Val-Selected):
-    grasp_success_rate_pct: [60.666666666666664,2.3094010767585074]
-    terminal_placement_accuracy_cm: [0.8798704931139946,0.10505539807183523]
-    terminal_error_cm: [2.006662103931109,0.11581144347528279]
-    mean_joint_accel_rad_s2: [0.009308865414932371,0.0034586698705177275]
-    mean_joint_jerk_rad_s3: [0.006634432549277941,0.003263484407032791]
-    mean_direction_flips: [21.14,8.549807015365904]
-    mppi_inference_latency_ms: [35.50311868491241,1.4903537737959471]
   Continuous RSSM (Open-Loop PIL):
-    grasp_success_rate_pct: [15.333333333333334,4.618802153517006]
-    terminal_placement_accuracy_cm: [1.3101576902468999,0.015239180448274645]
-    terminal_error_cm: [2.8772510814666745,0.10043628738006709]
-    mean_joint_accel_rad_s2: [0.019980563490341108,0.00044725536859862214]
-    mean_joint_jerk_rad_s3: [0.020594383161514997,0.0002908916650769286]
-    mean_direction_flips: [36.23333333333333,0.9737213838328386]
-    mppi_inference_latency_ms: [52.36163894086636,2.3005863220714606]
-  Continuous RSSM (Online Posterior):
+    grasp_success_rate_pct: [15.333333333333334,7.023769168568492]
+    terminal_placement_accuracy_cm: [1.2335922479629515,0.05552042269442134]
+    terminal_error_cm: [2.738770661751429,0.06877343601692858]
+    mean_joint_accel_rad_s2: [0.02037182800471783,0.000592333680216826]
+    mean_joint_jerk_rad_s3: [0.02138510186225176,0.0004846155447845476]
+    mean_direction_flips: [36.85999999999999,1.2150720143267217]
+    mppi_inference_latency_ms: [46.81975616126076,0.1485665027581289]
+  Continuous RSSM (Un-Gated Online):
     grasp_success_rate_pct: [0.0,0.0]
-    terminal_placement_accuracy_cm: [1.5289842367172242,0.06375312364798832]
-    terminal_error_cm: [22.434701797167463,0.5797279333300245]
-    mean_joint_accel_rad_s2: [0.031191026711215573,0.0008520616038234162]
-    mean_joint_jerk_rad_s3: [0.02875449779753884,0.00014085841965964314]
-    mean_direction_flips: [36.126666666666665,0.4518111699961975]
-    mppi_inference_latency_ms: [35.14400501011499,0.7717180625877539]
+    terminal_placement_accuracy_cm: [1.425072744091352,0.03429525285538392]
+    terminal_error_cm: [25.49343025525411,1.3050838203645958]
+    mean_joint_accel_rad_s2: [0.03153110054632028,0.0006715274430858012]
+    mean_joint_jerk_rad_s3: [0.029558277900020278,0.0004172700652986988]
+    mean_direction_flips: [36.49333333333333,0.7757147241952662]
+    mppi_inference_latency_ms: [46.936845150350116,0.33605994404428824]
+  Continuous RSSM (Residual-Gated Online):
+    grasp_success_rate_pct: [15.333333333333334,5.033222956847166]
+    terminal_placement_accuracy_cm: [1.233093837896983,0.046829598001233756]
+    terminal_error_cm: [2.7240475718180335,0.10990075377541059]
+    mean_joint_accel_rad_s2: [0.020493890543778735,0.0006706944714435922]
+    mean_joint_jerk_rad_s3: [0.021609529219567773,0.0005316353717258448]
+    mean_direction_flips: [36.940000000000005,1.2257242756835658]
+    mppi_inference_latency_ms: [46.472593615331895,0.1711331627137406]
   Deep GRU (Open-Loop PIL):
-    grasp_success_rate_pct: [1.3333333333333333,2.3094010767585034]
-    terminal_placement_accuracy_cm: [10.56911430199941,7.8332178543025]
-    terminal_error_cm: [16.720466453234355,11.307909064116105]
-    mean_joint_accel_rad_s2: [0.007771262118282417,0.006861198470924401]
-    mean_joint_jerk_rad_s3: [0.006221064189837005,0.007792868260752681]
-    mean_direction_flips: [14.666666666666666,14.897212267177151]
-    mppi_inference_latency_ms: [67.4003965856917,1.6174098859533237]
-  Deep GRU (Online Observation):
+    grasp_success_rate_pct: [77.33333333333333,4.163331998932265]
+    terminal_placement_accuracy_cm: [1.142497578263283,0.31404892460065076]
+    terminal_error_cm: [1.8994051045179365,0.17642912388300128]
+    mean_joint_accel_rad_s2: [0.004498507350217551,0.00012105405328595289]
+    mean_joint_jerk_rad_s3: [0.002675323402121042,0.00018613435682786266]
+    mean_direction_flips: [10.793333333333331,0.6331929669013493]
+    mppi_inference_latency_ms: [57.845663712604754,0.2935253213907278]
+  Deep GRU (Un-Gated Online):
     grasp_success_rate_pct: [0.0,0.0]
-    terminal_placement_accuracy_cm: [6.027755393187205,4.003672646431791]
-    terminal_error_cm: [10.87074866215388,3.973647019419447]
-    mean_joint_accel_rad_s2: [0.016541417293871444,0.009718487664175204]
-    mean_joint_jerk_rad_s3: [0.013497935300692918,0.009453182248594585]
-    mean_direction_flips: [19.673333333333336,10.000986617995913]
-    mppi_inference_latency_ms: [60.30913028220712,18.88364182181519]
+    terminal_placement_accuracy_cm: [1.4674344965815544,0.5106457690318531]
+    terminal_error_cm: [7.351427071889241,1.3439473080339845]
+    mean_joint_accel_rad_s2: [0.006980255008675158,0.00042445948743814776]
+    mean_joint_jerk_rad_s3: [0.004832257371939098,0.00042073079965799826]
+    mean_direction_flips: [15.079999999999998,0.647147587494537]
+    mppi_inference_latency_ms: [57.07348911329685,0.5185482382876814]
+  Deep GRU (Residual-Gated Online):
+    grasp_success_rate_pct: [76.66666666666667,5.033222956847166]
+    terminal_placement_accuracy_cm: [1.142546683549881,0.3141746410639535]
+    terminal_error_cm: [1.9001078454653422,0.1792502651931432]
+    mean_joint_accel_rad_s2: [0.004493320606804143,0.0001224338129939779]
+    mean_joint_jerk_rad_s3: [0.0026687012903857978,0.0001826580482518807]
+    mean_direction_flips: [10.786666666666667,0.6057502235520298]
+    mppi_inference_latency_ms: [57.65735650555458,0.21359715146433306]
 energy_spwm_mean_std:
   spike_rate_pct: [12.151117412707743,0.192861046198146]
   sops_per_step: [8150.0,129.11622671066561]
@@ -1018,10 +993,1035 @@ robustness_pil_3seed:
           phi1_steps_with_handover_pct: 0.0
           mean_nonzero_handover_w: 0.0
           delta_rel_pct: 8.333333333333334
+disentangled_ablation_3seed (5 rows):
+  |label|mean_std|per_seed_success_pct|
+  |---|---|---|
+  |1. SPWM-Base (Phase 1 Warmup, Unsmoothed)|{grasp_success_rate_pct:[45.333333333333336,16.041612554021285],terminal_placement_accuracy_cm:[1.026371354262034,0.21267911327447728],terminal_error_cm:[2.502900831302007,0.10674231587914605],mean_joint_accel_rad_s2:[0.009831757796928286,0.002547908271341173],mean_joint_jerk_rad_s3:[0.007646870988731583,0.002496011682578312],mean_direction_flips:[23.03333333333333,6.83585644475755],mppi_inference_latency_ms:[26.607863672024582,0.31494921572578505]}|{42:62.0,101:44.0,2024:30.0}|
+  |2. + Smooth MPPI Controls (Pre-DAgger)|{grasp_success_rate_pct:[51.333333333333336,9.451631252505216],terminal_placement_accuracy_cm:[1.0174584152301154,0.07739428773724741],terminal_error_cm:[2.413362322449684,0.131995777812547],mean_joint_accel_rad_s2:[0.009906536138926942,0.0024003560204176517],mean_joint_jerk_rad_s3:[0.007045794217847287,0.002429997855850162],mean_direction_flips:[21.993333333333336,6.660010010002488],mppi_inference_latency_ms:[27.186699187828037,0.15842402005752645]}|{42:62.0,101:44.0,2024:48.0}|
+  |3. + Phase 3/4 Curriculum (AR(1)+DAgger, No Lookahead/Handover)|{grasp_success_rate_pct:[38.0,19.078784028338916],terminal_placement_accuracy_cm:[1.5255670695503554,0.5931443681847731],terminal_error_cm:[3.2744056106607116,1.1318006892038883],mean_joint_accel_rad_s2:[0.0058877142627413075,0.0008819400178644788],mean_joint_jerk_rad_s3:[0.0035392556875012814,0.0008280183162976543],mean_direction_flips:[11.166666666666666,0.6463229326995401],mppi_inference_latency_ms:[27.422173555313975,0.18268943009863092]}|{42:56.00000000000001,101:18.0,2024:40.0}|
+  |4a. + 2-Stage SE(3) Lookahead (Val-Sel., $w_t \equiv 0$)|{grasp_success_rate_pct:[60.666666666666664,2.3094010767585074],terminal_placement_accuracy_cm:[0.8798704931139946,0.10505539807183523],terminal_error_cm:[2.006662103931109,0.11581144347528279],mean_joint_accel_rad_s2:[0.009308865414932371,0.0034586698705177275],mean_joint_jerk_rad_s3:[0.006634432549277941,0.003263484407032791],mean_direction_flips:[21.14,8.549807015365904],mppi_inference_latency_ms:[28.034092626839513,0.24046964122825348]}|{42:57.99999999999999,101:62.0,2024:62.0}|
+  |4b. + Residual Rejection Gate (Full SPWM, Val-Sel.)|{grasp_success_rate_pct:[60.666666666666664,2.3094010767585074],terminal_placement_accuracy_cm:[0.8798704931139946,0.10505539807183523],terminal_error_cm:[2.006662103931109,0.11581144347528279],mean_joint_accel_rad_s2:[0.009308865414932371,0.0034586698705177275],mean_joint_jerk_rad_s3:[0.006634432549277941,0.003263484407032791],mean_direction_flips:[21.14,8.549807015365904],mppi_inference_latency_ms:[26.649352693166346,2.271980219747186]}|{42:57.99999999999999,101:62.0,2024:62.0}|
+baseline_training_budgets:
+  rssm:
+    42:
+      model_name: Continuous RSSM
+      seed: 42
+      device: mps
+      enable_dagger_ar1: true
+      base_epochs: 60
+      ar1_dagger_epochs: 16
+      total_epochs: 76
+      best_epoch: 61
+      best_val_loss: 0.4348871593291943
+      wall_clock_sec: 778.0765965420287
+      ar1_target_alpha: 0.25
+      dagger_generations_collected: 3
+    101:
+      model_name: Continuous RSSM
+      seed: 101
+      device: mps
+      enable_dagger_ar1: true
+      base_epochs: 60
+      ar1_dagger_epochs: 16
+      total_epochs: 76
+      best_epoch: 61
+      best_val_loss: 0.44028351398614735
+      wall_clock_sec: 775.8391683750087
+      ar1_target_alpha: 0.25
+      dagger_generations_collected: 3
+    2024:
+      model_name: Continuous RSSM
+      seed: 2024
+      device: mps
+      enable_dagger_ar1: true
+      base_epochs: 60
+      ar1_dagger_epochs: 17
+      total_epochs: 77
+      best_epoch: 62
+      best_val_loss: 0.4504756721166464
+      wall_clock_sec: 826.2417404999724
+      ar1_target_alpha: 0.25
+      dagger_generations_collected: 3
+  deep_gru:
+    42:
+      model_name: Deep GRU
+      seed: 42
+      device: mps
+      enable_dagger_ar1: true
+      base_epochs: 59
+      ar1_dagger_epochs: 40
+      total_epochs: 99
+      best_epoch: 90
+      best_val_loss: 0.5676361459952134
+      wall_clock_sec: 2026.1408703329507
+      ar1_target_alpha: 0.25
+      dagger_generations_collected: 8
+    101:
+      model_name: Deep GRU
+      seed: 101
+      device: mps
+      enable_dagger_ar1: true
+      base_epochs: 0
+      ar1_dagger_epochs: 80
+      total_epochs: 80
+      best_epoch: 68
+      best_val_loss: 0.5387146770954132
+      wall_clock_sec: 4026.366101166932
+      ar1_target_alpha: 0.25
+      dagger_generations_collected: 14
+    2024:
+      model_name: Deep GRU
+      seed: 2024
+      device: mps
+      enable_dagger_ar1: true
+      base_epochs: 0
+      ar1_dagger_epochs: 80
+      total_epochs: 80
+      best_epoch: 80
+      best_val_loss: 0.5893793037304511
+      wall_clock_sec: 4009.184660000028
+      ar1_target_alpha: 0.25
+      dagger_generations_collected: 14
+```
+
+### `results/diagnostics/forensic_rssm_gru_failure.json`
+> Forensic audit of RSSM vs. equalized Deep GRU across Open-Loop, Un-Gated Online (w_t=1.0), and Residual-Gated Online PIL regimes
+
+```yaml
+Continuous RSSM Un-Gated (Seed 42):
+  label: Continuous RSSM Un-Gated (Seed 42)
+  n_episodes: 50
+  n_success: 0
+  n_fail: 50
+  success_rate_pct: 0.0
+  failure_modes_non_exclusive:
+    a_distance_failure_gt_3cm: {count:3,pct:6.0}
+    b_velocity_failure_given_reach_le_3cm: {count:47,pct:94.0}
+    b_velocity_failure_all_episodes: {count:50,pct:100.0}
+    c_post_contact_impulse_divergence: {count:47,pct:94.0}
+    settling_window_failure_given_reach_le_3cm: {count:47,pct:94.0}
+    reached_only_after_tc_then_diverged: {count:0,pct:0.0}
+  failure_modes_mutually_exclusive:
+    1_distance_never_reached_3cm: {count:3,pct:6.0}
+    2a_post_contact_div_plus_vel_violation: {count:47,pct:94.0}
+    2b_post_contact_div_spatial_only: {count:0,pct:0.0}
+    3_reached_post_tc_then_diverged: {count:0,pct:0.0}
+    4_settling_passed_vel_failed_only: {count:0,pct:0.0}
+    5_settling_and_vel_passed_rot_failed_only: {count:0,pct:0.0}
+  summary_stats:
+    min_err_cm_mean: 1.456915372610092
+    min_err_cm_std: 0.888517029752088
+    pre_tc_min_err_cm_mean: 1.4963469421863556
+    tc_err_cm_mean: 2.7344481140375136
+    tc_err_cm_std: 1.2793144083769883
+    term_err_cm_mean: 24.710977087020876
+    term_err_cm_std: 10.710275307660488
+    err_jump_tc_to_grasp_cm_mean: 21.97652897298336
+    final_vel_mean: 6.904007134437561
+    final_vel_std: 1.3181468836809789
+    effective_vel_threshold_mean: 1.5
+    mean_joint_accel_rad_s2: 0.0310553040727973
+    mean_joint_jerk_rad_s3: 0.02920039013028145
+    mean_direction_flips: 36.16
+  step_error_profile_around_tc:
+    t_c-3: {mean_cm:2.8060242354869844,std_cm:1.6607534974544462,median_cm:2.398180603981018,n:50}
+    t_c-2: {mean_cm:2.7449924635887144,std_cm:1.6230154112791257,median_cm:2.4178829193115234,n:50}
+    t_c-1: {mean_cm:2.758989669084549,std_cm:1.3719044387467887,median_cm:2.5782278776168823,n:50}
+    t_c: {mean_cm:2.7344481140375136,std_cm:1.2793144083769883,median_cm:2.3618115186691284,n:50}
+    t_c+1: {mean_cm:3.7436760783195497,std_cm:2.520346856036812,median_cm:2.9587130546569824,n:50}
+    t_c+2: {mean_cm:4.858720359802246,std_cm:2.7714310760232097,median_cm:4.392287731170654,n:50}
+    t_c+3: {mean_cm:7.781477720737457,std_cm:4.5042137924997245,median_cm:7.074056625366211,n:50}
+    t_c+4: {mean_cm:11.416760206222534,std_cm:6.987858342337585,median_cm:9.924240112304688,n:50}
+    t_c+5: {mean_cm:16.046059470176697,std_cm:8.649782729225509,median_cm:14.07004976272583,n:50}
+    t_c+6: {mean_cm:20.710042076110838,std_cm:9.709148949863993,median_cm:21.032752990722656,n:50}
+    t_c+7: {mean_cm:24.710977087020876,std_cm:10.710275307660488,median_cm:24.84556484222412,n:50}
+Continuous RSSM Un-Gated (Seed 101):
+  label: Continuous RSSM Un-Gated (Seed 101)
+  n_episodes: 50
+  n_success: 0
+  n_fail: 50
+  success_rate_pct: 0.0
+  failure_modes_non_exclusive:
+    a_distance_failure_gt_3cm: {count:1,pct:2.0}
+    b_velocity_failure_given_reach_le_3cm: {count:49,pct:98.0}
+    b_velocity_failure_all_episodes: {count:50,pct:100.0}
+    c_post_contact_impulse_divergence: {count:49,pct:98.0}
+    settling_window_failure_given_reach_le_3cm: {count:49,pct:98.0}
+    reached_only_after_tc_then_diverged: {count:0,pct:0.0}
+  failure_modes_mutually_exclusive:
+    1_distance_never_reached_3cm: {count:1,pct:2.0}
+    2a_post_contact_div_plus_vel_violation: {count:49,pct:98.0}
+    2b_post_contact_div_spatial_only: {count:0,pct:0.0}
+    3_reached_post_tc_then_diverged: {count:0,pct:0.0}
+    4_settling_passed_vel_failed_only: {count:0,pct:0.0}
+    5_settling_and_vel_passed_rot_failed_only: {count:0,pct:0.0}
+  summary_stats:
+    min_err_cm_mean: 1.3887627166509628
+    min_err_cm_std: 0.7836427217228974
+    pre_tc_min_err_cm_mean: 1.3975029104948045
+    tc_err_cm_mean: 2.70519296169281
+    tc_err_cm_std: 1.5419437782641576
+    term_err_cm_mean: 27.000035276412962
+    term_err_cm_std: 11.571441732882644
+    err_jump_tc_to_grasp_cm_mean: 24.294842314720153
+    final_vel_mean: 7.153379964828491
+    final_vel_std: 1.4014774799430023
+    effective_vel_threshold_mean: 1.5
+    mean_joint_accel_rad_s2: 0.03229924626648426
+    mean_joint_jerk_rad_s3: 0.030016598887741566
+    mean_direction_flips: 35.94
+  step_error_profile_around_tc:
+    t_c-3: {mean_cm:2.8696282362937926,std_cm:1.757145296973022,median_cm:2.4668288230895996,n:50}
+    t_c-2: {mean_cm:2.738204095363617,std_cm:1.6470797666682986,median_cm:2.4108147621154785,n:50}
+    t_c-1: {mean_cm:2.5767963498830797,std_cm:1.681966035582423,median_cm:2.3863481283187866,n:50}
+    t_c: {mean_cm:2.70519296169281,std_cm:1.5419437782641576,median_cm:2.448335647583008,n:50}
+    t_c+1: {mean_cm:3.9934270691871645,std_cm:2.892538698139626,median_cm:3.15087354183197,n:50}
+    t_c+2: {mean_cm:5.022188692092896,std_cm:3.0241990062751327,median_cm:4.410186767578125,n:50}
+    t_c+3: {mean_cm:8.315929174423218,std_cm:4.505515948778378,median_cm:6.820093870162964,n:50}
+    t_c+4: {mean_cm:12.78562816619873,std_cm:6.7394078288254065,median_cm:12.054687023162842,n:50}
+    t_c+5: {mean_cm:17.426408562660217,std_cm:9.056289972259131,median_cm:17.50439167022705,n:50}
+    t_c+6: {mean_cm:22.43762668609619,std_cm:10.344942290544846,median_cm:21.58891487121582,n:50}
+    t_c+7: {mean_cm:27.000035276412962,std_cm:11.571441732882644,median_cm:26.218161582946777,n:50}
+Continuous RSSM Un-Gated (Seed 2024):
+  label: Continuous RSSM Un-Gated (Seed 2024)
+  n_episodes: 50
+  n_success: 0
+  n_fail: 50
+  success_rate_pct: 0.0
+  failure_modes_non_exclusive:
+    a_distance_failure_gt_3cm: {count:2,pct:4.0}
+    b_velocity_failure_given_reach_le_3cm: {count:48,pct:96.0}
+    b_velocity_failure_all_episodes: {count:50,pct:100.0}
+    c_post_contact_impulse_divergence: {count:47,pct:94.0}
+    settling_window_failure_given_reach_le_3cm: {count:48,pct:96.0}
+    reached_only_after_tc_then_diverged: {count:1,pct:2.0}
+  failure_modes_mutually_exclusive:
+    1_distance_never_reached_3cm: {count:2,pct:4.0}
+    2a_post_contact_div_plus_vel_violation: {count:47,pct:94.0}
+    2b_post_contact_div_spatial_only: {count:0,pct:0.0}
+    3_reached_post_tc_then_diverged: {count:1,pct:2.0}
+    4_settling_passed_vel_failed_only: {count:0,pct:0.0}
+    5_settling_and_vel_passed_rot_failed_only: {count:0,pct:0.0}
+  summary_stats:
+    min_err_cm_mean: 1.4295401430130006
+    min_err_cm_std: 0.8761971421556884
+    pre_tc_min_err_cm_mean: 1.4613039577007294
+    tc_err_cm_mean: 2.8204561990499495
+    tc_err_cm_std: 1.4990684914725287
+    term_err_cm_mean: 24.769278402328492
+    term_err_cm_std: 10.309742604307631
+    err_jump_tc_to_grasp_cm_mean: 21.948822203278542
+    final_vel_mean: 7.222090845108032
+    final_vel_std: 1.403482970648478
+    effective_vel_threshold_mean: 1.5
+    mean_joint_accel_rad_s2: 0.03123875129967928
+    mean_joint_jerk_rad_s3: 0.02945784468203783
+    mean_direction_flips: 37.38
+  step_error_profile_around_tc:
+    t_c-3: {mean_cm:3.0218841862678527,std_cm:1.6279105428250633,median_cm:2.544119119644165,n:50}
+    t_c-2: {mean_cm:2.9575072264671327,std_cm:1.6575253626915922,median_cm:2.488058567047119,n:50}
+    t_c-1: {mean_cm:2.8813152182102204,std_cm:1.5618026180524565,median_cm:2.486090898513794,n:50}
+    t_c: {mean_cm:2.8204561990499495,std_cm:1.4990684914725287,median_cm:2.6535173654556274,n:50}
+    t_c+1: {mean_cm:3.863834716081619,std_cm:2.6441825402640626,median_cm:3.332515239715576,n:50}
+    t_c+2: {mean_cm:4.646144304275513,std_cm:2.5409079008700637,median_cm:4.337389230728149,n:50}
+    t_c+3: {mean_cm:7.215016748905182,std_cm:3.82765948609738,median_cm:6.71310567855835,n:50}
+    t_c+4: {mean_cm:11.144767661094665,std_cm:5.618361567548499,median_cm:10.410730361938477,n:50}
+    t_c+5: {mean_cm:15.603601350784302,std_cm:7.579263539670666,median_cm:14.306604385375977,n:50}
+    t_c+6: {mean_cm:20.22340539932251,std_cm:9.273408770894141,median_cm:20.142123222351074,n:50}
+    t_c+7: {mean_cm:24.769278402328492,std_cm:10.309742604307631,median_cm:24.981929779052734,n:50}
+Continuous RSSM Residual-Gated (Seed 42):
+  label: Continuous RSSM Residual-Gated (Seed 42)
+  n_episodes: 50
+  n_success: 8
+  n_fail: 42
+  success_rate_pct: 16.0
+  failure_modes_non_exclusive:
+    a_distance_failure_gt_3cm: {count:1,pct:2.0}
+    b_velocity_failure_given_reach_le_3cm: {count:13,pct:26.0}
+    b_velocity_failure_all_episodes: {count:13,pct:26.0}
+    c_post_contact_impulse_divergence: {count:19,pct:38.0}
+    settling_window_failure_given_reach_le_3cm: {count:27,pct:54.0}
+    reached_only_after_tc_then_diverged: {count:8,pct:16.0}
+  failure_modes_mutually_exclusive:
+    1_distance_never_reached_3cm: {count:1,pct:2.0}
+    2a_post_contact_div_plus_vel_violation: {count:8,pct:16.0}
+    2b_post_contact_div_spatial_only: {count:11,pct:22.0}
+    3_reached_post_tc_then_diverged: {count:8,pct:16.0}
+    4_settling_passed_vel_failed_only: {count:1,pct:2.0}
+    5_settling_and_vel_passed_rot_failed_only: {count:13,pct:26.0}
+  summary_stats:
+    min_err_cm_mean: 1.2852557504177093
+    min_err_cm_std: 0.6163579389948347
+    pre_tc_min_err_cm_mean: 1.4963469421863556
+    tc_err_cm_mean: 2.7344481140375136
+    tc_err_cm_std: 1.2793144083769883
+    term_err_cm_mean: 2.8026852571964262
+    term_err_cm_std: 1.250732118205452
+    err_jump_tc_to_grasp_cm_mean: 0.06823714315891266
+    final_vel_mean: 0.9999081724137068
+    final_vel_std: 0.6270123580932241
+    effective_vel_threshold_mean: 1.5
+    mean_joint_accel_rad_s2: 0.02125625854358077
+    mean_joint_jerk_rad_s3: 0.02221311992034316
+    mean_direction_flips: 36.42
+  step_error_profile_around_tc:
+    t_c-3: {mean_cm:2.8060242354869844,std_cm:1.6607534974544462,median_cm:2.398180603981018,n:50}
+    t_c-2: {mean_cm:2.7449924635887144,std_cm:1.6230154112791257,median_cm:2.4178829193115234,n:50}
+    t_c-1: {mean_cm:2.758989669084549,std_cm:1.3719044387467887,median_cm:2.5782278776168823,n:50}
+    t_c: {mean_cm:2.7344481140375136,std_cm:1.2793144083769883,median_cm:2.3618115186691284,n:50}
+    t_c+1: {mean_cm:3.7004931473731997,std_cm:2.385862360417743,median_cm:3.013274669647217,n:50}
+    t_c+2: {mean_cm:3.2856418287754057,std_cm:1.7684971965260652,median_cm:2.8707910776138306,n:50}
+    t_c+3: {mean_cm:3.039464303255081,std_cm:1.535868137697539,median_cm:2.665216326713562,n:50}
+    t_c+4: {mean_cm:3.065787924528122,std_cm:1.4495784566482008,median_cm:2.655968189239502,n:50}
+    t_c+5: {mean_cm:3.0905008351802827,std_cm:1.3650752168204054,median_cm:2.9295456409454346,n:50}
+    t_c+6: {mean_cm:3.0042423689365387,std_cm:1.3520194249543056,median_cm:2.615446925163269,n:50}
+    t_c+7: {mean_cm:2.8026852571964262,std_cm:1.250732118205452,median_cm:2.3478347063064575,n:50}
+Continuous RSSM Residual-Gated (Seed 101):
+  label: Continuous RSSM Residual-Gated (Seed 101)
+  n_episodes: 50
+  n_success: 5
+  n_fail: 45
+  success_rate_pct: 10.0
+  failure_modes_non_exclusive:
+    a_distance_failure_gt_3cm: {count:1,pct:2.0}
+    b_velocity_failure_given_reach_le_3cm: {count:5,pct:10.0}
+    b_velocity_failure_all_episodes: {count:5,pct:10.0}
+    c_post_contact_impulse_divergence: {count:16,pct:32.0}
+    settling_window_failure_given_reach_le_3cm: {count:26,pct:52.0}
+    reached_only_after_tc_then_diverged: {count:10,pct:20.0}
+  failure_modes_mutually_exclusive:
+    1_distance_never_reached_3cm: {count:1,pct:2.0}
+    2a_post_contact_div_plus_vel_violation: {count:1,pct:2.0}
+    2b_post_contact_div_spatial_only: {count:15,pct:30.0}
+    3_reached_post_tc_then_diverged: {count:10,pct:20.0}
+    4_settling_passed_vel_failed_only: {count:1,pct:2.0}
+    5_settling_and_vel_passed_rot_failed_only: {count:17,pct:34.0}
+  summary_stats:
+    min_err_cm_mean: 1.2193563985824585
+    min_err_cm_std: 0.6733557358778788
+    pre_tc_min_err_cm_mean: 1.3975029104948045
+    tc_err_cm_mean: 2.70519296169281
+    tc_err_cm_std: 1.5419437782641576
+    term_err_cm_mean: 2.770985679626465
+    term_err_cm_std: 1.329820118983065
+    err_jump_tc_to_grasp_cm_mean: 0.06579271793365478
+    final_vel_mean: 0.7805915237218142
+    final_vel_std: 0.4653217854539529
+    effective_vel_threshold_mean: 1.5
+    mean_joint_accel_rad_s2: 0.02023072073236108
+    mean_joint_jerk_rad_s3: 0.021210806742310524
+    mean_direction_flips: 36.06
+  step_error_profile_around_tc:
+    t_c-3: {mean_cm:2.8696282362937926,std_cm:1.757145296973022,median_cm:2.4668288230895996,n:50}
+    t_c-2: {mean_cm:2.738204095363617,std_cm:1.6470797666682986,median_cm:2.4108147621154785,n:50}
+    t_c-1: {mean_cm:2.5767963498830797,std_cm:1.681966035582423,median_cm:2.3863481283187866,n:50}
+    t_c: {mean_cm:2.70519296169281,std_cm:1.5419437782641576,median_cm:2.448335647583008,n:50}
+    t_c+1: {mean_cm:3.951930454969406,std_cm:2.804953169671099,median_cm:3.078206777572632,n:50}
+    t_c+2: {mean_cm:3.6224123001098634,std_cm:2.239429324482335,median_cm:3.0837604999542236,n:50}
+    t_c+3: {mean_cm:3.2723434567451477,std_cm:1.7547916959524443,median_cm:3.129513740539551,n:50}
+    t_c+4: {mean_cm:3.0971233302354815,std_cm:1.4996233767314215,median_cm:2.843792200088501,n:50}
+    t_c+5: {mean_cm:2.9562839233875273,std_cm:1.2863846231919944,median_cm:2.575040340423584,n:50}
+    t_c+6: {mean_cm:2.751187549829483,std_cm:1.3617498462434652,median_cm:2.5202354192733765,n:50}
+    t_c+7: {mean_cm:2.770985679626465,std_cm:1.329820118983065,median_cm:2.494181513786316,n:50}
+Continuous RSSM Residual-Gated (Seed 2024):
+  label: Continuous RSSM Residual-Gated (Seed 2024)
+  n_episodes: 50
+  n_success: 10
+  n_fail: 40
+  success_rate_pct: 20.0
+  failure_modes_non_exclusive:
+    a_distance_failure_gt_3cm: {count:0,pct:0.0}
+    b_velocity_failure_given_reach_le_3cm: {count:6,pct:12.0}
+    b_velocity_failure_all_episodes: {count:6,pct:12.0}
+    c_post_contact_impulse_divergence: {count:15,pct:30.0}
+    settling_window_failure_given_reach_le_3cm: {count:19,pct:38.0}
+    reached_only_after_tc_then_diverged: {count:4,pct:8.0}
+  failure_modes_mutually_exclusive:
+    1_distance_never_reached_3cm: {count:0,pct:0.0}
+    2a_post_contact_div_plus_vel_violation: {count:3,pct:6.0}
+    2b_post_contact_div_spatial_only: {count:12,pct:24.0}
+    3_reached_post_tc_then_diverged: {count:4,pct:8.0}
+    4_settling_passed_vel_failed_only: {count:1,pct:2.0}
+    5_settling_and_vel_passed_rot_failed_only: {count:20,pct:40.0}
+  summary_stats:
+    min_err_cm_mean: 1.1946693646907807
+    min_err_cm_std: 0.6255705025940155
+    pre_tc_min_err_cm_mean: 1.4613039577007294
+    tc_err_cm_mean: 2.8204561990499495
+    tc_err_cm_std: 1.4990684914725287
+    term_err_cm_mean: 2.59847177863121
+    term_err_cm_std: 1.4417185983615668
+    err_jump_tc_to_grasp_cm_mean: -0.2219844204187393
+    final_vel_mean: 0.9102049902081489
+    final_vel_std: 0.5446872851256144
+    effective_vel_threshold_mean: 1.5
+    mean_joint_accel_rad_s2: 0.019994692355394365
+    mean_joint_jerk_rad_s3: 0.02140466099604964
+    mean_direction_flips: 38.34
+  step_error_profile_around_tc:
+    t_c-3: {mean_cm:3.0218841862678527,std_cm:1.6279105428250633,median_cm:2.544119119644165,n:50}
+    t_c-2: {mean_cm:2.9575072264671327,std_cm:1.6575253626915922,median_cm:2.488058567047119,n:50}
+    t_c-1: {mean_cm:2.8813152182102204,std_cm:1.5618026180524565,median_cm:2.486090898513794,n:50}
+    t_c: {mean_cm:2.8204561990499495,std_cm:1.4990684914725287,median_cm:2.6535173654556274,n:50}
+    t_c+1: {mean_cm:3.8082215487957,std_cm:2.7305402251121134,median_cm:3.052035927772522,n:50}
+    t_c+2: {mean_cm:3.3961012995243074,std_cm:2.132837995348024,median_cm:2.812078595161438,n:50}
+    t_c+3: {mean_cm:2.935594902038574,std_cm:1.5694884663502995,median_cm:2.5725667476654053,n:50}
+    t_c+4: {mean_cm:2.688289783000946,std_cm:1.5078044020264056,median_cm:2.5231261253356934,n:50}
+    t_c+5: {mean_cm:2.6857805478572847,std_cm:1.6621445235568015,median_cm:2.3521034717559814,n:50}
+    t_c+6: {mean_cm:2.6429535794258117,std_cm:1.6630230547801927,median_cm:2.3729885816574097,n:50}
+    t_c+7: {mean_cm:2.59847177863121,std_cm:1.4417185983615668,median_cm:2.2666091918945312,n:50}
+Deep GRU Un-Gated (Seed 42):
+  label: Deep GRU Un-Gated (Seed 42)
+  n_episodes: 50
+  n_success: 0
+  n_fail: 50
+  success_rate_pct: 0.0
+  failure_modes_non_exclusive:
+    a_distance_failure_gt_3cm: {count:1,pct:2.0}
+    b_velocity_failure_given_reach_le_3cm: {count:6,pct:12.0}
+    b_velocity_failure_all_episodes: {count:7,pct:14.0}
+    c_post_contact_impulse_divergence: {count:45,pct:90.0}
+    settling_window_failure_given_reach_le_3cm: {count:45,pct:90.0}
+    reached_only_after_tc_then_diverged: {count:0,pct:0.0}
+  failure_modes_mutually_exclusive:
+    1_distance_never_reached_3cm: {count:1,pct:2.0}
+    2a_post_contact_div_plus_vel_violation: {count:6,pct:12.0}
+    2b_post_contact_div_spatial_only: {count:39,pct:78.0}
+    3_reached_post_tc_then_diverged: {count:0,pct:0.0}
+    4_settling_passed_vel_failed_only: {count:0,pct:0.0}
+    5_settling_and_vel_passed_rot_failed_only: {count:4,pct:8.0}
+  summary_stats:
+    min_err_cm_mean: 0.9433116026222705
+    min_err_cm_std: 0.7225897143886602
+    pre_tc_min_err_cm_mean: 1.0321084062755108
+    tc_err_cm_mean: 2.2564656108617784
+    tc_err_cm_std: 1.5565430332380916
+    term_err_cm_mean: 6.630777020454406
+    term_err_cm_std: 4.461640380623032
+    err_jump_tc_to_grasp_cm_mean: 4.374311409592629
+    final_vel_mean: 0.7467437729239463
+    final_vel_std: 0.5887069250888312
+    effective_vel_threshold_mean: 1.5
+    mean_joint_accel_rad_s2: 0.0069884296925738455
+    mean_joint_jerk_rad_s3: 0.004795440048910677
+    mean_direction_flips: 15.54
+  step_error_profile_around_tc:
+    t_c-3: {mean_cm:1.8624016344547272,std_cm:1.234946277248152,median_cm:1.7487884759902954,n:50}
+    t_c-2: {mean_cm:1.8769904211163522,std_cm:1.1807382550887493,median_cm:1.7688578367233276,n:50}
+    t_c-1: {mean_cm:1.991890126466751,std_cm:1.3414012959618864,median_cm:1.505833387374878,n:50}
+    t_c: {mean_cm:2.2564656108617784,std_cm:1.5565430332380916,median_cm:1.92295503616333,n:50}
+    t_c+1: {mean_cm:2.082577033340931,std_cm:1.4932303563373885,median_cm:1.7682087421417236,n:50}
+    t_c+2: {mean_cm:2.5753391909599306,std_cm:1.344338551801569,median_cm:2.24237060546875,n:50}
+    t_c+3: {mean_cm:3.7418530905246734,std_cm:1.5823620969971155,median_cm:3.51343035697937,n:50}
+    t_c+4: {mean_cm:4.952829649448395,std_cm:2.2408660940436667,median_cm:4.614519119262695,n:50}
+    t_c+5: {mean_cm:5.839220027923584,std_cm:3.057588917725235,median_cm:5.166048288345337,n:50}
+    t_c+6: {mean_cm:6.361779108047485,std_cm:3.9196748065533877,median_cm:5.486771106719971,n:50}
+    t_c+7: {mean_cm:6.630777020454406,std_cm:4.461640380623032,median_cm:5.489295244216919,n:50}
+Deep GRU Un-Gated (Seed 101):
+  label: Deep GRU Un-Gated (Seed 101)
+  n_episodes: 50
+  n_success: 0
+  n_fail: 50
+  success_rate_pct: 0.0
+  failure_modes_non_exclusive:
+    a_distance_failure_gt_3cm: {count:6,pct:12.0}
+    b_velocity_failure_given_reach_le_3cm: {count:9,pct:18.0}
+    b_velocity_failure_all_episodes: {count:9,pct:18.0}
+    c_post_contact_impulse_divergence: {count:43,pct:86.0}
+    settling_window_failure_given_reach_le_3cm: {count:44,pct:88.0}
+    reached_only_after_tc_then_diverged: {count:1,pct:2.0}
+  failure_modes_mutually_exclusive:
+    1_distance_never_reached_3cm: {count:6,pct:12.0}
+    2a_post_contact_div_plus_vel_violation: {count:9,pct:18.0}
+    2b_post_contact_div_spatial_only: {count:34,pct:68.0}
+    3_reached_post_tc_then_diverged: {count:1,pct:2.0}
+    4_settling_passed_vel_failed_only: {count:0,pct:0.0}
+    5_settling_and_vel_passed_rot_failed_only: {count:0,pct:0.0}
+  summary_stats:
+    min_err_cm_mean: 1.4955504468083383
+    min_err_cm_std: 0.974366769362752
+    pre_tc_min_err_cm_mean: 1.5793519452214242
+    tc_err_cm_mean: 2.842992330789566
+    tc_err_cm_std: 1.902399889212926
+    term_err_cm_mean: 8.90200080871582
+    term_err_cm_std: 3.847520169336552
+    err_jump_tc_to_grasp_cm_mean: 6.0590084779262545
+    final_vel_mean: 1.0589640013873578
+    final_vel_std: 1.217869594479841
+    effective_vel_threshold_mean: 1.5
+    mean_joint_accel_rad_s2: 0.0074005681113339964
+    mean_joint_jerk_rad_s3: 0.005270186914131046
+    mean_direction_flips: 15.36
+  step_error_profile_around_tc:
+    t_c-3: {mean_cm:2.7255666959285736,std_cm:1.554459728424148,median_cm:2.4002795219421387,n:50}
+    t_c-2: {mean_cm:2.7539375793933867,std_cm:1.4624588501720588,median_cm:2.4477955102920532,n:50}
+    t_c-1: {mean_cm:2.7441939234733583,std_cm:1.6520949327062857,median_cm:2.312147378921509,n:50}
+    t_c: {mean_cm:2.842992330789566,std_cm:1.902399889212926,median_cm:2.207262396812439,n:50}
+    t_c+1: {mean_cm:2.9963693618774414,std_cm:2.001091781110866,median_cm:2.375216484069824,n:50}
+    t_c+2: {mean_cm:3.649802870750427,std_cm:1.9897841514475787,median_cm:3.0593615770339966,n:50}
+    t_c+3: {mean_cm:4.718345837593079,std_cm:2.3077647367343213,median_cm:4.029115200042725,n:50}
+    t_c+4: {mean_cm:5.778243823051453,std_cm:2.733888841110165,median_cm:4.814998388290405,n:50}
+    t_c+5: {mean_cm:6.7685473442077635,std_cm:3.0037129018322726,median_cm:5.615656852722168,n:50}
+    t_c+6: {mean_cm:7.85193067073822,std_cm:3.300754425937165,median_cm:7.246733665466309,n:50}
+    t_c+7: {mean_cm:8.90200080871582,std_cm:3.847520169336552,median_cm:8.583430290222168,n:50}
+Deep GRU Un-Gated (Seed 2024):
+  label: Deep GRU Un-Gated (Seed 2024)
+  n_episodes: 50
+  n_success: 0
+  n_fail: 50
+  success_rate_pct: 0.0
+  failure_modes_non_exclusive:
+    a_distance_failure_gt_3cm: {count:11,pct:22.0}
+    b_velocity_failure_given_reach_le_3cm: {count:2,pct:4.0}
+    b_velocity_failure_all_episodes: {count:2,pct:4.0}
+    c_post_contact_impulse_divergence: {count:35,pct:70.0}
+    settling_window_failure_given_reach_le_3cm: {count:37,pct:74.0}
+    reached_only_after_tc_then_diverged: {count:2,pct:4.0}
+  failure_modes_mutually_exclusive:
+    1_distance_never_reached_3cm: {count:11,pct:22.0}
+    2a_post_contact_div_plus_vel_violation: {count:2,pct:4.0}
+    2b_post_contact_div_spatial_only: {count:33,pct:66.0}
+    3_reached_post_tc_then_diverged: {count:2,pct:4.0}
+    4_settling_passed_vel_failed_only: {count:0,pct:0.0}
+    5_settling_and_vel_passed_rot_failed_only: {count:2,pct:4.0}
+  summary_stats:
+    min_err_cm_mean: 1.9634414403140545
+    min_err_cm_std: 1.1926076903006835
+    pre_tc_min_err_cm_mean: 2.024408501982689
+    tc_err_cm_mean: 3.1450187933444975
+    tc_err_cm_std: 1.4082487197398263
+    term_err_cm_mean: 6.521503386497497
+    term_err_cm_std: 2.9093178808336364
+    err_jump_tc_to_grasp_cm_mean: 3.376484593153
+    final_vel_mean: 0.5038897021114827
+    final_vel_std: 0.4166680326265456
+    effective_vel_threshold_mean: 1.5
+    mean_joint_accel_rad_s2: 0.0065517672221176325
+    mean_joint_jerk_rad_s3: 0.004431145152775571
+    mean_direction_flips: 14.34
+  step_error_profile_around_tc:
+    t_c-3: {mean_cm:2.8084526360034943,std_cm:1.668798399075106,median_cm:2.350420832633972,n:50}
+    t_c-2: {mean_cm:2.8601189959049225,std_cm:1.2646640637745379,median_cm:2.4336156845092773,n:50}
+    t_c-1: {mean_cm:2.90585419178009,std_cm:1.2549937993404103,median_cm:2.4293744564056396,n:50}
+    t_c: {mean_cm:3.1450187933444975,std_cm:1.4082487197398263,median_cm:2.827304720878601,n:50}
+    t_c+1: {mean_cm:2.926797423809767,std_cm:1.5639518730076403,median_cm:2.4531939029693604,n:50}
+    t_c+2: {mean_cm:3.5582837796211244,std_cm:1.546619993633832,median_cm:3.3048676252365112,n:50}
+    t_c+3: {mean_cm:4.657134444713592,std_cm:1.7357791571274899,median_cm:4.509346961975098,n:50}
+    t_c+4: {mean_cm:5.6222643327713016,std_cm:2.0179508046602996,median_cm:5.421851634979248,n:50}
+    t_c+5: {mean_cm:6.210109462738037,std_cm:2.431919426597959,median_cm:5.955317735671997,n:50}
+    t_c+6: {mean_cm:6.4707139253616335,std_cm:2.808902206263955,median_cm:6.108853578567505,n:50}
+    t_c+7: {mean_cm:6.521503386497497,std_cm:2.9093178808336364,median_cm:6.057376146316528,n:50}
+Deep GRU Residual-Gated (Seed 42):
+  label: Deep GRU Residual-Gated (Seed 42)
+  n_episodes: 50
+  n_success: 41
+  n_fail: 9
+  success_rate_pct: 82.0
+  failure_modes_non_exclusive:
+    a_distance_failure_gt_3cm: {count:0,pct:0.0}
+    b_velocity_failure_given_reach_le_3cm: {count:0,pct:0.0}
+    b_velocity_failure_all_episodes: {count:0,pct:0.0}
+    c_post_contact_impulse_divergence: {count:5,pct:10.0}
+    settling_window_failure_given_reach_le_3cm: {count:6,pct:12.0}
+    reached_only_after_tc_then_diverged: {count:1,pct:2.0}
+  failure_modes_mutually_exclusive:
+    1_distance_never_reached_3cm: {count:0,pct:0.0}
+    2a_post_contact_div_plus_vel_violation: {count:0,pct:0.0}
+    2b_post_contact_div_spatial_only: {count:5,pct:10.0}
+    3_reached_post_tc_then_diverged: {count:1,pct:2.0}
+    4_settling_passed_vel_failed_only: {count:0,pct:0.0}
+    5_settling_and_vel_passed_rot_failed_only: {count:3,pct:6.0}
+  summary_stats:
+    min_err_cm_mean: 0.8276583582162857
+    min_err_cm_std: 0.6198663417549084
+    pre_tc_min_err_cm_mean: 1.0321084062755108
+    tc_err_cm_mean: 2.2564656108617784
+    tc_err_cm_std: 1.5565430332380916
+    term_err_cm_mean: 1.7074048507213593
+    term_err_cm_std: 0.8542619093890267
+    err_jump_tc_to_grasp_cm_mean: -0.549060760140419
+    final_vel_mean: 0.29966184198856355
+    final_vel_std: 0.14138118620062723
+    effective_vel_threshold_mean: 1.5
+    mean_joint_accel_rad_s2: 0.004455102609936148
+    mean_joint_jerk_rad_s3: 0.0027215255866758527
+    mean_direction_flips: 11.48
+  step_error_profile_around_tc:
+    t_c-3: {mean_cm:1.8624016344547272,std_cm:1.234946277248152,median_cm:1.7487884759902954,n:50}
+    t_c-2: {mean_cm:1.8769904211163522,std_cm:1.1807382550887493,median_cm:1.7688578367233276,n:50}
+    t_c-1: {mean_cm:1.991890126466751,std_cm:1.3414012959618864,median_cm:1.505833387374878,n:50}
+    t_c: {mean_cm:2.2564656108617784,std_cm:1.5565430332380916,median_cm:1.92295503616333,n:50}
+    t_c+1: {mean_cm:1.96743328332901,std_cm:1.303326902045649,median_cm:1.6611997485160828,n:50}
+    t_c+2: {mean_cm:1.6644573146104813,std_cm:0.9122110374003682,median_cm:1.5140461921691895,n:50}
+    t_c+3: {mean_cm:1.4921204835176467,std_cm:0.7499674446678796,median_cm:1.4212709069252014,n:50}
+    t_c+4: {mean_cm:1.4870184379816056,std_cm:0.7148408867748791,median_cm:1.4519299864768982,n:50}
+    t_c+5: {mean_cm:1.5559572775661945,std_cm:0.7239483911182514,median_cm:1.4397103190422058,n:50}
+    t_c+6: {mean_cm:1.636294121146202,std_cm:0.7708139191725581,median_cm:1.5500924587249756,n:50}
+    t_c+7: {mean_cm:1.7074048507213593,std_cm:0.8542619093890267,median_cm:1.6311729550361633,n:50}
+Deep GRU Residual-Gated (Seed 101):
+  label: Deep GRU Residual-Gated (Seed 101)
+  n_episodes: 50
+  n_success: 36
+  n_fail: 14
+  success_rate_pct: 72.0
+  failure_modes_non_exclusive:
+    a_distance_failure_gt_3cm: {count:4,pct:8.0}
+    b_velocity_failure_given_reach_le_3cm: {count:0,pct:0.0}
+    b_velocity_failure_all_episodes: {count:0,pct:0.0}
+    c_post_contact_impulse_divergence: {count:3,pct:6.0}
+    settling_window_failure_given_reach_le_3cm: {count:8,pct:16.0}
+    reached_only_after_tc_then_diverged: {count:5,pct:10.0}
+  failure_modes_mutually_exclusive:
+    1_distance_never_reached_3cm: {count:4,pct:8.0}
+    2a_post_contact_div_plus_vel_violation: {count:0,pct:0.0}
+    2b_post_contact_div_spatial_only: {count:3,pct:6.0}
+    3_reached_post_tc_then_diverged: {count:5,pct:10.0}
+    4_settling_passed_vel_failed_only: {count:0,pct:0.0}
+    5_settling_and_vel_passed_rot_failed_only: {count:2,pct:4.0}
+  summary_stats:
+    min_err_cm_mean: 1.143978949189186
+    min_err_cm_std: 1.0157706090458067
+    pre_tc_min_err_cm_mean: 1.5793519452214242
+    tc_err_cm_mean: 2.842992330789566
+    tc_err_cm_std: 1.902399889212926
+    term_err_cm_mean: 2.06187970995903
+    term_err_cm_std: 2.30758448331492
+    err_jump_tc_to_grasp_cm_mean: -0.7811126208305359
+    final_vel_mean: 0.36817935094237325
+    final_vel_std: 0.2529912876862468
+    effective_vel_threshold_mean: 1.5
+    mean_joint_accel_rad_s2: 0.004630304866004735
+    mean_joint_jerk_rad_s3: 0.002819125670939684
+    mean_direction_flips: 10.52
+  step_error_profile_around_tc:
+    t_c-3: {mean_cm:2.7255666959285736,std_cm:1.554459728424148,median_cm:2.4002795219421387,n:50}
+    t_c-2: {mean_cm:2.7539375793933867,std_cm:1.4624588501720588,median_cm:2.4477955102920532,n:50}
+    t_c-1: {mean_cm:2.7441939234733583,std_cm:1.6520949327062857,median_cm:2.312147378921509,n:50}
+    t_c: {mean_cm:2.842992330789566,std_cm:1.902399889212926,median_cm:2.207262396812439,n:50}
+    t_c+1: {mean_cm:2.623877874016762,std_cm:1.9605131690558608,median_cm:1.9665517807006836,n:50}
+    t_c+2: {mean_cm:2.2239938607811927,std_cm:1.8999315553827745,median_cm:1.6640714406967163,n:50}
+    t_c+3: {mean_cm:2.0926450949907305,std_cm:1.9941124350055748,median_cm:1.5632146000862122,n:50}
+    t_c+4: {mean_cm:2.2232044506073,std_cm:2.089145514056964,median_cm:1.5273538827896118,n:50}
+    t_c+5: {mean_cm:2.261555926203728,std_cm:2.2268998480629474,median_cm:1.2980888485908508,n:50}
+    t_c+6: {mean_cm:2.17594662964344,std_cm:2.3177578099842266,median_cm:1.184807002544403,n:50}
+    t_c+7: {mean_cm:2.06187970995903,std_cm:2.30758448331492,median_cm:1.2583984732627869,n:50}
+Deep GRU Residual-Gated (Seed 2024):
+  label: Deep GRU Residual-Gated (Seed 2024)
+  n_episodes: 50
+  n_success: 38
+  n_fail: 12
+  success_rate_pct: 76.0
+  failure_modes_non_exclusive:
+    a_distance_failure_gt_3cm: {count:5,pct:10.0}
+    b_velocity_failure_given_reach_le_3cm: {count:0,pct:0.0}
+    b_velocity_failure_all_episodes: {count:0,pct:0.0}
+    c_post_contact_impulse_divergence: {count:1,pct:2.0}
+    settling_window_failure_given_reach_le_3cm: {count:6,pct:12.0}
+    reached_only_after_tc_then_diverged: {count:5,pct:10.0}
+  failure_modes_mutually_exclusive:
+    1_distance_never_reached_3cm: {count:5,pct:10.0}
+    2a_post_contact_div_plus_vel_violation: {count:0,pct:0.0}
+    2b_post_contact_div_spatial_only: {count:1,pct:2.0}
+    3_reached_post_tc_then_diverged: {count:5,pct:10.0}
+    4_settling_passed_vel_failed_only: {count:0,pct:0.0}
+    5_settling_and_vel_passed_rot_failed_only: {count:1,pct:2.0}
+  summary_stats:
+    min_err_cm_mean: 1.4560027432441711
+    min_err_cm_std: 1.0354441619455195
+    pre_tc_min_err_cm_mean: 2.024408501982689
+    tc_err_cm_mean: 3.1450187933444975
+    tc_err_cm_std: 1.4082487197398263
+    term_err_cm_mean: 1.9310389757156372
+    term_err_cm_std: 1.4129652875940601
+    err_jump_tc_to_grasp_cm_mean: -1.2139798176288605
+    final_vel_mean: 0.21764859512448312
+    final_vel_std: 0.11447028374291736
+    effective_vel_threshold_mean: 1.5
+    mean_joint_accel_rad_s2: 0.004394554344471544
+    mean_joint_jerk_rad_s3: 0.0024654526135418566
+    mean_direction_flips: 10.36
+  step_error_profile_around_tc:
+    t_c-3: {mean_cm:2.8084526360034943,std_cm:1.668798399075106,median_cm:2.350420832633972,n:50}
+    t_c-2: {mean_cm:2.8601189959049225,std_cm:1.2646640637745379,median_cm:2.4336156845092773,n:50}
+    t_c-1: {mean_cm:2.90585419178009,std_cm:1.2549937993404103,median_cm:2.4293744564056396,n:50}
+    t_c: {mean_cm:3.1450187933444975,std_cm:1.4082487197398263,median_cm:2.827304720878601,n:50}
+    t_c+1: {mean_cm:2.6491046488285064,std_cm:1.4936212184858715,median_cm:2.35075581073761,n:50}
+    t_c+2: {mean_cm:2.357303862571716,std_cm:1.3904488663154773,median_cm:2.172505736351013,n:50}
+    t_c+3: {mean_cm:2.189952018857002,std_cm:1.4138888945985166,median_cm:1.989095687866211,n:50}
+    t_c+4: {mean_cm:2.137187895476818,std_cm:1.3899572169274361,median_cm:1.8903083801269531,n:50}
+    t_c+5: {mean_cm:2.079212930202484,std_cm:1.3826275838860635,median_cm:1.6671987175941467,n:50}
+    t_c+6: {mean_cm:1.9995094066858292,std_cm:1.4009636454794605,median_cm:1.5755807757377625,n:50}
+    t_c+7: {mean_cm:1.9310389757156372,std_cm:1.4129652875940601,median_cm:1.5323635935783386,n:50}
+ANN-Rate (Seed 42):
+  label: ANN-Rate (Seed 42)
+  n_episodes: 50
+  n_success: 17
+  n_fail: 33
+  success_rate_pct: 34.0
+  failure_modes_non_exclusive:
+    a_distance_failure_gt_3cm: {count:0,pct:0.0}
+    b_velocity_failure_given_reach_le_3cm: {count:2,pct:4.0}
+    b_velocity_failure_all_episodes: {count:2,pct:4.0}
+    c_post_contact_impulse_divergence: {count:19,pct:38.0}
+    settling_window_failure_given_reach_le_3cm: {count:26,pct:52.0}
+    reached_only_after_tc_then_diverged: {count:7,pct:14.0}
+  failure_modes_mutually_exclusive:
+    1_distance_never_reached_3cm: {count:0,pct:0.0}
+    2a_post_contact_div_plus_vel_violation: {count:0,pct:0.0}
+    2b_post_contact_div_spatial_only: {count:19,pct:38.0}
+    3_reached_post_tc_then_diverged: {count:7,pct:14.0}
+    4_settling_passed_vel_failed_only: {count:1,pct:2.0}
+    5_settling_and_vel_passed_rot_failed_only: {count:6,pct:12.0}
+  summary_stats:
+    min_err_cm_mean: 0.8320508192479611
+    min_err_cm_std: 0.4655940325677702
+    pre_tc_min_err_cm_mean: 1.164362844079733
+    tc_err_cm_mean: 2.6134748697280883
+    tc_err_cm_std: 1.4645071738342264
+    term_err_cm_mean: 2.7538758546113966
+    term_err_cm_std: 1.6488538132409942
+    err_jump_tc_to_grasp_cm_mean: 0.1404009848833084
+    final_vel_mean: 0.5869238513708115
+    final_vel_std: 0.31809935150474355
+    effective_vel_threshold_mean: 1.5
+    mean_joint_accel_rad_s2: 0.012113787466660142
+    mean_joint_jerk_rad_s3: 0.00986627260223031
+    mean_direction_flips: 28.24
+  step_error_profile_around_tc:
+    t_c-3: {mean_cm:2.3941184145212175,std_cm:1.2282851130248458,median_cm:2.112388014793396,n:50}
+    t_c-2: {mean_cm:2.53336696267128,std_cm:1.2756955653524797,median_cm:2.513612151145935,n:50}
+    t_c-1: {mean_cm:2.5826906847953794,std_cm:1.3584516123404389,median_cm:2.456220507621765,n:50}
+    t_c: {mean_cm:2.6134748697280883,std_cm:1.4645071738342264,median_cm:2.2219539880752563,n:50}
+    t_c+1: {mean_cm:3.0151421278715134,std_cm:1.7541511653893591,median_cm:2.6719231605529785,n:50}
+    t_c+2: {mean_cm:2.5468107771873476,std_cm:1.443726447976522,median_cm:2.211168050765991,n:50}
+    t_c+3: {mean_cm:2.3111347663402557,std_cm:1.2396275942532466,median_cm:2.0264153480529785,n:50}
+    t_c+4: {mean_cm:2.397536401748657,std_cm:1.2869941014388753,median_cm:2.2529900074005127,n:50}
+    t_c+5: {mean_cm:2.5626229739189146,std_cm:1.4776500742017475,median_cm:2.2793211936950684,n:50}
+    t_c+6: {mean_cm:2.6735214442014694,std_cm:1.6198485432416494,median_cm:2.496946930885315,n:50}
+    t_c+7: {mean_cm:2.7538758546113966,std_cm:1.6488538132409942,median_cm:2.117562413215637,n:50}
+ANN-Rate (Seed 101):
+  label: ANN-Rate (Seed 101)
+  n_episodes: 50
+  n_success: 15
+  n_fail: 35
+  success_rate_pct: 30.0
+  failure_modes_non_exclusive:
+    a_distance_failure_gt_3cm: {count:3,pct:6.0}
+    b_velocity_failure_given_reach_le_3cm: {count:0,pct:0.0}
+    b_velocity_failure_all_episodes: {count:0,pct:0.0}
+    c_post_contact_impulse_divergence: {count:21,pct:42.0}
+    settling_window_failure_given_reach_le_3cm: {count:24,pct:48.0}
+    reached_only_after_tc_then_diverged: {count:3,pct:6.0}
+  failure_modes_mutually_exclusive:
+    1_distance_never_reached_3cm: {count:3,pct:6.0}
+    2a_post_contact_div_plus_vel_violation: {count:0,pct:0.0}
+    2b_post_contact_div_spatial_only: {count:21,pct:42.0}
+    3_reached_post_tc_then_diverged: {count:3,pct:6.0}
+    4_settling_passed_vel_failed_only: {count:0,pct:0.0}
+    5_settling_and_vel_passed_rot_failed_only: {count:8,pct:16.0}
+  summary_stats:
+    min_err_cm_mean: 1.3814548110961915
+    min_err_cm_std: 1.0088033363029787
+    pre_tc_min_err_cm_mean: 1.4610292547941208
+    tc_err_cm_mean: 2.9168222725391386
+    tc_err_cm_std: 1.6069247411732943
+    term_err_cm_mean: 3.5167109155654908
+    term_err_cm_std: 1.908053762203449
+    err_jump_tc_to_grasp_cm_mean: 0.5998886430263519
+    final_vel_mean: 0.5289560982584953
+    final_vel_std: 0.23627259950728746
+    effective_vel_threshold_mean: 1.5
+    mean_joint_accel_rad_s2: 0.011858293414115905
+    mean_joint_jerk_rad_s3: 0.010119730336591602
+    mean_direction_flips: 25.04
+  step_error_profile_around_tc:
+    t_c-3: {mean_cm:2.8613218301534653,std_cm:1.4879508712309886,median_cm:2.841180205345154,n:50}
+    t_c-2: {mean_cm:2.796315099000931,std_cm:1.551251035862099,median_cm:2.806033730506897,n:50}
+    t_c-1: {mean_cm:2.7768456643819808,std_cm:1.5754521924477278,median_cm:2.692988634109497,n:50}
+    t_c: {mean_cm:2.9168222725391386,std_cm:1.6069247411732943,median_cm:2.678290843963623,n:50}
+    t_c+1: {mean_cm:4.091164743900299,std_cm:2.380557507605793,median_cm:3.846030116081238,n:50}
+    t_c+2: {mean_cm:3.8094804775714874,std_cm:2.133758613040779,median_cm:3.2859740257263184,n:50}
+    t_c+3: {mean_cm:3.491499652862549,std_cm:1.9280913492845544,median_cm:3.0375328063964844,n:50}
+    t_c+4: {mean_cm:3.287111759185791,std_cm:1.8703497704524499,median_cm:3.0512077808380127,n:50}
+    t_c+5: {mean_cm:3.2765079057216644,std_cm:1.8741169438468754,median_cm:3.09067964553833,n:50}
+    t_c+6: {mean_cm:3.4137790858745576,std_cm:1.854704060273812,median_cm:3.0054166316986084,n:50}
+    t_c+7: {mean_cm:3.5167109155654908,std_cm:1.908053762203449,median_cm:2.926141142845154,n:50}
+ANN-Rate (Seed 2024):
+  label: ANN-Rate (Seed 2024)
+  n_episodes: 50
+  n_success: 24
+  n_fail: 26
+  success_rate_pct: 48.0
+  failure_modes_non_exclusive:
+    a_distance_failure_gt_3cm: {count:1,pct:2.0}
+    b_velocity_failure_given_reach_le_3cm: {count:0,pct:0.0}
+    b_velocity_failure_all_episodes: {count:0,pct:0.0}
+    c_post_contact_impulse_divergence: {count:16,pct:32.0}
+    settling_window_failure_given_reach_le_3cm: {count:23,pct:46.0}
+    reached_only_after_tc_then_diverged: {count:7,pct:14.0}
+  failure_modes_mutually_exclusive:
+    1_distance_never_reached_3cm: {count:1,pct:2.0}
+    2a_post_contact_div_plus_vel_violation: {count:0,pct:0.0}
+    2b_post_contact_div_spatial_only: {count:16,pct:32.0}
+    3_reached_post_tc_then_diverged: {count:7,pct:14.0}
+    4_settling_passed_vel_failed_only: {count:0,pct:0.0}
+    5_settling_and_vel_passed_rot_failed_only: {count:2,pct:4.0}
+  summary_stats:
+    min_err_cm_mean: 0.9899138957262039
+    min_err_cm_std: 0.6084400484165465
+    pre_tc_min_err_cm_mean: 1.211065331697464
+    tc_err_cm_mean: 2.5251586663722994
+    tc_err_cm_std: 1.3941924101905212
+    term_err_cm_mean: 2.6833017432689665
+    term_err_cm_std: 1.3172601917506164
+    err_jump_tc_to_grasp_cm_mean: 0.15814307689666748
+    final_vel_mean: 0.3702622719109058
+    final_vel_std: 0.2854822039155623
+    effective_vel_threshold_mean: 1.5
+    mean_joint_accel_rad_s2: 0.010471052303910256
+    mean_joint_jerk_rad_s3: 0.008151772329583765
+    mean_direction_flips: 24.72
+  step_error_profile_around_tc:
+    t_c-3: {mean_cm:2.0643702286481855,std_cm:1.2545159499072607,median_cm:1.6970002055168152,n:50}
+    t_c-2: {mean_cm:2.2092204105854036,std_cm:1.3114178519116673,median_cm:1.8127614855766296,n:50}
+    t_c-1: {mean_cm:2.365184108018875,std_cm:1.3616427372421689,median_cm:1.9652366638183594,n:50}
+    t_c: {mean_cm:2.5251586663722994,std_cm:1.3941924101905212,median_cm:2.0829561948776245,n:50}
+    t_c+1: {mean_cm:3.0815413963794707,std_cm:1.72407927359815,median_cm:2.6899569034576416,n:50}
+    t_c+2: {mean_cm:2.6947919595241547,std_cm:1.2577469491773068,median_cm:2.5787729024887085,n:50}
+    t_c+3: {mean_cm:2.5336720967292785,std_cm:1.2031166319767301,median_cm:2.319764256477356,n:50}
+    t_c+4: {mean_cm:2.7471174240112304,std_cm:1.2616383554563007,median_cm:2.73140287399292,n:50}
+    t_c+5: {mean_cm:2.8802491390705107,std_cm:1.3981469136345672,median_cm:2.9476654529571533,n:50}
+    t_c+6: {mean_cm:2.8289798361063005,std_cm:1.4001974132431474,median_cm:2.821049213409424,n:50}
+    t_c+7: {mean_cm:2.6833017432689665,std_cm:1.3172601917506164,median_cm:2.666401505470276,n:50}
+SPWM N=25 Val-Sel (Seed 42):
+  label: SPWM N=25 Val-Sel (Seed 42)
+  n_episodes: 50
+  n_success: 29
+  n_fail: 21
+  success_rate_pct: 58.0
+  failure_modes_non_exclusive:
+    a_distance_failure_gt_3cm: {count:2,pct:4.0}
+    b_velocity_failure_given_reach_le_3cm: {count:0,pct:0.0}
+    b_velocity_failure_all_episodes: {count:0,pct:0.0}
+    c_post_contact_impulse_divergence: {count:9,pct:18.0}
+    settling_window_failure_given_reach_le_3cm: {count:11,pct:22.0}
+    reached_only_after_tc_then_diverged: {count:2,pct:4.0}
+  failure_modes_mutually_exclusive:
+    1_distance_never_reached_3cm: {count:2,pct:4.0}
+    2a_post_contact_div_plus_vel_violation: {count:0,pct:0.0}
+    2b_post_contact_div_spatial_only: {count:9,pct:18.0}
+    3_reached_post_tc_then_diverged: {count:2,pct:4.0}
+    4_settling_passed_vel_failed_only: {count:0,pct:0.0}
+    5_settling_and_vel_passed_rot_failed_only: {count:8,pct:16.0}
+  summary_stats:
+    min_err_cm_mean: 0.9966417002677918
+    min_err_cm_std: 0.7168366082198878
+    pre_tc_min_err_cm_mean: 1.537956092953682
+    tc_err_cm_mean: 2.233934363126755
+    tc_err_cm_std: 1.4055678232228594
+    term_err_cm_mean: 2.117010636925697
+    term_err_cm_std: 1.2261713068281301
+    err_jump_tc_to_grasp_cm_mean: -0.11692372620105744
+    final_vel_mean: 0.37095459580421447
+    final_vel_std: 0.2564984813973722
+    effective_vel_threshold_mean: 1.5
+    mean_joint_accel_rad_s2: 0.005460824174806475
+    mean_joint_jerk_rad_s3: 0.003033191980794072
+    mean_direction_flips: 11.82
+  step_error_profile_around_tc:
+    t_c-3: {mean_cm:2.570709978342056,std_cm:1.7423274454933606,median_cm:2.084847569465637,n:50}
+    t_c-2: {mean_cm:2.339778987169266,std_cm:1.5107181017190565,median_cm:2.0399178862571716,n:50}
+    t_c-1: {mean_cm:2.2121916997432707,std_cm:1.4194959177742037,median_cm:1.8959782719612122,n:50}
+    t_c: {mean_cm:2.233934363126755,std_cm:1.4055678232228594,median_cm:1.890315294265747,n:50}
+    t_c+1: {mean_cm:2.8417738568782807,std_cm:2.451966373256439,median_cm:2.03122878074646,n:50}
+    t_c+2: {mean_cm:2.5271481239795683,std_cm:2.055432999759821,median_cm:1.9524443745613098,n:50}
+    t_c+3: {mean_cm:2.2913997495174407,std_cm:1.698457269294526,median_cm:1.7559440732002258,n:50}
+    t_c+4: {mean_cm:2.149617938995361,std_cm:1.4415171284106294,median_cm:1.7719542384147644,n:50}
+    t_c+5: {mean_cm:2.083803117275238,std_cm:1.303564689006201,median_cm:1.669554352760315,n:50}
+    t_c+6: {mean_cm:2.085492214560509,std_cm:1.230028941964752,median_cm:1.6684231758117676,n:50}
+    t_c+7: {mean_cm:2.117010636925697,std_cm:1.2261713068281301,median_cm:1.6657440662384033,n:50}
+SPWM N=25 Val-Sel (Seed 101):
+  label: SPWM N=25 Val-Sel (Seed 101)
+  n_episodes: 50
+  n_success: 31
+  n_fail: 19
+  success_rate_pct: 62.0
+  failure_modes_non_exclusive:
+    a_distance_failure_gt_3cm: {count:0,pct:0.0}
+    b_velocity_failure_given_reach_le_3cm: {count:1,pct:2.0}
+    b_velocity_failure_all_episodes: {count:1,pct:2.0}
+    c_post_contact_impulse_divergence: {count:9,pct:18.0}
+    settling_window_failure_given_reach_le_3cm: {count:11,pct:22.0}
+    reached_only_after_tc_then_diverged: {count:2,pct:4.0}
+  failure_modes_mutually_exclusive:
+    1_distance_never_reached_3cm: {count:0,pct:0.0}
+    2a_post_contact_div_plus_vel_violation: {count:0,pct:0.0}
+    2b_post_contact_div_spatial_only: {count:9,pct:18.0}
+    3_reached_post_tc_then_diverged: {count:2,pct:4.0}
+    4_settling_passed_vel_failed_only: {count:0,pct:0.0}
+    5_settling_and_vel_passed_rot_failed_only: {count:8,pct:16.0}
+  summary_stats:
+    min_err_cm_mean: 0.8499453981220723
+    min_err_cm_std: 0.5894733005655424
+    pre_tc_min_err_cm_mean: 1.00250588580966
+    tc_err_cm_mean: 2.2484344738721846
+    tc_err_cm_std: 1.0884728057829296
+    term_err_cm_mean: 2.0169071877002716
+    term_err_cm_std: 1.1516123596745238
+    err_jump_tc_to_grasp_cm_mean: -0.23152728617191315
+    final_vel_mean: 0.5147094203531742
+    final_vel_std: 0.3466832310637248
+    effective_vel_threshold_mean: 1.5
+    mean_joint_accel_rad_s2: 0.012158537823706865
+    mean_joint_jerk_rad_s3: 0.00939610967412591
+    mean_direction_flips: 28.62
+  step_error_profile_around_tc:
+    t_c-3: {mean_cm:2.127611813545227,std_cm:0.9468546353915807,median_cm:2.005717933177948,n:50}
+    t_c-2: {mean_cm:2.1022756683826445,std_cm:0.9960624586989392,median_cm:1.9255191087722778,n:50}
+    t_c-1: {mean_cm:2.113300464749336,std_cm:0.9904704048268995,median_cm:2.149985909461975,n:50}
+    t_c: {mean_cm:2.2484344738721846,std_cm:1.0884728057829296,median_cm:2.377298951148987,n:50}
+    t_c+1: {mean_cm:2.91045338511467,std_cm:2.276015684275159,median_cm:2.275682210922241,n:50}
+    t_c+2: {mean_cm:2.4622361075878145,std_cm:1.8239405276415812,median_cm:1.8720372319221497,n:50}
+    t_c+3: {mean_cm:2.0902341371774673,std_cm:1.3658186732217235,median_cm:1.6477518677711487,n:50}
+    t_c+4: {mean_cm:1.9407165196537972,std_cm:1.100617004044868,median_cm:1.6595511436462402,n:50}
+    t_c+5: {mean_cm:1.9036283481121063,std_cm:1.06899163268589,median_cm:1.7284755110740662,n:50}
+    t_c+6: {mean_cm:1.9438227516412736,std_cm:1.047814852890829,median_cm:1.7264410853385925,n:50}
+    t_c+7: {mean_cm:2.0169071877002716,std_cm:1.1516123596745238,median_cm:1.7109362483024597,n:50}
+SPWM N=25 Val-Sel (Seed 2024):
+  label: SPWM N=25 Val-Sel (Seed 2024)
+  n_episodes: 50
+  n_success: 31
+  n_fail: 19
+  success_rate_pct: 62.0
+  failure_modes_non_exclusive:
+    a_distance_failure_gt_3cm: {count:0,pct:0.0}
+    b_velocity_failure_given_reach_le_3cm: {count:1,pct:2.0}
+    b_velocity_failure_all_episodes: {count:1,pct:2.0}
+    c_post_contact_impulse_divergence: {count:10,pct:20.0}
+    settling_window_failure_given_reach_le_3cm: {count:12,pct:24.0}
+    reached_only_after_tc_then_diverged: {count:2,pct:4.0}
+  failure_modes_mutually_exclusive:
+    1_distance_never_reached_3cm: {count:0,pct:0.0}
+    2a_post_contact_div_plus_vel_violation: {count:1,pct:2.0}
+    2b_post_contact_div_spatial_only: {count:9,pct:18.0}
+    3_reached_post_tc_then_diverged: {count:2,pct:4.0}
+    4_settling_passed_vel_failed_only: {count:0,pct:0.0}
+    5_settling_and_vel_passed_rot_failed_only: {count:7,pct:14.0}
+  summary_stats:
+    min_err_cm_mean: 0.7930243809521198
+    min_err_cm_std: 0.5496822026263848
+    pre_tc_min_err_cm_mean: 1.041318565905094
+    tc_err_cm_mean: 1.6540947642922401
+    tc_err_cm_std: 0.9597142281560219
+    term_err_cm_mean: 1.8860684871673583
+    term_err_cm_std: 1.187425109721587
+    err_jump_tc_to_grasp_cm_mean: 0.23197372287511825
+    final_vel_mean: 0.46489599913358687
+    final_vel_std: 0.2882770391033404
+    effective_vel_threshold_mean: 1.5
+    mean_joint_accel_rad_s2: 0.01030723424628377
+    mean_joint_jerk_rad_s3: 0.007473995992913842
+    mean_direction_flips: 22.98
+  step_error_profile_around_tc:
+    t_c-3: {mean_cm:1.7090584415197372,std_cm:1.0038515226335576,median_cm:1.5093061923980713,n:50}
+    t_c-2: {mean_cm:1.6376670563220979,std_cm:0.950286313076338,median_cm:1.3231131434440613,n:50}
+    t_c-1: {mean_cm:1.5959379148483277,std_cm:0.9457722896731929,median_cm:1.3848624229431152,n:50}
+    t_c: {mean_cm:1.6540947642922401,std_cm:0.9597142281560219,median_cm:1.561939001083374,n:50}
+    t_c+1: {mean_cm:2.8901937019824984,std_cm:2.869409902335871,median_cm:1.8953220844268799,n:50}
+    t_c+2: {mean_cm:2.4392507207393646,std_cm:2.3982279019048067,median_cm:1.6679897904396057,n:50}
+    t_c+3: {mean_cm:1.9912224166095256,std_cm:1.6911716131687784,median_cm:1.4298081398010254,n:50}
+    t_c+4: {mean_cm:1.7378071856498718,std_cm:1.0693787755960384,median_cm:1.4254108667373657,n:50}
+    t_c+5: {mean_cm:1.7148064762353896,std_cm:1.0352048752789338,median_cm:1.4202589392662048,n:50}
+    t_c+6: {mean_cm:1.8477609047293664,std_cm:1.1551097605389506,median_cm:1.5609533786773682,n:50}
+    t_c+7: {mean_cm:1.8860684871673583,std_cm:1.187425109721587,median_cm:1.6412156224250793,n:50}
+Continuous RSSM Un-Gated (3-Seed Aggregate):
+  total_episodes: 150
+  success_total: 0
+  reach_le_3cm_total: 144
+  a_distance_failure_gt_3cm_total: 6
+  b_velocity_failure_all_total: 150
+  b_velocity_failure_given_reach_total: 144
+  c_post_contact_impulse_divergence_total: 143
+  excl_never_reached_total: 6
+  excl_post_contact_div_plus_vel_total: 143
+  excl_post_contact_div_spatial_only_total: 0
+  excl_post_tc_reach_then_div_total: 1
+  excl_vel_only_total: 0
+  excl_rot_only_total: 0
+Continuous RSSM Residual-Gated (3-Seed Aggregate):
+  total_episodes: 150
+  success_total: 23
+  reach_le_3cm_total: 148
+  a_distance_failure_gt_3cm_total: 2
+  b_velocity_failure_all_total: 24
+  b_velocity_failure_given_reach_total: 24
+  c_post_contact_impulse_divergence_total: 50
+  excl_never_reached_total: 2
+  excl_post_contact_div_plus_vel_total: 12
+  excl_post_contact_div_spatial_only_total: 38
+  excl_post_tc_reach_then_div_total: 22
+  excl_vel_only_total: 3
+  excl_rot_only_total: 50
+Deep GRU Un-Gated (3-Seed Aggregate):
+  total_episodes: 150
+  success_total: 0
+  reach_le_3cm_total: 132
+  a_distance_failure_gt_3cm_total: 18
+  b_velocity_failure_all_total: 18
+  b_velocity_failure_given_reach_total: 17
+  c_post_contact_impulse_divergence_total: 123
+  excl_never_reached_total: 18
+  excl_post_contact_div_plus_vel_total: 17
+  excl_post_contact_div_spatial_only_total: 106
+  excl_post_tc_reach_then_div_total: 3
+  excl_vel_only_total: 0
+  excl_rot_only_total: 6
+Deep GRU Residual-Gated (3-Seed Aggregate):
+  total_episodes: 150
+  success_total: 115
+  reach_le_3cm_total: 141
+  a_distance_failure_gt_3cm_total: 9
+  b_velocity_failure_all_total: 0
+  b_velocity_failure_given_reach_total: 0
+  c_post_contact_impulse_divergence_total: 9
+  excl_never_reached_total: 9
+  excl_post_contact_div_plus_vel_total: 0
+  excl_post_contact_div_spatial_only_total: 9
+  excl_post_tc_reach_then_div_total: 11
+  excl_vel_only_total: 0
+  excl_rot_only_total: 6
+ANN-Rate (3-Seed Aggregate):
+  total_episodes: 150
+  success_total: 56
+  reach_le_3cm_total: 146
+  a_distance_failure_gt_3cm_total: 4
+  b_velocity_failure_all_total: 2
+  b_velocity_failure_given_reach_total: 2
+  c_post_contact_impulse_divergence_total: 56
+  excl_never_reached_total: 4
+  excl_post_contact_div_plus_vel_total: 0
+  excl_post_contact_div_spatial_only_total: 56
+  excl_post_tc_reach_then_div_total: 17
+  excl_vel_only_total: 1
+  excl_rot_only_total: 16
+SPWM N=25 Val-Sel (3-Seed Aggregate):
+  total_episodes: 150
+  success_total: 91
+  reach_le_3cm_total: 148
+  a_distance_failure_gt_3cm_total: 2
+  b_velocity_failure_all_total: 2
+  b_velocity_failure_given_reach_total: 2
+  c_post_contact_impulse_divergence_total: 28
+  excl_never_reached_total: 2
+  excl_post_contact_div_plus_vel_total: 1
+  excl_post_contact_div_spatial_only_total: 27
+  excl_post_tc_reach_then_div_total: 6
+  excl_vel_only_total: 0
+  excl_rot_only_total: 23
 ```
 
 ### `results/energy_profiling/energy_profiling_metrics.json`
-> Neuromorphic SOPs (Loihi-2) vs. GPU MACs (Jetson Orin) profiling across SPWM and baselines
+> Neuromorphic SOPs (Loihi-2 standby recurrent core) vs. GPU MACs (Jetson Orin E2E MPPI) profiling across SPWM and baselines
 
 ```yaml
 SPWM:
@@ -2099,6 +3099,95 @@ energy:
   speedup_vs_own_gpu: 4.890475307893975
 corl_final_verification:
   pil_3seed_comparison:
+    spwm_n25_val:
+      mean_std:
+        grasp_success_rate_pct: [60.666666666666664,2.3094010767585074]
+        terminal_placement_accuracy_cm: [0.8798704931139946,0.10505539807183523]
+        terminal_error_cm: [2.006662103931109,0.11581144347528279]
+        mean_joint_accel_rad_s2: [0.009308865414932371,0.0034586698705177275]
+        mean_joint_jerk_rad_s3: [0.006634432549277941,0.003263484407032791]
+        mean_direction_flips: [21.14,8.549807015365904]
+        mppi_inference_latency_ms: [26.649352693166346,2.271980219747186]
+      per_seed:
+        42:
+          checkpoint: results/spwm_v0_12_4_train_m1/checkpoint_phase_4.pt
+          evaluation_protocol: physics_in_loop
+          baseline_handover_mode: residual_gated
+          episodes_evaluated: 50
+          overall_metrics:
+            grasp_success_rate_pct: 57.99999999999999
+            terminal_placement_accuracy_cm: 0.9966417002677918
+            placement_accuracy_std_cm: 0.7168366082198878
+            terminal_error_cm: 2.117010636925697
+            terminal_error_std_cm: 1.2261713068281301
+            mppi_inference_latency_ms: 27.953717743547482
+            mean_joint_accel_rad_s2: 0.005460824174806475
+            std_joint_accel_rad_s2: 0.0014449158194058374
+            mean_joint_jerk_rad_s3: 0.003033191980794072
+            std_joint_jerk_rad_s3: 0.0006583887773716086
+            mean_direction_flips: 11.82
+            std_direction_flips: 6.098163658020339
+          handover_telemetry:
+            episodes_evaluated: 50
+            triggered_episodes: 0
+            episodes_with_w_gt_0_pct: 0.0
+            total_phi1_steps: 400
+            triggered_phi1_steps: 0
+            phi1_steps_with_w_gt_0_pct: 0.0
+            mean_nonzero_w: 0.0
+        101:
+          checkpoint: results/multiseed/seed_101_m1/checkpoint_phase_1.pt
+          evaluation_protocol: physics_in_loop
+          baseline_handover_mode: residual_gated
+          episodes_evaluated: 50
+          overall_metrics:
+            grasp_success_rate_pct: 62.0
+            terminal_placement_accuracy_cm: 0.8499453981220723
+            placement_accuracy_std_cm: 0.5894733005655424
+            terminal_error_cm: 2.0169071877002716
+            terminal_error_std_cm: 1.1516123596745238
+            mppi_inference_latency_ms: 27.968430673446996
+            mean_joint_accel_rad_s2: 0.012158537823706865
+            std_joint_accel_rad_s2: 0.0038326392576793562
+            mean_joint_jerk_rad_s3: 0.00939610967412591
+            std_joint_jerk_rad_s3: 0.0024506745164746524
+            mean_direction_flips: 28.62
+            std_direction_flips: 8.126229137798171
+          handover_telemetry:
+            episodes_evaluated: 50
+            triggered_episodes: 0
+            episodes_with_w_gt_0_pct: 0.0
+            total_phi1_steps: 400
+            triggered_phi1_steps: 0
+            phi1_steps_with_w_gt_0_pct: 0.0
+            mean_nonzero_w: 0.0
+        2024:
+          checkpoint: results/multiseed/seed_2024_m1/checkpoint_phase_2.pt
+          evaluation_protocol: physics_in_loop
+          baseline_handover_mode: residual_gated
+          episodes_evaluated: 50
+          overall_metrics:
+            grasp_success_rate_pct: 62.0
+            terminal_placement_accuracy_cm: 0.7930243809521198
+            placement_accuracy_std_cm: 0.5496822026263848
+            terminal_error_cm: 1.8860684871673583
+            terminal_error_std_cm: 1.187425109721587
+            mppi_inference_latency_ms: 24.025909662504564
+            mean_joint_accel_rad_s2: 0.01030723424628377
+            std_joint_accel_rad_s2: 0.003965905046145654
+            mean_joint_jerk_rad_s3: 0.007473995992913842
+            std_joint_jerk_rad_s3: 0.0027093614883279904
+            mean_direction_flips: 22.98
+            std_direction_flips: 5.540721974616666
+          handover_telemetry:
+            episodes_evaluated: 50
+            triggered_episodes: 0
+            episodes_with_w_gt_0_pct: 0.0
+            total_phi1_steps: 400
+            triggered_phi1_steps: 0
+            phi1_steps_with_w_gt_0_pct: 0.0
+            mean_nonzero_w: 0.0
+      handover_telemetry_3seed: {episodes_with_w_gt_0_pct:[0.0,0.0],phi1_steps_with_w_gt_0_pct:[0.0,0.0],mean_nonzero_w_when_active:0.0}
     spwm_n6_tier2:
       mean_std:
         grasp_success_rate_pct: [58.0,27.055498516937366]
@@ -2112,6 +3201,7 @@ corl_final_verification:
         42:
           checkpoint: results/spwm_v0_12_4_train_m1/model.pt
           evaluation_protocol: physics_in_loop
+          baseline_handover_mode: null
           episodes_evaluated: 50
           overall_metrics:
             grasp_success_rate_pct: 86.0
@@ -2137,6 +3227,7 @@ corl_final_verification:
         101:
           checkpoint: results/multiseed/seed_101_m1/model.pt
           evaluation_protocol: physics_in_loop
+          baseline_handover_mode: null
           episodes_evaluated: 50
           overall_metrics:
             grasp_success_rate_pct: 56.00000000000001
@@ -2155,6 +3246,7 @@ corl_final_verification:
         2024:
           checkpoint: results/multiseed/seed_2024_m1/model.pt
           evaluation_protocol: physics_in_loop
+          baseline_handover_mode: null
           episodes_evaluated: 50
           overall_metrics:
             grasp_success_rate_pct: 32.0
@@ -2170,91 +3262,7 @@ corl_final_verification:
             mean_direction_flips: 16.06
             std_direction_flips: 4.6364210335128115
           handover_telemetry: null
-    spwm_n25_val:
-      mean_std:
-        grasp_success_rate_pct: [60.666666666666664,2.3094010767585074]
-        terminal_placement_accuracy_cm: [0.8798704931139946,0.10505539807183523]
-        terminal_error_cm: [2.006662103931109,0.11581144347528279]
-        mean_joint_accel_rad_s2: [0.009308865414932371,0.0034586698705177275]
-        mean_joint_jerk_rad_s3: [0.006634432549277941,0.003263484407032791]
-        mean_direction_flips: [21.14,8.549807015365904]
-        mppi_inference_latency_ms: [35.50311868491241,1.4903537737959471]
-      per_seed:
-        42:
-          checkpoint: results/spwm_v0_12_4_train_m1/checkpoint_phase_4.pt
-          evaluation_protocol: physics_in_loop
-          episodes_evaluated: 50
-          overall_metrics:
-            grasp_success_rate_pct: 57.99999999999999
-            terminal_placement_accuracy_cm: 0.9966417002677918
-            placement_accuracy_std_cm: 0.7168366082198878
-            terminal_error_cm: 2.117010636925697
-            terminal_error_std_cm: 1.2261713068281301
-            mppi_inference_latency_ms: 36.37386128397549
-            mean_joint_accel_rad_s2: 0.005460824174806475
-            std_joint_accel_rad_s2: 0.0014449158194058374
-            mean_joint_jerk_rad_s3: 0.003033191980794072
-            std_joint_jerk_rad_s3: 0.0006583887773716086
-            mean_direction_flips: 11.82
-            std_direction_flips: 6.098163658020339
-          handover_telemetry:
-            episodes_evaluated: 50
-            triggered_episodes: 0
-            episodes_with_w_gt_0_pct: 0.0
-            total_phi1_steps: 400
-            triggered_phi1_steps: 0
-            phi1_steps_with_w_gt_0_pct: 0.0
-            mean_nonzero_w: 0.0
-        101:
-          checkpoint: results/multiseed/seed_101_m1/checkpoint_phase_1.pt
-          evaluation_protocol: physics_in_loop
-          episodes_evaluated: 50
-          overall_metrics:
-            grasp_success_rate_pct: 62.0
-            terminal_placement_accuracy_cm: 0.8499453981220723
-            placement_accuracy_std_cm: 0.5894733005655424
-            terminal_error_cm: 2.0169071877002716
-            terminal_error_std_cm: 1.1516123596745238
-            mppi_inference_latency_ms: 36.35324723590614
-            mean_joint_accel_rad_s2: 0.012158537823706865
-            std_joint_accel_rad_s2: 0.0038326392576793562
-            mean_joint_jerk_rad_s3: 0.00939610967412591
-            std_joint_jerk_rad_s3: 0.0024506745164746524
-            mean_direction_flips: 28.62
-            std_direction_flips: 8.126229137798171
-          handover_telemetry:
-            episodes_evaluated: 50
-            triggered_episodes: 0
-            episodes_with_w_gt_0_pct: 0.0
-            total_phi1_steps: 400
-            triggered_phi1_steps: 0
-            phi1_steps_with_w_gt_0_pct: 0.0
-            mean_nonzero_w: 0.0
-        2024:
-          checkpoint: results/multiseed/seed_2024_m1/checkpoint_phase_2.pt
-          evaluation_protocol: physics_in_loop
-          episodes_evaluated: 50
-          overall_metrics:
-            grasp_success_rate_pct: 62.0
-            terminal_placement_accuracy_cm: 0.7930243809521198
-            placement_accuracy_std_cm: 0.5496822026263848
-            terminal_error_cm: 1.8860684871673583
-            terminal_error_std_cm: 1.187425109721587
-            mppi_inference_latency_ms: 33.78224753485561
-            mean_joint_accel_rad_s2: 0.01030723424628377
-            std_joint_accel_rad_s2: 0.003965905046145654
-            mean_joint_jerk_rad_s3: 0.007473995992913842
-            std_joint_jerk_rad_s3: 0.0027093614883279904
-            mean_direction_flips: 22.98
-            std_direction_flips: 5.540721974616666
-          handover_telemetry:
-            episodes_evaluated: 50
-            triggered_episodes: 0
-            episodes_with_w_gt_0_pct: 0.0
-            total_phi1_steps: 400
-            triggered_phi1_steps: 0
-            phi1_steps_with_w_gt_0_pct: 0.0
-            mean_nonzero_w: 0.0
+      handover_telemetry_3seed: {episodes_with_w_gt_0_pct:[0.0,0.0],phi1_steps_with_w_gt_0_pct:[0.0,0.0],mean_nonzero_w_when_active:0.0}
     ann_rate:
       mean_std:
         grasp_success_rate_pct: [37.333333333333336,9.451631252505218]
@@ -2268,6 +3276,7 @@ corl_final_verification:
         42:
           checkpoint: results/ann_ablation/seed_42_m1/model.pt
           evaluation_protocol: physics_in_loop
+          baseline_handover_mode: null
           episodes_evaluated: 50
           overall_metrics:
             grasp_success_rate_pct: 34.0
@@ -2286,6 +3295,7 @@ corl_final_verification:
         101:
           checkpoint: results/ann_ablation/seed_101_m1/model.pt
           evaluation_protocol: physics_in_loop
+          baseline_handover_mode: null
           episodes_evaluated: 50
           overall_metrics:
             grasp_success_rate_pct: 30.0
@@ -2304,6 +3314,7 @@ corl_final_verification:
         2024:
           checkpoint: results/ann_ablation/seed_2024_m1/model.pt
           evaluation_protocol: physics_in_loop
+          baseline_handover_mode: null
           episodes_evaluated: 50
           overall_metrics:
             grasp_success_rate_pct: 48.0
@@ -2321,31 +3332,32 @@ corl_final_verification:
           handover_telemetry: null
     rssm_open_loop:
       mean_std:
-        grasp_success_rate_pct: [15.333333333333334,4.618802153517006]
-        terminal_placement_accuracy_cm: [1.3101576902468999,0.015239180448274645]
-        terminal_error_cm: [2.8772510814666745,0.10043628738006709]
-        mean_joint_accel_rad_s2: [0.019980563490341108,0.00044725536859862214]
-        mean_joint_jerk_rad_s3: [0.020594383161514997,0.0002908916650769286]
-        mean_direction_flips: [36.23333333333333,0.9737213838328386]
-        mppi_inference_latency_ms: [52.36163894086636,2.3005863220714606]
+        grasp_success_rate_pct: [15.333333333333334,7.023769168568492]
+        terminal_placement_accuracy_cm: [1.2335922479629515,0.05552042269442134]
+        terminal_error_cm: [2.738770661751429,0.06877343601692858]
+        mean_joint_accel_rad_s2: [0.02037182800471783,0.000592333680216826]
+        mean_joint_jerk_rad_s3: [0.02138510186225176,0.0004846155447845476]
+        mean_direction_flips: [36.85999999999999,1.2150720143267217]
+        mppi_inference_latency_ms: [46.81975616126076,0.1485665027581289]
       per_seed:
         42:
           checkpoint: results/baselines/continuous_rssm/model.pt
           evaluation_protocol: physics_in_loop
+          baseline_handover_mode: open_loop
           episodes_evaluated: 50
           overall_metrics:
-            grasp_success_rate_pct: 18.0
-            terminal_placement_accuracy_cm: 1.3266203773021699
-            placement_accuracy_std_cm: 0.7567385234666243
-            terminal_error_cm: 2.989941152334213
-            terminal_error_std_cm: 2.314479426505856
-            mppi_inference_latency_ms: 53.49043995589559
-            mean_joint_accel_rad_s2: 0.020397072955965996
-            std_joint_accel_rad_s2: 0.005150112805367512
-            mean_joint_jerk_rad_s3: 0.020926078390330075
-            std_joint_jerk_rad_s3: 0.004612915595826576
-            mean_direction_flips: 36.48
-            std_direction_flips: 8.70457351051733
+            grasp_success_rate_pct: 16.0
+            terminal_placement_accuracy_cm: 1.2976850962638855
+            placement_accuracy_std_cm: 0.6328096448883076
+            terminal_error_cm: 2.7923242807388307
+            terminal_error_std_cm: 1.2528453059283846
+            mppi_inference_latency_ms: 46.82606889366672
+            mean_joint_accel_rad_s2: 0.021038663629442452
+            std_joint_accel_rad_s2: 0.004804290298606692
+            mean_joint_jerk_rad_s3: 0.02193130200728774
+            std_joint_jerk_rad_s3: 0.004306558567727457
+            mean_direction_flips: 36.24
+            std_direction_flips: 9.049994475136435
           handover_telemetry:
             episodes_evaluated: 50
             triggered_episodes: 0
@@ -2357,20 +3369,291 @@ corl_final_verification:
         101:
           checkpoint: results/multiseed_rssm/seed_101/continuous_rssm/model.pt
           evaluation_protocol: physics_in_loop
+          baseline_handover_mode: open_loop
+          episodes_evaluated: 50
+          overall_metrics:
+            grasp_success_rate_pct: 8.0
+            terminal_placement_accuracy_cm: 1.2002819275856018
+            placement_accuracy_std_cm: 0.5980547321361083
+            terminal_error_cm: 2.7627756690979
+            terminal_error_std_cm: 1.3512200627382058
+            mppi_inference_latency_ms: 46.96506567598321
+            mean_joint_accel_rad_s2: 0.020170155689120294
+            std_joint_accel_rad_s2: 0.004630519878358685
+            mean_joint_jerk_rad_s3: 0.021006639190018175
+            std_joint_jerk_rad_s3: 0.0047702734702861245
+            mean_direction_flips: 36.08
+            std_direction_flips: 9.397531590795532
+          handover_telemetry:
+            episodes_evaluated: 50
+            triggered_episodes: 0
+            episodes_with_w_gt_0_pct: 0.0
+            total_phi1_steps: 400
+            triggered_phi1_steps: 0
+            phi1_steps_with_w_gt_0_pct: 0.0
+            mean_nonzero_w: 0.0
+        2024:
+          checkpoint: results/multiseed_rssm/seed_2024/continuous_rssm/model.pt
+          evaluation_protocol: physics_in_loop
+          baseline_handover_mode: open_loop
+          episodes_evaluated: 50
+          overall_metrics:
+            grasp_success_rate_pct: 22.0
+            terminal_placement_accuracy_cm: 1.2028097200393677
+            placement_accuracy_std_cm: 0.6313406366226356
+            terminal_error_cm: 2.661212035417557
+            terminal_error_std_cm: 1.5630930624192183
+            mppi_inference_latency_ms: 46.66813391413238
+            mean_joint_accel_rad_s2: 0.019906664695590735
+            std_joint_accel_rad_s2: 0.005206586521354414
+            mean_joint_jerk_rad_s3: 0.021217364389449357
+            std_joint_jerk_rad_s3: 0.004626785958574825
+            mean_direction_flips: 38.26
+            std_direction_flips: 8.62278377323704
+          handover_telemetry:
+            episodes_evaluated: 50
+            triggered_episodes: 0
+            episodes_with_w_gt_0_pct: 0.0
+            total_phi1_steps: 400
+            triggered_phi1_steps: 0
+            phi1_steps_with_w_gt_0_pct: 0.0
+            mean_nonzero_w: 0.0
+      handover_telemetry_3seed: {episodes_with_w_gt_0_pct:[0.0,0.0],phi1_steps_with_w_gt_0_pct:[0.0,0.0],mean_nonzero_w_when_active:0.0}
+    rssm_ungated:
+      mean_std:
+        grasp_success_rate_pct: [0.0,0.0]
+        terminal_placement_accuracy_cm: [1.425072744091352,0.03429525285538392]
+        terminal_error_cm: [25.49343025525411,1.3050838203645958]
+        mean_joint_accel_rad_s2: [0.03153110054632028,0.0006715274430858012]
+        mean_joint_jerk_rad_s3: [0.029558277900020278,0.0004172700652986988]
+        mean_direction_flips: [36.49333333333333,0.7757147241952662]
+        mppi_inference_latency_ms: [46.936845150350116,0.33605994404428824]
+      per_seed:
+        42:
+          checkpoint: results/baselines/continuous_rssm/model.pt
+          evaluation_protocol: physics_in_loop
+          baseline_handover_mode: ungated
+          episodes_evaluated: 50
+          overall_metrics:
+            grasp_success_rate_pct: 0.0
+            terminal_placement_accuracy_cm: 1.456915372610092
+            placement_accuracy_std_cm: 0.888517029752088
+            terminal_error_cm: 24.710977087020876
+            terminal_error_std_cm: 10.710275307660488
+            mppi_inference_latency_ms: 46.55402094512669
+            mean_joint_accel_rad_s2: 0.0310553040727973
+            std_joint_accel_rad_s2: 0.006334347208369975
+            mean_joint_jerk_rad_s3: 0.02920039013028145
+            std_joint_jerk_rad_s3: 0.004958710804918712
+            mean_direction_flips: 36.16
+            std_direction_flips: 9.016340721157336
+          handover_telemetry:
+            episodes_evaluated: 50
+            triggered_episodes: 50
+            episodes_with_w_gt_0_pct: 100.0
+            total_phi1_steps: 400
+            triggered_phi1_steps: 400
+            phi1_steps_with_w_gt_0_pct: 100.0
+            mean_nonzero_w: 1.0
+        101:
+          checkpoint: results/multiseed_rssm/seed_101/continuous_rssm/model.pt
+          evaluation_protocol: physics_in_loop
+          baseline_handover_mode: ungated
+          episodes_evaluated: 50
+          overall_metrics:
+            grasp_success_rate_pct: 0.0
+            terminal_placement_accuracy_cm: 1.3887627166509628
+            placement_accuracy_std_cm: 0.7836427217228974
+            terminal_error_cm: 27.000035276412962
+            terminal_error_std_cm: 11.571441732882644
+            mppi_inference_latency_ms: 47.07329811439202
+            mean_joint_accel_rad_s2: 0.03229924626648426
+            std_joint_accel_rad_s2: 0.006498370430261997
+            mean_joint_jerk_rad_s3: 0.030016598887741566
+            std_joint_jerk_rad_s3: 0.005532750884270267
+            mean_direction_flips: 35.94
+            std_direction_flips: 8.951893654417482
+          handover_telemetry:
+            episodes_evaluated: 50
+            triggered_episodes: 50
+            episodes_with_w_gt_0_pct: 100.0
+            total_phi1_steps: 400
+            triggered_phi1_steps: 400
+            phi1_steps_with_w_gt_0_pct: 100.0
+            mean_nonzero_w: 1.0
+        2024:
+          checkpoint: results/multiseed_rssm/seed_2024/continuous_rssm/model.pt
+          evaluation_protocol: physics_in_loop
+          baseline_handover_mode: ungated
+          episodes_evaluated: 50
+          overall_metrics:
+            grasp_success_rate_pct: 0.0
+            terminal_placement_accuracy_cm: 1.4295401430130006
+            placement_accuracy_std_cm: 0.8761971421556884
+            terminal_error_cm: 24.769278402328492
+            terminal_error_std_cm: 10.309742604307631
+            mppi_inference_latency_ms: 47.18321639153165
+            mean_joint_accel_rad_s2: 0.03123875129967928
+            std_joint_accel_rad_s2: 0.007419252910420967
+            mean_joint_jerk_rad_s3: 0.02945784468203783
+            std_joint_jerk_rad_s3: 0.006067063371662604
+            mean_direction_flips: 37.38
+            std_direction_flips: 8.66
+          handover_telemetry:
+            episodes_evaluated: 50
+            triggered_episodes: 50
+            episodes_with_w_gt_0_pct: 100.0
+            total_phi1_steps: 400
+            triggered_phi1_steps: 400
+            phi1_steps_with_w_gt_0_pct: 100.0
+            mean_nonzero_w: 1.0
+      handover_telemetry_3seed: {episodes_with_w_gt_0_pct:[100.0,0.0],phi1_steps_with_w_gt_0_pct:[100.0,0.0],mean_nonzero_w_when_active:1.0}
+    rssm_residual_gated:
+      mean_std:
+        grasp_success_rate_pct: [15.333333333333334,5.033222956847166]
+        terminal_placement_accuracy_cm: [1.233093837896983,0.046829598001233756]
+        terminal_error_cm: [2.7240475718180335,0.10990075377541059]
+        mean_joint_accel_rad_s2: [0.020493890543778735,0.0006706944714435922]
+        mean_joint_jerk_rad_s3: [0.021609529219567773,0.0005316353717258448]
+        mean_direction_flips: [36.940000000000005,1.2257242756835658]
+        mppi_inference_latency_ms: [46.472593615331895,0.1711331627137406]
+      per_seed:
+        42:
+          checkpoint: results/baselines/continuous_rssm/model.pt
+          evaluation_protocol: physics_in_loop
+          baseline_handover_mode: residual_gated
+          episodes_evaluated: 50
+          overall_metrics:
+            grasp_success_rate_pct: 16.0
+            terminal_placement_accuracy_cm: 1.2852557504177093
+            placement_accuracy_std_cm: 0.6163579389948347
+            terminal_error_cm: 2.8026852571964262
+            terminal_error_std_cm: 1.250732118205452
+            mppi_inference_latency_ms: 46.27922801228423
+            mean_joint_accel_rad_s2: 0.02125625854358077
+            std_joint_accel_rad_s2: 0.0052680983475184295
+            mean_joint_jerk_rad_s3: 0.02221311992034316
+            std_joint_jerk_rad_s3: 0.004852316653278585
+            mean_direction_flips: 36.42
+            std_direction_flips: 8.913113933973918
+          handover_telemetry:
+            episodes_evaluated: 50
+            triggered_episodes: 9
+            episodes_with_w_gt_0_pct: 18.0
+            total_phi1_steps: 400
+            triggered_phi1_steps: 9
+            phi1_steps_with_w_gt_0_pct: 2.25
+            mean_nonzero_w: 0.18157258285416497
+        101:
+          checkpoint: results/multiseed_rssm/seed_101/continuous_rssm/model.pt
+          evaluation_protocol: physics_in_loop
+          baseline_handover_mode: residual_gated
           episodes_evaluated: 50
           overall_metrics:
             grasp_success_rate_pct: 10.0
-            terminal_placement_accuracy_cm: 1.29654419362545
-            placement_accuracy_std_cm: 0.7349282199575204
-            terminal_error_cm: 2.7971750795841217
-            terminal_error_std_cm: 1.2842201852756545
-            mppi_inference_latency_ms: 53.87979782665941
-            mean_joint_accel_rad_s2: 0.02003674639388919
-            std_joint_accel_rad_s2: 0.005475541541558765
-            mean_joint_jerk_rad_s3: 0.020382691603153945
-            std_joint_jerk_rad_s3: 0.0051559219643164565
-            mean_direction_flips: 35.16
-            std_direction_flips: 8.398476052237097
+            terminal_placement_accuracy_cm: 1.2193563985824585
+            placement_accuracy_std_cm: 0.6733557358778788
+            terminal_error_cm: 2.770985679626465
+            terminal_error_std_cm: 1.329820118983065
+            mppi_inference_latency_ms: 46.53400791747006
+            mean_joint_accel_rad_s2: 0.02023072073236108
+            std_joint_accel_rad_s2: 0.004711884963105292
+            mean_joint_jerk_rad_s3: 0.021210806742310524
+            std_joint_jerk_rad_s3: 0.00497133476627864
+            mean_direction_flips: 36.06
+            std_direction_flips: 9.491912346835068
+          handover_telemetry:
+            episodes_evaluated: 50
+            triggered_episodes: 20
+            episodes_with_w_gt_0_pct: 40.0
+            total_phi1_steps: 400
+            triggered_phi1_steps: 27
+            phi1_steps_with_w_gt_0_pct: 6.75
+            mean_nonzero_w: 0.22636996290198078
+        2024:
+          checkpoint: results/multiseed_rssm/seed_2024/continuous_rssm/model.pt
+          evaluation_protocol: physics_in_loop
+          baseline_handover_mode: residual_gated
+          episodes_evaluated: 50
+          overall_metrics:
+            grasp_success_rate_pct: 20.0
+            terminal_placement_accuracy_cm: 1.1946693646907807
+            placement_accuracy_std_cm: 0.6255705025940155
+            terminal_error_cm: 2.59847177863121
+            terminal_error_std_cm: 1.4417185983615668
+            mppi_inference_latency_ms: 46.604544916241395
+            mean_joint_accel_rad_s2: 0.019994692355394365
+            std_joint_accel_rad_s2: 0.005334068808050576
+            mean_joint_jerk_rad_s3: 0.02140466099604964
+            std_joint_jerk_rad_s3: 0.0048616737052424785
+            mean_direction_flips: 38.34
+            std_direction_flips: 8.564134515524614
+          handover_telemetry:
+            episodes_evaluated: 50
+            triggered_episodes: 17
+            episodes_with_w_gt_0_pct: 34.0
+            total_phi1_steps: 400
+            triggered_phi1_steps: 24
+            phi1_steps_with_w_gt_0_pct: 6.0
+            mean_nonzero_w: 0.21099277816712858
+      handover_telemetry_3seed:
+        episodes_with_w_gt_0_pct: [30.666666666666668,11.372481406154654]
+        phi1_steps_with_w_gt_0_pct: [5.0,2.4109126902482387]
+        mean_nonzero_w_when_active: 0.20631177464109143
+    deep_gru_open_loop:
+      mean_std:
+        grasp_success_rate_pct: [77.33333333333333,4.163331998932265]
+        terminal_placement_accuracy_cm: [1.142497578263283,0.31404892460065076]
+        terminal_error_cm: [1.8994051045179365,0.17642912388300128]
+        mean_joint_accel_rad_s2: [0.004498507350217551,0.00012105405328595289]
+        mean_joint_jerk_rad_s3: [0.002675323402121042,0.00018613435682786266]
+        mean_direction_flips: [10.793333333333331,0.6331929669013493]
+        mppi_inference_latency_ms: [57.845663712604754,0.2935253213907278]
+      per_seed:
+        42:
+          checkpoint: results/baselines/deep_gru/model.pt
+          evaluation_protocol: physics_in_loop
+          baseline_handover_mode: open_loop
+          episodes_evaluated: 50
+          overall_metrics:
+            grasp_success_rate_pct: 82.0
+            terminal_placement_accuracy_cm: 0.8277105885744095
+            placement_accuracy_std_cm: 0.619948305625996
+            terminal_error_cm: 1.7091500055789948
+            terminal_error_std_cm: 0.8538347073403084
+            mppi_inference_latency_ms: 57.99607291789624
+            mean_joint_accel_rad_s2: 0.004467548907268792
+            std_joint_accel_rad_s2: 0.0025332651658058424
+            mean_joint_jerk_rad_s3: 0.002733891133684665
+            std_joint_jerk_rad_s3: 0.0015915138679954569
+            mean_direction_flips: 11.52
+            std_direction_flips: 4.00119982005398
+          handover_telemetry:
+            episodes_evaluated: 50
+            triggered_episodes: 0
+            episodes_with_w_gt_0_pct: 0.0
+            total_phi1_steps: 400
+            triggered_phi1_steps: 0
+            phi1_steps_with_w_gt_0_pct: 0.0
+            mean_nonzero_w: 0.0
+        101:
+          checkpoint: results/multiseed_rssm/seed_101/deep_gru/model.pt
+          evaluation_protocol: physics_in_loop
+          baseline_handover_mode: open_loop
+          episodes_evaluated: 50
+          overall_metrics:
+            grasp_success_rate_pct: 74.0
+            terminal_placement_accuracy_cm: 1.143978949189186
+            placement_accuracy_std_cm: 1.0157706090458067
+            terminal_error_cm: 2.0576158034801484
+            terminal_error_std_cm: 2.307079695708016
+            mppi_inference_latency_ms: 57.50741934581636
+            mean_joint_accel_rad_s2: 0.004632034294772893
+            std_joint_accel_rad_s2: 0.0036805739683259996
+            mean_joint_jerk_rad_s3: 0.0028251299168914556
+            std_joint_jerk_rad_s3: 0.002693590173884474
+            mean_direction_flips: 10.5
+            std_direction_flips: 5.99749947894954
           handover_telemetry:
             episodes_evaluated: 50
             triggered_episodes: 0
@@ -2380,146 +3663,447 @@ corl_final_verification:
             phi1_steps_with_w_gt_0_pct: 0.0
             mean_nonzero_w: 0.0
         2024:
-          checkpoint: results/multiseed_rssm/seed_2024/continuous_rssm/model.pt
+          checkpoint: results/multiseed_rssm/seed_2024/deep_gru/model.pt
           evaluation_protocol: physics_in_loop
+          baseline_handover_mode: open_loop
+          episodes_evaluated: 50
+          overall_metrics:
+            grasp_success_rate_pct: 76.0
+            terminal_placement_accuracy_cm: 1.4558031970262528
+            placement_accuracy_std_cm: 1.0356276483254638
+            terminal_error_cm: 1.9314495044946671
+            terminal_error_std_cm: 1.4135605930042352
+            mppi_inference_latency_ms: 58.03349887410164
+            mean_joint_accel_rad_s2: 0.004395938848610967
+            std_joint_accel_rad_s2: 0.0036332558167753008
+            mean_joint_jerk_rad_s3: 0.002466949155787006
+            std_joint_jerk_rad_s3: 0.002610848934958039
+            mean_direction_flips: 10.36
+            std_direction_flips: 4.353205715332093
+          handover_telemetry:
+            episodes_evaluated: 50
+            triggered_episodes: 0
+            episodes_with_w_gt_0_pct: 0.0
+            total_phi1_steps: 400
+            triggered_phi1_steps: 0
+            phi1_steps_with_w_gt_0_pct: 0.0
+            mean_nonzero_w: 0.0
+      handover_telemetry_3seed: {episodes_with_w_gt_0_pct:[0.0,0.0],phi1_steps_with_w_gt_0_pct:[0.0,0.0],mean_nonzero_w_when_active:0.0}
+    deep_gru_ungated:
+      mean_std:
+        grasp_success_rate_pct: [0.0,0.0]
+        terminal_placement_accuracy_cm: [1.4674344965815544,0.5106457690318531]
+        terminal_error_cm: [7.351427071889241,1.3439473080339845]
+        mean_joint_accel_rad_s2: [0.006980255008675158,0.00042445948743814776]
+        mean_joint_jerk_rad_s3: [0.004832257371939098,0.00042073079965799826]
+        mean_direction_flips: [15.079999999999998,0.647147587494537]
+        mppi_inference_latency_ms: [57.07348911329685,0.5185482382876814]
+      per_seed:
+        42:
+          checkpoint: results/baselines/deep_gru/model.pt
+          evaluation_protocol: physics_in_loop
+          baseline_handover_mode: ungated
+          episodes_evaluated: 50
+          overall_metrics:
+            grasp_success_rate_pct: 0.0
+            terminal_placement_accuracy_cm: 0.9433116026222705
+            placement_accuracy_std_cm: 0.7225897143886602
+            terminal_error_cm: 6.630777020454406
+            terminal_error_std_cm: 4.461640380623032
+            mppi_inference_latency_ms: 57.61593215447252
+            mean_joint_accel_rad_s2: 0.0069884296925738455
+            std_joint_accel_rad_s2: 0.004147339068371963
+            mean_joint_jerk_rad_s3: 0.004795440048910677
+            std_joint_jerk_rad_s3: 0.002581380012349003
+            mean_direction_flips: 15.54
+            std_direction_flips: 4.205757957847788
+          handover_telemetry:
+            episodes_evaluated: 50
+            triggered_episodes: 50
+            episodes_with_w_gt_0_pct: 100.0
+            total_phi1_steps: 400
+            triggered_phi1_steps: 400
+            phi1_steps_with_w_gt_0_pct: 100.0
+            mean_nonzero_w: 1.0
+        101:
+          checkpoint: results/multiseed_rssm/seed_101/deep_gru/model.pt
+          evaluation_protocol: physics_in_loop
+          baseline_handover_mode: ungated
+          episodes_evaluated: 50
+          overall_metrics:
+            grasp_success_rate_pct: 0.0
+            terminal_placement_accuracy_cm: 1.4955504468083383
+            placement_accuracy_std_cm: 0.974366769362752
+            terminal_error_cm: 8.90200080871582
+            terminal_error_std_cm: 3.847520169336552
+            mppi_inference_latency_ms: 56.582702259057896
+            mean_joint_accel_rad_s2: 0.0074005681113339964
+            std_joint_accel_rad_s2: 0.005858706618872085
+            mean_joint_jerk_rad_s3: 0.005270186914131046
+            std_joint_jerk_rad_s3: 0.004484711997640233
+            mean_direction_flips: 15.36
+            std_direction_flips: 5.172078885709305
+          handover_telemetry:
+            episodes_evaluated: 50
+            triggered_episodes: 50
+            episodes_with_w_gt_0_pct: 100.0
+            total_phi1_steps: 400
+            triggered_phi1_steps: 400
+            phi1_steps_with_w_gt_0_pct: 100.0
+            mean_nonzero_w: 1.0
+        2024:
+          checkpoint: results/multiseed_rssm/seed_2024/deep_gru/model.pt
+          evaluation_protocol: physics_in_loop
+          baseline_handover_mode: ungated
+          episodes_evaluated: 50
+          overall_metrics:
+            grasp_success_rate_pct: 0.0
+            terminal_placement_accuracy_cm: 1.9634414403140545
+            placement_accuracy_std_cm: 1.1926076903006835
+            terminal_error_cm: 6.521503386497497
+            terminal_error_std_cm: 2.9093178808336364
+            mppi_inference_latency_ms: 57.02183292636013
+            mean_joint_accel_rad_s2: 0.0065517672221176325
+            std_joint_accel_rad_s2: 0.005410815833356076
+            mean_joint_jerk_rad_s3: 0.004431145152775571
+            std_joint_jerk_rad_s3: 0.003884288999617533
+            mean_direction_flips: 14.34
+            std_direction_flips: 5.0541468122720765
+          handover_telemetry:
+            episodes_evaluated: 50
+            triggered_episodes: 50
+            episodes_with_w_gt_0_pct: 100.0
+            total_phi1_steps: 400
+            triggered_phi1_steps: 400
+            phi1_steps_with_w_gt_0_pct: 100.0
+            mean_nonzero_w: 1.0
+      handover_telemetry_3seed: {episodes_with_w_gt_0_pct:[100.0,0.0],phi1_steps_with_w_gt_0_pct:[100.0,0.0],mean_nonzero_w_when_active:1.0}
+    deep_gru_residual_gated:
+      mean_std:
+        grasp_success_rate_pct: [76.66666666666667,5.033222956847166]
+        terminal_placement_accuracy_cm: [1.142546683549881,0.3141746410639535]
+        terminal_error_cm: [1.9001078454653422,0.1792502651931432]
+        mean_joint_accel_rad_s2: [0.004493320606804143,0.0001224338129939779]
+        mean_joint_jerk_rad_s3: [0.0026687012903857978,0.0001826580482518807]
+        mean_direction_flips: [10.786666666666667,0.6057502235520298]
+        mppi_inference_latency_ms: [57.65735650555458,0.21359715146433306]
+      per_seed:
+        42:
+          checkpoint: results/baselines/deep_gru/model.pt
+          evaluation_protocol: physics_in_loop
+          baseline_handover_mode: residual_gated
+          episodes_evaluated: 50
+          overall_metrics:
+            grasp_success_rate_pct: 82.0
+            terminal_placement_accuracy_cm: 0.8276583582162857
+            placement_accuracy_std_cm: 0.6198663417549084
+            terminal_error_cm: 1.7074048507213593
+            terminal_error_std_cm: 0.8542619093890267
+            mppi_inference_latency_ms: 57.71581469443712
+            mean_joint_accel_rad_s2: 0.004455102609936148
+            std_joint_accel_rad_s2: 0.002510365616416541
+            mean_joint_jerk_rad_s3: 0.0027215255866758527
+            std_joint_jerk_rad_s3: 0.0015617256914884875
+            mean_direction_flips: 11.48
+            std_direction_flips: 3.9255063367672713
+          handover_telemetry:
+            episodes_evaluated: 50
+            triggered_episodes: 5
+            episodes_with_w_gt_0_pct: 10.0
+            total_phi1_steps: 400
+            triggered_phi1_steps: 8
+            phi1_steps_with_w_gt_0_pct: 2.0
+            mean_nonzero_w: 0.09825952008366584
+        101:
+          checkpoint: results/multiseed_rssm/seed_101/deep_gru/model.pt
+          evaluation_protocol: physics_in_loop
+          baseline_handover_mode: residual_gated
+          episodes_evaluated: 50
+          overall_metrics:
+            grasp_success_rate_pct: 72.0
+            terminal_placement_accuracy_cm: 1.143978949189186
+            placement_accuracy_std_cm: 1.0157706090458067
+            terminal_error_cm: 2.06187970995903
+            terminal_error_std_cm: 2.30758448331492
+            mppi_inference_latency_ms: 57.83563818969626
+            mean_joint_accel_rad_s2: 0.004630304866004735
+            std_joint_accel_rad_s2: 0.0036767455708153303
+            mean_joint_jerk_rad_s3: 0.002819125670939684
+            std_joint_jerk_rad_s3: 0.0026801469632155425
+            mean_direction_flips: 10.52
+            std_direction_flips: 6.067091560212356
+          handover_telemetry:
+            episodes_evaluated: 50
+            triggered_episodes: 2
+            episodes_with_w_gt_0_pct: 4.0
+            total_phi1_steps: 400
+            triggered_phi1_steps: 2
+            phi1_steps_with_w_gt_0_pct: 0.5
+            mean_nonzero_w: 0.04547070369124412
+        2024:
+          checkpoint: results/multiseed_rssm/seed_2024/deep_gru/model.pt
+          evaluation_protocol: physics_in_loop
+          baseline_handover_mode: residual_gated
+          episodes_evaluated: 50
+          overall_metrics:
+            grasp_success_rate_pct: 76.0
+            terminal_placement_accuracy_cm: 1.4560027432441711
+            placement_accuracy_std_cm: 1.0354441619455195
+            terminal_error_cm: 1.9310389757156372
+            terminal_error_std_cm: 1.4129652875940601
+            mppi_inference_latency_ms: 57.42061663253034
+            mean_joint_accel_rad_s2: 0.004394554344471544
+            std_joint_accel_rad_s2: 0.003631740816377271
+            mean_joint_jerk_rad_s3: 0.0024654526135418566
+            std_joint_jerk_rad_s3: 0.0026099877867713536
+            mean_direction_flips: 10.36
+            std_direction_flips: 4.353205715332093
+          handover_telemetry:
+            episodes_evaluated: 50
+            triggered_episodes: 2
+            episodes_with_w_gt_0_pct: 4.0
+            total_phi1_steps: 400
+            triggered_phi1_steps: 2
+            phi1_steps_with_w_gt_0_pct: 0.5
+            mean_nonzero_w: 0.01992271870374679
+      handover_telemetry_3seed: {episodes_with_w_gt_0_pct:[6.0,3.4641016151377544],phi1_steps_with_w_gt_0_pct:[1.0,0.8660254037844386],mean_nonzero_w_when_active:0.05455098082621892}
+  disentangled_ablation_3seed (5 items):
+    - [0]
+      mean_std:
+        grasp_success_rate_pct: [45.333333333333336,16.041612554021285]
+        terminal_placement_accuracy_cm: [1.026371354262034,0.21267911327447728]
+        terminal_error_cm: [2.502900831302007,0.10674231587914605]
+        mean_joint_accel_rad_s2: [0.009831757796928286,0.002547908271341173]
+        mean_joint_jerk_rad_s3: [0.007646870988731583,0.002496011682578312]
+        mean_direction_flips: [23.03333333333333,6.83585644475755]
+        mppi_inference_latency_ms: [26.607863672024582,0.31494921572578505]
+      per_seed:
+        42:
+          checkpoint: results/spwm_v0_12_4_train_m1/checkpoint_phase_1.pt
+          evaluation_protocol: physics_in_loop
+          baseline_handover_mode: open_loop
+          episodes_evaluated: 50
+          overall_metrics:
+            grasp_success_rate_pct: 62.0
+            terminal_placement_accuracy_cm: 1.270518583357334
+            placement_accuracy_std_cm: 1.1433059847844562
+            terminal_error_cm: 2.51325437605381
+            terminal_error_std_cm: 1.591850890790287
+            mppi_inference_latency_ms: 26.800422591444175
+            mean_joint_accel_rad_s2: 0.007099576396867633
+            std_joint_accel_rad_s2: 0.001774520067574007
+            mean_joint_jerk_rad_s3: 0.004990413328632712
+            std_joint_jerk_rad_s3: 0.0013068799665881348
+            mean_direction_flips: 16.04
+            std_direction_flips: 8.304119459641703
+          handover_telemetry:
+            episodes_evaluated: 50
+            triggered_episodes: 0
+            episodes_with_w_gt_0_pct: 0.0
+            total_phi1_steps: 400
+            triggered_phi1_steps: 0
+            phi1_steps_with_w_gt_0_pct: 0.0
+            mean_nonzero_w: 0.0
+        101:
+          checkpoint: results/multiseed/seed_101_m1/checkpoint_phase_1.pt
+          evaluation_protocol: physics_in_loop
+          baseline_handover_mode: open_loop
+          episodes_evaluated: 50
+          overall_metrics:
+            grasp_success_rate_pct: 44.0
+            terminal_placement_accuracy_cm: 0.8813520839810371
+            placement_accuracy_std_cm: 0.6318976317589341
+            terminal_error_cm: 2.391359003186226
+            terminal_error_std_cm: 1.2452452117898576
+            mppi_inference_latency_ms: 26.778761691530867
+            mean_joint_accel_rad_s2: 0.012142954394221306
+            std_joint_accel_rad_s2: 0.004002151102285214
+            mean_joint_jerk_rad_s3: 0.009943345058709384
+            std_joint_jerk_rad_s3: 0.0026217121504472653
+            mean_direction_flips: 29.7
+            std_direction_flips: 7.1449282711585
+          handover_telemetry:
+            episodes_evaluated: 50
+            triggered_episodes: 0
+            episodes_with_w_gt_0_pct: 0.0
+            total_phi1_steps: 400
+            triggered_phi1_steps: 0
+            phi1_steps_with_w_gt_0_pct: 0.0
+            mean_nonzero_w: 0.0
+        2024:
+          checkpoint: results/multiseed/seed_2024_m1/checkpoint_phase_1.pt
+          evaluation_protocol: physics_in_loop
+          baseline_handover_mode: open_loop
+          episodes_evaluated: 50
+          overall_metrics:
+            grasp_success_rate_pct: 30.0
+            terminal_placement_accuracy_cm: 0.927243395447731
+            placement_accuracy_std_cm: 0.6572480428206486
+            terminal_error_cm: 2.6040891146659852
+            terminal_error_std_cm: 1.6592857961072656
+            mppi_inference_latency_ms: 26.244406733098714
+            mean_joint_accel_rad_s2: 0.01025274259969592
+            std_joint_accel_rad_s2: 0.003239719861131902
+            mean_joint_jerk_rad_s3: 0.008006854578852654
+            std_joint_jerk_rad_s3: 0.002396611082899919
+            mean_direction_flips: 23.36
+            std_direction_flips: 6.314301228164522
+          handover_telemetry:
+            episodes_evaluated: 50
+            triggered_episodes: 0
+            episodes_with_w_gt_0_pct: 0.0
+            total_phi1_steps: 400
+            triggered_phi1_steps: 0
+            phi1_steps_with_w_gt_0_pct: 0.0
+            mean_nonzero_w: 0.0
+      handover_telemetry_3seed: {episodes_with_w_gt_0_pct:[0.0,0.0],phi1_steps_with_w_gt_0_pct:[0.0,0.0],mean_nonzero_w_when_active:0.0}
+      label: 1. SPWM-Base (Phase 1 Warmup, Unsmoothed)
+      bold: false
+    - [1]
+      mean_std:
+        grasp_success_rate_pct: [51.333333333333336,9.451631252505216]
+        terminal_placement_accuracy_cm: [1.0174584152301154,0.07739428773724741]
+        terminal_error_cm: [2.413362322449684,0.131995777812547]
+        mean_joint_accel_rad_s2: [0.009906536138926942,0.0024003560204176517]
+        mean_joint_jerk_rad_s3: [0.007045794217847287,0.002429997855850162]
+        mean_direction_flips: [21.993333333333336,6.660010010002488]
+        mppi_inference_latency_ms: [27.186699187828037,0.15842402005752645]
+      per_seed:
+        42:
+          checkpoint: results/spwm_v0_12_4_train_m1/checkpoint_phase_1.pt
+          evaluation_protocol: physics_in_loop
+          baseline_handover_mode: open_loop
+          episodes_evaluated: 50
+          overall_metrics:
+            grasp_success_rate_pct: 62.0
+            terminal_placement_accuracy_cm: 1.088925544321537
+            placement_accuracy_std_cm: 0.9806278517950008
+            terminal_error_cm: 2.2633657586574554
+            terminal_error_std_cm: 1.7920521176335729
+            mppi_inference_latency_ms: 27.004514395112366
+            mean_joint_accel_rad_s2: 0.00728669355623424
+            std_joint_accel_rad_s2: 0.001994464166249948
+            mean_joint_jerk_rad_s3: 0.004507547407411039
+            std_joint_jerk_rad_s3: 0.001292394719881764
+            mean_direction_flips: 15.34
+            std_direction_flips: 7.783598139678076
+          handover_telemetry:
+            episodes_evaluated: 50
+            triggered_episodes: 0
+            episodes_with_w_gt_0_pct: 0.0
+            total_phi1_steps: 400
+            triggered_phi1_steps: 0
+            phi1_steps_with_w_gt_0_pct: 0.0
+            mean_nonzero_w: 0.0
+        101:
+          checkpoint: results/multiseed/seed_101_m1/checkpoint_phase_1.pt
+          evaluation_protocol: physics_in_loop
+          baseline_handover_mode: open_loop
+          episodes_evaluated: 50
+          overall_metrics:
+            grasp_success_rate_pct: 44.0
+            terminal_placement_accuracy_cm: 0.9352575194835663
+            placement_accuracy_std_cm: 0.6859384826701114
+            terminal_error_cm: 2.464937143921852
+            terminal_error_std_cm: 1.2342414829049078
+            mppi_inference_latency_ms: 27.26348437940824
+            mean_joint_accel_rad_s2: 0.012000056598335505
+            std_joint_accel_rad_s2: 0.0037190684706323927
+            mean_joint_jerk_rad_s3: 0.009350710520520807
+            std_joint_jerk_rad_s3: 0.002442366979561876
+            mean_direction_flips: 28.66
+            std_direction_flips: 8.320120191439544
+          handover_telemetry:
+            episodes_evaluated: 50
+            triggered_episodes: 0
+            episodes_with_w_gt_0_pct: 0.0
+            total_phi1_steps: 400
+            triggered_phi1_steps: 0
+            phi1_steps_with_w_gt_0_pct: 0.0
+            mean_nonzero_w: 0.0
+        2024:
+          checkpoint: results/multiseed/seed_2024_m1/checkpoint_phase_1.pt
+          evaluation_protocol: physics_in_loop
+          baseline_handover_mode: open_loop
+          episodes_evaluated: 50
+          overall_metrics:
+            grasp_success_rate_pct: 48.0
+            terminal_placement_accuracy_cm: 1.0281921818852424
+            placement_accuracy_std_cm: 0.6377036954563536
+            terminal_error_cm: 2.5117840647697447
+            terminal_error_std_cm: 1.6509070359593174
+            mppi_inference_latency_ms: 27.2920987889635
+            mean_joint_accel_rad_s2: 0.010432858262211084
+            std_joint_accel_rad_s2: 0.003465216091106268
+            mean_joint_jerk_rad_s3: 0.007279124725610018
+            std_joint_jerk_rad_s3: 0.0022355287885564954
+            mean_direction_flips: 21.98
+            std_direction_flips: 5.948075318958226
+          handover_telemetry:
+            episodes_evaluated: 50
+            triggered_episodes: 0
+            episodes_with_w_gt_0_pct: 0.0
+            total_phi1_steps: 400
+            triggered_phi1_steps: 0
+            phi1_steps_with_w_gt_0_pct: 0.0
+            mean_nonzero_w: 0.0
+      handover_telemetry_3seed: {episodes_with_w_gt_0_pct:[0.0,0.0],phi1_steps_with_w_gt_0_pct:[0.0,0.0],mean_nonzero_w_when_active:0.0}
+      label: 2. + Smooth MPPI Controls (Pre-DAgger)
+      bold: false
+    - [2]
+      mean_std:
+        grasp_success_rate_pct: [38.0,19.078784028338916]
+        terminal_placement_accuracy_cm: [1.5255670695503554,0.5931443681847731]
+        terminal_error_cm: [3.2744056106607116,1.1318006892038883]
+        mean_joint_accel_rad_s2: [0.0058877142627413075,0.0008819400178644788]
+        mean_joint_jerk_rad_s3: [0.0035392556875012814,0.0008280183162976543]
+        mean_direction_flips: [11.166666666666666,0.6463229326995401]
+        mppi_inference_latency_ms: [27.422173555313975,0.18268943009863092]
+      per_seed:
+        42:
+          checkpoint: results/spwm_v0_12_4_train_m1/checkpoint_phase_4.pt
+          evaluation_protocol: physics_in_loop
+          baseline_handover_mode: open_loop
+          episodes_evaluated: 50
+          overall_metrics:
+            grasp_success_rate_pct: 56.00000000000001
+            terminal_placement_accuracy_cm: 1.1886036065220833
+            placement_accuracy_std_cm: 1.0840099983177816
+            terminal_error_cm: 2.372771575152874
+            terminal_error_std_cm: 1.4912734211279743
+            mppi_inference_latency_ms: 27.322396415769973
+            mean_joint_accel_rad_s2: 0.005483685848303139
+            std_joint_accel_rad_s2: 0.001604663932872117
+            mean_joint_jerk_rad_s3: 0.0030811078241094947
+            std_joint_jerk_rad_s3: 0.0007820425899183598
+            mean_direction_flips: 11.88
+            std_direction_flips: 5.891145898719535
+          handover_telemetry:
+            episodes_evaluated: 50
+            triggered_episodes: 0
+            episodes_with_w_gt_0_pct: 0.0
+            total_phi1_steps: 400
+            triggered_phi1_steps: 0
+            phi1_steps_with_w_gt_0_pct: 0.0
+            mean_nonzero_w: 0.0
+        101:
+          checkpoint: results/multiseed/seed_101_m1/checkpoint_phase_4.pt
+          evaluation_protocol: physics_in_loop
+          baseline_handover_mode: open_loop
           episodes_evaluated: 50
           overall_metrics:
             grasp_success_rate_pct: 18.0
-            terminal_placement_accuracy_cm: 1.3073084998130797
-            placement_accuracy_std_cm: 0.7205506123520404
-            terminal_error_cm: 2.8446370124816895
-            terminal_error_std_cm: 1.6639887935850126
-            mppi_inference_latency_ms: 49.71467904004407
-            mean_joint_accel_rad_s2: 0.019507871121168138
-            std_joint_accel_rad_s2: 0.0060982226813745795
-            mean_joint_jerk_rad_s3: 0.02047437949106097
-            std_joint_jerk_rad_s3: 0.0055033501945377225
-            mean_direction_flips: 37.06
-            std_direction_flips: 8.598627797503507
-          handover_telemetry:
-            episodes_evaluated: 50
-            triggered_episodes: 0
-            episodes_with_w_gt_0_pct: 0.0
-            total_phi1_steps: 400
-            triggered_phi1_steps: 0
-            phi1_steps_with_w_gt_0_pct: 0.0
-            mean_nonzero_w: 0.0
-    rssm_online:
-      mean_std:
-        grasp_success_rate_pct: [0.0,0.0]
-        terminal_placement_accuracy_cm: [1.5289842367172242,0.06375312364798832]
-        terminal_error_cm: [22.434701797167463,0.5797279333300245]
-        mean_joint_accel_rad_s2: [0.031191026711215573,0.0008520616038234162]
-        mean_joint_jerk_rad_s3: [0.02875449779753884,0.00014085841965964314]
-        mean_direction_flips: [36.126666666666665,0.4518111699961975]
-        mppi_inference_latency_ms: [35.14400501011499,0.7717180625877539]
-      per_seed:
-        42:
-          checkpoint: results/baselines/continuous_rssm/model.pt
-          evaluation_protocol: physics_in_loop
-          episodes_evaluated: 50
-          overall_metrics:
-            grasp_success_rate_pct: 0.0
-            terminal_placement_accuracy_cm: 1.4853565365076065
-            placement_accuracy_std_cm: 0.8072306821662141
-            terminal_error_cm: 23.064797267913818
-            terminal_error_std_cm: 10.191853322128246
-            mppi_inference_latency_ms: 35.43504671945729
-            mean_joint_accel_rad_s2: 0.031375364810228346
-            std_joint_accel_rad_s2: 0.007305338172597787
-            mean_joint_jerk_rad_s3: 0.02885244209319353
-            std_joint_jerk_rad_s3: 0.0060618628680671055
-            mean_direction_flips: 36.08
-            std_direction_flips: 8.728894546275605
-          handover_telemetry: null
-        101:
-          checkpoint: results/multiseed_rssm/seed_101/continuous_rssm/model.pt
-          evaluation_protocol: physics_in_loop
-          episodes_evaluated: 50
-          overall_metrics:
-            grasp_success_rate_pct: 0.0
-            terminal_placement_accuracy_cm: 1.6021491199731828
-            placement_accuracy_std_cm: 1.2447488731995244
-            terminal_error_cm: 22.315407094955443
-            terminal_error_std_cm: 10.553710423116314
-            mppi_inference_latency_ms: 35.727881036909295
-            mean_joint_accel_rad_s2: 0.03193583052605391
-            std_joint_accel_rad_s2: 0.008043311584610484
-            mean_joint_jerk_rad_s3: 0.028817981332540512
-            std_joint_jerk_rad_s3: 0.006339214528534832
-            mean_direction_flips: 35.7
-            std_direction_flips: 7.867019766086774
-          handover_telemetry: null
-        2024:
-          checkpoint: results/multiseed_rssm/seed_2024/continuous_rssm/model.pt
-          evaluation_protocol: physics_in_loop
-          episodes_evaluated: 50
-          overall_metrics:
-            grasp_success_rate_pct: 0.0
-            terminal_placement_accuracy_cm: 1.4994470536708833
-            placement_accuracy_std_cm: 0.9216384459318591
-            terminal_error_cm: 21.923901028633118
-            terminal_error_std_cm: 11.209971466939866
-            mppi_inference_latency_ms: 34.269087273978386
-            mean_joint_accel_rad_s2: 0.030261884797364472
-            std_joint_accel_rad_s2: 0.008483142166426698
-            mean_joint_jerk_rad_s3: 0.02859306996688247
-            std_joint_jerk_rad_s3: 0.006732266722885297
-            mean_direction_flips: 36.6
-            std_direction_flips: 8.12403840463596
-          handover_telemetry: null
-    deep_gru_open_loop:
-      mean_std:
-        grasp_success_rate_pct: [1.3333333333333333,2.3094010767585034]
-        terminal_placement_accuracy_cm: [10.56911430199941,7.8332178543025]
-        terminal_error_cm: [16.720466453234355,11.307909064116105]
-        mean_joint_accel_rad_s2: [0.007771262118282417,0.006861198470924401]
-        mean_joint_jerk_rad_s3: [0.006221064189837005,0.007792868260752681]
-        mean_direction_flips: [14.666666666666666,14.897212267177151]
-        mppi_inference_latency_ms: [67.4003965856917,1.6174098859533237]
-      per_seed:
-        42:
-          checkpoint: results/baselines/deep_gru/model.pt
-          evaluation_protocol: physics_in_loop
-          episodes_evaluated: 50
-          overall_metrics:
-            grasp_success_rate_pct: 4.0
-            terminal_placement_accuracy_cm: 1.676134810447693
-            placement_accuracy_std_cm: 0.8117443861694015
-            terminal_error_cm: 5.672766432762146
-            terminal_error_std_cm: 2.2391999765559203
-            mppi_inference_latency_ms: 65.53380835354476
-            mean_joint_accel_rad_s2: 0.015632247226312755
-            std_joint_accel_rad_s2: 0.004271736979986495
-            mean_joint_jerk_rad_s3: 0.015213804496452212
-            std_joint_jerk_rad_s3: 0.003654658887291699
-            mean_direction_flips: 31.64
-            std_direction_flips: 6.492333940887515
-          handover_telemetry:
-            episodes_evaluated: 50
-            triggered_episodes: 0
-            episodes_with_w_gt_0_pct: 0.0
-            total_phi1_steps: 400
-            triggered_phi1_steps: 0
-            phi1_steps_with_w_gt_0_pct: 0.0
-            mean_nonzero_w: 0.0
-        101:
-          checkpoint: results/multiseed_rssm/seed_101/deep_gru/model.pt
-          evaluation_protocol: physics_in_loop
-          episodes_evaluated: 50
-          overall_metrics:
-            grasp_success_rate_pct: 0.0
-            terminal_placement_accuracy_cm: 16.445809898376464
-            placement_accuracy_std_cm: 4.091952617443522
-            terminal_error_cm: 28.271757926940918
-            terminal_error_std_cm: 5.337323594145242
-            mppi_inference_latency_ms: 68.38755179985513
-            mean_joint_accel_rad_s2: 0.004695011512376368
-            std_joint_accel_rad_s2: 0.0019015618294956774
-            mean_joint_jerk_rad_s3: 0.0020017537102103235
-            std_joint_jerk_rad_s3: 0.0010274453240716615
-            mean_direction_flips: 8.6
-            std_direction_flips: 1.5231546211727816
+            terminal_placement_accuracy_cm: 1.1776555788516998
+            placement_accuracy_std_cm: 0.7053943270776382
+            terminal_error_cm: 4.544530171155929
+            terminal_error_std_cm: 2.1922424790505866
+            mppi_inference_latency_ms: 27.311099956586432
+            mean_joint_accel_rad_s2: 0.006899289446882903
+            std_joint_accel_rad_s2: 0.00269182361761365
+            mean_joint_jerk_rad_s3: 0.004495096248574555
+            std_joint_jerk_rad_s3: 0.0013739281474203257
+            mean_direction_flips: 11.0
+            std_direction_flips: 3.7202150475476548
           handover_telemetry:
             episodes_evaluated: 50
             triggered_episodes: 0
@@ -2529,22 +4113,23 @@ corl_final_verification:
             phi1_steps_with_w_gt_0_pct: 0.0
             mean_nonzero_w: 0.0
         2024:
-          checkpoint: results/multiseed_rssm/seed_2024/deep_gru/model.pt
+          checkpoint: results/multiseed/seed_2024_m1/checkpoint_phase_4.pt
           evaluation_protocol: physics_in_loop
+          baseline_handover_mode: open_loop
           episodes_evaluated: 50
           overall_metrics:
-            grasp_success_rate_pct: 0.0
-            terminal_placement_accuracy_cm: 13.585398197174072
-            placement_accuracy_std_cm: 4.602458838522156
-            terminal_error_cm: 16.216875
-            terminal_error_std_cm: 5.664685795497017
-            mppi_inference_latency_ms: 68.27982960367521
-            mean_joint_accel_rad_s2: 0.0029865276161581277
-            std_joint_accel_rad_s2: 0.0009849739567156495
-            mean_joint_jerk_rad_s3: 0.0014476343628484756
-            std_joint_jerk_rad_s3: 0.0007935315657924097
-            mean_direction_flips: 3.76
-            std_direction_flips: 1.3350655414622912
+            grasp_success_rate_pct: 40.0
+            terminal_placement_accuracy_cm: 2.210442023277283
+            placement_accuracy_std_cm: 1.5042453738644626
+            terminal_error_cm: 2.9059150856733322
+            terminal_error_std_cm: 1.5601189634804675
+            mppi_inference_latency_ms: 27.633024293585517
+            mean_joint_accel_rad_s2: 0.005280167493037879
+            std_joint_accel_rad_s2: 0.0019914505240249524
+            mean_joint_jerk_rad_s3: 0.003041562989819795
+            std_joint_jerk_rad_s3: 0.0010705033743340885
+            mean_direction_flips: 10.62
+            std_direction_flips: 3.6654604076432196
           handover_telemetry:
             episodes_evaluated: 50
             triggered_episodes: 0
@@ -2553,92 +4138,272 @@ corl_final_verification:
             triggered_phi1_steps: 0
             phi1_steps_with_w_gt_0_pct: 0.0
             mean_nonzero_w: 0.0
-    deep_gru_online:
+      handover_telemetry_3seed: {episodes_with_w_gt_0_pct:[0.0,0.0],phi1_steps_with_w_gt_0_pct:[0.0,0.0],mean_nonzero_w_when_active:0.0}
+      label: 3. + Phase 3/4 Curriculum (AR(1)+DAgger, No Lookahead/Handover)
+      bold: false
+    - [3]
       mean_std:
-        grasp_success_rate_pct: [0.0,0.0]
-        terminal_placement_accuracy_cm: [6.027755393187205,4.003672646431791]
-        terminal_error_cm: [10.87074866215388,3.973647019419447]
-        mean_joint_accel_rad_s2: [0.016541417293871444,0.009718487664175204]
-        mean_joint_jerk_rad_s3: [0.013497935300692918,0.009453182248594585]
-        mean_direction_flips: [19.673333333333336,10.000986617995913]
-        mppi_inference_latency_ms: [60.30913028220712,18.88364182181519]
+        grasp_success_rate_pct: [60.666666666666664,2.3094010767585074]
+        terminal_placement_accuracy_cm: [0.8798704931139946,0.10505539807183523]
+        terminal_error_cm: [2.006662103931109,0.11581144347528279]
+        mean_joint_accel_rad_s2: [0.009308865414932371,0.0034586698705177275]
+        mean_joint_jerk_rad_s3: [0.006634432549277941,0.003263484407032791]
+        mean_direction_flips: [21.14,8.549807015365904]
+        mppi_inference_latency_ms: [28.034092626839513,0.24046964122825348]
       per_seed:
         42:
-          checkpoint: results/baselines/deep_gru/model.pt
+          checkpoint: results/spwm_v0_12_4_train_m1/checkpoint_phase_4.pt
           evaluation_protocol: physics_in_loop
+          baseline_handover_mode: open_loop
           episodes_evaluated: 50
           overall_metrics:
-            grasp_success_rate_pct: 0.0
-            terminal_placement_accuracy_cm: 1.8828691363334655
-            placement_accuracy_std_cm: 0.9129360328992964
-            terminal_error_cm: 14.958965482711791
-            terminal_error_std_cm: 5.8198658353174295
-            mppi_inference_latency_ms: 39.408694524453786
-            mean_joint_accel_rad_s2: 0.02738728191703558
-            std_joint_accel_rad_s2: 0.0058359002251519515
-            mean_joint_jerk_rad_s3: 0.02424047663807869
-            std_joint_jerk_rad_s3: 0.005460746571514626
-            mean_direction_flips: 31.22
-            std_direction_flips: 6.394654017224075
-          handover_telemetry: null
+            grasp_success_rate_pct: 57.99999999999999
+            terminal_placement_accuracy_cm: 0.9966417002677918
+            placement_accuracy_std_cm: 0.7168366082198878
+            terminal_error_cm: 2.117010636925697
+            terminal_error_std_cm: 1.2261713068281301
+            mppi_inference_latency_ms: 27.770463703774798
+            mean_joint_accel_rad_s2: 0.005460824174806475
+            std_joint_accel_rad_s2: 0.0014449158194058374
+            mean_joint_jerk_rad_s3: 0.003033191980794072
+            std_joint_jerk_rad_s3: 0.0006583887773716086
+            mean_direction_flips: 11.82
+            std_direction_flips: 6.098163658020339
+          handover_telemetry:
+            episodes_evaluated: 50
+            triggered_episodes: 0
+            episodes_with_w_gt_0_pct: 0.0
+            total_phi1_steps: 400
+            triggered_phi1_steps: 0
+            phi1_steps_with_w_gt_0_pct: 0.0
+            mean_nonzero_w: 0.0
         101:
-          checkpoint: results/multiseed_rssm/seed_101/deep_gru/model.pt
+          checkpoint: results/multiseed/seed_101_m1/checkpoint_phase_1.pt
           evaluation_protocol: physics_in_loop
+          baseline_handover_mode: open_loop
           episodes_evaluated: 50
           overall_metrics:
-            grasp_success_rate_pct: 0.0
-            terminal_placement_accuracy_cm: 9.873425269126892
-            placement_accuracy_std_cm: 3.3191995640740144
-            terminal_error_cm: 10.630728125572205
-            terminal_error_std_cm: 4.086173291146598
-            mppi_inference_latency_ms: 65.37689822572655
-            mean_joint_accel_rad_s2: 0.013613363318145276
-            std_joint_accel_rad_s2: 0.00319403673953568
-            mean_joint_jerk_rad_s3: 0.009803270976990462
-            std_joint_jerk_rad_s3: 0.0019610861700191558
-            mean_direction_flips: 14.06
-            std_direction_flips: 1.7596590578859306
+            grasp_success_rate_pct: 62.0
+            terminal_placement_accuracy_cm: 0.8499453981220723
+            placement_accuracy_std_cm: 0.5894733005655424
+            terminal_error_cm: 2.0169071877002716
+            terminal_error_std_cm: 1.1516123596745238
+            mppi_inference_latency_ms: 28.09040548875141
+            mean_joint_accel_rad_s2: 0.012158537823706865
+            std_joint_accel_rad_s2: 0.0038326392576793562
+            mean_joint_jerk_rad_s3: 0.00939610967412591
+            std_joint_jerk_rad_s3: 0.0024506745164746524
+            mean_direction_flips: 28.62
+            std_direction_flips: 8.126229137798171
           handover_telemetry:
             episodes_evaluated: 50
-            triggered_episodes: 50
-            episodes_with_w_gt_0_pct: 100.0
+            triggered_episodes: 0
+            episodes_with_w_gt_0_pct: 0.0
             total_phi1_steps: 400
-            triggered_phi1_steps: 400
-            phi1_steps_with_w_gt_0_pct: 100.0
-            mean_nonzero_w: 1.0
+            triggered_phi1_steps: 0
+            phi1_steps_with_w_gt_0_pct: 0.0
+            mean_nonzero_w: 0.0
         2024:
-          checkpoint: results/multiseed_rssm/seed_2024/deep_gru/model.pt
+          checkpoint: results/multiseed/seed_2024_m1/checkpoint_phase_2.pt
           evaluation_protocol: physics_in_loop
+          baseline_handover_mode: open_loop
           episodes_evaluated: 50
           overall_metrics:
-            grasp_success_rate_pct: 0.0
-            terminal_placement_accuracy_cm: 6.326971774101257
-            placement_accuracy_std_cm: 3.9962240007220133
-            terminal_error_cm: 7.022552378177643
-            terminal_error_std_cm: 4.266232180960101
-            mppi_inference_latency_ms: 76.14179809644102
-            mean_joint_accel_rad_s2: 0.008623606646433473
-            std_joint_accel_rad_s2: 0.0019381415625095385
-            mean_joint_jerk_rad_s3: 0.0064500582870095965
-            std_joint_jerk_rad_s3: 0.0014334850317962446
-            mean_direction_flips: 13.74
-            std_direction_flips: 0.7952358140828417
+            grasp_success_rate_pct: 62.0
+            terminal_placement_accuracy_cm: 0.7930243809521198
+            placement_accuracy_std_cm: 0.5496822026263848
+            terminal_error_cm: 1.8860684871673583
+            terminal_error_std_cm: 1.187425109721587
+            mppi_inference_latency_ms: 28.241408687992333
+            mean_joint_accel_rad_s2: 0.01030723424628377
+            std_joint_accel_rad_s2: 0.003965905046145654
+            mean_joint_jerk_rad_s3: 0.007473995992913842
+            std_joint_jerk_rad_s3: 0.0027093614883279904
+            mean_direction_flips: 22.98
+            std_direction_flips: 5.540721974616666
           handover_telemetry:
             episodes_evaluated: 50
-            triggered_episodes: 50
-            episodes_with_w_gt_0_pct: 100.0
+            triggered_episodes: 0
+            episodes_with_w_gt_0_pct: 0.0
             total_phi1_steps: 400
-            triggered_phi1_steps: 400
-            phi1_steps_with_w_gt_0_pct: 100.0
-            mean_nonzero_w: 1.0
-  disentangled_ablation (5 rows):
-    |label|checkpoint|evaluation_protocol|overall_metrics|handover_telemetry|bold|
-    |---|---|---|---|---|---|
-    |1. SPWM-Base (Phase 1 Warmup, Unsmoothed MPPI)|results/spwm_v0_12_4_train_m1/checkpoint_phase_1.pt|physics_in_loop|{grasp_success_rate_pct:62.0,terminal_placement_accuracy_cm:1.270518583357334,placement_accuracy_std_cm:1.1433059847844562,terminal_error_cm:2.51325437605381,terminal_error_std_cm:1.591850890790287,mppi_inference_latency_ms:21.678928387231593,mean_joint_accel_rad_s2:0.007099576396867633,std_joint_accel_rad_s2:0.001774520067574007,mean_joint_jerk_rad_s3:0.004990413328632712,std_joint_jerk_rad_s3:0.0013068799665881348,mean_direction_flips:16.04,std_direction_flips:8.304119459641703}|null|false|
-    |2. + Smooth MPPI Controls|results/spwm_v0_12_4_train_m1/checkpoint_phase_1.pt|physics_in_loop|{grasp_success_rate_pct:62.0,terminal_placement_accuracy_cm:1.088925544321537,placement_accuracy_std_cm:0.9806278517950008,terminal_error_cm:2.2633657586574554,terminal_error_std_cm:1.7920521176335729,mppi_inference_latency_ms:22.35479484997801,mean_joint_accel_rad_s2:0.00728669355623424,std_joint_accel_rad_s2:0.001994464166249948,mean_joint_jerk_rad_s3:0.004507547407411039,std_joint_jerk_rad_s3:0.001292394719881764,mean_direction_flips:15.34,std_direction_flips:7.783598139678076}|null|false|
-    |3. + Phase 1 Curriculum (4-Stage, No Handover/Lookahead)|results/spwm_v0_12_4_train_m1/model.pt|physics_in_loop|{grasp_success_rate_pct:72.0,terminal_placement_accuracy_cm:0.9845381462574005,placement_accuracy_std_cm:0.9663701539547177,terminal_error_cm:1.8471522986888886,terminal_error_std_cm:1.3105550973311277,mppi_inference_latency_ms:22.50886656506723,mean_joint_accel_rad_s2:0.005996449659578502,std_joint_accel_rad_s2:0.001733545237341892,mean_joint_jerk_rad_s3:0.003658297834917903,std_joint_jerk_rad_s3:0.0009730792173353034,mean_direction_flips:14.24,std_direction_flips:7.8601781150302195}|null|false|
-    |4a. + 2-Stage SE(3) Lookahead (Handover Disabled, $w_t \equiv 0$)|results/spwm_v0_12_4_train_m1/best_model.pt|physics_in_loop|{grasp_success_rate_pct:86.0,terminal_placement_accuracy_cm:0.8552020224928856,placement_accuracy_std_cm:0.7991095820631844,terminal_error_cm:1.5668222349882126,terminal_error_std_cm:1.004804437956763,mppi_inference_latency_ms:36.57298823552262,mean_joint_accel_rad_s2:0.0058662799885496495,std_joint_accel_rad_s2:0.0014419035578661795,mean_joint_jerk_rad_s3:0.003542280187830329,std_joint_jerk_rad_s3:0.000713988545542795,mean_direction_flips:14.02,std_direction_flips:7.643271550847844}|{episodes_evaluated:50,triggered_episodes:0,episodes_with_w_gt_0_pct:0.0,total_phi1_steps:400,triggered_phi1_steps:0,phi1_steps_with_w_gt_0_pct:0.0,mean_nonzero_w:0.0}|false|
-    |4b. + Residual Handover \& 2-Stage Lookahead (Full)|results/spwm_v0_12_4_train_m1/model.pt|physics_in_loop|{grasp_success_rate_pct:86.0,terminal_placement_accuracy_cm:0.8552020224928856,placement_accuracy_std_cm:0.7991095820631844,terminal_error_cm:1.5668222349882126,terminal_error_std_cm:1.004804437956763,mppi_inference_latency_ms:36.65447710343201,mean_joint_accel_rad_s2:0.0058662799885496495,std_joint_accel_rad_s2:0.0014419035578661795,mean_joint_jerk_rad_s3:0.003542280187830329,std_joint_jerk_rad_s3:0.000713988545542795,mean_direction_flips:14.02,std_direction_flips:7.643271550847844}|{episodes_evaluated:50,triggered_episodes:0,episodes_with_w_gt_0_pct:0.0,total_phi1_steps:400,triggered_phi1_steps:0,phi1_steps_with_w_gt_0_pct:0.0,mean_nonzero_w:0.0}|true|
+            triggered_phi1_steps: 0
+            phi1_steps_with_w_gt_0_pct: 0.0
+            mean_nonzero_w: 0.0
+      handover_telemetry_3seed: {episodes_with_w_gt_0_pct:[0.0,0.0],phi1_steps_with_w_gt_0_pct:[0.0,0.0],mean_nonzero_w_when_active:0.0}
+      label: 4a. + 2-Stage SE(3) Lookahead (Val-Sel., $w_t \equiv 0$)
+      bold: false
+    - [4]
+      mean_std:
+        grasp_success_rate_pct: [60.666666666666664,2.3094010767585074]
+        terminal_placement_accuracy_cm: [0.8798704931139946,0.10505539807183523]
+        terminal_error_cm: [2.006662103931109,0.11581144347528279]
+        mean_joint_accel_rad_s2: [0.009308865414932371,0.0034586698705177275]
+        mean_joint_jerk_rad_s3: [0.006634432549277941,0.003263484407032791]
+        mean_direction_flips: [21.14,8.549807015365904]
+        mppi_inference_latency_ms: [26.649352693166346,2.271980219747186]
+      per_seed:
+        42:
+          checkpoint: results/spwm_v0_12_4_train_m1/checkpoint_phase_4.pt
+          evaluation_protocol: physics_in_loop
+          baseline_handover_mode: residual_gated
+          episodes_evaluated: 50
+          overall_metrics:
+            grasp_success_rate_pct: 57.99999999999999
+            terminal_placement_accuracy_cm: 0.9966417002677918
+            placement_accuracy_std_cm: 0.7168366082198878
+            terminal_error_cm: 2.117010636925697
+            terminal_error_std_cm: 1.2261713068281301
+            mppi_inference_latency_ms: 27.953717743547482
+            mean_joint_accel_rad_s2: 0.005460824174806475
+            std_joint_accel_rad_s2: 0.0014449158194058374
+            mean_joint_jerk_rad_s3: 0.003033191980794072
+            std_joint_jerk_rad_s3: 0.0006583887773716086
+            mean_direction_flips: 11.82
+            std_direction_flips: 6.098163658020339
+          handover_telemetry:
+            episodes_evaluated: 50
+            triggered_episodes: 0
+            episodes_with_w_gt_0_pct: 0.0
+            total_phi1_steps: 400
+            triggered_phi1_steps: 0
+            phi1_steps_with_w_gt_0_pct: 0.0
+            mean_nonzero_w: 0.0
+        101:
+          checkpoint: results/multiseed/seed_101_m1/checkpoint_phase_1.pt
+          evaluation_protocol: physics_in_loop
+          baseline_handover_mode: residual_gated
+          episodes_evaluated: 50
+          overall_metrics:
+            grasp_success_rate_pct: 62.0
+            terminal_placement_accuracy_cm: 0.8499453981220723
+            placement_accuracy_std_cm: 0.5894733005655424
+            terminal_error_cm: 2.0169071877002716
+            terminal_error_std_cm: 1.1516123596745238
+            mppi_inference_latency_ms: 27.968430673446996
+            mean_joint_accel_rad_s2: 0.012158537823706865
+            std_joint_accel_rad_s2: 0.0038326392576793562
+            mean_joint_jerk_rad_s3: 0.00939610967412591
+            std_joint_jerk_rad_s3: 0.0024506745164746524
+            mean_direction_flips: 28.62
+            std_direction_flips: 8.126229137798171
+          handover_telemetry:
+            episodes_evaluated: 50
+            triggered_episodes: 0
+            episodes_with_w_gt_0_pct: 0.0
+            total_phi1_steps: 400
+            triggered_phi1_steps: 0
+            phi1_steps_with_w_gt_0_pct: 0.0
+            mean_nonzero_w: 0.0
+        2024:
+          checkpoint: results/multiseed/seed_2024_m1/checkpoint_phase_2.pt
+          evaluation_protocol: physics_in_loop
+          baseline_handover_mode: residual_gated
+          episodes_evaluated: 50
+          overall_metrics:
+            grasp_success_rate_pct: 62.0
+            terminal_placement_accuracy_cm: 0.7930243809521198
+            placement_accuracy_std_cm: 0.5496822026263848
+            terminal_error_cm: 1.8860684871673583
+            terminal_error_std_cm: 1.187425109721587
+            mppi_inference_latency_ms: 24.025909662504564
+            mean_joint_accel_rad_s2: 0.01030723424628377
+            std_joint_accel_rad_s2: 0.003965905046145654
+            mean_joint_jerk_rad_s3: 0.007473995992913842
+            std_joint_jerk_rad_s3: 0.0027093614883279904
+            mean_direction_flips: 22.98
+            std_direction_flips: 5.540721974616666
+          handover_telemetry:
+            episodes_evaluated: 50
+            triggered_episodes: 0
+            episodes_with_w_gt_0_pct: 0.0
+            total_phi1_steps: 400
+            triggered_phi1_steps: 0
+            phi1_steps_with_w_gt_0_pct: 0.0
+            mean_nonzero_w: 0.0
+      handover_telemetry_3seed: {episodes_with_w_gt_0_pct:[0.0,0.0],phi1_steps_with_w_gt_0_pct:[0.0,0.0],mean_nonzero_w_when_active:0.0}
+      label: 4b. + Residual Rejection Gate (Full SPWM, Val-Sel.)
+      bold: true
+  baseline_training_budgets:
+    rssm:
+      42:
+        model_name: Continuous RSSM
+        seed: 42
+        device: mps
+        enable_dagger_ar1: true
+        base_epochs: 60
+        ar1_dagger_epochs: 16
+        total_epochs: 76
+        best_epoch: 61
+        best_val_loss: 0.4348871593291943
+        wall_clock_sec: 778.0765965420287
+        ar1_target_alpha: 0.25
+        dagger_generations_collected: 3
+      101:
+        model_name: Continuous RSSM
+        seed: 101
+        device: mps
+        enable_dagger_ar1: true
+        base_epochs: 60
+        ar1_dagger_epochs: 16
+        total_epochs: 76
+        best_epoch: 61
+        best_val_loss: 0.44028351398614735
+        wall_clock_sec: 775.8391683750087
+        ar1_target_alpha: 0.25
+        dagger_generations_collected: 3
+      2024:
+        model_name: Continuous RSSM
+        seed: 2024
+        device: mps
+        enable_dagger_ar1: true
+        base_epochs: 60
+        ar1_dagger_epochs: 17
+        total_epochs: 77
+        best_epoch: 62
+        best_val_loss: 0.4504756721166464
+        wall_clock_sec: 826.2417404999724
+        ar1_target_alpha: 0.25
+        dagger_generations_collected: 3
+    deep_gru:
+      42:
+        model_name: Deep GRU
+        seed: 42
+        device: mps
+        enable_dagger_ar1: true
+        base_epochs: 59
+        ar1_dagger_epochs: 40
+        total_epochs: 99
+        best_epoch: 90
+        best_val_loss: 0.5676361459952134
+        wall_clock_sec: 2026.1408703329507
+        ar1_target_alpha: 0.25
+        dagger_generations_collected: 8
+      101:
+        model_name: Deep GRU
+        seed: 101
+        device: mps
+        enable_dagger_ar1: true
+        base_epochs: 0
+        ar1_dagger_epochs: 80
+        total_epochs: 80
+        best_epoch: 68
+        best_val_loss: 0.5387146770954132
+        wall_clock_sec: 4026.366101166932
+        ar1_target_alpha: 0.25
+        dagger_generations_collected: 14
+      2024:
+        model_name: Deep GRU
+        seed: 2024
+        device: mps
+        enable_dagger_ar1: true
+        base_epochs: 0
+        ar1_dagger_epochs: 80
+        total_epochs: 80
+        best_epoch: 80
+        best_val_loss: 0.5893793037304511
+        wall_clock_sec: 4009.184660000028
+        ar1_target_alpha: 0.25
+        dagger_generations_collected: 14
   robustness_3seed_spwm:
     conditions (5 items):
       - [0]
@@ -3319,6 +5084,7 @@ corl_final_verification:
         std_direction_flips: 3.990789395595814
         epoch: 260
   energy_summary:
+    framing_note: SPWM's primary advantage over ANN-Rate is closed-loop dynamical stability (+23.4 pp PIL grasp success) and 1.0% sensory noise retention (4.3x better), not E2E energy savings (1.0979 mJ/step matches ANN-Rate; 48.14 nJ Loihi-2 core reduction is 0.004% of E2E power). The 4.94x Loihi-2 recurrent core reduction (12.22 +- 0.19 nJ/step, 0.244 mW @ 20 Hz, SOPs excluding passive leak) is an always-on standby state-estimation benefit when batched MPPI rollouts are dormant; the 1.93x E2E reduction vs. Continuous RSSM (2.1236 mJ/step) comes from M1's compact MLP rollout architecture.
     spwm_3seed:
       spike_rate_pct: [12.151117412707743,0.192861046198146]
       sops_per_step: [8150.0,129.11622671066561]
@@ -3412,6 +5178,91 @@ corl_final_verification:
         e2e_step_energy_mj: 100.18334453760001
         e2e_all_gpu_energy_mj: 100.18334453760001
         e2e_power_20hz_mw: 2003.6668907520004
+  forensic_summary_3seed:
+    Continuous RSSM Un-Gated (3-Seed Aggregate):
+      total_episodes: 150
+      success_total: 0
+      reach_le_3cm_total: 144
+      a_distance_failure_gt_3cm_total: 6
+      b_velocity_failure_all_total: 150
+      b_velocity_failure_given_reach_total: 144
+      c_post_contact_impulse_divergence_total: 143
+      excl_never_reached_total: 6
+      excl_post_contact_div_plus_vel_total: 143
+      excl_post_contact_div_spatial_only_total: 0
+      excl_post_tc_reach_then_div_total: 1
+      excl_vel_only_total: 0
+      excl_rot_only_total: 0
+    Continuous RSSM Residual-Gated (3-Seed Aggregate):
+      total_episodes: 150
+      success_total: 23
+      reach_le_3cm_total: 148
+      a_distance_failure_gt_3cm_total: 2
+      b_velocity_failure_all_total: 24
+      b_velocity_failure_given_reach_total: 24
+      c_post_contact_impulse_divergence_total: 50
+      excl_never_reached_total: 2
+      excl_post_contact_div_plus_vel_total: 12
+      excl_post_contact_div_spatial_only_total: 38
+      excl_post_tc_reach_then_div_total: 22
+      excl_vel_only_total: 3
+      excl_rot_only_total: 50
+    Deep GRU Un-Gated (3-Seed Aggregate):
+      total_episodes: 150
+      success_total: 0
+      reach_le_3cm_total: 132
+      a_distance_failure_gt_3cm_total: 18
+      b_velocity_failure_all_total: 18
+      b_velocity_failure_given_reach_total: 17
+      c_post_contact_impulse_divergence_total: 123
+      excl_never_reached_total: 18
+      excl_post_contact_div_plus_vel_total: 17
+      excl_post_contact_div_spatial_only_total: 106
+      excl_post_tc_reach_then_div_total: 3
+      excl_vel_only_total: 0
+      excl_rot_only_total: 6
+    Deep GRU Residual-Gated (3-Seed Aggregate):
+      total_episodes: 150
+      success_total: 115
+      reach_le_3cm_total: 141
+      a_distance_failure_gt_3cm_total: 9
+      b_velocity_failure_all_total: 0
+      b_velocity_failure_given_reach_total: 0
+      c_post_contact_impulse_divergence_total: 9
+      excl_never_reached_total: 9
+      excl_post_contact_div_plus_vel_total: 0
+      excl_post_contact_div_spatial_only_total: 9
+      excl_post_tc_reach_then_div_total: 11
+      excl_vel_only_total: 0
+      excl_rot_only_total: 6
+    ANN-Rate (3-Seed Aggregate):
+      total_episodes: 150
+      success_total: 56
+      reach_le_3cm_total: 146
+      a_distance_failure_gt_3cm_total: 4
+      b_velocity_failure_all_total: 2
+      b_velocity_failure_given_reach_total: 2
+      c_post_contact_impulse_divergence_total: 56
+      excl_never_reached_total: 4
+      excl_post_contact_div_plus_vel_total: 0
+      excl_post_contact_div_spatial_only_total: 56
+      excl_post_tc_reach_then_div_total: 17
+      excl_vel_only_total: 1
+      excl_rot_only_total: 16
+    SPWM N=25 Val-Sel (3-Seed Aggregate):
+      total_episodes: 150
+      success_total: 91
+      reach_le_3cm_total: 148
+      a_distance_failure_gt_3cm_total: 2
+      b_velocity_failure_all_total: 2
+      b_velocity_failure_given_reach_total: 2
+      c_post_contact_impulse_divergence_total: 28
+      excl_never_reached_total: 2
+      excl_post_contact_div_plus_vel_total: 1
+      excl_post_contact_div_spatial_only_total: 27
+      excl_post_tc_reach_then_div_total: 6
+      excl_vel_only_total: 0
+      excl_rot_only_total: 23
 ```
 
 ### `results/mppi_benchmark/mppi_benchmark_metrics.json`
@@ -3656,1502 +5507,482 @@ mppi_suite (5 items):
 
 ## 2. Architecture, Training & Environment Context
 
-### `docs/DOSSIER.md`
-> High-level system narrative, CoRL grounded PIL benchmarks, multi-seed validation, and deploy-ready architecture
+### `docs_verified/README.md`
+> Verified master overview, CoRL grounded PIL benchmarks, 3-seed validation, and documentation index
 
-# Technical Dossier & Academic Readiness Audit
-**Project**: SPWM (Spiking Predictive World Model for 3D Articulated Manipulation)
-**Model**: `SPWM`
-**Target Publication Venues**: IEEE/RSJ IROS, IEEE ICRA, CoRL, NeurIPS, RSS
-**Date**: November 2026
+# SPWM Verified Documentation (`docs_verified/`)
+
+> **Consolidated Single-Source-of-Truth Documentation** replacing legacy `docs/` with unified, directly verified evidence. Every claim, equation, hyperparameter, and benchmark value below is directly linked to source code, JSON/checkpoint artifacts ([ssot_eval_metrics.json](file:///Users/Mattia/Desktop/Studies/Temp/results/ssot_eval_metrics.json), [multiseed_metrics.json](file:///Users/Mattia/Desktop/Studies/Temp/results/multiseed/multiseed_metrics.json), [corl_final_benchmark_summary.md](file:///Users/Mattia/Desktop/Studies/Temp/results/corl_final_benchmark_summary.md)), and reproducible CLI commands.
 
 ---
 
-## Executive Summary & Readiness Dashboard
+## 1. Executive Audit Verdict: Are the Documentation Values Correct and Backed Up?
 
-| Audit Domain | Repository Status | Readiness Score | Primary Blocker / Action Item |
-| :--- | :--- | :---: | :--- |
-| **1. Problem Formulation & System Overview** | Fully Specified in Contracts & Simulation | **100%** | None (Closed-loop POMDP and Latent MPPI control verified). |
-| **2. Neural Architecture & Mathematical Specs** | Fully Specified in Layer 1 PyTorch Implementations | **100%** | None (Exact tensor contracts, ALIF equations, continuous handover, and differentiable forward kinematics verified). |
-| **3. Training Protocol & Optimization Guarantees** | Fully Decoupled Two-Phase Curriculum | **100%** | None (Multi-seed validation across seeds 42, 101, 2024 verified with strict Phase 0 -> Phase 1 pipeline). |
-| **4. Empirical Evaluation & Benchmarks** | Multi-Horizon Telemetry Logged ($H \in \{1..100\}$) | **100%** | None (Comparative baselines RSSM, Deep GRU, ConvLSTM and parameter-matched non-spiking ANN ablation fully benchmarked). |
-| **5. Architectural Evolutionary History** | Fully Documented in `History.md` (v1 $\to$ v0.12.4) | **100%** | None (Extensive negative ablations, post-mortems, and `v0.12.4` deploy-ready smoothness upgrade cataloged). |
-| **6. Publication Gap Analysis** | Gaps Formally Completed & Benchmarked | **100%** | None (All 6 critical gaps completed: comparative baselines, ANN ablation, SOP profiling, multi-seed rigor, latent MPPI control, and zero-shot sim-to-real stress tests). |
+**Yes for all core empirical results.** Every benchmark metric in the latest results pipeline ([ssot_eval_metrics.json](file:///Users/Mattia/Desktop/Studies/Temp/results/ssot_eval_metrics.json), [multiseed_metrics.json](file:///Users/Mattia/Desktop/Studies/Temp/results/multiseed/multiseed_metrics.json), [comparative_metrics_v0_12_4.json](file:///Users/Mattia/Desktop/Studies/Temp/results/spwm_v0_12_4_train_m1/comparative_metrics_v0_12_4.json), and `results/`) matches actual command runs recorded across three sequential Antigravity sessions:
+* **Agent 3 (Iteration 8, finished `2026-11-20 13:23 CET`):** [transcript.jsonl](file:///Users/Mattia/.gemini/antigravity/brain/b270518d-34f7-4b20-a61b-c71cf07c3fb8/.system_generated/logs/transcript.jsonl) (`task-346`, `352`, `361`, `402`, `524`, `557`, `586`).
+* **Agent 2 (Iteration 9, `13:24–16:01 CET`):** [transcript.jsonl](file:///Users/Mattia/.gemini/antigravity/brain/a62a3ce4-cc2d-4e89-a137-0cb6fa9b42a6/.system_generated/logs/transcript.jsonl) (`task-29`, `58`, `60`, `84`, `107`, `127`, `141`, `152`).
+* **Agent 1 (Iteration 10, `15:11–16:01 CET`):** [transcript.jsonl](file:///Users/Mattia/.gemini/antigravity/brain/1ca9af8a-f1e4-4a6f-ba2d-912890fe3ec8/.system_generated/logs/transcript.jsonl) (`task-34`, `108–111`, `118–119`, `126`, `138`, `152–153`, `161`, `206`, `213`, `249`).
+
+### Progression of Testing Precision & Baseline Equalization
+The reported SPWM and comparative baseline numbers evolved directly as evaluation rigor, baseline training equality, and gating fairness tightened:
+1. **Non-PIL Latent-Grounded (`96.0%`) & Pre-Fix PIL (`88.0%`):** Early runs either blended ground-truth latents (`z_gt_next`) during $\phi_t = 1$ or delayed payload attachment to `t >= t_grasp` (historical Nov 17 snapshot).
+2. **Causal Physics-in-the-Loop (`60.7 ± 2.3%` $N=25$ Validation-Selected 3-Seed Mean):** Enforced causal `payload_attached=(t >= t_c)` in [experiments/benchmark_mppi_control.py](file:///Users/Mattia/Desktop/Studies/Temp/experiments/benchmark_mppi_control.py#L390) and [spwm/evaluation/mppi_scorer.py](file:///Users/Mattia/Desktop/Studies/Temp/spwm/evaluation/mppi_scorer.py#L369), where $t_c$ indexes the $\phi_t=1$ sensory-window onset (`p1_indices[0] = t_contact - 7`) and PIL evaluates the 7-step loaded transition through $t_{\text{grasp}} = t_c + 7 = t_{\text{contact}}$, with zero `z_gt_next` leakage, causal `OnlineEventCameraStream`, and strict grasp success criteria (`< 3.0 cm` 3-step settling, `< 0.05 rad` $\text{SO}(3)$ error, $\tau_{\text{vel}} = \max(1.5, 1.1\|\dot{\mathbf{q}}^*_{t_{\text{grasp}}}\|_2)$) ([tests/test_leakage.py](file:///Users/Mattia/Desktop/Studies/Temp/tests/test_leakage.py), [tests/test_pil_integrity.py](file:///Users/Mattia/Desktop/Studies/Temp/tests/test_pil_integrity.py)).
+3. **Baseline Equalization (AR(1)+DAgger) & Identical FK Residual Rejection Gate:** Fixed the truncated `18`-epoch `Deep GRU` runs on Seeds `101, 2024`, trained both `Continuous RSSM` and `Deep GRU` across all 3 seeds (`42, 101, 2024`) with multi-step SE(3) rollout + AR(1) MPPI-matched action noise + `ClosedLoopBuffer` DAgger replay, and evaluated all three PIL regimes (**Open-Loop $w_t=0$**, **Un-Gated Online $w_t=1.0$**, and **Residual-Gated Online** using the identical FK rejection gate as SPWM). Under residual gating, `Continuous RSSM` remains at `15.3 ± 5.0%` (`0.0%` un-gated, confirming its ceiling is architectural), while equalized `Deep GRU` recovers from `0.0%` (un-gated) to `76.7 ± 5.0%` (`77.3 ± 4.2%` open-loop)—achieving higher nominal PIL success than `SPWM` (`60.7 ± 2.3%`) while exceeding the `50 ms` (`20 Hz`) real-time budget (`57.7 ms/step` vs `26.6 ms/step`), trailing `SPWM` by `9.0×` on $H=100$ velocity MSE (`0.08716` vs `0.00971`), and using `22.1×` higher standby core energy / `1.59×` higher E2E step energy.
+4. **Full 3-Seed 5-Stage Disentangled Ablation (`45.3 ± 16.0% -> 51.3 ± 9.5% -> 38.0 ± 19.1% -> 60.7 ± 2.3% -> 60.7 ± 2.3%`):** Evaluated across all 3 seeds (`42, 101, 2024`) on `[3600, 3649]`. Transparently reveals that Phase 3/4 AR(1)+DAgger replay (`Stage 3`) reduces trajectory jitter (`|Δ²q|: 0.00991 -> 0.00589`) while degrading 3-seed mean PIL success (`-13.3 pp`) and doubling seed std (`9.5% -> 19.1%`), making `N=25` validation checkpoint selection (`[3200, 3224]`) essential before 2-Stage SE(3) Lookahead (`Stage 4a/4b`) yields `60.7 ± 2.3%` (`11.7×` variance cut vs. `N=6` Tier-2 `58.0 ± 27.1%`).
+5. **Standby Core vs. E2E Energy Recalibration:** Frames the `4.94×` Loihi-2 core reduction (`12.22 ± 0.19 nJ/step`, `0.244 mW` @ `20 Hz`, excluding passive membrane leak) strictly as an **always-on standby state-estimation benefit** when dense MPPI planning is dormant; E2E step energy (`1.0979 mJ/step`) matches `ANN-Rate` (`0.004%` diff), so `SPWM`'s primary advantage over `ANN-Rate` is dynamical stability (`+23.4 pp` PIL success) and `4.3×` better `1.0%` noise retention.
 
 ---
 
-## 1. Problem Formulation & System Overview
+## 2. Corrections & Reconciliations Applied
 
-### 1.1 Mathematical Formulation: Continuous-Time Latent POMDP
-The physical system operates as a continuous-time Partially Observable Markov Decision Process (POMDP) embedded in Euclidean 3D space $\mathcal{M} = \text{SE}(3) \times \mathbb{R}^J$:
+| Historical Issue Resolved | Ground Truth Verified in Code / Artifacts | Where Resolved Here |
+| :--- | :--- | :--- |
+| Un-gated (`w_t=1.0`) online baseline collapse & truncated `Deep GRU` epochs (`59/18/18`) | Equalized `Continuous RSSM` (`60+16/16/17`) & `Deep GRU` (`59+40=99`, `80`, `80`) with AR(1)+DAgger; evaluated Open-Loop, Un-Gated, and Residual-Gated PIL regimes across all 3 seeds | [03_BENCHMARKS_EVIDENCE_AND_REPLICATION.md](file:///Users/Mattia/Desktop/Studies/Temp/docs_verified/03_BENCHMARKS_EVIDENCE_AND_REPLICATION.md#L22-L70) |
+| Single-seed `"Canonical Seed 42"` (`86.0%`) headline & Seed-42-only ablation | Removed all `"Canonical Seed 42"` headline claims; lead strictly with $N=25$ val-selected (`60.7 ± 2.3%`) and 3-seed 5-stage ablation (`45.3 -> 51.3 -> 38.0 -> 60.7 -> 60.7%`) | [03_BENCHMARKS_EVIDENCE_AND_REPLICATION.md](file:///Users/Mattia/Desktop/Studies/Temp/docs_verified/03_BENCHMARKS_EVIDENCE_AND_REPLICATION.md#L72-L88) |
+| Contradictory `heft_shock_timeseries` & extra plots / scripts | Removed all non-architecture figures (`fig1..fig4`, `heft_shock_timeseries`) and plotting scripts (`figure_style.py`, `plot_heft_shock_timeseries.py`, `run_ssot_benchmark_and_plot.py`); retained [architecture.pdf](file:///Users/Mattia/Desktop/Studies/Temp/figures/architecture.pdf) | [01_SYSTEM_AND_ARCHITECTURE.md](file:///Users/Mattia/Desktop/Studies/Temp/docs_verified/01_SYSTEM_AND_ARCHITECTURE.md#L16) |
+| Overstated neuromorphic E2E energy framing (`48.14 nJ` atop `1.0971 mJ` MPPI) | Recalibrated Loihi-2 `12.22 nJ` (`4.94×`) as an always-on standby core benefit; E2E matches `ANN-Rate` (`1.0979 mJ`), while `1.93×` E2E gain vs `RSSM` comes from `M1`'s compact MLP | [03_BENCHMARKS_EVIDENCE_AND_REPLICATION.md](file:///Users/Mattia/Desktop/Studies/Temp/docs_verified/03_BENCHMARKS_EVIDENCE_AND_REPLICATION.md#L106-L130) |
+| `GLOBAL_VERSION` vs YAML project name & legacy formula drift | [spwm/contracts/version.py](file:///Users/Mattia/Desktop/Studies/Temp/spwm/contracts/version.py#L29-L32) defines `0.12.3` (`spwm_v0_12_3`); YAML overrides `project.name: spwm_v0_12_4`. Equations verified directly from code | [01_SYSTEM_AND_ARCHITECTURE.md](file:///Users/Mattia/Desktop/Studies/Temp/docs_verified/01_SYSTEM_AND_ARCHITECTURE.md#L28) |
 
-$$\mathcal{P} = \left\langle \mathcal{S}, \mathcal{A}, \mathcal{T}, \mathcal{R}, \Omega, \mathcal{O}, \gamma \right\rangle$$
+---
 
-```mermaid
-flowchart LR
-    subgraph Environment["Physical World (PhysX 4 ArticulationBody)"]
-        S_t["Physical State s_t\n(q*, p*, Payload m, I)"]
-        S_next["Physical State s_t+1"]
-        Action["Motor Torques / Action u_t in [-1, 1]^6"]
-        Action -->|Stiff Spring-Damper PD| S_next
-        S_t -->|Featherstone Dynamics dt=0.05s| S_next
-    end
+## 3. Directory Map (`docs_verified/`)
 
-    subgraph Sensors["Neuromorphic Vision Pipeline"]
-        EventCam["Dual Event Sensors\n(Global + Wrist-Mounted, C=4)"]
-        S_t -.->|"Scene Projections L(u, v; t)"| EventCam
-        EventCam -->|"Spatiotemporal Spikes E_t in {0, 1}^(4 x 32 x 32)"| Obs["Observation E_t"]
-    end
+| Document | Scope | Replaces Legacy `docs/` Files |
+| :--- | :--- | :--- |
+| [README.md](file:///Users/Mattia/Desktop/Studies/Temp/docs_verified/README.md) | Audit verdict, testing precision progression, and discrepancy reconciliations | `CORL_GROUNDED_AUDIT.md`, `History.md` (meta) |
+| [01_SYSTEM_AND_ARCHITECTURE.md](file:///Users/Mattia/Desktop/Studies/Temp/docs_verified/01_SYSTEM_AND_ARCHITECTURE.md) | Repo skeleton, 4-layer contracts, Unity `6000.5.7f1` / Python PIL physics, dataset splits, neural equations, exact parameter census, and design decisions / negative ablations | `REPO_SKELETON.md`, `WORKSPACE_AND_CONTRACTS.md`, `WORLD.md`, `Architecture.md`, `DOSSIER.md` (ablations) |
+| [02_TRAINING_CURRICULUM_AND_MPPI.md](file:///Users/Mattia/Desktop/Studies/Temp/docs_verified/02_TRAINING_CURRICULUM_AND_MPPI.md) | Phase 0 & Phase 1 training strategies, exact losses, 4-phase latch curriculum, active perception / residual handover, MPPI cost, Tier-2 validation, training CLIs, and baseline / online update specs | `TRAINING_AND_LOSSES.md`, `Architecture.md` (MPPI) |
+| [03_BENCHMARKS_EVIDENCE_AND_REPLICATION.md](file:///Users/Mattia/Desktop/Studies/Temp/docs_verified/03_BENCHMARKS_EVIDENCE_AND_REPLICATION.md) | Checkpoint provenance, Tables 1–5 (3-regime PIL, 3-seed ablation, standby vs. E2E energy), Phase 0 metrics, validation sweeps, forensic diagnostics, compute/wall-clock stack, and replication runbook | `CORL_FINAL_BENCHMARK_SUMMARY.md`, `FIGURE_METRICS.md`, `DOSSIER.md` (benchmarks), `History.md` (Iter 8–10) |
 
-    subgraph Agent["SPWM Architecture"]
-        Obs --> Enc["EventEncoder & SpatialSoftmax\n(K=16 Keypoints k_t)"]
-        Enc --> Dyn["SpikingLatentDynamics (ALIF)\n(q_t in R^32, p_t in R^96)"]
-        Action --> Pred["LatentPredictor M_1\n(Dissipative Field gamma_t, f_p, f_q)"]
-        Dyn --> Pred
-        Pred --> Readout["PhysicalDecoder\n(q*_hat, p*_hat in R^12)"]
-    end
+---
+
+## 4. Quick Verification Gate
+
+Run the repository AST anti-fallback check and full test suite:
+
+```bash
+.venv/bin/python scripts/scan_fallbacks.py spwm/ experiments/ scripts/
+.venv/bin/pytest tests/ -q
 ```
 
-- **Observation Space ($\mathbf{E}_t$)**: Asynchronous binary temporal contrast event frames $\mathbf{E}_t \in \{0, 1\}^{C \times H \times W}$ where $C=4$ channels (channels 0–1: static global observer brightening/dimming polarities; channels 2–3: egocentric wrist-mounted brightening/dimming polarities), with spatial resolution $H = W = 32$.
-- **Continuous Motor Action Space ($\mathbf{u}_t$)**: Continuous joint action commands driving the sequential waypoint PD controller:
-  $$\mathbf{u}_t \in [-1.0, 1.0]^{D_u}, \quad D_u = J = 6$$
-- **Internal Latent State Space ($\mathbf{z}_t$)**: Symplectic/dissipative phase-space factorization:
-  $$\mathbf{z}_t = [\mathbf{q}_t, \mathbf{p}_t] \in \mathbb{R}^D, \quad \mathbf{q}_t \in [-1.0, 1.0]^{D_q}, \quad \mathbf{p}_t \in \mathbb{R}^{D_p}$$
-  where $D_q = 32$ (generalized coordinate manifold matching $2K=32$ keypoint coordinates), $D_p = 96$ (generalized momentum manifold, integer multiple $D_p = 3 D_q$), and total latent dimensionality $D = D_q + D_p = 128$.
-- **Decoded Physical Articulated States ($\hat{\mathbf{y}}_t$)**: Continuous joint angles and joint angular velocities:
-  $$\hat{\mathbf{y}}_t = [\hat{\mathbf{q}}_t^*, \hat{\mathbf{p}}_t^*] \in \mathbb{R}^{2J}, \quad \hat{\mathbf{q}}_t^* \in [-\pi, \pi]^6, \quad \hat{\mathbf{p}}_t^* \in \mathbb{R}^6 \quad (J = 6)$$
+### `docs_verified/01_SYSTEM_AND_ARCHITECTURE.md`
+> Verified system, Unity PhysX environment, and neural architecture specification
 
-### 1.2 Core Scientific Hypothesis
-Standard recurrent world models (e.g., RSSM in DreamerV1-V3, ConvLSTM, deep GRU/LSTM predictors) fundamentally fail in continuous high-speed robotic manipulation due to three structural pathologies:
-1. **Synchronous Visual Bandwidth vs. Dynamic Contact Transients**: Standard RGB world models capture frames at fixed 20–30 Hz, suffering catastrophic motion blur and unobserved impact dynamics during physical contact shocks. SPWM processes differential event polarities at physics rates (20–1000 Hz equivalent) via temporal contrast accumulation, capturing dynamic edge discontinuities with microsecond-level temporal resolution.
-2. **Backpropagation Through Time (BPTT) Computational Memory Explosion**: Training recurrent world models over long horizons $T \ge 100$ requires storing forward activation histories $O(T)$, preventing real-time bio-plausible on-chip adaptation. SPWM utilizes Adaptive Leaky Integrate-and-Fire (ALIF) populations trained via decoupled phase strategies, maintaining sparse temporal representations without diverging memory footprints.
-3. **Contact Impulse Shocks & Phase-Space Topology Collapse**: Rigid mechanical contact introduces near-infinite instantaneous decelerations ($\mathbf{p}_t \to \mathbf{p}_t + \Delta \mathbf{p}_{\text{impulse}}$). Black-box RNNs experience exploding gradients or static deadlocks (freezing to the mean). SPWM resolves this by decomposing latent dynamics into a Hamiltonian/dissipative vector field $[\mathbf{q}_t, \mathbf{p}_t]$ with event-gated soft position coupling ($K_{\text{max}} = 0.35$), anti-evanescence noise suppression ($\theta_{\text{act}} = 0.001$), Stasis Damping Gate ($\tanh(\text{act}_{\text{stasis}} / \sigma_{\text{stasis}}) \cdot \mathbf{v}_p$, $\sigma_{\text{stasis}} = 0.003$), and active-perception soft-fade handover ($w_{\text{max}} = 0.60$).
-
-### 1.3 Benchmark Archetype & Physical Specifications
-- **Kinematic Morphology**: Anthropomorphic 6-DOF Right Humanoid Manipulator Arm (`RobotArchetype.ManipulatorArm`, $J=6$ actuated revolute joints, max joint excursion $\pm \pi\,\text{rad}$):
-  - **Base Root**: Fixed shoulder socket mounted at $Y=1.25\,\text{m}$ ($20.0\,\text{kg}$, base height $0.05\,\text{m}$).
-  - **Joint 0 (`Shoulder_Pan`)**: Turret height $0.05\,\text{m}$, mass $2.5\,\text{kg}$, joint limits $[-120^\circ, 120^\circ]$, glenohumeral elevation $1.35\,\text{m}$.
-  - **Joint 1 (`Shoulder_Lift`)**: Upper arm / humerus length $0.28\,\text{m}$, mass $2.2\,\text{kg}$, joint limits $[-90^\circ, 185^\circ]$ (resting pose hangs naturally at $q_1 \approx 2.92\,\text{rad}$).
-  - **Joint 2 (`Elbow_Flex`)**: Forearm radius-ulna length $0.25\,\text{m}$, mass $1.6\,\text{kg}$, joint limits $[-155^\circ, 15^\circ]$, medial swivel carrying axis $\mathbf{e}_{\text{swivel}} = (0^\circ, 56^\circ, -16^\circ)$.
-  - **Joint 3 (`Wrist_Pitch`)**: Proximal carpal flexion/extension length $0.04\,\text{m}$, mass $0.6\,\text{kg}$, limits $[-95^\circ, 95^\circ]$.
-  - **Joint 4 (`Wrist_Yaw`)**: Distal carpal radial/ulnar deviation length $0.04\,\text{m}$, mass $0.5\,\text{kg}$, limits $[-75^\circ, 75^\circ]$.
-  - **Joint 5 (`Wrist_Roll`)**: Hand pronation-supination length $0.06\,\text{m}$, mass $0.5\,\text{kg}$, limits $[-180^\circ, 180^\circ]$ (physical reaching limits $[-95^\circ, 15^\circ]$).
-  - **End-Effector Hand**: Anatomical 5-finger right hand (palm plate, knuckle bridge, 4 two-segment articulated fingers, and radial thumb on $-X$).
-- **Physics Engine & Solver**: PhysX 4 Featherstone `ArticulationBody` solver executing at physics step $\Delta t = 0.05\,\text{s}$ ($20\,\text{Hz}$), global joint friction $\mu_{\text{joint}} = 0.06\,\text{N}\cdot\text{s}$, angular damping $0.25\,\text{s}^{-1}$, ground friction $\mu_s = 0.90, \mu_k = 0.80$, gravity $\mathbf{g} = [0, -9.81, 0]^T\,\text{m/s}^2$.
-- **Procedural Payload Variances**: Spawns across three workspace elevation planes (Low: $1.04\,\text{m}$, Mid: $1.14\,\text{m}$, High: $1.26\,\text{m}$) at forward reach distances $[0.42, 0.52]\,\text{m}$:
-  - Primitive shapes: Sphere, Elongated Cylinder, Box.
-  - Mass range: Procedurally sampled in $m_{\text{payload}} \in [1.20, 4.50]\,\text{kg}$ with full inertia tensor scaling.
-  - Attachment: `FixedJoint` locking payload into palm/finger mesh upon contact, rigidly transmitting inertial mass into the Featherstone kinematic chain.
-- **Dual Neuromorphic Sensor Placement**:
-  - Global Camera: Static head observer at eye elevation $1.60\,\text{m}$ (`HeadOffsetFromShoulder` $= (-0.22, 0.25, -0.28)\,\text{m}$), gaze directed toward manipulation workspace center.
-  - Egocentric Camera: Mounted directly on distal forearm/wrist facing end-effector workspace, disambiguating elbow-flex depth foreshortening and axial wrist-roll rotational symmetry.
+# 01 — System, Contracts, World Physics & Neural Architecture
 
 ---
 
-## 2. Neural Architecture & Mathematical Specifications
+## 1. Repository Layout & Layer Dependency Architecture
 
-```mermaid
-flowchart TD
-    subgraph Frontend["Neuromorphic Vision Frontend (C=4, H=W=32)"]
-        E_t["Event Frame E_t [B, 4, 32, 32]"]
-        ConvAll["4-Ch Backbone Conv2D (16->32) + GroupNorm + SiLU"]
-        ConvWrist["Wrist Stem (Ch 2..3) Conv2D (16->32) + GN + SiLU"]
-        Fuse["Residual Fusion: base_feat + fusion_head(wrist_feat)"]
-        E_t --> ConvAll
-        E_t --> ConvWrist
-        ConvAll --> Fuse
-        ConvWrist --> Fuse
-        Fuse --> SM["SpatialSoftmax (Temperature tau=1.0)"]
-        SM --> Keypoints["Keypoints k_t in [-1, 1]^(2K) (K=16)"]
-        Keypoints --> Proj["MLP Projection + LayerNorm + SiLU"]
-        Proj --> SensoryX["Sensory Feature x_t in R^128"]
-    end
+### 1.1 Verified Directory Skeleton
+* **`spwm/` (46 `.py` files):** Core library organized into 4 strict dependency layers plus `utils/` and `version.py`:
+  * **Layer 0 (`spwm/contracts/`):** [config.py](file:///Users/Mattia/Desktop/Studies/Temp/spwm/contracts/config.py), [tensors.py](file:///Users/Mattia/Desktop/Studies/Temp/spwm/contracts/tensors.py), [states.py](file:///Users/Mattia/Desktop/Studies/Temp/spwm/contracts/states.py), [protocols.py](file:///Users/Mattia/Desktop/Studies/Temp/spwm/contracts/protocols.py), [version.py](file:///Users/Mattia/Desktop/Studies/Temp/spwm/contracts/version.py), [\_\_init\_\_.py](file:///Users/Mattia/Desktop/Studies/Temp/spwm/contracts/__init__.py)
+  * **Layer 1 (`spwm/models/`):** [encoder.py](file:///Users/Mattia/Desktop/Studies/Temp/spwm/models/encoder.py), [neurons.py](file:///Users/Mattia/Desktop/Studies/Temp/spwm/models/neurons.py), [memory.py](file:///Users/Mattia/Desktop/Studies/Temp/spwm/models/memory.py), [dynamics.py](file:///Users/Mattia/Desktop/Studies/Temp/spwm/models/dynamics.py), [predictors.py](file:///Users/Mattia/Desktop/Studies/Temp/spwm/models/predictors.py), [kinematics.py](file:///Users/Mattia/Desktop/Studies/Temp/spwm/models/kinematics.py), [rollout.py](file:///Users/Mattia/Desktop/Studies/Temp/spwm/models/rollout.py), [world_model.py](file:///Users/Mattia/Desktop/Studies/Temp/spwm/models/world_model.py), [ann_ablation.py](file:///Users/Mattia/Desktop/Studies/Temp/spwm/models/ann_ablation.py), [baselines.py](file:///Users/Mattia/Desktop/Studies/Temp/spwm/models/baselines.py), [\_\_init\_\_.py](file:///Users/Mattia/Desktop/Studies/Temp/spwm/models/__init__.py)
+  * **Layer 1 (`spwm/data/`):** [event_camera.py](file:///Users/Mattia/Desktop/Studies/Temp/spwm/data/event_camera.py), [datasets.py](file:///Users/Mattia/Desktop/Studies/Temp/spwm/data/datasets.py), [io_unity.py](file:///Users/Mattia/Desktop/Studies/Temp/spwm/data/io_unity.py), [sim_6dof.py](file:///Users/Mattia/Desktop/Studies/Temp/spwm/data/sim_6dof.py), [unity_episode_meta.py](file:///Users/Mattia/Desktop/Studies/Temp/spwm/data/unity_episode_meta.py), [\_\_init\_\_.py](file:///Users/Mattia/Desktop/Studies/Temp/spwm/data/__init__.py)
+  * **Layer 2 (`spwm/training/`):** [engine.py](file:///Users/Mattia/Desktop/Studies/Temp/spwm/training/engine.py), [losses.py](file:///Users/Mattia/Desktop/Studies/Temp/spwm/training/losses.py), [metrics.py](file:///Users/Mattia/Desktop/Studies/Temp/spwm/training/metrics.py), [noise.py](file:///Users/Mattia/Desktop/Studies/Temp/spwm/training/noise.py), [checkpoints.py](file:///Users/Mattia/Desktop/Studies/Temp/spwm/training/checkpoints.py), [replay_buffer.py](file:///Users/Mattia/Desktop/Studies/Temp/spwm/training/replay_buffer.py), [diagnostics.py](file:///Users/Mattia/Desktop/Studies/Temp/spwm/training/diagnostics.py), [phases/representation.py](file:///Users/Mattia/Desktop/Studies/Temp/spwm/training/phases/representation.py), [phases/m1_nominal.py](file:///Users/Mattia/Desktop/Studies/Temp/spwm/training/phases/m1_nominal.py), [phases/\_\_init\_\_.py](file:///Users/Mattia/Desktop/Studies/Temp/spwm/training/phases/__init__.py)
+  * **Layer 3 (`spwm/evaluation/`):** [evaluator.py](file:///Users/Mattia/Desktop/Studies/Temp/spwm/evaluation/evaluator.py), [mppi_controller.py](file:///Users/Mattia/Desktop/Studies/Temp/spwm/evaluation/mppi_controller.py), [mppi_scorer.py](file:///Users/Mattia/Desktop/Studies/Temp/spwm/evaluation/mppi_scorer.py), [mppi.py](file:///Users/Mattia/Desktop/Studies/Temp/spwm/evaluation/mppi.py), [robustness.py](file:///Users/Mattia/Desktop/Studies/Temp/spwm/evaluation/robustness.py), [visualizer.py](file:///Users/Mattia/Desktop/Studies/Temp/spwm/evaluation/visualizer.py), [metrics_resume.py](file:///Users/Mattia/Desktop/Studies/Temp/spwm/evaluation/metrics_resume.py), [\_\_init\_\_.py](file:///Users/Mattia/Desktop/Studies/Temp/spwm/evaluation/__init__.py)
+  * **Utilities & Facade:** [spwm/utils/reproducibility.py](file:///Users/Mattia/Desktop/Studies/Temp/spwm/utils/reproducibility.py), [spwm/version.py](file:///Users/Mattia/Desktop/Studies/Temp/spwm/version.py)
+* **`experiments/` (14 runners + `__init__.py`):** [train.py](file:///Users/Mattia/Desktop/Studies/Temp/experiments/train.py), [train_multiseed.py](file:///Users/Mattia/Desktop/Studies/Temp/experiments/train_multiseed.py), [train_ann_ablation.py](file:///Users/Mattia/Desktop/Studies/Temp/experiments/train_ann_ablation.py), [train_baselines.py](file:///Users/Mattia/Desktop/Studies/Temp/experiments/train_baselines.py), [benchmark_mppi_control.py](file:///Users/Mattia/Desktop/Studies/Temp/experiments/benchmark_mppi_control.py), [benchmark_robustness_stress_test.py](file:///Users/Mattia/Desktop/Studies/Temp/experiments/benchmark_robustness_stress_test.py), [benchmark_classical_and_bc.py](file:///Users/Mattia/Desktop/Studies/Temp/experiments/benchmark_classical_and_bc.py) *(implements Privileged State-Oracle Jacobian-IK + PD reading true physical joint angles $\mathbf{q}_{\text{phys}}$ directly without vision, calibrated to mean `2.85 kg` payload, plus Reactive BC `322,210` params)*, [profile_energy_sops.py](file:///Users/Mattia/Desktop/Studies/Temp/experiments/profile_energy_sops.py), [evaluate.py](file:///Users/Mattia/Desktop/Studies/Temp/experiments/evaluate.py), [ablation.py](file:///Users/Mattia/Desktop/Studies/Temp/experiments/ablation.py), [optimize_mppi_cost.py](file:///Users/Mattia/Desktop/Studies/Temp/experiments/optimize_mppi_cost.py), [export_mppi_trajectory.py](file:///Users/Mattia/Desktop/Studies/Temp/experiments/export_mppi_trajectory.py), [export_ghost_trajectory.py](file:///Users/Mattia/Desktop/Studies/Temp/experiments/export_ghost_trajectory.py), [test_smooth_rollout.py](file:///Users/Mattia/Desktop/Studies/Temp/experiments/test_smooth_rollout.py).
+* **`scripts/` (16 files):** [eval_table1_ssot.py](file:///Users/Mattia/Desktop/Studies/Temp/scripts/eval_table1_ssot.py), [aggregate_corl_final_verification.py](file:///Users/Mattia/Desktop/Studies/Temp/scripts/aggregate_corl_final_verification.py), [scan_fallbacks.py](file:///Users/Mattia/Desktop/Studies/Temp/scripts/scan_fallbacks.py), [build_paper_context.py](file:///Users/Mattia/Desktop/Studies/Temp/scripts/build_paper_context.py), [run_remaining_cpu_suite.sh](file:///Users/Mattia/Desktop/Studies/Temp/scripts/run_remaining_cpu_suite.sh), [run_pipeline.sh](file:///Users/Mattia/Desktop/Studies/Temp/scripts/run_pipeline.sh), [run_baselines.sh](file:///Users/Mattia/Desktop/Studies/Temp/scripts/run_baselines.sh), `diagnostics/` ([forensic_rssm_gru_failure.py](file:///Users/Mattia/Desktop/Studies/Temp/scripts/diagnostics/forensic_rssm_gru_failure.py), [audit_spwm_seed_variance.py](file:///Users/Mattia/Desktop/Studies/Temp/scripts/diagnostics/audit_spwm_seed_variance.py), [eval_phase0_kinematics.py](file:///Users/Mattia/Desktop/Studies/Temp/scripts/diagnostics/eval_phase0_kinematics.py)), and utility scripts ([generate_metrics_resumes.py](file:///Users/Mattia/Desktop/Studies/Temp/scripts/generate_metrics_resumes.py), [json_compressor.py](file:///Users/Mattia/Desktop/Studies/Temp/scripts/json_compressor.py), [parse_logs.py](file:///Users/Mattia/Desktop/Studies/Temp/scripts/parse_logs.py), [prune_stale_phase_flags.py](file:///Users/Mattia/Desktop/Studies/Temp/scripts/prune_stale_phase_flags.py), [render_simulation_video.py](file:///Users/Mattia/Desktop/Studies/Temp/scripts/render_simulation_video.py), [sanity_check_data.py](file:///Users/Mattia/Desktop/Studies/Temp/scripts/sanity_check_data.py)).
+* **`figures/`:** Retains only [architecture.pdf](file:///Users/Mattia/Desktop/Studies/Temp/figures/architecture.pdf) and the LaTeX manuscript sources ([main_v0_12_4.tex](file:///Users/Mattia/Desktop/Studies/Temp/figures/main_v0_12_4.tex), [main_v0_12_4.pdf](file:///Users/Mattia/Desktop/Studies/Temp/figures/main_v0_12_4.pdf)); all non-architecture figure artifacts and plotting scripts were removed.
+* **`sim/`:** Unity `6000.5.7f1` project (`Assets/`, `Library/`, `Logs/`, `Packages/`, `ProjectSettings/`, `UserSettings/`, `Stevedore.conf`) and `ExportedTrajectories/` containing `4,000` `.json.gz` files (`trajectory_00000.json.gz` .. `trajectory_03999.json.gz`; zero HDF5/NPZ files).
+* **`tests/` (17 test modules + `__init__.py`):** Enforcing architectural contracts, zero-fallback AST scanning, PIL physics/event integrity, and zero state leakage (`102` tests total).
 
-    subgraph Recurrence["Recurrent Spiking Latent Dynamics (z_t in R^128)"]
-        SensoryX --> Err["Sensory Prediction Error eps_t = x_t - W_pred z_t-1"]
-        Err --> ALIF["MultiTimescaleMemory (256 ALIF Units)\nTier 1: beta=0.90 (Reactive)\nTier 2: beta=0.985 (Context)"]
-        RecP["Momentum Recurrence W_rec p_t"] --> ALIF
-        RecQ["Coordinate Projection W_q q_t"] --> ALIF
-        RecU["Action Projection W_act u_t"] --> ALIF
-        ALIF --> Spikes["Spikes s_t in {0, 1}^256"]
-        ALIF --> Mems["Membranes m_t in R^256"]
-        Spikes & Mems --> FuseP["LayerNorm(Linear(s_t) + Linear(tanh(m_t)))"]
-        FuseP --> P_next["Momentum Subspace p_t+1 in R^96"]
-        P_next --> VelProj["Coordinate Velocity v_p = p_t+1[:q_dim] in R^32\n(Direct slice + Stasis Damping Gate: tanh(act_stasis / 0.003) * v_p)"]
-        Keypoints --> Gate["Anti-Evanescence Stasis Gate K_gate (K_max=0.35)\nact_eff = max(mean(|E_global|), mean(|E_wrist|)) for C=4"]
-        VelProj & Gate --> IntQ["q_t+1 = q_t + dt * v_p + K_gate * (k_t - q_t)"]
-        IntQ --> Q_next["Coordinate Subspace q_t+1 in R^32"]
-        Q_next & P_next --> Z_grounded["Grounded Latent z_t+1 in R^128"]
-    end
+### 1.2 Layer Rules & Strict Anti-Fallback Policy
+* **Dependency Rule:** Lower layers never import higher layers (`Layer 0` zero internal/PyTorch-unrelated deps; `Layer 1` imports `Layer 0`; `Layer 2` imports `Layers 0–1` and `spwm.utils`; `Layer 3` imports `Layers 0–2` and `spwm.utils`). Phase strategies in `spwm/training/phases/` are strictly `< 150` lines (`representation.py` = `123` lines, `m1_nominal.py` = `130` lines).
+* **AST Enforcement:** 3-argument `getattr(obj, attr, default)`, ternary `hasattr(...)` fallbacks, `strict=False` checkpoint loads, silent `except` swallowing, and silent `dict.get` config fallbacks are banned and checked by [scripts/scan_fallbacks.py](file:///Users/Mattia/Desktop/Studies/Temp/scripts/scan_fallbacks.py) and [tests/test_anti_fallback.py](file:///Users/Mattia/Desktop/Studies/Temp/tests/test_anti_fallback.py).
 
-    subgraph Predictor["Action-Conditioned Attractor Predictor (M_1)"]
-        Z_in["Latent z_t in R^128"] & ActionIn["Action u_t in R^6"] --> BackboneM1["Backbone MLP (256, LayerNorm, SiLU)"]
-        BackboneM1 --> DissHead["Dissipation Head: gamma_t = sigmoid(W_d h_t - 2.0)"]
-        BackboneM1 --> ForceP["Force Head: f_p in R^96"]
-        BackboneM1 --> RestQ["Restorative Head: f_q in R^32"]
-        DissHead & ForceP --> DissP["p_t+1 = (1 - dt * gamma_t) * p_t + f_p"]
-        RestQ & DissP --> DissQ["q_t+1 = q_t + dt * (p_t+1[:32] + f_q)"]
-        DissP & DissQ --> Z_pred["Predicted Latent z_hat_t+1 in R^128"]
-    end
+---
 
-    subgraph Handover["Continuous Soft-Fade Handover"]
-        Z_pred & Z_grounded --> Blend["z_t+1 = (1 - w_t) * z_pred + w_t * z_grounded\n(w_t in [0.0, 0.60])"]
-        Blend --> Z_out["Next Step State z_t+1"]
-    end
+## 2. Layer 0 Contracts & SSOT Configuration
 
-    subgraph Readout["Articulated Kinematic Decoder"]
-        Z_out --> PosHead["Position Head MLP: q_t -> q*_hat in R^6"]
-        Z_out --> VelHead["Velocity Head MLP: p_t -> p*_hat in R^6"]
-        PosHead & VelHead --> KinOut["Physical Telemetry y_hat = [q*_hat, p*_hat] in R^12"]
-    end
+* **Version Solver ([spwm/contracts/version.py](file:///Users/Mattia/Desktop/Studies/Temp/spwm/contracts/version.py#L29-L32)):** `VersionSolver(version=0, minor=12, patch=3, prefix="SPWM")` evaluates `GLOBAL_VERSION.tag == "SPWM-v0.12.3"` and `GLOBAL_VERSION.snake_case == "spwm_v0_12_3"`. Production YAMLs ([results/spwm_v0_12_4_train_m1/config.yaml](file:///Users/Mattia/Desktop/Studies/Temp/results/spwm_v0_12_4_train_m1/config.yaml#L2)) explicitly set `project.name: spwm_v0_12_4`, while scripts that read `GLOBAL_VERSION.tag` directly (e.g., [benchmark_robustness_stress_test.py](file:///Users/Mattia/Desktop/Studies/Temp/experiments/benchmark_robustness_stress_test.py)) record `"SPWM-v0.12.3"`.
+* **Typed Config ([spwm/contracts/config.py](file:///Users/Mattia/Desktop/Studies/Temp/spwm/contracts/config.py#L61-L484)):** `ExperimentConfig` composes 10 frozen dataclasses (`ProjectConfig`, `EnvironmentConfig`, `DataConfig`, `ModelConfig`, `LatentNeuronConfig`, `MemoryConfig`, `TrainingConfig`, `LossConfig`, `EvaluationConfig`, `MPPIConfig`). `_strict_dict_to_dataclass` rejects unknown keys; `ExperimentConfig.with_overrides` exposes `31` explicit keyword-only parameters covering `project`, `data`, `training`, and `loss` subsets (`config.py:446-480`).
+  * `MPPIConfig.__post_init__` (`config.py:372-398`) validates `num_samples > 0`, `horizon > 0`, `action_dim > 0`, `temperature > 0`, `shoulder_sigma_multiplier > 0`, `elbow_sigma_multiplier > 0`, `nominal_update_gamma in (0, 1]`, `noise_beta in [0, 1)`, `chunk_size > 0`, `num_iterations > 0`, `w_joint_accel >= 0`, `w_joint_limit >= 0`, and `max_action_delta > 0`.
+* **Tensor & Phase-Space Invariants ([spwm/contracts/tensors.py](file:///Users/Mattia/Desktop/Studies/Temp/spwm/contracts/tensors.py#L12-L114)):** `J = 6`, `C_EVENT = 4`, `latent_dim = 128 == q_dim (32) + p_dim (96)`, `p_dim % q_dim == 0` (`3x`), and `2 * num_keypoints (16) == q_dim (32)`. `assert_phase_space_contract` checks `actions.shape[-1] == action_dim` when `action_dim` is passed (`tensors.py:89`) or `> 0` otherwise (`tensors.py:94`).
+* **State Containers & Protocols ([spwm/contracts/states.py](file:///Users/Mattia/Desktop/Studies/Temp/spwm/contracts/states.py), [spwm/contracts/protocols.py](file:///Users/Mattia/Desktop/Studies/Temp/spwm/contracts/protocols.py)):** Standardized containers include `ALIFState`, `MultiTimescaleState`, `DynamicsState`, `RolloutResult` (returned by `rollout_latent`, holding `trajectory` and `fast_trajectory`), `ClosedLoopTrajectory`, and `Tier2EvalResult`. Note: `MPPIConfig`, `ClosedLoopTrajectory`, `Tier2EvalResult`, and `StatefulTier2EvaluatorProtocol` live in their respective submodules and are not re-exported by `spwm/contracts/__init__.py`.
+
+---
+
+## 3. Physical World, Simulator & Dataset Splits
+
+### 3.1 Unity `6000.5.7f1` Articulated Arm & Spawner
+* **Engine & Solver:** Unity `6000.5.7f1` ([ProjectVersion.txt](file:///Users/Mattia/Desktop/Studies/Temp/sim/ProjectSettings/ProjectVersion.txt#L1-L2)), macro timestep $\Delta t = 0.05\,\text{s}$ (`20 Hz`), `physicsSubSteps = 5` ($\Delta t_{\text{fixed}} = 0.01\,\text{s}$ / `100 Hz`), `24` solver position / `8` velocity iterations ([RoboticTelemetryLogger.cs](file:///Users/Mattia/Desktop/Studies/Temp/sim/Assets/Scripts/RoboticTelemetryLogger.cs#L65-L108)).
+* **7-Segment Kinematic Chain ([ArticulatedRobotRig.cs](file:///Users/Mattia/Desktop/Studies/Temp/sim/Assets/Scripts/ArticulatedRobotRig.cs#L722-L833), [kinematics.py](file:///Users/Mattia/Desktop/Studies/Temp/spwm/models/kinematics.py#L18-L49)):** Total zero-configuration height is `1.25 + 0.05 + 0.05 + 0.28 + 0.25 + 0.04 + 0.04 + 0.06 = 2.02 m`.
+  * *Visual Note:* Both `ArticulatedRobotRig.cs:277-319` and `GhostPlaybackManager.cs:89-138` instantiate `_JointHub` spheres on all joints except `Shoulder_Pan` and separate cylinders (`0.04m`, `0.04m`, `0.06m`) for `Wrist_Pitch`, `Wrist_Yaw`, and `Wrist_Roll`.
+
+| Link | Parent | Anchor $(0, \Delta y, 0)$ [m] | Mass [kg] | Limits [deg] | Drive Stiffness / Damping / MaxForce | Rotation Axis (from `AxisRotationEuler`) |
+| :--- | :---: | :---: | :---: | :---: | :---: | :--- |
+| `Base_Root` | `-1` | `1.25` | `20.0` | Fixed | — | — |
+| `Shoulder_Pan` ($q_0$) | `0` | `0.05` | `2.5` | `[-120, 120]` | `300 / 75 / 600` | `(0.0, 1.0, 0.0)` |
+| `Shoulder_Lift` ($q_1$) | `1` | `0.05` | `2.2` | `[-90, 185]` | `320 / 80 / 600` | `(1.0, 0.0, 0.0)` |
+| `Elbow_Flex` ($q_2$) | `2` | `0.28` | `1.6` | `[-155, 15]` | `260 / 65 / 500` | `(0.5375, -0.2756, -0.7969)` |
+| `Wrist_Pitch` ($q_3$) | `3` | `0.25` | `0.6` | `[-95, 95]` | `200 / 50 / 350` | `(0.5375, -0.2756, -0.7969)` |
+| `Wrist_Yaw` ($q_4$) | `4` | `0.04` | `0.5` | `[-75, 75]` | `180 / 45 / 300` | `(0.0, 0.0, -1.0)` |
+| `Wrist_Roll` ($q_5$) | `5` | `0.04` (tip `+0.06`) | `0.5` | `[-180, 180]` | `150 / 40 / 250` | `(0.0, 1.0, 0.0)` |
+
+* **Unity Actuation ([ActionConditionedController.cs](file:///Users/Mattia/Desktop/Studies/Temp/sim/Assets/Scripts/ActionConditionedController.cs#L459-L475)):** Default `MotorTargetPD` writes `qDes` / `dqDes` to `ArticulationBody.xDrive` using the table's per-joint `DriveStiffness` and `DriveDamping` (`setupHoldSteps = 6`).
+* **Payloads & Grasp ([ProceduralObjectSpawner.cs](file:///Users/Mattia/Desktop/Studies/Temp/sim/Assets/Scripts/ProceduralObjectSpawner.cs#L152-L214)):** Three elevation planes (`Low ~1.04 m`, `Mid ~1.14 m`, `High ~1.26 m`; classified in [kinematics.py](file:///Users/Mattia/Desktop/Studies/Temp/spwm/models/kinematics.py#L248-L255) by `y < 1.08`, `1.08 <= y < 1.18`, `y >= 1.18`), forward reach `[0.42, 0.52] m`, mass $m \in [1.20, 4.50]\,\text{kg}$ (`Light < 2.30`, `Normal [2.30, 3.40)`, `Heavy >= 3.40` per [unity_episode_meta.py](file:///Users/Mattia/Desktop/Studies/Temp/spwm/data/unity_episode_meta.py#L68)), geometries `Sphere`/`Box`/`ElongatedCylinder`, locked via `FixedJoint` on contact.
+
+### 3.2 Python 6-DOF Physics-in-the-Loop (PIL) Stepper & Dual Event Camera
+* **Closed-Loop Physics ([sim_6dof.py](file:///Users/Mattia/Desktop/Studies/Temp/spwm/data/sim_6dof.py#L282-L359)):** Unlike Unity PhysX 4's full Featherstone solver, `ArticulatedArmPhysicsStepper` implements an analytical `100 Hz` decoupled 6-DOF articulated dynamics stepper (diagonal effective inertia, zero Coriolis/inter-link mass coupling, symmetric `[-3.14, 3.14] rad` joint limits) running `sub_steps=5` (`0.01 s`) per `0.05 s` macro-step with `drive_stiffness = 16.5`, `damping = 0.15`, `gravity_scale = 0.22`, `max_joint_angle = 3.14 rad`, and PD tracking (`kp = 18.0`, `kd = 0.80`) with gravity feedforward:
+  $$\mathbf{u}_{\text{PD}} = \operatorname{clip}\!\left(\frac{\mathbf{q}_{\text{des}} + k_p(\mathbf{q}_{\text{des}}-\mathbf{q}) + k_d(\dot{\mathbf{q}}_{\text{des}}-\mathbf{p}) + g_{\text{eff}}\sin(\mathbf{q})/K_{\text{stiff}}}{\theta_{\max}},\,-1,\,1\right)$$
+  $$\ddot{\mathbf{q}} = \frac{1}{I_{\text{eff}}}\Big[K_{\text{stiff}}(\theta_{\max}\mathbf{u}_{\text{PD}} - \mathbf{q}) - g_{\text{eff}}\sin(\mathbf{q}) - 0.04\tanh(5\mathbf{p}) - (7.5 \cdot \text{damping})\mathbf{p}\Big]$$
+  When `payload_attached = (t >= t_c)` becomes `True` (where $t_c = \texttt{p1\_indices[0]} = t_{\text{contact}} - 7$ is the $\phi_t=1$ sensory-window onset and PIL evaluates the 7-step loaded transition through $t_{\text{grasp}} = t_c + 7 = t_{\text{contact}}$; rigid palm-latch matching Unity's `FixedJoint`), effective inertia jumps from `unloaded_inertia` (`[0.80, 0.69, 0.58, 0.47, 0.36, 0.25]`) by `+ 0.16 * m_payload * factor` (proximal `1.25`, distal `0.85`/`1.18`/`1.45` by shape) and gravity increases by `(1 + 0.42 * m_payload)`. Joint velocity clips to `[-4.5, 4.5] rad/s`.
+* **Dual-Camera Event Stream (`C=4, H=32, W=32`, $\theta = 0.08$):** Exported `.json.gz` files record `sensor_height=32, sensor_width=32, sensor_channels=4` (`trajectory_00000.json.gz`). Unity's [EventCameraLogDiff.compute](file:///Users/Mattia/Desktop/Studies/Temp/sim/Assets/Shaders/EventCameraLogDiff.compute#L29) computes `log(max(lum, 0) + 1e-3)` at `20 Hz` macro-steps during logging, whereas Python's [EventCameraSimulator](file:///Users/Mattia/Desktop/Studies/Temp/spwm/data/event_camera.py#L248-L255) (and `OnlineEventCameraStream` in PIL) differences linear grayscale frames directly without `log()`.
+* **Dataset Splits ([datasets.py](file:///Users/Mattia/Desktop/Studies/Temp/spwm/data/datasets.py#L40-L55,L265-L366)):** `4,000` trajectories (`T = 105` steps) split strictly by ID into **Train `[0, 3200)`**, **Val `[3200, 3600)`**, and **Test `[3600, 4000)`**. When `strict_dataset=True` (default), `extrap_ds` reuses `[3600, 3700)` (`datasets.py:270`). `weighted_sampling=True` in Phase 1 applies `WeightedRandomSampler` (`2.5x` heavy `mass >= 3.40`, `2.5x` mid-plane `1.08 <= y < 1.18`, `5.0x` both).
+
+---
+
+## 4. Neural Architecture & Verified Parameter Census
+
+### 4.1 Exact Parameter Count Breakdown
+Measured programmatically from [world_model.py](file:///Users/Mattia/Desktop/Studies/Temp/spwm/models/world_model.py#L43-L176) and baseline modules using `results/spwm_v0_12_4_train_m1/config.yaml`:
+
+| Model / Submodule | Total Params | Active Inference Params | Notes |
+| :--- | :---: | :---: | :--- |
+| `encoder` (`conv` `5,856` + `wrist_stem` `5,040` + `fusion_head` `528` + `proj` `4,480`) | `15,904` | `15,904` | Dual-camera `4x32x32 -> 8x8` SpatialSoftmax (`0` params) $\to 128$-d |
+| `sensory_predictor` (`Linear(128, 128, bias=False)`) | `16,384` | `16,384` | Top-down error prediction $\hat{\mathbf{x}}_t = \mathbf{W}_{\text{sens}}\mathbf{z}_{t-1}$ |
+| `dynamics` (`memory` `512` + `input_proj` `33,024` + `recurrent_proj` `24,576` + `q_proj` `8,192` + `action_proj` `1,536` + `W_vel` `8,192` + `fuse_spikes` `24,672` + `fuse_mems` `24,576` + `norm` `192` + `gate_scale` `32`) | `125,504` | `117,312` | `W_vel.weight` (`8,192`) is a legacy buffer for `strict=True`; velocity uses slice `p[..., :q_dim]` |
+| `predictor` (`backbone` `101,376` + `force_head` `24,672` + `dissipation_head` `24,672` + `restorative_q_head` `8,224`) | `158,944` | `158,944` | Dissipative phase-space attractor $M_1(\mathbf{z}_t, \mathbf{u}_t)$ |
+| `physical_decoder` (`pos_head` `2,630` + `vel_head` `6,726`) | `9,356` | `9,356` | Decodes $\hat{\mathbf{q}}^* \in \mathbb{R}^6$, $\hat{\mathbf{p}}^* \in \mathbb{R}^6$ |
+| `critic` (`critic.net` `128 -> 256 -> 128 -> 1`) | `66,049` | `0` | Training-only (`MPPIConfig.w_critic = 0.0` at test time) |
+| **`SPWM` Total** | **`392,141`** | **`317,900`** | `74,241` inactive at closed-loop inference |
+| `ANNWorldModel` ([ann_ablation.py](file:///Users/Mattia/Desktop/Studies/Temp/spwm/models/ann_ablation.py)) | `392,141` | `317,900` | Continuous leaky rate (`__call__` returns `Dict[str, Tensor]`) |
+| `ContinuousRSSM` ([baselines.py](file:///Users/Mattia/Desktop/Studies/Temp/spwm/models/baselines.py)) | `380,460` | `380,460` | Deterministic `d=256` GRU + `s=32` stochastic state (`8,256` `raw_std` output weights discarded in deterministic inference) |
+| `DeepGRUPredictor` ([baselines.py](file:///Users/Mattia/Desktop/Studies/Temp/spwm/models/baselines.py)) | `338,868` | `338,868` | `hidden_dim=164` 2-layer GRU (`encoder` `15,904`, `gru1` `147,600`, `gru2` `162,360`, `kin_to_feat` `1,664`, `decoder` `11,340`) |
+| `ContinuousConvLSTM` ([baselines.py](file:///Users/Mattia/Desktop/Studies/Temp/spwm/models/baselines.py)) | `296,892` | `296,892` | Spatial 2D ConvLSTM (`conv_channels=(32,48)`, `hidden=56`; open-loop rollout only, not wired to PIL MPPI) |
+
+### 4.2 Core Forward Equations (`file:line` Verified)
+1. **Dual-Stream Visual Encoder ([encoder.py](file:///Users/Mattia/Desktop/Studies/Temp/spwm/models/encoder.py#L43-L160)):**
+   `feat = conv(E_t) + fusion_head(wrist_stem(E_t[:, 2:4]))` $\in \mathbb{R}^{B \times 16 \times 8 \times 8}$. `SpatialSoftmax` computes 2D centers of mass $\mathbf{k}_t \in [-1, 1]^{32}$, and `proj` (`Linear(32, 128) + LayerNorm + SiLU`) yields $\mathbf{x}_t \in \mathbb{R}^{128}$.
+2. **Multi-Timescale ALIF Memory ([neurons.py](file:///Users/Mattia/Desktop/Studies/Temp/spwm/models/neurons.py#L40-L213), [memory.py](file:///Users/Mattia/Desktop/Studies/Temp/spwm/models/memory.py#L27-L109)):**
+   Two pools of `128` ALIF neurons (`N=256`) with clamped decays $\beta_{\text{mem}} \in [0.50, 0.98]$ (init `0.80`) and $\beta_{\text{adapt}} \in [0.80, 0.995]$ (init `0.90` reactive, `0.985` deep), $\gamma = 0.18$, $V_{\text{th},0} = 1.0$, and `AtanSurrogate` ($\alpha = 2.0$):
+   $$\mathbf{V}_t = \beta_{\text{mem}}\mathbf{V}_{t-1} + \mathbf{I}_{\text{soma}, t} - \mathbf{s}_{t-1}V_{\text{th},0}, \quad \mathbf{A}_t = \beta_{\text{adapt}}\mathbf{A}_{t-1} + \mathbf{s}_{t-1}, \quad \mathbf{s}_t = \Theta(\mathbf{V}_t - (V_{\text{th},0} + \gamma \mathbf{A}_t))$$
+3. **Spiking Latent Dynamics & Anti-Evanescence Stasis Gate ([dynamics.py](file:///Users/Mattia/Desktop/Studies/Temp/spwm/models/dynamics.py#L80-L210), [rollout.py](file:///Users/Mattia/Desktop/Studies/Temp/spwm/models/rollout.py#L32-L35)):**
+   $$\mathbf{I}_{\text{soma}, t} = \mathbf{W}_{\text{in}}\boldsymbol{\varepsilon}_t + \mathbf{W}_p\mathbf{p}_{t-1} + \mathbf{W}_q\mathbf{q}_{t-1} + \mathbf{W}_u\mathbf{u}_t, \quad \mathbf{p}_t = \operatorname{LayerNorm}\big(\mathbf{W}_{sp}\mathbf{s}_t + \mathbf{W}_m \tanh(\mathbf{V}_t)\big)$$
+   Velocity readout slices $\mathbf{v}_p = \mathbf{p}_t[:, :32]$, damped by event activity $a_t = \max(\operatorname{mean}|E_{\text{global}}|, \operatorname{mean}|E_{\text{wrist}}|)$ (`stasis_sigma=0.003`, `activity_threshold=0.001`, `max_k_gate=0.35`, `gate_ramp_steps=4`, `max_correction_norm=0.50`):
+   $$\mathbf{v}_{p,\text{eff}} = \tanh\!\left(\frac{a_t}{\sigma_{\text{stasis}}}\right)\mathbf{v}_p, \quad a_{\text{eff}} = \max(0, a_t - \theta_{\text{act}}), \quad K_{\text{gate}} = \operatorname{ramp}(g_{\text{steps}}) \cdot \left(1 - e^{-\operatorname{softplus}(g)\cdot a_{\text{eff}}}\right) K_{\max} \cdot \tanh^2\!\left(\frac{a_{\text{eff}}}{\sigma_{\text{stasis}}}\right)$$
+   $$\mathbf{q}_t = \mathbf{q}_{t-1} + \Delta t\,\mathbf{v}_{p,\text{eff}} + K_{\text{gate}}\,\operatorname{clip\_norm}(\mathbf{k}_t - \mathbf{q}_{t-1}, 0.50)$$
+   *(Note: $\mathbf{q}_t$ is not explicitly clamped to $[-1, 1]$ after integration; only $\mathbf{k}_t$ is bounded via `SpatialSoftmax`.)*
+4. **Action-Conditioned Attractor $M_1$ ([predictors.py](file:///Users/Mattia/Desktop/Studies/Temp/spwm/models/predictors.py#L69-L115)):**
+   $$\mathbf{h}_t = \operatorname{Backbone}([\mathbf{z}_t, \mathbf{u}_t]), \quad \gamma_t = \sigma(\mathbf{W}_{\text{diss}}\mathbf{h}_t + b_{\text{diss}}), \quad (b_{\text{diss},0} = -2.0)$$
+   $$\hat{\mathbf{p}}_{t+1} = (1 - \Delta t\,\gamma_t)\mathbf{p}_t + \mathbf{f}_p(\mathbf{h}_t), \quad \hat{\mathbf{q}}_{t+1} = \mathbf{q}_t + \Delta t\big(\hat{\mathbf{p}}_{t+1}[:, :32] + \mathbf{f}_q(\mathbf{h}_t)\big)$$
+
+---
+
+## 5. Design Decisions & Negative Ablations
+
+Key architectural rejections verified against the historical engineering log ([History.md](file:///Users/Mattia/Desktop/Studies/Temp/History.md)) and final codebase:
+
+1. **Strict Port-Hamiltonian Skew-Symmetric Recurrence (`J - R`) Rejected:** Constraining recurrence to $\mathbf{W}_{\text{rec}} = \mathbf{J} - \mathbf{R}$ ($\mathbf{J}$ skew-symmetric, $\mathbf{R} = \operatorname{diag}(\operatorname{softplus}(\mathbf{r}) + 10^{-4})$) with hard boundary reflections ($|\mathbf{q}| \ge 0.98$) disrupted flow continuity and caused catastrophic long-horizon freezing: in `v5.3/v5.4`, $H=1$ position error (`0.0919 rad`) collapsed to `0.8942 rad` at $H=50$ and `1.1479 rad` at $H=100$; in `v6.1` (momentum-only $\mathbf{J} - \mathbf{R}$ on $\mathbf{p} \in \mathbb{R}^{96}$), $H=1$ position error degraded `+280%` (`0.145 -> 0.552 rad`) and $H=100$ latent MSE doubled (`0.653 -> 1.136`). Consequently, [dynamics.py](file:///Users/Mattia/Desktop/Studies/Temp/spwm/models/dynamics.py#L81-L84) uses unconstrained linear projections and [predictors.py](file:///Users/Mattia/Desktop/Studies/Temp/spwm/models/predictors.py#L20-L29) learns a state-dependent dissipative field ($\gamma_t, \mathbf{f}_p, \mathbf{f}_q$).
+2. **Zero-Lag `PhysicalDecoder` (`alpha_pos=0.0, alpha_vel=0.0`) Over EMA Filtering:** A 9-configuration sweep over `decoder_pos_alpha` $\in \{0.00, 0.20, 0.60\}$ and `decoder_ema_alpha` $\in \{0.00, 0.20, 0.60\}$ (`v0.7.2`) showed causal EMA filtering introduced phase lag; zeroing both (`config.py:143-144`, [predictors.py](file:///Users/Mattia/Desktop/Studies/Temp/spwm/models/predictors.py#L136-L137,L221-L249)) cut mean position/velocity error by `2.1%` (`0.2114 -> 0.2069 rad`, `0.1783 -> 0.1745 rad/s`) and final velocity error by `12.5%` (`0.2187 -> 0.1914 rad/s`).
+3. **Stasis Noise Floor `activity_threshold = 0.001` Over `0.012`:** Setting `activity_threshold = 0.012` (`v0.6.2`) triggered aggressive stasis clamping on low-event frames, attenuating joint excursion (`v0.5.4`: `-81%` shoulder pan motion) and raising Phase 1 `val_loss` by `+71%` (`0.00423 -> 0.00722`). Recalibrating to `0.001` ([config.py](file:///Users/Mattia/Desktop/Studies/Temp/spwm/contracts/config.py#L148), [dynamics.py](file:///Users/Mattia/Desktop/Studies/Temp/spwm/models/dynamics.py#L43-L44,L100-L123)) with channel-max activity `torch.maximum(act_global, act_wrist)` ([world_model.py](file:///Users/Mattia/Desktop/Studies/Temp/spwm/models/world_model.py#L256-L259)) cut Phase 1 `val_loss` by `-40.4%` (`0.00722 -> 0.00430`) and avoided static attractor deadlock.
+
+### `docs_verified/02_TRAINING_CURRICULUM_AND_MPPI.md`
+> Verified loss formulations, 2-phase/4-latch curriculum, MPPI controls, and equalized baseline training regimes
+
+# 02 — Training Curriculum, Loss Formulations & MPPI Control
+
+---
+
+## 1. Phase 0: Grounded State Estimator (`train_representation`)
+
+Implemented in [RepresentationPhaseStrategy](file:///Users/Mattia/Desktop/Studies/Temp/spwm/training/phases/representation.py#L15-L123) (`123` lines) using config [results/spwm_v0_12_4_train_representation/config.yaml](file:///Users/Mattia/Desktop/Studies/Temp/results/spwm_v0_12_4_train_representation/config.yaml):
+
+* **Gradient Isolation (`representation.py:21-31,47-51`):** `predictor` and `critic` are frozen (`requires_grad=False`); only `encoder`, `dynamics`, `sensory_predictor`, and `physical_decoder` train. `dynamics.action_proj` is zero-initialized ([dynamics.py](file:///Users/Mattia/Desktop/Studies/Temp/spwm/models/dynamics.py#L84)).
+* **Optimizer & Cosine Schedule (`representation.py:34-45,100-103`):** Adam across 5 parameter groups:
+  * `encoder`, `dynamics` (non-`beta_`), `sensory_predictor`: `lr = 1e-4` (`TrainingConfig.learning_rate`), `weight_decay = 5e-4`.
+  * `dynamics` (`beta_*` leak parameters): `lr = 0.5 * 1e-4 = 5e-5`, `weight_decay = 0.0`.
+  * `physical_decoder`: `probe_lr = 2e-4`, `probe_weight_decay = 1e-4`.
+  * Cosine annealing scales all parameter group LRs from $1.0\times \to 0.20\times$ across `epochs = 160` (`grad_clip_norm = 0.8`).
+* **Phase 0 Total Loss ([losses.py](file:///Users/Mattia/Desktop/Studies/Temp/spwm/training/losses.py#L124-L200)):**
+  $$\mathcal{L}_{\text{Phase 0}} = \lambda_{\text{kin}}\mathcal{L}_{\text{kinematic}} + \lambda_{\text{deriv}}\mathcal{L}_{\text{deriv}} + \lambda_{\text{smooth}}\mathcal{L}_{\text{smooth}} + \lambda_{\text{kin\_sm}}\mathcal{L}_{\text{kin\_smooth}} + \lambda_{\text{spk}}\mathcal{L}_{\text{spike\_bal}} + \lambda_{\text{sens}}\mathcal{L}_{\text{sensory}}$$
+  with defaults (`LossConfig`, `config.py:303-315`): $\lambda_{\text{kin}}=5.0$, $\lambda_{\text{deriv}}=1.0$, $\lambda_{\text{smooth}}=0.1$, $\lambda_{\text{kin\_sm}}=0.5$, $\lambda_{\text{spk}}=0.25$, $\lambda_{\text{sens}}=1.0$:
+  1. `l_kinematic`: $\operatorname{MSE}_{\text{sum}}(\hat{\mathbf{q}}^*, \mathbf{q}^*) + \operatorname{MSE}_{\text{sum}}(\hat{\mathbf{p}}^*, \mathbf{p}^*)/\sigma_v^2 + 40.0\big(\operatorname{MSE}_{\text{sum}}(\mathbf{p}_{\text{ee}}, \mathbf{p}_{\text{ee}}^*) + 0.5\,\operatorname{MSE}_F(\mathbf{R}_{\text{ee}}, \mathbf{R}_{\text{ee}}^*)\big)$ via [DifferentiableForwardKinematics](file:///Users/Mattia/Desktop/Studies/Temp/spwm/models/kinematics.py#L52).
+  2. `l_derivative`: $\operatorname{MSE}_{\text{sum}}(\mathbf{q}_{t+1}-\mathbf{q}_t, \Delta t\,\mathbf{p}_t[:, :q_{\text{dim}}])$.
+  3. `l_smoothness`: $\operatorname{SmoothL1}_{\beta=0.1,\text{sum}}(\mathbf{p}_{t+1}, \mathbf{p}_t)$.
+  4. `l_kinematic_smooth` (`losses.py:95-121,166-168`): Calls `_decoded_kinematic_temporal_loss(..., reduce_joint_sum=True)` summing across joints: finite-difference velocity loss + `0.25 * vel_mid` consistency + `0.5 * ddq_loss`, where `ddq_pred = (pos_pred[:, 2:] - 2*pos_pred[:, 1:-1] + pos_pred[:, :-2]) / dt` (dividing by `dt`, not `dt^2`).
+  5. `l_spike_balance` (`losses.py:171-180`): $\sum_i (\bar{s}_i - 0.12)^2 + 4.0\sum_i \operatorname{ReLU}(0.02 - \bar{s}_i)^2 + 2.0\sum_i \operatorname{ReLU}(\bar{s}_i - 0.45)^2$ (`target_spike_rate = 0.12`).
+  6. `l_sensory`: $\operatorname{MSE}_{\text{sum}}(\boldsymbol{\varepsilon}_t, \mathbf{0})$.
+* **Scoped Checkpoint Handoff ([checkpoints.py](file:///Users/Mattia/Desktop/Studies/Temp/spwm/training/checkpoints.py#L35-L58)):** `load_representation_checkpoint` loads `encoder`, `sensory_predictor`, `dynamics`, and `physical_decoder` each with `strict=True`, leaving `predictor` and `critic` untouched.
+
+---
+
+## 2. Phase 1: Action-Conditioned Attractor $M_1$ & 4-Phase Curriculum (`train_m1`)
+
+Implemented in [M1PhaseStrategy](file:///Users/Mattia/Desktop/Studies/Temp/spwm/training/phases/m1_nominal.py#L17-L130) (`130` lines) and orchestrated by [BaseTrainer](file:///Users/Mattia/Desktop/Studies/Temp/spwm/training/engine.py#L190-L316) using [results/spwm_v0_12_4_train_m1/config.yaml](file:///Users/Mattia/Desktop/Studies/Temp/results/spwm_v0_12_4_train_m1/config.yaml):
+
+* **Frozen Representation & Optimizer (`m1_nominal.py:23-29`, `engine.py:236-239`):** Representation stays in `eval()` with `requires_grad=False`. Adam updates **both** `model.predictor` and `model.critic` at `lr = 1e-4`, `weight_decay = 5e-4`, dropping dynamically to `lr = 5e-5` once Latch Phase `4` engages (`engine.py:236`).
+* **Phase 1 Loss ([losses.py](file:///Users/Mattia/Desktop/Studies/Temp/spwm/training/losses.py#L203-L298)):**
+  $$\mathcal{L}_{\text{Phase 1}} = \mathcal{L}_{M_1,\text{latent}} + 1.0\,\mathcal{L}_{\text{kin\_M1}} + w_{\text{critic}}\,\mathcal{L}_{\text{critic}}$$
+  * **Latent Rollout ($\mathcal{L}_{M_1,\text{latent}}$, `losses.py:228-241,265-267`):** Evaluates `.mean()` across `(B, H, D)` (dividing by `B * H * 32` for `q` and `B * H * 96` for `p`), with half-open contact-heft weighting where `h0, h_end` are the first/last `phase_flags == 1` indices:
+    `step_weights[b, max(0, h0 - 5) : min(H, h_end + 10)] = 2.0` ($\mathbf{q}$) and `vel_step_weights[b, max(0, h0) : min(H, h_end + 12)] = 3.0` ($\mathbf{p}$), weighted by $\lambda_{\text{position}}=1.0, \lambda_{\text{velocity}}=1.5, \lambda_{\text{latent}}=1.0$.
+  * **DAgger Mixed BPTT (`losses.py:246-263`, [replay_buffer.py](file:///Users/Mattia/Desktop/Studies/Temp/spwm/training/replay_buffer.py#L85-L109)):** Concatenates open-loop transitions with closed-loop transitions sampled from `ClosedLoopBuffer` (FIFO rolling window `max_eval_generations = 3`).
+  * **Decoded Kinematic Loss ($\mathcal{L}_{\text{kin\_M1}}$, `losses.py:269-286`):** $\operatorname{MSE}(\hat{\mathbf{q}}^*, \mathbf{q}^*) + 0.5\,\operatorname{MSE}(\hat{\mathbf{p}}^*, \mathbf{p}^*) + 40.0(\mathcal{L}_{\text{ee\_pos}} + 0.5\,\mathcal{L}_{\text{ee\_rot}}) + 0.5\,\mathcal{L}_{\text{kin\_smooth}}$ (`reduce_joint_sum=False`).
+  * **Monte Carlo Value Critic ($\mathcal{L}_{\text{critic}}$, `losses.py:54-92,264`):** Discounted return recursion $V^*_t = \|\mathbf{p}_{\text{ee}}-\mathbf{p}^*_{\text{ee}}\|_2 + (1 - \cos\theta_{\text{err}}) + 0.95\,V^*_{t+1}$, weighted by $w_{\text{critic}} = 0.2$ in Phases 1–2 and $1.0$ (`5.0 * 0.2`) in Phases 3–4.
+* **4-Phase Irreversible Latch Curriculum ([noise.py](file:///Users/Mattia/Desktop/Studies/Temp/spwm/training/noise.py#L46-L154), [engine.py](file:///Users/Mattia/Desktop/Studies/Temp/spwm/training/engine.py#L194-L200,L234-L265)):**
+  * `BaseTrainer.__init__` overrides `LatchCurriculumState`'s standalone class defaults (`0.01/0.008/0.4`) with `TrainingConfig` values (`phase1_loss_threshold=0.10`, `phase2_loss_threshold=0.095`, `target_alpha=0.25`, `noise_ramp_epochs=20`, `tier2_frequency=5`) and always injects `batch["curriculum_alpha"]` (bypassing `compute_mppi_noise_alpha` and `mppi_noise_warmup_epochs=10` in `M1PhaseStrategy:58`). Latch transitions depend strictly on `loss_m1_latent`:
+    1. **Phase 1 (Warmup Nominal):** `w_t = 0.60`, `alpha = 0.0`, `dagger_ratio = 0.0`. Latches to Phase 2 when `loss_m1_latent < 0.10`.
+    2. **Phase 2 (Sensory Fade-Out):** Linearly decays `w_t` from `0.60 -> 0.0` over `7` epochs (`alpha = 0.0`). Latches to Phase 3 when `w_t == 0.0` and `loss_m1_latent < 0.095`.
+    3. **Phase 3 (AR(1) Noise Ramp):** `w_t = 0.0`, linearly ramps `alpha` from `0.0 -> 0.25` over `20` epochs via `sample_ar1_noise` ($\beta = 0.90, \sigma = 0.08$, shoulder `1.6x`, elbow `1.4x`). Latches to Phase 4 when `alpha >= 0.25`.
+    4. **Phase 4 (DAgger + Fine-Tuning):** `lr = 5e-5`, `w_t = 0.0`, `alpha = 0.25`, ramps `dagger_ratio` `0.10 -> 0.50` over `2 * tier2_frequency = 10` epochs.
+
+---
+
+## 3. Open-Loop Soft-Fade vs. Closed-Loop Residual Handover
+
+1. **Open-Loop Rollout Soft-Fade ([rollout.py](file:///Users/Mattia/Desktop/Studies/Temp/spwm/models/rollout.py#L208-L277)):** During `phase_flags == 1`, `rollout_latent` blends $\mathbf{z}_{t+1} = (1 - w_t)\mathbf{z}_{\text{pred}} + w_t \mathbf{z}_{\text{grounded}}$ where $w_t = \operatorname{clamp}(g_{\text{steps}} / 4, 0, 1) \cdot w_{\max}$ ($w_{\max} = 0.60$, reaching `0.15 -> 0.30 -> 0.45 -> 0.60` only while `act_val > activity_threshold` in `dynamics.py:192-195`). Upon entering `phase_flags == 2`, `fade_counter == 1` applies $0.50\,w_{\max} = 0.30$, then drops to `0.00`.
+2. **Closed-Loop PIL Residual-Gated Handover ([benchmark_mppi_control.py](file:///Users/Mattia/Desktop/Studies/Temp/experiments/benchmark_mppi_control.py#L234-L256,L415-L455), [mppi_scorer.py](file:///Users/Mattia/Desktop/Studies/Temp/spwm/evaluation/mppi_scorer.py#L381-L394)):** During $\phi_t = 1$, causal `OnlineEventCameraStream` produces $\mathbf{z}_{\text{obs}}$ via `step_grounded` (for `SPWM` / `ANN-Rate`) or `step_online` (for `ContinuousRSSM` / `DeepGRUPredictor`). Under the shared residual-gated regime (`--baseline-handover-mode residual_gated`, default), decoded SE(3) errors `dist_pred`, `dist_obs`, `rot_obs` against `target_final_mat` govern $w_t$ identically across all architectures:
+   * If `dist_pred > tau` (`0.026 m` default; passed via `--handover-dist-threshold`, while `mppi_scorer.py:388` hardcodes `0.026`) **and** `dist_obs < 0.025 m` **and** `rot_obs < 0.049 rad`: $w_t = 0.85$.
+   * Else if `dist_obs < dist_pred` and `t <= t_c + 2` (where $t_c = \texttt{p1\_indices[0]} = t_{\text{contact}} - 7$ is the $\phi_t=1$ sensory-window onset and $t_{\text{grasp}} = t_c + 7 = t_{\text{contact}}$): $w_t = 0.40 \cdot \operatorname{clip}((\text{dist\_pred} - 0.032)/0.04,\, 0,\, 1)$.
+   * Otherwise: $w_t = 0.00$ (rejecting corrupted post-$t_c$ (post-attachment) event bursts where `dist_obs` is `0.16–0.22 m` while `M1` remains within `1.39–1.74 cm` median).
+
+---
+
+## 4. MPPI Control & Two-Tiered Validation
+
+* **Latent MPPI Cost ([mppi_controller.py](file:///Users/Mattia/Desktop/Studies/Temp/spwm/evaluation/mppi_controller.py#L406-L551), [MPPIConfig](file:///Users/Mattia/Desktop/Studies/Temp/spwm/contracts/config.py#L341-L370)):** Evaluates `K=256`, `H=10`, `N_iter=3`, `temperature=0.20`, `nominal_update_gamma=0.60`, `max_action_delta=0.10`, `noise_sigma=0.08` (`1.6x` shoulder, `1.4x` elbow, `noise_beta=0.90`):
+  $$\mathcal{C}_k = \sum_{h=1}^{H}\Big[w_{\text{pos}}\|\mathbf{p}_{\text{ee},h}-\mathbf{p}^*_h\|_2 + w_{\text{rot}}\big((1-\cos\theta_h) + 0.5\,\theta_h\big) + w_{\text{jerk}}\|\Delta\mathbf{u}_h\|_2^2 - w_{\text{prog}}\,\alpha_h\,(\Delta\mathbf{p}_h\cdot \hat{\mathbf{d}}_h) + w_{\text{damp}}(1-\alpha_h)\|\Delta\mathbf{p}_h\|_2\Big]$$
+  $$+\; w_{\text{j\_acc}}\sum \|\Delta^2\hat{\mathbf{q}}_h\|_2^2 + w_{\text{j\_lim}}\sum \big(\operatorname{ReLU}(\hat{\mathbf{q}}_h - \mathbf{q}_{\max}) + \operatorname{ReLU}(\mathbf{q}_{\min} - \hat{\mathbf{q}}_h)\big)^2 + \gamma^H (w_{\text{critic}}\,w_{\text{pos}}\,V(\mathbf{z}_H))$$
+  with `w_pos=80.0`, `w_rot=100.0`, `w_jerk=4.0`, `w_progress=50.0`, `w_damping=12.0`, `w_joint_accel=15.0`, `w_joint_limit=50.0`, `w_critic=0.0`, `gamma_discount=0.95`, and deadband factor $\alpha_h = \operatorname{clamp}((e_{\text{pos},h} - 0.03)/0.10, 0, 1)$.
+  * **2-Stage SE(3) Lookahead (`benchmark_mppi_control.py:366-370`):** Horizon steps `t + tau <= t_c` target `target_grasp_mat`, while `t + tau > t_c` target `target_final_mat`.
+  * **Grasp Success Criteria (`benchmark_mppi_control.py:497-513`, `mppi_scorer.py:21-61`):** An episode succeeds iff (i) end-effector position error stays `< 3.0 cm` across the final 3-step settling window, (ii) terminal $\text{SO}(3)$ orientation error `< 0.05 rad`, and (iii) terminal joint velocity $\|\dot{\mathbf{q}}(t_{\text{grasp}})\|_2 < \tau_{\text{vel}}$, where $\tau_{\text{vel}} = \max(1.5, 1.1\|\dot{\mathbf{q}}^*_{t_{\text{grasp}}}\|_2)\,\text{rad/s}$.
+* **Two-Tiered Validation & EMA ([mppi_scorer.py](file:///Users/Mattia/Desktop/Studies/Temp/spwm/evaluation/mppi_scorer.py#L541-L699), [engine.py](file:///Users/Mattia/Desktop/Studies/Temp/spwm/training/engine.py#L444-L466,L649-L651)):**
+  * Tier 1 open-loop MSE (`metrics.py:26-51`) is logged every epoch but decoupled from model selection.
+  * Tier 2 `MPPIStructuralScorer` runs every `tier2_frequency = 5` epochs on `N=6` validation trajectories (`[3200..3205]`) with deterministic RNG seed `42000 + traj_id`, evaluates EMA weights (`ema_decay = 0.990`), and decays expert trajectories in `ClosedLoopBuffer` as `4 -> 3 -> 2 -> 1 -> 0` across Phase 4 evaluations (`mppi_scorer.py:546-549`). Emits `mppi_score`, `mppi_grasp_rot_err_rad`, and `mppi_final_rot`.
+  * When `is_best=True`, `save_checkpoint` writes **both** `model.pt` and `best_model.pt` (`engine.py:649-651`). With `classic_patience: false`, training saves metrics/artifacts when `tier2_patience=5` triggers and continues to `epochs`.
+
+---
+
+## 5. Training Replication Commands
+
+```bash
+# 1. Phase 0: Representation Estimator (160 epochs)
+.venv/bin/python experiments/train.py \
+  --config results/spwm_v0_12_4_train_representation/config.yaml \
+  --mode train_representation --epochs 160 --output-dir results/spwm_v0_12_4_train_representation
+
+# 2. Phase 1: Action-Conditioned Attractor M1 (240 epochs, Seed 42)
+.venv/bin/python experiments/train.py \
+  --config results/spwm_v0_12_4_train_m1/config.yaml \
+  --mode train_m1 --epochs 240 --weighted-sampling \
+  --representation-checkpoint results/spwm_v0_12_4_train_representation/model.pt \
+  --output-dir results/spwm_v0_12_4_train_m1
+
+# 3. Multi-Seed SPWM (Seeds 42, 101, 2024; Seed 2024 resumed to 260 epochs in results/multiseed/seed_2024_m1)
+.venv/bin/python experiments/train_multiseed.py \
+  --seeds 101 2024 --rep-epochs 160 --m1-epochs 240 --output-dir results/multiseed
+
+# 4. Parameter-Matched ANN-Rate Ablation (per seed, 160 rep + 240 M1 epochs)
+.venv/bin/python experiments/train_ann_ablation.py --seed 42 --output-dir results/ann_ablation
+
+# 5. Equalized Continuous Recurrent Baselines (Multi-Step SE(3) + AR(1) + ClosedLoopBuffer DAgger)
+.venv/bin/python experiments/train_baselines.py \
+  --config results/spwm_v0_12_4_train_m1/config.yaml \
+  --checkpoint results/spwm_v0_12_4_train_m1/model.pt \
+  --m1-metrics results/spwm_v0_12_4_train_m1/metrics_spwm_v0_12_4.json \
+  --models deep_gru --seed 101 --epochs 80 --patience 20 --lr 3e-4 \
+  --enable-dagger-ar1 --ar1-warmup-epochs 10 --ar1-ramp-epochs 20 --ar1-target-alpha 0.25 \
+  --dagger-start-epoch 15 --dagger-frequency 5 --device mps --output-dir results/multiseed_rssm/seed_101
 ```
 
-### 2.1 Neuromorphic Vision Frontend
-The visual frontend transforms continuous dual-view differential event streams into low-dimensional topological coordinates:
-1. **Temporal Contrast Accumulation**: For each pixel $(u, v)$ on sensor plane $c \in \{0, 1, 2, 3\}$:
-   $$\Delta L(u, v; t) = I(u, v; t) - I_{\text{ref}}(u, v; t)$$
-   $$S_{\text{pos}}(u, v; t) = \mathbb{I}\left(\Delta L(u, v; t) > \theta\right), \quad S_{\text{neg}}(u, v; t) = \mathbb{I}\left(\Delta L(u, v; t) < -\theta\right)$$
-   where default threshold $\theta = 0.08$. The reference intensity updates exclusively at spiking coordinates:
-   $$I_{\text{ref}}(u, v; t + 1) = \begin{cases} I(u, v; t), & \text{if } S_{\text{pos}}(u, v; t) \lor S_{\text{neg}}(u, v; t) \\ I_{\text{ref}}(u, v; t), & \text{otherwise} \end{cases}$$
-2. **Dual-Stream Convolutional Stem & Fusion**:
-   - Primary backbone: $\text{Conv2D}(4 \to 16, 3 \times 3, \text{stride}=2) \to \text{GN}(4) \to \text{SiLU} \to \text{Conv2D}(16 \to 32, 3 \times 3, \text{stride}=2) \to \text{GN}(4) \to \text{SiLU}$.
-   - Egocentric wrist stem: Parallel Conv2D stream processing channels $2..3$ with identical stride-2 topology.
-   - Cross-stream residual fusion: $\mathbf{F} = \mathbf{F}_{\text{base}} + \text{Conv2D}_{1 \times 1}(\mathbf{F}_{\text{wrist}}) \in \mathbb{R}^{B \times K \times 8 \times 8}$ ($K=16$).
-3. **Differentiable SpatialSoftmax**:
-   For feature map channel $k \in \{1, \dots, K\}$ with spatial grid $\mathcal{G} = [-1, 1]^2$:
-   $$\alpha_{k}(u, v) = \frac{\exp\left(F_{k}(u, v) / \tau\right)}{\sum_{u'=1}^W \sum_{v'=1}^H \exp\left(F_{k}(u', v') / \tau\right)}, \quad \tau = 1.0$$
-   $$\mathbf{k}_{t, k} = \left[ \sum_{u, v} \alpha_k(u, v) \cdot x_u, \; \sum_{u, v} \alpha_k(u, v) \cdot y_v \right] \in [-1, 1]^2$$
-   Extracting $K=16$ keypoints yields $\mathbf{k}_t \in [-1, 1]^{2K} = [-1, 1]^{32}$.
-4. **Visual Feature Projection**:
-   $$\mathbf{x}_t = \text{SiLU}\left(\text{LayerNorm}\left(\mathbf{W}_{\text{proj}} \mathbf{k}_t + \mathbf{b}_{\text{proj}}\right)\right) \in \mathbb{R}^{B \times D_{\text{enc}}}, \quad D_{\text{enc}} = 128$$
+---
 
-### 2.2 Recurrent Spiking Latent Dynamics Core
-1. **Adaptive Leaky Integrate-and-Fire (ALIF) Neurons**:
-   Each neuron $j$ maintains membrane potential $V_{j, t}$ and dynamic threshold adaptation $A_{j, t}$:
-   $$V_{j, t} = \beta_{\text{mem}} V_{j, t-1} + I_{j, t} - S_{j, t-1} V_{\text{th0}}$$
-   $$A_{j, t} = \beta_{\text{adapt}, j} A_{j, t-1} + S_{j, t-1}$$
-   $$V_{\text{th}, j, t} = V_{\text{th0}} + \gamma A_{j, t}$$
-   $$S_{j, t} = \Theta\left(V_{j, t} - V_{\text{th}, j, t}\right)$$
-   - Baseline threshold: $V_{\text{th0}} = 1.0$
-   - Membrane decay: $\beta_{\text{mem}} = 0.80$ ($\tau_{\text{mem}} \approx 0.224\,\text{s}$ at $\Delta t = 0.05\,\text{s}$)
-   - Adaptation coupling: $\gamma = 0.18$
-2. **Multi-Timescale Memory Hierarchy**: Total population size $N = 256$ partitioned into two equal pools:
-   - Tier 1 (Reactive): $N_1 = 128$, $\beta_{\text{adapt}, 1} = 0.90$ ($\tau_{\text{adapt}} \approx 0.47\,\text{s}$)
-   - Tier 2 (Deep Context): $N_2 = 128$, $\beta_{\text{adapt}, 2} = 0.985$ ($\tau_{\text{adapt}} \approx 3.28\,\text{s}$)
-3. **Surrogate Gradient Formulation**: Non-differentiable step function $\Theta(x)$ replaced in autograd with Arctangent surrogate:
-   $$\frac{\partial S}{\partial V} = \psi(V - V_{\text{th}}) = \frac{\alpha / 2}{1 + \left(\frac{\pi}{2} \alpha (V - V_{\text{th}})\right)^2}, \quad \alpha = 2.0$$
-4. **Symplectic/Dissipative Phase-Space Coupling & Event-Gated Integration**:
-   - Synaptic current injection:
-     $$\mathbf{I}_t = \mathbf{W}_{\text{in}} \boldsymbol{\epsilon}_t + \mathbf{W}_{\text{rec}} \mathbf{p}_t + \mathbf{W}_q \mathbf{q}_t + \mathbf{W}_u \mathbf{u}_t, \quad \boldsymbol{\epsilon}_t = \mathbf{x}_t - \mathbf{W}_{\text{pred}} \mathbf{z}_{t-1}$$
-   - Normalized continuous momentum projection:
-     $$\mathbf{p}_{t+1} = \text{LayerNorm}\left(\mathbf{W}_{\text{spk}} \mathbf{s}_t + \mathbf{W}_{\text{mem}} \tanh(\mathbf{m}_t)\right) \in \mathbb{R}^{96}$$
-   - Continuous velocity projection: $\mathbf{v}_p = \mathbf{W}_{\text{vel\_proj}} \mathbf{p}_{t+1} \in \mathbb{R}^{32}$.
-   - Anti-Evanescence Stasis Gate:
-     $$\text{act}_{\text{eff}} = \max\left(0, \frac{1}{CHW}\sum |\mathbf{E}_t| - \theta_{\text{act}}\right), \quad \theta_{\text{act}} = 0.001$$
-     $$K_{\text{gate}} = \text{clamp}\left(\frac{g_{\text{steps}}}{4}, 0, 1\right) \cdot \left(1 - \exp\left(-\text{softplus}(\mathbf{w}_{\text{scale}}) \cdot \text{act}_{\text{eff}}\right)\right) \cdot K_{\text{max}}$$
-     with $K_{\text{max}} = 0.35$.
-   - Generalized coordinate update:
-     $$\mathbf{q}_{t+1} = \mathbf{q}_t + \Delta t \cdot \mathbf{v}_p + K_{\text{gate}} \odot \text{clip}_{\text{norm}}\left(\mathbf{k}_t - \mathbf{q}_t, r_{\text{max}}=0.50\right)$$
+## 6. Baselines & Three PIL Operating Regimes
 
-### 2.3 Action-Conditioned Attractor Predictor ($M_1$)
-When operating autonomously or during active perception rollouts:
-1. **Conditioned Dissipative Vector Field**:
-   $$\mathbf{h}_t = \text{MLP}_{\text{backbone}}\left([\mathbf{z}_t, \mathbf{u}_t]\right) \in \mathbb{R}^{256}$$
-   $$\gamma_t = \sigma\left(\mathbf{W}_{\text{diss}} \mathbf{h}_t + b_{\text{diss}}\right) \in (0, 1)^{96}, \quad b_{\text{diss}} = -2.0$$
-   $$\mathbf{f}_p = \mathbf{W}_p \mathbf{h}_t + \mathbf{b}_p \in \mathbb{R}^{96}, \quad \mathbf{f}_q = \mathbf{W}_q \mathbf{h}_t + \mathbf{b}_q \in \mathbb{R}^{32}$$
-2. **Phase-Space Unrolling Equations**:
-   $$\mathbf{p}_{t+1} = (1 - \Delta t \cdot \gamma_t) \odot \mathbf{p}_t + \mathbf{f}_p$$
-   $$\mathbf{q}_{t+1} = \mathbf{q}_t + \Delta t \cdot \left(\mathbf{p}_{t+1}[..., :32] + \mathbf{f}_q\right)$$
-   $$\hat{\mathbf{z}}_{t+1} = [\mathbf{q}_{t+1}, \mathbf{p}_{t+1}] \in \mathbb{R}^{128}$$
-3. **Continuous Soft-Fade Handover Mechanism**:
-   Rather than hard mode switching between sensory and motor phases, $M_1$ unrolls continuously across all horizon steps. When active perception events are present, latent blending authority $w_t$ couples the mental simulation with sensory dynamics:
-   $$\mathbf{z}_{t+1} = (1 - w_t) \cdot \hat{\mathbf{z}}_{t+1} + w_t \cdot \mathbf{z}_{\text{grounded}, t+1}$$
-   $$w_t = \begin{cases}
-   \text{clamp}\left(\frac{g_{\text{steps}}}{4}, 0, 1\right) \cdot w_{\text{max}}, & \text{if } \text{flag}_t == 1 \text{ (Approach \& Contact Sensory Window)} \\
-   0.50 \cdot w_{\text{max}}, & \text{if } \text{flag}_t == 2 \land \text{fade\_step} == 1 \text{ (Handover Release Step 1)} \\
-   0.00, & \text{otherwise (Blind Approach \& Blind Transport)}
-   \end{cases}$$
-   where $w_{\text{max}} = 0.60$.
+1. **Reactive Behavior Cloning (`ReactiveBCPolicy`, `322,210` params; [benchmark_classical_and_bc.py](file:///Users/Mattia/Desktop/Studies/Temp/experiments/benchmark_classical_and_bc.py#L44-L105,L295-L373)):**
+   * **Architecture:** Dual-stream `EventEncoder` (`15,904` params, `4x32x32 -> 128`) + `GRUCell(134, 242)` (`274,428` params on `[enc_out, prev_action]`) + `MLP(242 -> 128 -> SiLU -> 6 -> Tanh)` (`31,878` params).
+   * **Training:** `50` epochs on `[0, 3200)` / val `[3200, 3600)`, `batch_size=32`, `AdamW(lr=1e-3, weight_decay=1e-4)`, `CosineAnnealingLR(eta_min=1e-5)`, `clip_grad_norm_(1.0)`, scheduled sampling `ss_prob = min(0.5, 0.5 * ep / 50)`, and loss $\mathcal{L} = \operatorname{MSE}(\hat{u}, u) + 0.1\,\frac{1}{B(T-1)A}\sum_{t=1}^{T-1}\|\hat{u}_t - \hat{u}_{t-1}\|_2^2$.
+2. **Privileged State-Oracle Jacobian-IK + PD (`mode == "fixed_pd"`; [benchmark_classical_and_bc.py](file:///Users/Mattia/Desktop/Studies/Temp/experiments/benchmark_classical_and_bc.py#L108-L138,L231-L242)):**
+   * Reads `q_curr = stepper.q` directly without vision (`OnlineEventCameraStream` is never called) and uses oracle `t_c` for `payload_attached = (t >= t_c)`.
+   * Computes 6D SE(3) error `[p_err, 0.35 * rot_err]` via `fk.forward_homogeneous(q_curr)`, autograd Jacobian $J \in \mathbb{R}^{6 \times 6}$, and Levenberg–Marquardt update $dq = J^\top(JJ^\top + \lambda^2 I_6)^{-1}\text{err}_{6\text{d}}$ ($\lambda = 0.05$, $\lambda^2 = 0.0025$), setting $q_{\text{des}} = \operatorname{clamp}(q_{\text{curr}} + 0.65\,dq, -3.14, 3.14)$ and $\dot{q}_{\text{des}} = \mathbf{0}$ with fixed gains `kp = 18.0`, `kd = 0.80` calibrated to `mean_calib_mass = 2.85 kg`.
+3. **Equalized Baseline Training & 3 PIL Operating Regimes (`ContinuousRSSM` & `DeepGRUPredictor`; [train_baselines.py](file:///Users/Mattia/Desktop/Studies/Temp/experiments/train_baselines.py), [benchmark_mppi_control.py](file:///Users/Mattia/Desktop/Studies/Temp/experiments/benchmark_mppi_control.py#L160-L193,L415-L445)):**
+   * **Equalized AR(1) + DAgger Training (`--enable-dagger-ar1`):** Perturbs 80-step rollout actions with MPPI-matched `sample_ar1_noise` ($\beta=0.90$, $\sigma=0.08$, shoulder `1.6x`, elbow `1.4x`, ramped $\alpha \to 0.25$), collects `N=6` stratified validation MPPI trajectories every `5` epochs into a 3-generation FIFO `ClosedLoopBuffer`, and mixes BPTT replay (`dagger_ratio` `0.10 -> 0.50`) alongside teacher-forcing + 80-step SE(3) rollout supervision.
+   * **Causal Candidate Update (`step_online`) During $\phi_t = 1$:**
+     * **`ContinuousRSSM`:** `h_next = gru_cell([s, u_pd_t], h)`, `e_step, _ = encoder(ev_online)`, `post_mu, _ = _get_stats(posterior_net([h_next, e_step]))`, `z_obs = [h_next, post_mu]`.
+     * **`DeepGRUPredictor`:** `e_step, _ = encoder(ev_online)`, `h1_next = gru1([e_step, u_pd_t], h1)`, `h2_next = gru2(h1_next, h2)`, `z_obs = [h1_next, h2_next]`.
+   * **Three Evaluated PIL Operating Regimes (`--baseline-handover-mode`):**
+     * **`open_loop` (`--disable-handover`, $w_t \equiv 0$):** Evolves strictly via prior/feedback dynamics without online `ev_online` updates.
+     * **`ungated` (`--baseline-handover-mode ungated`, $w_t \equiv 1.0$):** Forces unconditional replacement `curr_z = z_obs` on every $\phi_t=1$ step.
+     * **`residual_gated` (`--baseline-handover-mode residual_gated`, default):** Applies `_compute_residual_handover_weight(fk, physical_decoder, z_pred, z_obs, target_final_mat, t, t_c)` identically to `SPWM` and `ANN-Rate` (`curr_z = (1 - w_t)*z_pred + w_t*z_obs`).
 
-### 2.4 Articulated Kinematic Decoder
-- Maps latent coordinates to physical joint telemetry:
-  $$\hat{\mathbf{q}}_t^* = \text{MLP}_{\text{pos}}(\mathbf{q}_t) \in \mathbb{R}^6, \quad \hat{\mathbf{p}}_t^* = \text{MLP}_{\text{vel}}(\mathbf{p}_t) \in \mathbb{R}^6$$
-  Both MLP heads consist of: $\text{Linear}(D_{\text{sub}}, 64) \to \text{LayerNorm}(64) \to \text{SiLU} \to \text{Linear}(64, 6)$.
-- **Zero-Lag EMA Rationale**: Evaluated across 9 grid-search combinations in Iteration 4:
-  - $\alpha_{\text{pos}} = 0.0, \alpha_{\text{vel}} = 0.0$ eliminates causal filter phase-lag, reducing mean position error by $2.1\%$ ($0.2114 \to 0.2069\,\text{rad}$), reducing mean velocity error by $2.1\%$, and dropping final velocity error by $12.5\%$ ($0.2187 \to 0.1914\,\text{rad/s}$).
+### `docs_verified/03_BENCHMARKS_EVIDENCE_AND_REPLICATION.md`
+> Verified SSOT benchmarks, residual-gated baseline fairness, 3-seed ablation, neuromorphic standby energy framing, and replication commands
 
-### 2.5 Master Tensor Dimensionality Contract Table
+# 03 — Benchmarks, Verified Evidence & Replication Runbook
 
-| Tensor Symbol | Variable Name | Producing Module | Consuming Module | Tensor Shape Contract | Invariant & Domain Constraint |
-| :--- | :--- | :--- | :--- | :--- | :--- |
-| $\mathbf{E}_t$ | `events` | `EventCameraSimulator` | `EventEncoder` | `[B, T, 4, 32, 32]` | Sparse binary $\{0, 1\}$, finite, $C=4$ |
-| $\mathbf{u}_t$ | `actions` | `ActionConditionedController` | `LatentPredictor` ($M_1$) | `[B, T, 6]` | Motor controls $[-1.0, 1.0]^6$, no NaNs/Infs |
-| $\text{flag}_t$ | `phase_flags` | `ActionConditionedController` | `rollout_latent` | `[B, T]` | Integer $\in \{0, 1, 2\}$ (0: Approach, 1: Heft, 2: Transport) |
-| $\mathbf{y}_t^*$ | `flat_kinematics` | Dataset / Unity Telemetry | `RepresentationPhaseStrategy` | `[B, T, 12]` | Ground truth $[\mathbf{q}_1^*..\mathbf{q}_6^*, \mathbf{p}_1^*..\mathbf{p}_6^*]$ |
-| $\mathbf{k}_t$ | `keypoints` | `SpatialSoftmax` | `SpikingLatentDynamics` | `[B, 32]` | Analytical 2D centers of mass $[-1.0, 1.0]^{32}$ ($2K=32$) |
-| $\mathbf{x}_t$ | `sensory_x` | `EventEncoder.proj` | `sensory_predictor` | `[B, 128]` | Continuous visual feature embedding $\mathbb{R}^{128}$ |
-| $\boldsymbol{\epsilon}_t$ | `epsilon_t` | Top-down error unit | `SpikingLatentDynamics` | `[B, 128]` | Prediction error $\mathbf{x}_t - \hat{\mathbf{x}}_t \in \mathbb{R}^{128}$ |
-| $\mathbf{s}_t$ | `spikes` | `MultiTimescaleMemory` | `SpikingLatentDynamics` | `[B, 256]` | Binary spikes $\{0.0, 1.0\}^{256}$ with surrogate grad |
-| $\mathbf{m}_t$ | `concatenated_mems`| `MultiTimescaleMemory` | `SpikingLatentDynamics` | `[B, 256]` | Membrane potentials $\mathbb{R}^{256}$ |
-| $\mathbf{q}_t$ | `q` | `SpikingLatentDynamics` | `PhysicalDecoder.pos_head` | `[B, 32]` | Generalized coordinates $[-1.0, 1.0]^{32}$ |
-| $\mathbf{p}_t$ | `p` | `SpikingLatentDynamics` | `PhysicalDecoder.vel_head` | `[B, 96]` | Generalized momentum $\mathbb{R}^{96}$ (LayerNormed) |
-| $\mathbf{z}_t$ | `latent` | Concatenation $[\mathbf{q}_t, \mathbf{p}_t]$ | $M_1$ Predictor | `[B, 128]` | Partitioned phase space $\mathbb{R}^{128}$ ($D_q + D_p = 128$) |
-| $\hat{\mathbf{z}}_{1:H}$ | `trajectory` | `LatentPredictor` ($M_1$) | `RolloutEvaluator` | `[B, H, 128]` | Action-conditioned mental simulation rollouts |
-| $\hat{\mathbf{y}}_t$ | `decoded_kinematics`| `PhysicalDecoder` | Telemetry / Loss | `[B, H, 12]` | Decoded joint coordinates and velocities |
+All closed-loop control metrics below were executed under causal **Physics-in-the-Loop (PIL)** (`ArticulatedArmPhysicsStepper`, rigid palm-latch `payload_attached = (t >= t_c)` where $t_c = \texttt{p1\_indices[0]} = t_{\text{contact}} - 7$ is the $\phi_t=1$ sensory-window onset and $t_{\text{grasp}} = t_c + 7 = t_{\text{contact}}$, causal `OnlineEventCameraStream`, zero `z_gt_next` leakage) on `50` unseen test episodes (`[3600, 3649]`) with `K=256, H=10, N_iter=3`, slew clamp `0.10`. An episode counts as a grasp success iff end-effector error stays `< 3.0 cm` across the final 3-step settling window, terminal $\text{SO}(3)$ rotation error `< 0.05 rad`, and terminal joint velocity $\|\dot{\mathbf{q}}(t_{\text{grasp}})\|_2 < \tau_{\text{vel}} = \max(1.5, 1.1\|\dot{\mathbf{q}}^*_{t_{\text{grasp}}}\|_2)\,\text{rad/s}$.
 
 ---
 
-## 3. Training Protocol & Optimization Guarantees
+## 0. Checkpoint Provenance & Equalized Training Budgets
 
-### 3.1 Decoupled Two-Phase Curriculum
-The training pipeline enforces strict physical and mathematical separation between sensory representation learning (Phase 0) and predictive latent attractor dynamics (Phase 1).
+`model.pt` and `best_model.pt` in `results/spwm_v0_12_4_train_m1/` are distinct files on disk (`sha256` prefixes `d358cccbd678` vs `f5cabfca3635` due to non-weight metadata), **but both store identical Epoch 200 EMA `model_state` tensors (`0` weight diffs)**; SPWM, ANN-Rate, and equalized baseline checkpoints are documented below:
 
-```mermaid
-flowchart TD
-    subgraph Phase0["Phase 0: Grounded Articulated State Estimator (train_representation)"]
-        D0["EventWorldDataset (4,000 Trajectories)"] --> B0["Batch [B, T=105, C=4, 32, 32]"]
-        B0 --> Mod0["Active: EventEncoder, Dynamics, SensoryPred, PhysicalDecoder"]
-        B0 -.-> FrozenM1["Strictly Frozen: LatentPredictor (M1)"]
-        Mod0 --> L_kin["L_kinematic: MSE(pos, q*) + (1/s_v^2) * MSE(vel, p*)"]
-        Mod0 --> L_der["L_derivative: MSE((q_t+1 - q_t), dt * p_t)"]
-        Mod0 --> L_smo["L_smoothness: SmoothL1(p_t+1 - p_t)"]
-        Mod0 --> L_sen["L_sensory: MSE(eps_t, 0)"]
-        L_kin & L_der & L_smo & L_sen --> Loss0["L_Phase0 = 5.0 L_kin + 1.0 L_der + 0.1 L_smo + 1.0 L_sen"]
-        Loss0 --> Opt0["Adam (lr=1e-4, probe_lr=2e-4, grad_clip=0.8)"]
-    end
-
-    subgraph CheckpointBridge["Scoped Checkpoint Bridge (strict=True)"]
-        Opt0 --> Save0["Phase 0 Checkpoint (model.pt)"]
-        Save0 --> Load0["load_representation_checkpoint(model, path)\nLoads: encoder, dynamics, sensory_predictor, physical_decoder\nUntouched: LatentPredictor M1"]
-    end
-
-    subgraph Phase1["Phase 1: Action-Conditioned Attractor Predictor (train_m1)"]
-        Load0 --> Init1["Freeze: encoder, dynamics, sensory_predictor, physical_decoder"]
-        Init1 --> ActiveM1["Active (requires_grad=True): LatentPredictor M1"]
-        D0 --> B1["Batch [B, T=105] with actions u_t and phase_flags"]
-        B1 --> RolloutEng["Unified rollout_latent with Soft-Fade Sensory Injection\nw_max = 0.60, window [t_contact-7, t_contact+7]"]
-        RolloutEng --> Loss1["L_M1 = 1.0 MSE_pos(q_hat, q_target) + 1.5 MSE_vel(p_hat, p_target)\n(2x weighting over grasp lock heft frames)"]
-        Loss1 --> Opt1["Adam (lr=1e-4, weight_decay=5e-4, grad_clip=0.8)"]
-    end
-```
-
-#### Phase 0: Grounded State Estimation (`RepresentationPhaseStrategy`)
-- **Objective Function**:
-  $$\mathcal{L}_{\text{Phase 0}} = \lambda_{\text{kin}}\mathcal{L}_{\text{kinematic}} + \lambda_{\text{der}}\mathcal{L}_{\text{derivative}} + \lambda_{\text{smo}}\mathcal{L}_{\text{smoothness}} + \lambda_{\text{sen}}\mathcal{L}_{\text{sensory}}$$
-  - $\mathcal{L}_{\text{kinematic}} = \frac{1}{BT}\sum_{b, t} \left( \|\hat{\mathbf{q}}_{b, t}^* - \mathbf{q}_{b, t}^*\|_2^2 + \frac{1}{s_v^2} \|\hat{\mathbf{p}}_{b, t}^* - \mathbf{p}_{b, t}^*\|_2^2 \right), \quad s_v = 1.0\,\text{rad/s}$
-  - $\mathcal{L}_{\text{derivative}} = \frac{1}{B(T-1)}\sum_{b, t} \|(\mathbf{q}_{b, t+1} - \mathbf{q}_{b, t}) - \Delta t \cdot \mathbf{p}_{b, t}[..., :32]\|_2^2$
-  - $\mathcal{L}_{\text{smoothness}} = \frac{1}{B(T-1)}\sum_{b, t} \text{Smooth}_{L1}(\mathbf{p}_{b, t+1} - \mathbf{p}_{b, t}, \beta=0.1)$
-  - $\mathcal{L}_{\text{sensory}} = \frac{1}{BT}\sum_{b, t} \|\boldsymbol{\epsilon}_{b, t}\|_2^2$
-  - Loss weights: $\lambda_{\text{kin}} = 5.0, \; \lambda_{\text{der}} = 1.0, \; \lambda_{\text{smo}} = 0.1, \; \lambda_{\text{sen}} = 1.0$.
-- **Optimization**: Adam optimizer, $\text{lr} = 2 \times 10^{-4}$, weight decay $5 \times 10^{-4}$; probe heads $\text{lr} = 2 \times 10^{-4}$, weight decay $1 \times 10^{-4}$; gradient clipping norm $0.8$.
-
-#### Phase 1: Action-Conditioned Attractor Dynamics (`M1PhaseStrategy`)
-- **Objective Function**:
-  Representation modules strictly frozen. Canonical target trajectories $\mathbf{z}_{\text{target}} = \text{stop\_grad}(\mathbf{z}^*)$ generated over rollout horizon $H$.
-  $$\mathcal{L}_{M_1} = \lambda_{\text{pos}} \frac{1}{BH}\sum_{b, h} w_{\text{heft}}(b, h) \|\hat{\mathbf{q}}_{b, h} - \mathbf{q}_{\text{target}, b, h}\|_2^2 + \lambda_{\text{vel}} \frac{1}{BH}\sum_{b, h} w_{\text{heft}}(b, h) \|\hat{\mathbf{p}}_{b, h} - \mathbf{p}_{\text{target}, b, h}\|_2^2$$
-  where $\lambda_{\text{pos}} = 1.0, \lambda_{\text{vel}} = 1.5$, $\lambda_{\text{latent}} = 1.0$, and $w_{\text{heft}} = 2.0$ across $[t_{\text{heft}} - 5, t_{\text{heft}} + 10]$ around contact grasp lock.
-- **Optimization**: Adam optimizer updating strictly `model.predictor`, $\text{lr} = 2 \times 10^{-4}$, weight decay $5 \times 10^{-4}$, gradient clipping norm $0.8$.
-
-### 3.2 Gradient Isolation, Scoped Checkpointing & AST Anti-Fallback Enforcement
-- **AST Anti-Fallback Policy**: Enforced repository-wide by `scripts/scan_fallbacks.py` and `tests/test_anti_fallback.py`:
-  - Zero 3-argument `getattr(obj, attr, default)` calls permitted.
-  - Zero ternary `hasattr` branches (`x if hasattr(...) else y`) permitted.
-  - Zero silent exception handlers (`except TypeError:`, `except AttributeError:`, `except ...: pass`) permitted.
-  - Zero `strict=False` checkpoint loading permitted.
-- **Checkpoint Scoping**:
-  - `load_representation_checkpoint(model, path)`: Ingests `encoder`, `dynamics`, `sensory_predictor`, and `physical_decoder` with `strict=True`, leaving `predictor` untouched.
-  - `BaseTrainer.load_checkpoint(path)`: Validates state-dict keys strictly with `strict=True`.
-
-### 3.3 Dataset Partitioning & Zero Temporal Leakage
-- **Dataset Scale**: 4,000 distinct trajectories generated via PhysX 4 Unity simulation (or deterministic kinematics replay):
-  - Trajectory length: $T = 105$ timesteps ($\Delta t = 0.05\,\text{s} \to 5.25\,\text{s}$ per episode).
-  - Train split ($80\%$): Trajectories $[0, 3199]$ (3,200 trajectories).
-  - Validation split ($10\%$): Trajectories $[3200, 3599]$ (400 trajectories).
-  - Test split ($10\%$): Trajectories $[3600, 3999]$ (400 trajectories).
-  - Extrapolation split (Held-out): Trajectories $[4000, 4099]$ (100 trajectories with joint velocity range extended to $[-2.0, 2.0]\,\text{rad/s}$).
-- **Leakage Prevention**: Partitioning is executed strictly at the **trajectory ID level**. Sub-sequences are never shuffled across splits, guaranteeing strictly unseen robotic reaching sequences at test time.
+| Model / Seed | Checkpoint File | Epochs (Best) | Wall-Clock (`MPS`) | Primary Consumers |
+| :--- | :--- | :---: | :---: | :--- |
+| `SPWM` (`42`) | [results/spwm_v0_12_4_train_m1/checkpoint_phase_4.pt](file:///Users/Mattia/Desktop/Studies/Temp/results/spwm_v0_12_4_train_m1/checkpoint_phase_4.pt) | `160+240` (`240`) | `10.40 h` | Table 2 (`N=25` Val-Sel.), Table 3 (Stages 3–4b), `forensic` |
+| `SPWM` (`42`) | [results/spwm_v0_12_4_train_m1/model.pt](file:///Users/Mattia/Desktop/Studies/Temp/results/spwm_v0_12_4_train_m1/model.pt) / `best_model.pt` | `160+240` (`200`) | `10.40 h` | Table 1, Table 2 (`N=6`), Table 4, Table 5 |
+| `SPWM` (`42`) | `checkpoint_phase_1.pt` | `181` | — | Table 3 (Stages 1–2) |
+| `SPWM` (`101`) | [results/multiseed/seed_101_m1/checkpoint_phase_1.pt](file:///Users/Mattia/Desktop/Studies/Temp/results/multiseed/seed_101_m1/checkpoint_phase_1.pt) | `160+240` (`96`) | `5.86 h` | Table 2 (`N=25` Val-Sel.), Table 3 (Stages 1, 2, 4a, 4b), `forensic` |
+| `SPWM` (`101`) | [results/multiseed/seed_101_m1/model.pt](file:///Users/Mattia/Desktop/Studies/Temp/results/multiseed/seed_101_m1/model.pt) / `checkpoint_phase_4.pt` | `80` / `240` | `5.86 h` | Table 1, Table 2 (`N=6`), Table 3 (Stage 3), Tables 4–5 |
+| `SPWM` (`2024`) | [results/multiseed/seed_2024_m1/checkpoint_phase_2.pt](file:///Users/Mattia/Desktop/Studies/Temp/results/multiseed/seed_2024_m1/checkpoint_phase_2.pt) | `160+260` (`102`) | `6.41 h` | Table 2 (`N=25` Val-Sel.), Table 3 (Stages 4a, 4b), `forensic` |
+| `SPWM` (`2024`) | [results/multiseed/seed_2024_m1/model.pt](file:///Users/Mattia/Desktop/Studies/Temp/results/multiseed/seed_2024_m1/model.pt) / `checkpoint_phase_1.pt` / `phase_4.pt` | `130` / `94` / `260` | `6.41 h` | Table 1, Table 2 (`N=6`), Table 3 (Stages 1–3), Tables 4–5 |
+| `ANN-Rate` (`42/101/2024`) | `results/ann_ablation/seed_{42,101,2024}_m1/model.pt` | `160+240` | — | Tables 1, 2, 4, 5, `forensic` |
+| `Continuous RSSM` (`42/101/2024`) | `results/baselines/continuous_rssm/model.pt`, `results/multiseed_rssm/seed_{101,2024}/continuous_rssm/model.pt` *(60-ep backups in `model_pre_dagger_60ep.pt`)* | `60+16=76` (`61`), `60+16=76` (`61`), `60+17=77` (`62`) | `46.0+13.0 m`, `44.0+12.9 m`, `44.0+13.8 m` | Tables 1, 2 (Open-Loop, Un-Gated, Residual-Gated), `forensic` |
+| `Deep GRU` (`42/101/2024`) | `results/baselines/deep_gru/model.pt`, `results/multiseed_rssm/seed_{101,2024}/deep_gru/model.pt` *(backups in `model_pre_dagger_60ep.pt` / `model_pre_equalized_18ep.pt`)* | `59+40=99` (`90`), `80` (`68`), `80` (`80`) | `46.6+33.8 m`, `67.1 m`, `66.8 m` | Tables 1, 2 (Open-Loop, Un-Gated, Residual-Gated), `forensic` |
+| `Continuous ConvLSTM` (`42`) | [results/baselines/continuous_convlstm/model.pt](file:///Users/Mattia/Desktop/Studies/Temp/results/baselines/continuous_convlstm/model.pt) | `60` (`54`) | `86.9 m` | Table 1, Table 5 |
 
 ---
 
-## 4. Empirical Evaluation & Benchmarks
+## 1. Table 1 — Open-Loop Rollout ($N=400$ Test `[3600, 3999]`, $t_{\text{start}}=4$)
 
-### 4.1 Multi-Horizon Tracking Telemetry Table
-Evaluated on the 400 held-out test set trajectories under the production `SPWM-v0.12.4` checkpoint (`results/spwm_v0_12_4_train_m1/metrics_spwm_v0_12_4.json`, `392,141` total / `317,900` active inference parameters, and `results/ssot_eval_metrics.json`):
+**Evidence:** [comparative_metrics_v0_12_4.json](file:///Users/Mattia/Desktop/Studies/Temp/results/spwm_v0_12_4_train_m1/comparative_metrics_v0_12_4.json), [ssot_eval_metrics.json](file:///Users/Mattia/Desktop/Studies/Temp/results/ssot_eval_metrics.json), [training_meta.json (GRU 42)](file:///Users/Mattia/Desktop/Studies/Temp/results/baselines/deep_gru/training_meta.json), [training_meta.json (GRU 101)](file:///Users/Mattia/Desktop/Studies/Temp/results/multiseed_rssm/seed_101/deep_gru/training_meta.json), [training_meta.json (GRU 2024)](file:///Users/Mattia/Desktop/Studies/Temp/results/multiseed_rssm/seed_2024/deep_gru/training_meta.json).
 
-| Temporal Horizon | Metric | SPWM-v0.12.4 (Active Production) |
-| :---: | :--- | :---: |
-| **$H = 1$** (One-Step) | Position Error (rad) | **$0.0219$** |
-| **$H = 100$** ($5.00\,\text{s}$) | Position Error (rad) | **$0.1186$** |
-
-> [!NOTE]
-> **Multi-Horizon Stability (`SPWM-v0.12.4`)**: On the 400 held-out test trajectories (`results/spwm_v0_12_4_train_m1/metrics_spwm_v0_12_4.json`, `results/ssot_eval_metrics.json`), `SPWM-v0.12.4` achieves $0.0219\,\text{rad}$ one-step ($H=1$) position error and $0.1186\,\text{rad}$ at $H=100$ ($0.1115\,\text{rad}$ pure open-loop mean error over $h \in [1, 100]$ vs $0.1482\,\text{rad}$ with un-gated phasic sensory handover).
-
-### 4.2 Active Perception Sensory Handover
-Unconditional mid-trajectory phasic sensory re-injection degrades $H=100$ rollout tracking ($0.1482\,\text{rad}$ vs.\ $0.1115\,\text{rad}$ pure open-loop) by perturbing $M_1$'s autonomous momentum manifold. Consequently, `SPWM-v0.12.4` pairs **2-Stage SE(3) Lookahead** with **Residual-Gated Sensory Handover** strictly as an online closed-loop safety gate during `phase_flags == 1`. Disentangling Stage 4 in 50-episode Physics-in-the-Loop (PIL, `t >= t_c`) evaluation confirms that **2-Stage SE(3) Lookahead alone (`Stage 4a`, $w_t \equiv 0$)** drives the full `+14.0 pp` gain from `72.0%` (`Stage 3`) to **`86.0%` (`43/50`)** on canonical Seed `42`, while the residual gate enforces a `0.0%` false-trigger rate on nominal episodes across all 3 seeds (rejecting `dist_obs = 0.16–0.22 m` post-contact event bursts) and activates selectively only under mechanical OOD drift (Seed `2024`: `4.0%` of episodes / `0.5%` of $\phi_t=1$ steps).
-
-### 4.3 Biological Plausibility Metrics
-- **Mean Firing Sparsity**: $\bar{s} = 0.1227$ ($12.27\%$ measured ALIF spike rate on `results/ssot_eval_metrics.json`; $16.89\%$ on `results/spwm_v0_12_4_train_m1/metrics_spwm_v0_12_4.json`). Meets the biophysical sparsity design target of $10.0\% - 17.0\%$, avoiding both silent network quiescence ($< 5\%$) and energetic saturation ($> 25\%$).
-- **Sustained Multi-Horizon Firing**: Average of $31.4$ active spikes per timestep across the 256 ALIF population at horizon $H=100$ ($12.27\%$ eval rate).
-- **Membrane & Gradient Stability**: Peak gradient norm capped at $0.80$ via gradient clipping. LayerNorm normalization on $\mathbf{p}_t$ constrains maximum momentum norms to $\|\mathbf{p}\|_2 \le 3.5$, protecting downstream ALIF membrane potentials from hyperpolarizing or depolarizing current explosions.
-
----
-
-## 5. Architectural Evolutionary History & Post-Mortems
-
-```mermaid
-timeline
-    title SPWM Architectural Evolution (v1 to v0.12.4)
-    section Foundational
-        SPWM-v1 : Surrogate BPTT : LIF Neurons : O(T) Memory Complexity
-        SPWM-v2 : Non-BPTT Blueprint : Dendritic Compartments : SVD Sleep (Unstable)
-        SPWM-v3 : Radical Pruning : ALIF Forward Core : Dual-Trace e-prop
-    section Spatial & Phase Space
-        SPWM-v4 : SpatialSoftmax (K=16) : Symplectic Phase Space (q in R^32, p in R^96)
-        SPWM-v5 : Port-Hamiltonian Collapse : Heuristic Freezing Post-Mortem : Rollback to v4.3
-        SPWM-v6 : Population Scaling to 256 ALIFs : CANN Low-Pass Failure : Autoregressive Loss
-    section Robotics & Active Perception
-        SPWM-v0.5.0 : Unity 3D PhysX 4 Rig : Featherstone 6-DOF : Ghost Playback Manager
-        SPWM-v0.5.3 : Contact Shock Post-Mortem : Teleporting Ghost Fix
-        SPWM-v0.6.0 : Dual-Camera Perception (Global + Wrist, C=4) : Depth Disambiguation
-        SPWM-v0.7.2 : Anti-Fallback AST Enforcement : Zero-Lag Decoder Sweep (alpha=0.0)
-        SPWM-v0.7.3 : Anthropomorphic Humanoid Rig : Continuous Soft-Fade Baseline
-        SPWM-v0.12.4 : SE(3) + ALIF Homeostasis : Deploy-Ready PIL MPPI (86.0% Seed 42)
-```
-
-### 5.1 Chronological Milestone Progression
-1. **SPWM-v1 (Baseline State)**: Standard LIF neurons trained via global Backpropagation Through Time (BPTT). Suffered from $O(T)$ computational memory footprint and vanishing gradients over $T > 50$.
-2. **SPWM-v2 (Non-BPTT Exploratory Paradigm)**: 2-compartment dendritic neurons with noisy mirror feedback alignment and periodic offline SVD sleep consolidation. Discarded due to geometric misalignment and E/I balance divergence during sleep phases.
-3. **SPWM-v3 / v3.1 (ALIF Forward Core)**: Dynamic adaptive threshold $A_t$ with dual-trace e-prop. Added $1/T$ inverse sequence trace scaling, eliminating gradient explosion and static arena-center collapse.
-4. **SPWM-v4.0 / v4.3 (Topological Spatial-Softmax & Symplectic Space)**: Replaced dense visual layers with SpatialSoftmax extracting $K=16$ keypoints in $[-1, 1]^2$. Formally partitioned latent state into coordinate manifold $\mathbf{q} \in \mathbb{R}^{32}$ and momentum manifold $\mathbf{p} \in \mathbb{R}^{96}$.
-5. **SPWM-v6 (Population Scaling & Multi-Step Loss)**: Scaled ALIF population to 256 units (two 128-neuron tiers with $\beta=0.90$ and $\beta=0.985$). Introduced autoregressive multi-step rollout loss, locking firing rate at $10.4\%-11.8\%$.
-6. **SPWM-v0.5.0 (Unity 3D Continuous Robotics)**: Transitioned from 2D toy physics to 3D continuous robotics (Unity PhysX 4 Featherstone `ArticulationBody`, actions $\mathbf{u}_t \in \mathbb{R}^6$). Introduced holographic ghost visualizer (`GhostPlaybackManager.cs`).
-7. **SPWM-v0.6.0 (Dual-Camera Active Perception, $C=4$)**: Added egocentric wrist-mounted event camera paired with static head observer, resolving axial wrist roll symmetry and elbow flex depth foreshortening.
-8. **SPWM-v0.7.2 (Anti-Fallback Enforcement & Zero-Lag Readout)**: Completely eliminated all silent fallbacks (`getattr`, ternary `hasattr`, `strict=False`). Conducted 9-combination grid sweep over decoder EMA smoothing factors, establishing optimal zero-lag filtering ($\alpha_{\text{pos}} = 0.0, \alpha_{\text{vel}} = 0.0$).
-9. **SPWM-v0.7.3**: Integrated anthropomorphic right humanoid arm kinematics, continuous soft-fade sensory handover, and procedural object variance ($1.20 - 4.50\,\text{kg}$).
-10. **SPWM-v0.12.4 (Production Baseline)**: Added Stasis Damping Gate (`stasis_sigma = 0.003`), direct momentum velocity slice (`v_p = p_next[:, :q_dim]`), active-perception soft-fade handover, ALIF homeostasis ($\lambda_{\text{spike\_balance}} = 0.25$), $SE(3)$ supervision, and deploy-ready Latent MPPI (**`86.0%`** PIL grasp success on Seed `42`; **`58.0 ± 27.1%`** across 3 seeds).
-
-### 5.2 Negative Ablations & Post-Mortem Log
-
-#### 1. Port-Hamiltonian Recurrence Collapse (SPWM-v5.1 – v5.4, SPWM-v6.1)
-- **Concept Tested**: Enforcing strict skew-symmetric and dissipative recurrence matrices $\mathbf{W}_{\text{rec}} = \mathbf{J} - \mathbf{R}$ ($\mathbf{J} = -\mathbf{J}^T, \mathbf{R} \succeq 0$) on latent transitions and hard wall-reflection heuristics ($|\mathbf{q}| \ge 0.98 \to \mathbf{v} \leftarrow -0.8 \mathbf{v}$).
-- **Observed Failure**: Disrupted flow continuity. The network suffered catastrophic long-horizon freezing: $H=1$ position error was acceptable ($0.0919\,\text{rad}$), but $H=50$ and $H=100$ position errors collapsed to $0.8942\,\text{rad}$ and $1.1479\,\text{rad}$.
-- **Resolution**: Fully rolled back to the v4.3 unconstrained/dissipative baseline. Replaced with parameterized state-dependent dissipation $\gamma_t = \sigma(\text{Head}_{\text{diss}}(\mathbf{h}_t))$ in $M_1$.
-
-#### 2. Continuous Attractor Neural Network (CANN) Low-Pass Distortion (SPWM-v6.2)
-- **Concept Tested**: Integrated a Continuous Attractor Neural Network with $M=64$ Gaussian bump centers across $\mathbf{q} \in [-1, 1]^{32}$ to eliminate dead-reckoning drift.
-- **Observed Failure**: The CANN energy landscape acted as a destructive low-pass filter. Trajectories froze onto the nearest attractor center; $H=1$ position error worsened to $0.489\,\text{rad}$, and $H=100$ error degraded to $0.921\,\text{rad}$.
-- **Resolution**: Discarded. Manifold stability was achieved via multi-step curriculum training rather than static attractor basins.
-
-#### 3. Rigid Contact Impulse Shock & Teleporting Ghost Artifacts (SPWM-v0.5.3)
-- **Concept Tested**: Instantaneous rigid grasp attachment of a heavy payload ($m > 2.0\,\text{kg}$) under unconstrained sensory velocity coupling.
-- **Observed Failure**: Impact force induced a joint velocity jump $> 2.5\,\text{rad/s}$ and a discrete position leap of $0.4\,\text{rad}$ within 2 timesteps ($100\,\text{ms}$), causing the ghost holographic arm to "teleport" away from the real arm during contact frames 53–63.
-- **Resolution**: Replaced hard switching with the Phasic Active Perception protocol: sensory injection initiated 7 frames prior to contact, capped at $K_{\text{max}} = 0.35$, followed by smoothed continuous soft-fade handover ($w_{\text{max}} = 0.60$).
-
-#### 4. Static Attractor Deadlock & Over-Constrained Clamping (SPWM-v0.5.4, SPWM-v0.6.2)
-- **Concept Tested**: To prevent stationary drift when the arm paused, coordinates were clamped when event activity fell below an aggressive threshold ($\theta_{\text{act}} = 0.012$).
-- **Observed Failure**: Caused severe motion deadlock. Joint motion excursions were attenuated by $81\%$ (shoulder pan moved only $0.253\,\text{rad}$ vs. $1.350\,\text{rad}$ real), and validation position error surged to $1.177\,\text{rad}$.
-- **Resolution**: Recalibrated activity threshold to background thermal noise floor ($\theta_{\text{act}} = 0.001$), restoring full joint excursion while suppressing stationary drift.
-
----
-
-## 6. Gap Analysis & Paper Readiness Audit
-
-This section highlights the critical missing empirical benchmarks, architectural baselines, and profiling requirements necessary to defend an academic paper submission at top-tier venues (CoRL, ICRA, NeurIPS, RSS).
-
-```mermaid
-flowchart TD
-    subgraph RepoCurrent["Current Repository Assets"]
-        R1["SPWM SNN World Model"]
-        R2["Unity 3D Simulation & Telemetry"]
-        R3["Multi-Seed Validated (seeds 42, 101, 2024)"]
-        R4["Multi-Horizon Telemetry & MPPI Closed-Loop Control"]
-    end
-
-    subgraph MissingPublication["Status for Top-Tier Publication"]
-        M1["1. Non-Spiking Baseline Models [DONE]\n(RSSM/Dreamer, Deep GRU, ConvLSTM)"]
-        M2["2. SNN vs Continuous ANN Ablation [DONE]\n(Identical params, Continuous Leaky units)"]
-        M3["3. Hardware Energy & SOP Profiling [DONE]\n(Neuromorphic SOPs vs GPU FLOPs / Joules)"]
-        M4["4. Statistical Multi-Seed Rigor [DONE]\n(Seeds 42, 101, 2024: mean +/- std)"]
-        M5["5. Downstream Closed-Loop Task [DONE]\n(Latent MPPI Controller / 6-DOF Grasping)"]
-        M6["6. Sim-to-Real Domain Gap Analysis [DONE]\n(Sensor noise, refractory dropout, mass & friction drift)"]
-    end
-
-    RepoCurrent -.->|"Comparative Benchmarks Completed"| MissingPublication
-```
-
-### 6.1 Comparative Baselines [COMPLETED — CoRL Final Grounded Parity]
-- [x] **Current Repo State**: Benchmarked head-to-head against 3 non-spiking deep recurrent architectures (Continuous RSSM across seeds `42, 101, 2024`, Deep GRU, Continuous ConvLSTM), Parameter-Matched `ANN-Rate` (across seeds `42, 101, 2024`), Reactive BC, and Privileged Jacobian-IK + PD under equalized SE(3) + multi-step rollout training (`4,000` trajectories, `results/spwm_v0_12_4_train_m1/comparative_metrics_v0_12_4.json`):
-  - **Continuous RSSM**: Deterministic GRU $h_t \in \mathbb{R}^{256}$ + stochastic $s_t \in \mathbb{R}^{32}$ (380.5k params, 3 seeds).
-  - **Deep GRU Predictor**: 2-layer action-conditioned GRU (338.9k params).
-  - **Continuous ConvLSTM**: Spatial-temporal ConvLSTM on 2D conv maps (296.9k params).
-  - **Open-Loop Multi-Horizon Table ($N=400$, $H=100$, $t_{\text{start}}=4$; multi-seed mean $\pm$ std over seeds `[42, 101, 2024]`):**
-
-| Model Architecture | Active (Total) Params | Seeds | Pos MSE (H=1) | Pos MSE (H=10) | Pos MSE (H=50) | Pos MSE (H=100) | Vel MSE (H=1) | Vel MSE (H=10) | Vel MSE (H=50) | Vel MSE (H=100) |
-| :--- | :---: | :---: | :---: | :---: | :---: | :---: | :---: | :---: | :---: | :---: |
-| **SPWM-v0.12.4** | **317.9k (392.1k)** | 3 | `0.00018 ± 0.00011` | `0.00348 ± 0.00265` | `0.00315 ± 0.00144` | `0.00240 ± 0.00037` | `0.00139 ± 0.00076` | `0.04507 ± 0.02601` | `0.02466 ± 0.01271` | **`0.00971 ± 0.00177`** |
-| **ANN-Rate** | 317.9k (392.1k) | 3 | `0.00028 ± 0.00012` | `0.00249 ± 0.00032` | `0.00341 ± 0.00264` | `0.00210 ± 0.00063` | `0.00193 ± 0.00069` | `0.03356 ± 0.00511` | `0.02440 ± 0.01698` | `0.01183 ± 0.00715` |
-| **Continuous RSSM** | 380.5k | 3 | **`0.00001 ± 0.00001`** | `0.00029 ± 0.00006` | `0.00166 ± 0.00002` | **`0.00145 ± 0.00009`** | **`0.00033 ± 0.00017`** | `0.01659 ± 0.00244` | `0.02262 ± 0.00088` | `0.02101 ± 0.00044` |
-| **Deep GRU** | 338.9k | 1 | `0.00003` | `0.00029` | `0.00173` | `0.00650` | `0.00097` | `0.00643` | `0.01605` | `0.11191` |
-| **Continuous ConvLSTM** | 296.9k | 1 | `0.00002` | **`0.00012`** | **`0.00150`** | `0.00707` | `0.00147` | **`0.00553`** | **`0.01095`** | `0.33696` |
-
-> **Key Empirical Takeaways**:
-> 1. **Lowest Long-Horizon Velocity Error**: With equalized SE(3) + multi-step rollout training, all baselines stabilize at $H \le 50$, but at $H=100$ `SPWM-v0.12.4` achieves **`0.00971 ± 0.00177` rad²/s²** velocity MSE (**`2.2x` lower** than `Continuous RSSM` `0.02101 ± 0.00044`, **`11.5x` lower** than `Deep GRU` `0.11191`, and **`34.7x` lower** than `ConvLSTM` `0.33696`).
-> 2. **Comparative Metrics**: Consolidated in [`results/spwm_v0_12_4_train_m1/comparative_metrics_v0_12_4.json`](file:///Users/Mattia/Desktop/Studies/Temp/results/spwm_v0_12_4_train_m1/comparative_metrics_v0_12_4.json).
-
-### 6.2 Non-Spiking SNN Ablation (COMPLETED)
-- [x] **Current Repo State**: Evaluated direct apples-to-apples non-spiking continuous rate ablation (`ANNWorldModel`) vs. SNN-ALIF (`SPWM-v0.12.4`) under identical full two-phase training (`160` Phase 0 + `240` Phase 1 epochs across seeds `42, 101, 2024`) and identical closed-loop causal residual-gated handover during PIL (`t >= t_c`).
-- [x] **Ablation Implemented**: Constructed `ANNWorldModel` in `spwm/models/ann_ablation.py` by replacing the 256 ALIF spiking cells in `MultiTimescaleMemory` with identical continuous leaky rate units (`317.9k` active / `392.1k` total parameters).
-- [x] **Side-by-Side 3-Seed Closed-Loop PIL Comparison (50 Episodes `[3600, 3649]`, `t >= t_c`)**:
-
-| Architecture | PIL Success (%) | Min Error (cm) | Terminal Error (cm) | Smoothness $\|\Delta^2 q\|$ | Jerk $\|\Delta^3 q\|$ | Flips |
-| :--- | :---: | :---: | :---: | :---: | :---: | :---: |
-| **SPWM-v0.12.4 (SNN-ALIF, $N=6$ Tier-2, 3 seeds)** | **`58.0 ± 27.1%`** *(Seed 42: **86.0%**)* | **`0.90 ± 0.04`** *(0.86)* | **`2.23 ± 0.68`** *(1.57)* | **`0.00860 ± 0.00304`** | **`0.00608 ± 0.00291`** | **`19.4 ± 7.6`** |
-| **SPWM-v0.12.4 (SNN-ALIF, $N=25$ Val-Sel., 3 seeds)** | **`60.7 ± 2.3%`** | **`0.88 ± 0.11`** | **`2.01 ± 0.12`** | **`0.00931 ± 0.00346`** | **`0.00663 ± 0.00321`** | **`21.1 ± 8.5`** |
-| **ANN-Rate (Leaky Rate, 3 seeds)** | `37.3 ± 9.5%` *(Seed 42: 34.0%)* | `1.07 ± 0.28` *(0.83)* | `2.98 ± 0.46` *(2.75)* | `0.01148 ± 0.00088` | `0.00938 ± 0.00107` | `26.0 ± 1.9` |
-
-### 6.3 Computational & Energy Profiling (SOPs vs. FLOPs) [COMPLETED]
-- [x] **Current Repo State**: Profiled neuromorphic Synaptic Operations (SOPs) on Loihi-2 vs dense GPU MACs across all 3 `SPWM-v0.12.4` seeds in [`results/energy_profiling/energy_profiling_metrics.json`](file:///Users/Mattia/Desktop/Studies/Temp/results/energy_profiling/energy_profiling_metrics.json) and `results/multiseed/seed_{101,2024}_energy/`:
-  - **SPWM-v0.12.4 Recurrent Step Energy (3-Seed Mean ± Std)**: **`12.22 ± 0.19 nJ/step`** on Loihi-2 SOPs (`8,150 ± 129` SOPs/step at **`12.15 ± 0.19%`** ALIF spike rate; Seed 42: `12.34 nJ`, `12.27%`, `8,229` SOPs) vs **`60.36 nJ/step`** on Jetson Orin GPU MACs (**`4.94 ± 0.08x`** recurrent step efficiency advantage).
-
-| Model Architecture | Memory Paradigm | Total Params | Spike Rate | SOPs / step | Recurrent MACs / step | E_neuro (nJ/step) | E_GPU (nJ/step) | Efficiency vs. Own GPU | Power @ 20Hz (mW) | E_cumul (H=100, μJ) |
-| :--- | :---: | :---: | :---: | :---: | :---: | :---: | :---: | :---: | :---: | :---: |
-| **SPWM-v0.12.4 (Seed 42)** | ALIF Spiking (2-tier) | **392.1k (317.9k act.)** | 12.27% | 8,229 | 67,072 | **12.34** | 60.36 | **4.89x** | **0.247** | **1.23** |
-| **SPWM-v0.12.4 (3-Seed Mean±Std)** | ALIF Spiking (2-tier) | **392.1k (317.9k act.)** | 12.15 ± 0.19% | 8,150 ± 129 | 67,072 | **12.22 ± 0.19** | 60.36 | **4.94 ± 0.08x** | **0.244 ± 0.004** | **1.22 ± 0.02** |
-| **ANN-Rate (Ablation)** | Continuous Leaky Rate | **392.1k (317.9k act.)** | — | — | 67,072 | — | 60.36 | 1.0x (Ref) | 1.207 | 6.04 |
-| **Continuous RSSM** | GRU + Gaussian Latent | **380.5k** | — | — | 365,056 | — | 328.55 | 1.0x (Ref) | 6.571 | 32.86 |
-| **Deep GRU** | 2-Layer Deep GRU | **338.9k** | — | — | 299,520 | — | 269.57 | 1.0x (Ref) | 5.391 | 26.96 |
-| **Continuous ConvLSTM** | Spatial ConvLSTM (2D) | **296.9k** | — | — | 2,359,296 | — | 2123.37 | 1.0x (Ref) | 42.467 | 212.34 |
-
-- **Full End-to-End Closed-Loop Step Energy (Jetson Orin, Encoder `882,688` MACs + $K=256 \times H=10 \times N_{\text{iter}}=3 = 7,680$ MPPI Rollouts)**: `1.0979 mJ/step` (`21.96 mW` @ 20 Hz) for `SPWM` and `ANN-Rate` (`1.219 GMACs` MPPI), vs. `1.7490 mJ/step` (`34.98 mW`) for `Deep GRU` (`1.942 GMACs`), `2.1236 mJ/step` (`42.47 mW`) for `Continuous RSSM` (`2.358 GMACs`), and `100.1833 mJ/step` (`2003.67 mW`) for `Continuous ConvLSTM` (`111.312 GMACs`).
-
-### 6.4 Statistical Significance & Multi-Seed Validation [COMPLETED]
-- [x] **Current Repo State**: Evaluated across $N = 3$ seeds (`42, 101, 2024`) in `results/multiseed/multiseed_metrics.json` (full `160` Phase 0 + `240` Phase 1 training budget across all 3 seeds; Seed `2024` resumed cleanly via `BaseTrainer.load_checkpoint(..., strict=True)` through epoch `240`/`260` with Tier 2 score monotonically drifting from `2.67` to `2.98`, confirming `best_model.pt` locked at epoch `130`):
-
-| Seed | OL Pos MSE (H=1) | OL Pos MSE (H=10) | OL Pos MSE (H=50) | OL Pos MSE (H=100) | OL Vel MSE (H=100) | PIL Success (50 ep) | PIL Min Err (cm) | PIL Term Err (cm) | Energy (nJ/step) |
+| Model Architecture | Params (Act.) | Pos H=1 | Pos H=10 | Pos H=50 | Pos H=100 | Vel H=1 | Vel H=10 | Vel H=50 | Vel H=100 |
 | :--- | :---: | :---: | :---: | :---: | :---: | :---: | :---: | :---: | :---: |
-| **Seed 42** | 0.00016 | 0.00649 | 0.00264 | 0.00246 | 0.01175 | **86.0%** | 0.86 ± 0.80 | 1.57 ± 1.00 | 12.34 |
-| **Seed 101** | 0.00030 | 0.00148 | 0.00477 | 0.00274 | 0.00871 | **56.0%** | 0.90 ± 0.65 | 2.19 ± 1.19 | 12.33 |
-| **Seed 2024** | 0.00009 | 0.00246 | 0.00203 | 0.00201 | 0.00867 | **32.0%** | 0.94 ± 0.64 | 2.93 ± 1.81 | 12.00 |
-| **Mean ± Std (N=3)** | **0.00018 ± 0.00011** | **0.00348 ± 0.00265** | **0.00315 ± 0.00144** | **0.00240 ± 0.00037** | **0.00971 ± 0.00177** | **58.0 ± 27.1%** | **0.90 ± 0.04** | **2.23 ± 0.68** | **12.22 ± 0.19** |
+| Continuous ConvLSTM (Seed 42) | `296.9k` | **`0.00002`** | **`0.00012`** | **`0.00150`** | `0.00707` | `0.00147` | **`0.00553`** | **`0.01095`** | `0.33696` |
+| Deep GRU (Equalized, 3 seeds) | `338.9k` | `0.00003 ± 0.00001` | `0.00147 ± 0.00044` | `0.00195 ± 0.00003` | `0.00469 ± 0.00048` | `0.00203 ± 0.00019` | `0.01852 ± 0.00237` | `0.01332 ± 0.00024` | `0.08716 ± 0.01445` |
+| Continuous RSSM (Equalized, 3 seeds) | `380.5k` | `0.00007 ± 0.00004` | `0.00033 ± 0.00006` | `0.00174 ± 0.00004` | **`0.00152 ± 0.00014`** | `0.00153 ± 0.00186` | `0.01660 ± 0.00201` | `0.02256 ± 0.00088` | `0.02130 ± 0.00082` |
+| ANN-Rate (Leaky, 3 seeds) | `392.1k (317.9k)` | `0.00028 ± 0.00012` | `0.00249 ± 0.00032` | `0.00341 ± 0.00264` | `0.00210 ± 0.00063` | `0.00193 ± 0.00069` | `0.03356 ± 0.00511` | `0.02440 ± 0.01698` | `0.01183 ± 0.00715` |
+| **SPWM (3 seeds)** | **`392.1k (317.9k)`** | `0.00018 ± 0.00011` | `0.00348 ± 0.00265` | `0.00315 ± 0.00144` | `0.00240 ± 0.00037` | **`0.00139 ± 0.00076`** | `0.04507 ± 0.02601` | `0.02466 ± 0.01271` | **`0.00971 ± 0.00177`** |
 
-### 6.5 Closed-Loop Physics-in-the-Loop (PIL) Downstream Control Benchmark [COMPLETED]
-- [x] **Strict Causal Zero-Leakage Protocol**: All closed-loop benchmarks below use **Physics-in-the-Loop (PIL)** (`ArticulatedArmPhysicsStepper` with `payload_attached = (t >= t_c)` at contact onset and causal `OnlineEventCameraStream`) with zero `z_gt_next` leakage. Continuous recurrent baselines (`Continuous RSSM`, `Deep GRU`) are evaluated under **both** Open-Loop PIL (no sensory overwrite during $\phi_t=1$) and Online Observation Update during $\phi_t=1$.
+* **Open-Loop vs. Unconditional Phasic Handover L2 Error (`SPWM` Seed 42, $H=100$, `12.27%` ALIF spike rate; [ssot_eval_metrics.json](file:///Users/Mattia/Desktop/Studies/Temp/results/ssot_eval_metrics.json)):** Pure Open-Loop mean `0.1115 rad` vs. Unconditional Phasic Handover `0.1482 rad` (`h=10`: `0.1862 / 0.1865`, `h=50`: `0.1038 / 0.1496`, `h=80`: `0.0899 / 0.1827`, `h=100`: `0.1116 / 0.1420`).
+* **Replication:** `.venv/bin/python scripts/eval_table1_ssot.py`
 
-| Method / Model | PIL Success (%) | Min Err (cm) | Term Err (cm) | $|\Delta^2 q|$ ($\text{rad/step}^2$) | $|\Delta^3 q|$ | Flips | Latency (ms) |
+---
+
+## 2. Table 2 — Closed-Loop PIL Benchmark (`50` Test Episodes `[3600, 3649]`, $t \ge t_c$, 3-Regime Comparison)
+
+**Evidence:** [ssot_eval_metrics.json](file:///Users/Mattia/Desktop/Studies/Temp/results/ssot_eval_metrics.json) (`corl_final_verification.pil_3seed_comparison`), [corl_final_benchmark_summary.md](file:///Users/Mattia/Desktop/Studies/Temp/results/corl_final_benchmark_summary.md), [classical_bc_pil_metrics.json](file:///Users/Mattia/Desktop/Studies/Temp/results/baselines/classical_and_bc_pil/classical_bc_pil_metrics.json).
+
+| Method (`50` Test Episodes `[3600, 3649]`) | PIL Succ (%) | Min Err (cm) | Term Err (cm) | $\|\Delta^2 q\|$ | $\|\Delta^3 q\|$ | Flips | Latency (ms) | Source JSON(s) |
+| :--- | :---: | :---: | :---: | :---: | :---: | :---: | :---: | :--- |
+| *Privileged State-Oracle Jacobian-IK + PD ($\mathbf{q}_{\text{phys}}$, no vision, 2.85 kg cal.)* | *96.0* | *0.01 ± 0.03* | *0.43 ± 0.73* | *0.00771* | *0.00497* | *10.46* | *22.7* | [classical_bc_pil_metrics.json](file:///Users/Mattia/Desktop/Studies/Temp/results/baselines/classical_and_bc_pil/classical_bc_pil_metrics.json) |
+| Reactive BC (`322,210` params, Seed 42) | `0.0` | `13.13 ± 6.27` | `15.66 ± 8.15` | `0.00140` | `0.00135` | `13.98` | `1.9` | [classical_bc_pil_metrics.json](file:///Users/Mattia/Desktop/Studies/Temp/results/baselines/classical_and_bc_pil/classical_bc_pil_metrics.json) |
+| Continuous RSSM (Open-Loop PIL, $w_t=0$, 3 seeds) | `15.3 ± 7.0` | `1.23 ± 0.06` | `2.74 ± 0.07` | `0.02037` | `0.02139` | `36.86` | `46.8` | `rssm_open_loop/`, `seed_{101,2024}/mppi_pil_open_loop/` (`16% / 8% / 22%`) |
+| Continuous RSSM (Un-Gated Online, $w_t=1.0$, 3 seeds) | `0.0 ± 0.0` | `1.43 ± 0.03` | `25.49 ± 1.31` | `0.03153` | `0.02956` | `36.49` | `46.9` | `rssm_ungated/`, `seed_{101,2024}/mppi_pil_ungated/` (`0% / 0% / 0%`) |
+| Continuous RSSM (Residual-Gated Online, 3 seeds) | `15.3 ± 5.0` | `1.23 ± 0.05` | `2.72 ± 0.11` | `0.02049` | `0.02161` | `36.94` | `46.5` | `rssm_residual_gated/`, `seed_{101,2024}/mppi_pil_residual_gated/` (`16% / 10% / 20%`) |
+| Deep GRU (Open-Loop PIL, $w_t=0$, 3 seeds) | `77.3 ± 4.2` | `1.14 ± 0.31` | `1.90 ± 0.18` | `0.00450` | `0.00268` | `10.79` | `57.8` | `deep_gru_open_loop/`, `seed_{101,2024}/deep_gru_mppi_pil_open_loop/` (`82% / 74% / 76%`) |
+| Deep GRU (Un-Gated Online, $w_t=1.0$, 3 seeds) | `0.0 ± 0.0` | `1.47 ± 0.51` | `7.35 ± 1.34` | `0.00698` | `0.00483` | `15.08` | `57.1` | `deep_gru_ungated/`, `seed_{101,2024}/deep_gru_mppi_pil_ungated/` (`0% / 0% / 0%`) |
+| Deep GRU (Residual-Gated Online, 3 seeds) | `76.7 ± 5.0` | `1.14 ± 0.31` | `1.90 ± 0.18` | `0.00449` | `0.00267` | `10.79` | `57.7` | `deep_gru_residual_gated/`, `seed_{101,2024}/deep_gru_mppi_pil_residual_gated/` (`82% / 72% / 76%`) |
+| ANN-Rate (Leaky Rate, 3 seeds) | `37.3 ± 9.5` | `1.07 ± 0.28` | `2.98 ± 0.46` | `0.01148` | `0.00938` | `26.00` | `24.6` | `ann_ablation/seed_{42,101,2024}_mppi_pil/` (`34% / 30% / 48%`) |
+| **SPWM ($N=25$ Val-Sel., 3 seeds)** | **`60.7 ± 2.3`** | **`0.88 ± 0.11`** | **`2.01 ± 0.12`** | **`0.00931`** | **`0.00663`** | **`21.14`** | **`26.6`** | `ablations/multiseed/stage4b_full_seed{42,101,2024}/` (`58% / 62% / 62%`) |
+| SPWM ($N=6$ Tier-2, 3 seeds) | `58.0 ± 27.1` | `0.90 ± 0.04` | `2.23 ± 0.68` | `0.00860` | `0.00608` | `19.37` | `27.5` | `mppi_benchmark/`, `multiseed/seed_{101,2024}_mppi_pil/` (`86% / 56% / 32%`) |
+
+* **Key Baseline Equalization & Trade-Off Takeaways:**
+  1. Applying the identical causal FK residual gate eliminates the `0.0%` online collapse caused by un-gated domain-gapped 2D-vs-3D `OnlineEventCameraStream` frames (`w_t = 1.0`). Under residual gating, `Continuous RSSM` remains capped at `15.3 ± 5.0%` (`|Δ²q| = 0.02049`, `36.94` flips), confirming its failure is architectural.
+  2. Once equalized across all 3 seeds (`99 / 80 / 80` epochs with AR(1)+DAgger) and gated identically, `Deep GRU` achieves `76.7 ± 5.0%` PIL success (`77.3 ± 4.2%` open-loop)—exceeding `SPWM` (`60.7 ± 2.3%`) in nominal grasp rate and smoothness (`|Δ²q| = 0.00449`), **but** violates the `50.0 ms` (`20 Hz`) real-time budget (`57.7 ms/step` vs `SPWM` `26.6 ms/step`), suffers `9.0×` higher $H=100$ open-loop velocity MSE (`0.08716` vs `0.00971 rad²/s²`), and consumes `22.1×` higher standby core energy / `1.59×` higher E2E step energy.
+  3. Compared against parameter-matched `ANN-Rate` (`37.3 ± 9.5%`), `SPWM` retains a **`+23.4 pp`** 3-seed PIL gain (`60.7%` vs `37.3%`) isolating discrete ALIF spike thresholding.
+
+---
+
+## 3. Table 3 — Full 3-Seed 5-Stage SPWM PIL Ablation (`[3600, 3649]`, Seeds `42, 101, 2024`)
+
+**Evidence:** [ssot_eval_metrics.json](file:///Users/Mattia/Desktop/Studies/Temp/results/ssot_eval_metrics.json) (`corl_final_verification.disentangled_ablation_3seed`), `results/ablations/multiseed/stage*_seed{42,101,2024}/mppi_benchmark_metrics.json`.
+
+| Ablation Stage (Seeds `42 / 101 / 2024`) | Per-Seed Succ (%) | 3-Seed PIL Succ (%) | Min Err (cm) | Term Err (cm) | $\|\Delta^2 q\|$ | $\|\Delta^3 q\|$ | Flips |
 | :--- | :---: | :---: | :---: | :---: | :---: | :---: | :---: |
-| *Privileged Jacobian-IK + PD (Oracle)* | *96.0%* | *0.01 ± 0.03* | *0.43 ± 0.73* | *0.00771* | *0.00497* | *10.46* | *22.7* |
-| **SPWM-v0.12.4 (Seed 42)** | **86.0%** | **0.86 ± 0.80** | **1.57 ± 1.00** | **0.00587** | **0.00354** | **14.02** | **36.7** |
-| **SPWM-v0.12.4 ($N=6$ Tier-2, 3 seeds)** | **58.0 ± 27.1%** | **0.90 ± 0.04** | **2.23 ± 0.68** | **0.00860** | **0.00608** | **19.37** | **27.5** |
-| **SPWM-v0.12.4 ($N=25$ Val-Sel., 3 seeds)** | **60.7 ± 2.3%** | **0.88 ± 0.11** | **2.01 ± 0.12** | **0.00931** | **0.00663** | **21.14** | **35.5** |
-| **ANN-Rate (3-Seed Mean ± Std)** | 37.3 ± 9.5% | 1.07 ± 0.28 | 2.98 ± 0.46 | 0.01148 | 0.00938 | 26.00 | 24.6 |
-| **Continuous RSSM (Open-Loop PIL, 3 seeds)** | 15.3 ± 4.6% | 1.31 ± 0.02 | 2.88 ± 0.10 | 0.01998 | 0.02059 | 36.23 | 52.4 |
-| **Continuous RSSM (Online Post., 3 seeds)** | 0.0 ± 0.0% | 1.53 ± 0.06 | 22.43 ± 0.58 | 0.03119 | 0.02875 | 36.13 | 35.1 |
-| **Deep GRU (Open-Loop PIL, 3 seeds)** | 1.3 ± 2.3% | 10.57 ± 7.83 | 16.72 ± 11.31 | 0.00777 | 0.00622 | 14.67 | 67.4 |
-| **Deep GRU (Online Obs., 3 seeds)** | 0.0 ± 0.0% | 6.03 ± 4.00 | 10.87 ± 3.97 | 0.01654 | 0.01350 | 19.67 | 60.3 |
-| **Reactive BC (50 ep, Seed 42)** | 0.0% | 13.13 ± 6.27 | 15.66 ± 8.15 | 0.00140 | 0.00135 | 13.98 | 1.9 |
+| 1. SPWM-Base (`checkpoint_phase_1.pt`, Unsmoothed) | `62 / 44 / 30` | `45.3 ± 16.0` | `1.03 ± 0.21` | `2.50 ± 0.11` | `0.00983` | `0.00765` | `23.03` |
+| 2. + Smooth MPPI Controls (`checkpoint_phase_1.pt`) | `62 / 44 / 48` | `51.3 ± 9.5` | `1.02 ± 0.08` | `2.41 ± 0.13` | `0.00991` | `0.00705` | `21.99` |
+| 3. + Phase 3/4 Curriculum (AR(1)+DAgger, `checkpoint_phase_4.pt`, No Lookahead/Handover) | `56 / 18 / 40` | `38.0 ± 19.1` | `1.53 ± 0.59` | `3.27 ± 1.13` | `0.00589` | `0.00354` | `11.17` |
+| 4a. + 2-Stage SE(3) Lookahead ($N=25$ Val-Sel., $w_t \equiv 0$) | `58 / 62 / 62` | `60.7 ± 2.3` | `0.88 ± 0.11` | `2.01 ± 0.12` | `0.00931` | `0.00663` | `21.14` |
+| **4b. + Residual Rejection Gate (Full SPWM, $N=25$ Val-Sel.)** | **`58 / 62 / 62`** | **`60.7 ± 2.3`** | **`0.88 ± 0.11`** | **`2.01 ± 0.12`** | **`0.00931`** | **`0.00663`** | **`21.14`** |
 
-#### Stratification by Elevation Plane & Payload Mass (SPWM Seed 42 PIL, `50` Episodes)
-- **Elevation:** Low (`86.4%`, `0.86 cm`, `n=22`), Mid (`77.8%`, `1.05 cm`, `n=18`), High (`100.0%`, `0.50 cm`, `n=10`).
-- **Mass Tier:** Light `1.20–2.30 kg` (`82.4%`, `0.68 cm`, `n=17`), Medium `2.30–3.40 kg` (`100.0%`, `0.77 cm`, `n=17`), Heavy `3.40–4.50 kg` (`75.0%`, `1.14 cm`, `n=16`).
-- **Disentangled 5-Stage SPWM Architectural Ablation (50-Ep PIL, `t >= t_c`):**
-  - Stage 1 (`SPWM-Base`, unsmoothed MPPI): `62.0%` succ, `1.27 ± 1.14 cm` min, `2.51 ± 1.59 cm` term, `|\Delta^2 q|=0.00710`
-  - Stage 2 (`+ Smooth MPPI`): `62.0%` succ, `1.09 ± 0.98 cm` min, `2.26 ± 1.79 cm` term, `|\Delta^2 q|=0.00729`
-  - Stage 3 (`+ Phase 1 Curriculum`, no handover/lookahead): `72.0%` succ, `0.98 ± 0.97 cm` min, `1.85 ± 1.31 cm` term, `|\Delta^2 q|=0.00600`
-  - Stage 4a (`+ 2-Stage SE(3) Lookahead`, Handover disabled $w_t \equiv 0$): **`86.0%`** succ, **`0.86 ± 0.80 cm`** min, **`1.57 ± 1.00 cm`** term, **`|\Delta^2 q|=0.00587`**
-  - Stage 4b (`+ Residual Handover & 2-Stage Lookahead (Full)`): **`86.0%`** succ, **`0.86 ± 0.80 cm`** min, **`1.57 ± 1.00 cm`** term, **`|\Delta^2 q|=0.00587`** (`w_t > 0` nominal rate `0.0%`)
-
-### 6.6 Zero-Shot Sim-to-Real Domain Gap & Robustness Stress Test [COMPLETED]
-- [x] **Current Repo State**: Evaluated strictly without retraining (`torch.no_grad()`, `model.eval()`) on frozen Seed 42 checkpoint `results/spwm_v0_12_4_train_m1/model.pt` (`results/robustness_benchmark/robustness_metrics.json`):
-
-#### 1. Neuromorphic Visual Stream Perturbations ($N=400$ Open-Loop Test Split)
-
-| Perturbation Condition | Spike Rate | Pos MSE (H=1) | Pos MSE (H=10) | Pos MSE (H=50) | Pos MSE (H=100) | Vel MSE (H=100) | Drift Ratio ($L_2$) | Status |
-| :--- | :---: | :---: | :---: | :---: | :---: | :---: | :---: | :---: |
-| **Nominal Baseline ($\theta = 0.08$)** | 16.89% | 0.00008 | 0.00025 | 0.00184 | 0.00253 | 0.02197 | 4.6278 | BOUNDED |
-| **Threshold Shift ($\theta = 0.05$)** | 16.24% | 0.00010 | 0.00027 | 0.00173 | 0.00245 | 0.02187 | 4.1182 | BOUNDED |
-| **Threshold Shift ($\theta = 0.12$)** | 18.29% | 0.00010 | 0.00027 | 0.00234 | 0.00295 | 0.02440 | 4.5747 | BOUNDED |
-| **Background Activity (0.5%)** | 16.50% | 0.01740 | 0.01506 | 0.01007 | 0.00703 | 0.06218 | 0.5619 | BOUNDED |
-| **Background Activity (1.0%)** | 16.08% | 0.02794 | 0.02713 | 0.01592 | 0.01055 | 0.08352 | 0.5351 | BOUNDED |
-| **Refractory Dropout (10%)** | 17.12% | 0.00009 | 0.00026 | 0.00192 | 0.00259 | 0.02227 | 4.4305 | BOUNDED |
-| **Refractory Dropout (20%)** | 17.36% | 0.00011 | 0.00027 | 0.00203 | 0.00268 | 0.02267 | 4.2126 | BOUNDED |
-
-#### 2. Downstream PIL Robustness Under Perturbed Execution Conditions (`50` Test Episodes `[3600, 3649]`, `t >= t_c`, Seeds `42, 101, 2024`)
-
-| Perturbation Condition | Episodes | SPWM (Seed 42) Succ / Term | SPWM (3-Seed Mean ± Std) Succ / Term | ANN-Rate (3-Seed Mean ± Std) Succ / Min / Term | SPWM Step $w_t>0$ |
-| :--- | :---: | :---: | :---: | :---: | :---: |
-| **Nominal Baseline** | 50 | **86.0%** / **1.57 cm** | **58.0 ± 27.1%** / **2.23 ± 0.68 cm** | 37.3 ± 9.5% / 1.07 cm / 2.98 cm | `0.00 ± 0.00%` |
-| **Sensory Noise Injection (1.0%)** | 50 | **72.0%** (-16.3% rel) / **1.86 cm** | **55.3 ± 19.4%** (-4.6% rel) / **2.34 ± 0.63 cm** | 30.0 ± 3.5% (-19.6% rel) / 1.04 cm / 3.36 cm | `0.00 ± 0.00%` |
-| **Payload Extrapolation (4.80 kg)** | 50 | **78.0%** (-9.3% rel) / **1.78 cm** | **39.3 ± 33.7%** (-32.2% rel) / **2.50 ± 0.62 cm** | 26.7 ± 16.2% (-28.6% rel) / 1.36 cm / 3.64 cm | `0.17 ± 0.29%` *(Seed 2024: 4.0% ep, mean w=0.165)* |
-| **Actuator Drift (0.80x Friction)** | 50 | **70.0%** (-18.6% rel) / **2.07 cm** | **40.7 ± 27.3%** (-29.9% rel) / **2.61 ± 0.54 cm** | 30.7 ± 14.0% (-17.9% rel) / 1.42 cm / 3.74 cm | `0.17 ± 0.29%` *(Seed 2024: 4.0% ep, mean w=0.229)* |
-| **Actuator Drift (1.20x Friction)** | 50 | **76.0%** (-11.6% rel) / **1.97 cm** | **44.0 ± 28.0%** (-24.1% rel) / **2.53 ± 0.56 cm** | 33.3 ± 16.7% (-10.7% rel) / 1.34 cm / 3.51 cm | `0.17 ± 0.29%` *(Seed 2024: 4.0% ep, mean w=0.169)* |
-
-### 6.7 Forensic Failure-Mode & Inter-Seed Variance Diagnostics [COMPLETED]
-- **Why `Continuous RSSM` and `Deep GRU` Fail in PIL (`Open-Loop` vs. `Online Observation`):**
-  - Under **Online Observation Update** during $\phi_t=1$ (`scripts/diagnostics/forensic_rssm_gru_failure.py`, `results/diagnostics/forensic_rssm_gru_failure.json`), `141/150` (`94.0%`) of `Continuous RSSM` episodes (3 seeds) and `42/50` (`84.0%`) of `Deep GRU` (Seed 42) episodes reach $\le 3.0\,\text{cm}$ pre-contact and collapse via **Post-Contact Impulse Divergence + Terminal Velocity Failure** (`7.17` / `5.75 rad/s` vs. $\tau_{\text{vel}} = 1.50\,\text{rad/s}$), yielding `0.0 ± 0.0%` across all 3 seeds for both baselines.
-  - Under **Open-Loop PIL** (`--disable-handover`, no online sensory overwrite during $\phi_t=1$), `Continuous RSSM` improves only to `15.3 ± 4.6%` (`18.0% / 10.0% / 18.0%`, `36.23` flips) and `Deep GRU` scores `1.3 ± 2.3%` (`4.0% / 0.0% / 0.0%`), confirming `SPWM`'s structural superiority regardless of baseline sensory mode.
-- **Inter-Seed PIL Variance Resolution (`N=6` Tier-2 vs. `N=25` Validation `[3200, 3224]`):**
-  - Representation convergence is uniform across seeds (ALIF spike rate `11.93–12.27%`, `0.0%` hyperactive neurons, `softplus(gate_scale)` `49.04–49.07`, open-loop `H=100` Pos MSE `0.00201–0.00274`).
-  - Evaluating all 5 saved checkpoints per seed strictly on the held-out `N=25` validation split (`[3200, 3224]`) selects `checkpoint_phase_4.pt` (Seed 42, `92.0%` val $\to$ `58.0%` test), `checkpoint_phase_1.pt` (Seed 101, `68.0%` val $\to$ `62.0%` test), and `checkpoint_phase_2.pt` (Seed 2024, `80.0%` val $\to$ `62.0%` test), reducing 3-seed test std **`11.7×`** from **`58.0 ± 27.1%`** (`N=6` Tier-2) to **`60.7 ± 2.3%`** (`N=25` Val-Selected) with zero test-set peeking.
+* **Transparent Stage 2 vs. Stage 3 DAgger Diagnostic:** Comparing Stage 2 (`51.3 ± 9.5%`) vs. Stage 3 (`38.0 ± 19.1%`) across all 3 seeds shows that Phase 3/4 AR(1)+DAgger replay cuts trajectory jitter (`|Δ²q|: 0.00991 -> 0.00589`, flips `21.99 -> 11.17`) **while degrading 3-seed mean PIL success by `-13.3 pp` and doubling inter-seed std (`9.5% -> 19.1%`)**. While DAgger improves validation peak on individual seeds (Seed 42 `phase_4`: `92.0%` val), it introduces multi-seed overfitting variance (`18.0%` test on Seed 101 `phase_4`), requiring **`N=25` validation-split (`[3200, 3224]`) checkpoint selection** (`42: phase_4`, `101: phase_1`, `2024: phase_2`) so 2-Stage SE(3) Lookahead delivers `60.7 ± 2.3%` (`11.7×` std reduction vs. `N=6` Tier-2).
 
 ---
 
-## 7. CoRL Submission Summary & Artifact Index
+## 4. Table 4 — 3-Seed PIL Robustness & Residual Handover Telemetry
 
-1. **Comparative Baselines & ANN Ablation**: Synchronized in [`results/spwm_v0_12_4_train_m1/comparative_metrics_v0_12_4.json`](file:///Users/Mattia/Desktop/Studies/Temp/results/spwm_v0_12_4_train_m1/comparative_metrics_v0_12_4.json).
-2. **Neuromorphic SOP & Energy Profiling**: Synchronized in [`results/energy_profiling/energy_profiling_metrics.json`](file:///Users/Mattia/Desktop/Studies/Temp/results/energy_profiling/energy_profiling_metrics.json) and `results/multiseed/seed_{101,2024}_energy/`.
-3. **Multi-Seed Statistical Verification**: Synchronized in [`results/multiseed/multiseed_metrics.json`](file:///Users/Mattia/Desktop/Studies/Temp/results/multiseed/multiseed_metrics.json).
-4. **Closed-Loop PIL MPPI & Robustness SSOT**: Synchronized in [`results/mppi_benchmark/mppi_benchmark_metrics.json`](file:///Users/Mattia/Desktop/Studies/Temp/results/mppi_benchmark/mppi_benchmark_metrics.json), [`results/robustness_benchmark/robustness_metrics.json`](file:///Users/Mattia/Desktop/Studies/Temp/results/robustness_benchmark/robustness_metrics.json), [`results/ssot_eval_metrics.json`](file:///Users/Mattia/Desktop/Studies/Temp/results/ssot_eval_metrics.json), [`docs/FIGURE_METRICS.md`](file:///Users/Mattia/Desktop/Studies/Temp/docs/FIGURE_METRICS.md), and [`docs/CORL_FINAL_BENCHMARK_SUMMARY.md`](file:///Users/Mattia/Desktop/Studies/Temp/docs/CORL_FINAL_BENCHMARK_SUMMARY.md).
+**Evidence:** [robustness_metrics.json](file:///Users/Mattia/Desktop/Studies/Temp/results/robustness_benchmark/robustness_metrics.json), `results/robustness_benchmark_pil_spwm_seed{101,2024}/robustness_metrics.json`, `results/robustness_benchmark_pil_ann_rate_seed{42,101,2024}/robustness_metrics.json` ($N=6$ Tier-2 frozen checkpoints).
 
----
+| Perturbation Condition (`50` Test Ep) | SPWM 3-Seed Mean (Succ / Min / Term) | SPWM Step $w_t>0$ (42 / 101 / 2024) | ANN-Rate 3-Seed Mean (Succ / Min / Term) |
+| :--- | :---: | :---: | :---: |
+| Nominal Baseline | **`58.0 ± 27.1%`** / `0.90` / `2.23 cm` | `0.0% / 0.0% / 0.0%` | `37.3 ± 9.5%` / `1.07` / `2.98 cm` |
+| Sensory Noise (`1.0%`) | **`55.3 ± 19.4%`** (`-4.6% rel`) / `0.90` / `2.34 cm` | `0.0% / 0.0% / 0.0%` | `30.0 ± 3.5%` (`-19.6% rel`) / `1.04` / `3.36 cm` |
+| Payload Extrapolation (`4.80 kg`) | **`39.3 ± 33.7%`** (`-32.2% rel`) / `1.18` / `2.50 cm` | `0.0% / 0.0% / 0.5%` (`4.0% ep, w=0.165`) | `26.7 ± 16.2%` (`-28.6% rel`) / `1.36` / `3.64 cm` |
+| Actuator Drift (`0.80x` Friction) | **`40.7 ± 27.3%`** (`-29.9% rel`) / `1.19` / `2.61 cm` | `0.0% / 0.0% / 0.5%` (`4.0% ep, w=0.229`) | `30.7 ± 14.0%` (`-17.9% rel`) / `1.42` / `3.74 cm` |
+| Actuator Drift (`1.20x` Friction) | **`44.0 ± 28.0%`** (`-24.1% rel`) / `1.22` / `2.53 cm` | `0.0% / 0.0% / 0.5%` (`4.0% ep, w=0.169`) | `33.3 ± 16.7%` (`-10.7% rel`) / `1.34` / `3.51 cm` |
 
-## 8. SPWM-v0.12.4 Architecture & Training Specification
-
-`SPWM-v0.12.4` (`392,141` total / `317,900` active inference parameters) integrates ALIF firing-rate homeostasis ($\lambda_{\text{spike\_balance}} = 0.25$, target $0.12$), SE(3) end-effector supervision (`ee_rot_weight = 0.5`, `cartesian_weight = 40.0`), decoded kinematic smoothness (`lambda_kinematic_smooth = 0.5`), 4-phase Latch/DAgger/AR(1) curriculum training, and receding-horizon Latent MPPI control (`horizon = 10`, `num_samples = 256`, `num_iterations = 3`, `max_action_delta = 0.10`, 2-stage SE(3) lookahead, and causal residual-gated active perception during $\phi_t = 1$). Under full 50-episode Physics-in-the-Loop (`t >= t_c`) evaluation, canonical Seed `42` achieves **`86.0%`** grasp success (`0.86 ± 0.80 cm` min placement error, `1.57 ± 1.00 cm` terminal error), `N=25` validation-selected 3-seed SPWM achieves **`60.7 ± 2.3%`** (`58.0 ± 27.1%` under `N=6` Tier-2), disentangled ablation advances monotonically (`62.0% → 62.0% → 72.0% → 86.0%`), 3-seed OOD PIL robustness yields `55.3% / 39.3% / 40.7% / 44.0%` (`70.0%–78.0%` on Seed `42`), and Loihi-2 recurrent core energy averages **`12.22 ± 0.19 nJ/step`** across 3 seeds.
-
-### `docs/Architecture.md`
-> Detailed neural architecture specification
-
-# SPWM Master Architectural Specification
-
-This document serves as the authoritative technical reference for **SPWM (Dual-Camera Active Perception Grasping & Spiking Predictive World Model for 3D Articulated Manipulation)** following the structural upgrade to an **Anthropomorphic 6-DOF Right Humanoid Manipulator Arm**, **Continuous Soft-Fade Sensory Handover**, **Zero-Lag Kinematic Readout**, and a **Dual-Camera Neuromorphic Vision System (Static Global + Egocentric Wrist-Mounted Event Sensors, $C=4$)** resolving 3D kinematic unobservability (axial wrist roll symmetry and elbow flex depth foreshortening), alongside **Procedural Object Spawning with Inertial Variance**, **Phasic Active Perception (Blind Approach $\to$ Sensory Heft $\to$ Blind Transport)**, **Sensory Injection in M1**, and the **4-Layer Strict Contract Architecture**. It is divided into three comprehensive sections:
-1. **The Workspace**: 4-layer directory topology, Unity simulation bridge, dependency invariants, file-level responsibilities, and CI/AST enforcement guards.
-2. **Models' Architecture**: End-to-end forward pass, tensor dimensionality contracts, and the mathematical and computational roles of `EventEncoder`, `SpikingLatentDynamics`, action-conditioned `LatentPredictor` (M1 Attractor Predictor with Active Perception sensory injection), and articulated `PhysicalDecoder`.
-3. **Loss Computation & Training Flow**: Granular breakdown of the isolated `train_representation` and `train_m1` phase strategies, action-conditioned phase-space vector field learning, exact loss formulations, and strict checkpoint scoping rules.
+* **Validation Handover Sweep ($\tau \in \{0.026, 0.020, 0.015\}\,\text{m}$, `[3200, 3249]`):** Across all 6 JSONs (`results/diagnostics/val_handover_sweep_{seed42,seed2024}_tau_{0026,0020,0015}/robustness_metrics.json`), **all 3 thresholds produce identical results with `0.0%` handovers** (`Seed 42`: `78.0 / 78.0 / 66.0 / 70.0 / 72.0%`; `Seed 2024`: `46.0 / 36.0 / 42.0 / 38.0 / 38.0%`).
+* **Diagnostic Proof (`val` `[3200, 3214]`, `120` $\phi_t=1$ steps):** `Seed 42`: `dist_pred` median `0.0139 m`, `dist_obs` median `0.2155 m`, `rot_obs` median `0.6377 rad`, `obs < pred = 0.0%`; `Seed 2024`: `dist_pred` median `0.0174 m`, `dist_obs` median `0.1598 m`, `rot_obs` median `0.3850 rad`, `obs < pred = 0.0%`.
 
 ---
 
-## 1. The Workspace: 4-Layer Strict Contract Architecture
+## 5. Table 5 — Standby Neuromorphic Core vs. End-to-End Closed-Loop Energy
 
-### 1.1 Architectural Philosophy & Context Boundaries for Small LLMs
+**Evidence:** [energy_profiling_metrics.json](file:///Users/Mattia/Desktop/Studies/Temp/results/energy_profiling/energy_profiling_metrics.json) (`12.27%`, `8,229` SOPs, `12.34 nJ`, `4.89x`), [seed_101](file:///Users/Mattia/Desktop/Studies/Temp/results/multiseed/seed_101_energy/energy_profiling_metrics.json) (`12.26%`, `8,220` SOPs, `12.33 nJ`, `4.90x`), [seed_2024](file:///Users/Mattia/Desktop/Studies/Temp/results/multiseed/seed_2024_energy/energy_profiling_metrics.json) (`11.93%`, `8,001` SOPs, `12.00 nJ`, `5.03x`), [ssot_eval_metrics.json](file:///Users/Mattia/Desktop/Studies/Temp/results/ssot_eval_metrics.json).
+*(Assumptions: Loihi-2 `1.5 pJ/SOP`, Jetson Orin GPU `0.9 pJ/MAC`, shared `EventEncoder` `882,688` MACs = `794.4 nJ`, $K=256 \times H=10 \times N_{\text{iter}}=3 = 7,680$ batched MPPI rollouts/step.)*
 
-SPWM is organized into four strictly ordered horizontal layers so that any developer or small context-window LLM can modify a neural module, loss function, or training phase by loading **at most 3 files** into context simultaneously:
-1. The **contract file** in [`spwm/contracts/`](file:///Users/Mattia/Desktop/Studies/Temp/spwm/contracts/__init__.py) (immutable types, tensor shape validators, and `Protocol` interfaces).
-2. The **target implementation module** (e.g., [`spwm/training/phases/m1_nominal.py`](file:///Users/Mattia/Desktop/Studies/Temp/spwm/training/phases/m1_nominal.py), strictly $<150$ lines).
-3. The **corresponding unit test module** in `tests/`.
+| Architecture | Core Ops / Step | Core Energy (nJ) | Core Power @ 20 Hz | Core vs. GPU | MPPI MACs | E2E Energy (mJ) | E2E Power @ 20 Hz |
+| :--- | :---: | :---: | :---: | :---: | :---: | :---: | :---: |
+| **SPWM (Loihi-2 Standby Core + Orin, 3 seeds)** | **`8,150 ± 129 SOPs`** | **`12.22 ± 0.19`** | **`0.244 ± 0.004 mW`** | **`4.94 ± 0.08×`** | `1.219 G` | `1.0979` | `21.96 mW` |
+| ANN-Rate (Orin GPU) | `67,072 MACs` | `60.36` | `1.207 mW` | `1.00×` | `1.219 G` | `1.0979` | `21.96 mW` |
+| Deep GRU (Orin GPU) | `299,520 MACs` | `269.57` | `5.391 mW` | `1.00×` | `1.942 G` | `1.7490` | `34.98 mW` |
+| Continuous RSSM (Orin GPU) | `365,056 MACs` | `328.55` | `6.571 mW` | `1.00×` | `2.358 G` | `2.1236` | `42.47 mW` |
+| Continuous ConvLSTM (Orin GPU) | `2,359,296 MACs` | `2123.37` | `42.467 mW` | `1.00×` | `111.312 G` | `100.1833` | `2003.67 mW` |
 
-```mermaid
-flowchart TD
-    subgraph L0["Layer 0: Immutable Contracts (spwm/contracts/)"]
-        C_CFG["config.py (Frozen ExperimentConfig SSOT)"]
-        C_ST["states.py (ALIFState, SPWMState, RolloutResult)"]
-        C_TN["tensors.py (J=6, assert_tensor_contract, assert_phase_space_contract)"]
-        C_PR["protocols.py (WorldModelProtocol, PhaseStrategy ABC, PredictorProtocol)"]
-    end
-
-    subgraph L1["Layer 1: Pure Models & Physics Data (spwm/models/, spwm/data/, sim/)"]
-        M_NEU["neurons.py (ALIFCell, SurrogateSpike)"]
-        M_MEM["memory.py (MultiTimescaleMemory)"]
-        M_ENC["encoder.py (EventEncoder, SpatialSoftmax)"]
-        M_DYN["dynamics.py (SpikingLatentDynamics)"]
-        M_PRD["predictors.py (LatentPredictor with actions u_t, PhysicalDecoder)"]
-        M_ROL["rollout.py (rollout_latent with active sensory injection, ground_initial_state, compute_rollout_schedule)"]
-        M_WM["world_model.py (SPWM)"]
-        D_DAT["spwm/data/ (EventCameraSimulator, datasets.py, sim_6dof.py, io_unity.py)"]
-        D_SIM["sim/ (Unity C# 6-DOF Rig, ProceduralObjectSpawner, NeuromorphicEventBridge)"]
-    end
-
-    subgraph L2["Layer 2: Training Mechanics & Phase Strategies (spwm/training/)"]
-        T_LOS["losses.py (PredictorLoss, SPWMLoss)"]
-        T_MET["metrics.py (position_error, velocity_error, spike_rate)"]
-        T_REP["phases/representation.py (RepresentationPhaseStrategy < 150 lines)"]
-        T_M1["phases/m1_nominal.py (Active-Perception M1PhaseStrategy < 150 lines)"]
-        T_ENG["engine.py, checkpoints.py, replay_buffer.py (BaseTrainer, ClosedLoopBuffer, EMATracker)"]
-    end
-
-    subgraph L3["Layer 3: Evaluation & Visualization (spwm/evaluation/)"]
-        E_EVL["evaluator.py (RolloutEvaluator)"]
-        E_RES["metrics_resume.py (save_metrics_resume)"]
-        E_VIS["visualizer.py (GhostVisualizerExporter, plot_rollout_trajectory)"]
-    end
-
-    L3 --> L2
-    L2 --> L1
-    L1 --> L0
-```
-
-### 1.2 Directory Layout & File-Level Responsibilities
-
-```text
-sim/                            # UNITY 3D SIMULATION ENGINE (C# & Compute Shaders)
-├── Assets/
-│   ├── Scripts/
-│   │   ├── ArticulatedRobotRig.cs           # PhysX 4 Featherstone ArticulationBody 6-DOF manipulator rig (J=6)
-│   │   ├── ActionConditionedController.cs   # Sequential Waypoint PD Controller (Approach -> Heft -> Transport)
-│   │   ├── ProceduralObjectSpawner.cs       # Spawns payload (Sphere, Box, Cylinder) with mass/inertia variance
-│   │   ├── NeuromorphicEventBridge.cs       # Unity camera render-texture to event buffer
-│   │   ├── RoboticTelemetryLogger.cs        # Ground-truth telemetry export with phase_flags (JSON)
-│   │   └── Visualization/
-│   │       └── GhostPlaybackManager.cs      # In-engine side-by-side holographic ghost playback
-│   └── Shaders/
-│       ├── EventCameraLogDiff.compute       # GPU compute shader for log-intensity differencing
-│       └── HolographicGhost.shader          # Fresnel holographic ghost shader
-└── ProjectSettings/
-    └── ProjectVersion.txt                   # Unity 2022.3.20f1 LTS specification
-
-spwm/
-├── contracts/                  # LAYER 0: Zero internal imports; immutable contracts
-│   ├── __init__.py             # Public exports for all Layer 0 schemas, states, and protocols
-│   ├── config.py               # @dataclass(frozen=True) ExperimentConfig SSOT + with_overrides()
-│   ├── states.py               # ALIFState, MultiTimescaleState, DynamicsState, SPWMState, RolloutResult
-│   ├── tensors.py              # J=6, assert_tensor_contract, assert_phase_space_contract (validates actions u_t)
-│   └── protocols.py            # EncoderProtocol, DynamicsProtocol, PredictorProtocol, PhaseStrategy ABC
-│
-├── models/                     # LAYER 1: Pure neural modules (imports ONLY spwm.contracts)
-│   ├── __init__.py             # Public exports for all neural primitives and SPWM
-│   ├── neurons.py              # FastSigmoid/Atan/Sigmoid surrogates + ALIFCell
-│   ├── memory.py               # MultiTimescaleMemory hierarchical ALIF tiers
-│   ├── encoder.py              # Resolution-dynamic SpatialSoftmax + EventEncoder
-│   ├── dynamics.py             # SpikingLatentDynamics symplectic (q, p) integrator
-│   ├── predictors.py           # Action-conditioned LatentPredictor (M1) & Articulated PhysicalDecoder
-│   ├── rollout.py              # Action-conditioned unified rollout_latent, ground_initial_state, compute_rollout_schedule, step_grounded
-│   ├── kinematics.py           # Differentiable forward kinematics (FK) mapping joint angles to 3D Cartesian coordinates
-│   ├── ann_ablation.py         # Matched continuous leaky rate ANN world model ablation (ANNWorldModel)
-│   ├── baselines.py            # Comparative non-spiking world models (ContinuousRSSM, DeepGRUPredictor, ContinuousConvLSTM)
-│   └── world_model.py          # Composite SPWM world model with action conditioning
-│
-├── data/                       # LAYER 1: Robotic trajectory parser & neuromorphic vision bridge
-│   ├── __init__.py             # Public exports for data loaders and simulators
-│   ├── event_camera.py         # EventCameraSimulator & RoboticTrajectory container with phase_flags
-│   ├── sim_6dof.py             # 6-DOF industrial IK & articulated trajectory simulator
-│   ├── io_unity.py             # Unity trajectory JSON / JSON.GZ parser & exporter
-│   └── datasets.py             # EventWorldDataset, partitioning & PyTorch DataLoader factories
-│
-├── training/                   # LAYER 2: Training orchestration, losses, isolated phases
-│   ├── __init__.py             # Public exports for Layer 2 training components
-│   ├── losses.py               # PredictorLoss, SPWMLoss, decompose_latent_loss, _frozen
-│   ├── metrics.py              # Joint position/velocity errors, spike sparsity, SOP energy
-│   ├── diagnostics.py          # inspect_gradients, collect_spike_statistics
-│   ├── noise.py                # AR(1) MPPI noise scheduling & LatchCurriculumState
-│   ├── checkpoints.py          # Scoped strict=True checkpoint loaders & prerequisite enforcement
-│   ├── replay_buffer.py        # ClosedLoopBuffer (DAgger FIFO) & EMATracker
-│   ├── engine.py               # BaseTrainer & Trainer orchestration
-│   └── phases/                 # Isolated < 150-line PhaseStrategy implementations
-│       ├── __init__.py         # build_phase_strategy factory & dispatcher
-│       ├── representation.py   # RepresentationPhaseStrategy (Phase 0: Grounded joint state estimation)
-│       └── m1_nominal.py       # M1PhaseStrategy (Phase 1: Action-conditioned M1 with sensory injection)
-│
-├── evaluation/                 # LAYER 3: Multi-horizon benchmarks & plotting
-│   ├── __init__.py             # Public exports for evaluation benchmarks
-│   ├── evaluator.py            # RolloutEvaluator & RolloutEvaluationResult
-│   ├── metrics_resume.py       # Segmented training/evaluation JSON summary generator
-│   ├── mppi_controller.py      # LatentMPPIController, NeuralCostMPPIController & MPPIPlanResult
-│   ├── mppi_scorer.py          # MPPIStructuralScorer & canonical Tier 2 structural scoring
-│   ├── mppi.py                 # Thin barrel re-exporting mppi_controller and mppi_scorer symbols
-│   ├── robustness.py           # Sim-to-real sensor noise & mechanical dynamics perturbation suites
-│   └── visualizer.py           # GhostVisualizerExporter & Matplotlib publication figure generators
-```
-
-### 1.3 Strict Dependency & Anti-Fallback Invariants (Enforced by CI)
-
-[`tests/test_architecture_contracts.py`](file:///Users/Mattia/Desktop/Studies/Temp/tests/test_architecture_contracts.py), [`tests/test_anti_fallback.py`](file:///Users/Mattia/Desktop/Studies/Temp/tests/test_anti_fallback.py), and [`tests/test_dead_code.py`](file:///Users/Mattia/Desktop/Studies/Temp/tests/test_dead_code.py) enforce permanent invariants:
-1. **Unidirectional Layer Hierarchy**:
-   - `spwm/contracts/` imports **zero** `spwm.*` packages.
-   - `spwm/models/` and `spwm/data/` never import from `spwm.training`, `spwm.learning`, or `spwm.evaluation`.
-   - `spwm/training/` never imports from `spwm.evaluation`.
-2. **Action Tensor Rigor**: When action conditioning is active, $\mathbf{u}_t$ tensors are validated for rank $\ge 2$, trailing dimension matching `action_dim` ($D_u=6$), and finiteness without NaNs or Infs.
-3. **Repository-Wide Ban on Silent Fallbacks**:
-   - 3-argument `getattr(obj, attr, default)` calls are banned across `spwm/`, `experiments/`, and `scripts/`.
-   - Ternary `hasattr(...)` fallback expressions (`x if hasattr(...) else y`) are banned across `spwm/`, `experiments/`, and `scripts/`.
-   - Silent exception handlers (`except TypeError:`, `except AttributeError:`, `except ...: pass`) are banned across `spwm/`, `experiments/`, and `scripts/`.
-4. **Ban on `strict=False` Checkpoint Loading**: All checkpoints load with `strict=True`.
-5. **Zero Dead Code**: Pruned architectures (such as `CascadedTemporalRelay`, `ConvergenceFunnelLoss`, $M_2$, $M_3$) are statically verified as absent by AST scanning.
+* **Recalibrated Energy Framing:**
+  1. `SPWM`'s primary advantage over `ANN-Rate` is **closed-loop dynamical stability and noise robustness** (`+23.4 pp` 3-seed PIL grasp success, `4.3×` better relative retention under `1.0%` sensory noise), **not** end-to-end energy savings: saving `48.14 nJ/step` on Loihi-2 (`60.36 -> 12.22 nJ/step`) atop `1.0971 mJ/step` (`1,097,100 nJ/step`) of dense GPU MPPI rollouts is a **`0.004%`** end-to-end difference (`1.0979 mJ/step`, `21.96 mW` @ `20 Hz` for both).
+  2. The **`4.94×`** Loihi-2 recurrent core reduction (`12.22 ± 0.19 nJ/step`, `0.244 mW` @ `20 Hz`, computed from synaptic SOPs excluding passive membrane leak) is specifically an **always-on, sub-milliwatt standby state-estimation benefit** when batched MPPI planning is dormant.
+  3. The **`1.93×`** E2E reduction vs. `Continuous RSSM` (`2.1236 mJ/step`) and `1.59×` reduction vs. `Deep GRU` (`1.7490 mJ/step`) come from **`M1`'s compact MLP rollout architecture** (`1.219 GMACs` vs. `2.358` and `1.942 GMACs`).
+* **Analytical SOP & MAC Derivation ([profile_energy_sops.py](file:///Users/Mattia/Desktop/Studies/Temp/experiments/profile_energy_sops.py#L67-L146,L354-L388)):** `spwm_core_macs = (128+6)*256 + 256*128 = 67,072` MACs; multiplying by empirical ALIF spike rates (`12.27%`, `12.26%`, `11.93%`) yields `8,229`, `8,220`, and `8,001` SOPs/step (`1.5e-3 nJ/SOP`, passive membrane leak excluded).
 
 ---
 
-## 2. Models' Architecture & Tensor Dimensionality Contracts
+## 6. Forensic Root-Cause Diagnostics & Validation Selection
 
-### 2.1 End-to-End Forward Pass (`SPWM.step` and `SPWM.forward`)
+### 6.1 Equalized 3-Seed Forensic Decomposition
+**Evidence:** [forensic_rssm_gru_failure.py](file:///Users/Mattia/Desktop/Studies/Temp/scripts/diagnostics/forensic_rssm_gru_failure.py) $\to$ [forensic_rssm_gru_failure.json](file:///Users/Mattia/Desktop/Studies/Temp/results/diagnostics/forensic_rssm_gru_failure.json) (`150` episodes = `3 seeds × 50` per model):
+* **Continuous RSSM Un-Gated (`0/150 = 0.0%`):** Reaches $\le 3\,\text{cm}$ on `144/150 (96.0%)`, then suffers `150/150` velocity violations and `143/150` post-$t_c$ `div+vel` (`2.75 ± 0.06 -> 25.49 ± 1.31 cm`, `7.09 ± 0.17 rad/s`).
+* **Continuous RSSM Residual-Gated (`23/150 = 15.3 ± 5.0%`):** Rejecting corrupted bursts cuts velocity violations to `24/150` and terminal error to `2.72 ± 0.11 cm` (`0.90 ± 0.11 rad/s`), **yet 127/150 episodes still fail** (`38/150` post-$t_c$ spatial divergence + `75/150` settling/vel/rot fails + `12/150` `div+vel`) due to high-frequency MPPI jitter (`|Δ²q| = 0.02049`, `36.94` flips).
+* **Deep GRU Un-Gated (`0/150 = 0.0%`):** Reaches $\le 3\,\text{cm}$ on `132/150 (88.0%)`, then collapses via `106/150` pure post-$t_c$ spatial divergences (`2.75 ± 0.45 -> 7.35 ± 1.34 cm`).
+* **Deep GRU Residual-Gated (`115/150 = 76.7 ± 5.0%`):** `141/150` reach, `0/150` velocity violations, `0/150` `div+vel`, `9/150` post-$t_c$ spatial divergences (`2.75 ± 0.45 -> 1.90 ± 0.18 cm`, `0.30 ± 0.08 rad/s`), but runs at `57.7 ms/step` (`> 50 ms`).
+* **ANN-Rate (`56/150 = 37.3 ± 9.5%`):** `146/150` reach, `2/150` velocity violations, `56/150` post-$t_c$ spatial divergences (`2.69 ± 0.21 -> 2.98 ± 0.46 cm`, `0.50 ± 0.11 rad/s`).
+* **SPWM $N=25$ Val-Selected (`91/150 = 60.7 ± 2.3%`):** `148/150 (98.7%)` reach, `2/150 (1.3%)` velocity violations, `1/150` `div+vel`, `27/150` post-$t_c$ spatial divergences (`2.05 ± 0.34 -> 2.01 ± 0.12 cm`, `0.45 ± 0.07 rad/s`, `26.6 ms/step`).
 
-Given event frames $\mathbf{E}_{0:T-1} \in \mathbb{R}^{B \times T \times C \times H \times W}$ and continuous motor action commands $\mathbf{u}_{0:T-1} \in \mathbb{R}^{B \times T \times D_u}$, [`SPWM`](file:///Users/Mattia/Desktop/Studies/Temp/spwm/models/world_model.py) processes each step:
+### 6.2 SPWM `N=6` Tier-2 Variance Audit & $N=25$ Validation Selection
+**Evidence:** [audit_spwm_seed_variance.py](file:///Users/Mattia/Desktop/Studies/Temp/scripts/diagnostics/audit_spwm_seed_variance.py) $\to$ [spwm_seed_variance_audit.json](file:///Users/Mattia/Desktop/Studies/Temp/results/diagnostics/spwm_seed_variance_audit.json) + `val25_checkpoint_selection` in [ssot_eval_metrics.json](file:///Users/Mattia/Desktop/Studies/Temp/results/ssot_eval_metrics.json):
+* **Internal Module Health Across All 3 Seeds:** `action_proj` spectral norm $\|W_u\|_2$ (`0.8594`, `1.0131`, `0.8189`), `gate_scale` (`~49.04–49.07`), ALIF mean spike rate (`12.27%`, `12.26%`, `11.93%`), silent fraction (`0.78%`, `0.78%`, `2.34%`), and hyperactive fraction (`0.0%`) are cleanly converged across all seeds.
+* **$N=25$ Validation Selection (`[3200, 3224]` $\to$ `[3600, 3649]`):**
+  * `Seed 42`: `best_model` (`200`): `80.0%`, `phase_1` (`181`): `60.0%`, `phase_2` (`188`): `52.0%`, `phase_3` (`200`): `88.0%`, **`phase_4` (`240`): `92.0%`** $\to$ Test **`58.0%`**.
+  * `Seed 101`: `best_model` (`80`): `56.0%`, **`phase_1` (`96`): `68.0%`**, `phase_2` (`104`): `52.0%`, `phase_3` (`124`): `4.0%`, `phase_4` (`240`): `40.0%` $\to$ Test **`62.0%`**.
+  * `Seed 2024`: `best_model` (`130`): `48.0%`, `phase_1` (`94`): `64.0%`, **`phase_2` (`102`): `80.0%`**, `phase_3` (`122`): `40.0%`, `phase_4` (`260`): `60.0%` $\to$ Test **`62.0%`**.
+  * **Aggregate ($N=25$ Val-Selected):** **`60.7 ± 2.3%`** (`11.7×` reduction in inter-seed std vs. `N=6` Tier-2 `58.0 ± 27.1%`).
 
-1. **Topological Event Encoding (`EventEncoder.encode_step`)**:
-   $$\mathbf{x}_t, \mathbf{k}_t = \text{EventEncoder}(\mathbf{E}_t), \quad \mathbf{x}_t \in \mathbb{R}^{B \times D_{\text{enc}}}, \quad \mathbf{k}_t \in [-1, 1]^{B \times 2K}$$
-2. **Top-Down Predictive Coding Error (`sensory_predictor`)**:
-   $$\hat{\mathbf{x}}_t = \mathbf{W}_{\text{pred}}\mathbf{z}_{t-1}, \quad \boldsymbol{\epsilon}_t = \mathbf{x}_t - \hat{\mathbf{x}}_t \in \mathbb{R}^{B \times D_{\text{enc}}}$$
-3. **Recurrent Spiking Latent Dynamics (`SpikingLatentDynamics.step`)**:
-   Processes prediction error $\boldsymbol{\epsilon}_t$ through multi-timescale ALIF memory, updates momentum $\mathbf{p}_{t+1}$, and integrates coordinates using event-gated sensory velocity:
-   $$\mathbf{v}_p = \tanh\left(\frac{a_t}{\sigma_{\text{stasis}}}\right) \cdot \text{vel}(\mathbf{p}_{t+1}), \quad \mathbf{q}_{t+1} = \mathbf{q}_t + \Delta t \cdot \mathbf{v}_p + K_{\text{gate}} \cdot \text{bounded\_corr}$$
-   $$\mathbf{z}_t, \mathcal{S}_t^{\text{dyn}} = \text{SpikingLatentDynamics}(\boldsymbol{\epsilon}_t, \mathcal{S}_{t-1}^{\text{dyn}}, \mathbf{k}_t), \quad \mathbf{z}_t = [\mathbf{q}_t, \mathbf{p}_t] \in \mathbb{R}^{B \times D}$$
-4. **Action-Conditioned Latent Attractor Prediction (`LatentPredictor` / `model.m1`)**:
-   Conditioned on both current latent state $\mathbf{z}_t$ and motor command $\mathbf{u}_t$:
-   $$\mathbf{h}_t = \text{Backbone}([\mathbf{z}_t, \mathbf{u}_t])$$
-   $$\gamma_t = \sigma(\text{Head}_{\text{diss}}(\mathbf{h}_t)), \quad \mathbf{f}_p = \text{Head}_p(\mathbf{h}_t), \quad \mathbf{f}_q = \text{Head}_q(\mathbf{h}_t)$$
-   $$\mathbf{p}_{t+1} = (1 - \Delta t \cdot \gamma_t) \mathbf{p}_t + \mathbf{f}_p$$
-   $$\mathbf{q}_{t+1} = \mathbf{q}_t + \Delta t \cdot (\mathbf{p}_{t+1}[..., :q\_dim] + \mathbf{f}_q)$$
-   $$\hat{\mathbf{z}}_{t+1} = [\mathbf{q}_{t+1}, \mathbf{p}_{t+1}] \in \mathbb{R}^{B \times D}$$
-5. **Physical Articulated Kinematic Readout (`PhysicalDecoder`)**:
-   Decodes joint angles and angular velocities via MLP heads with dual low-pass EMA filtering (position smoothing $\alpha_{\text{pos}}$ and velocity smoothing $\alpha_{\text{vel}}$):
-   $$\hat{\mathbf{y}}_t = \text{PhysicalDecoder}(\mathbf{z}_t) = [\hat{\mathbf{q}}_t^*, \hat{\mathbf{p}}_t^*] \in \mathbb{R}^{B \times 2J}$$
-
-### 2.2 Master Tensor Dimensionality Contract Matrix
-
-All tensor shapes are verified at runtime via [`assert_tensor_contract`](file:///Users/Mattia/Desktop/Studies/Temp/spwm/contracts/tensors.py) and [`assert_phase_space_contract`](file:///Users/Mattia/Desktop/Studies/Temp/spwm/contracts/tensors.py). Canonical dimensions: $C=4$ (2 static global + 2 egocentric wrist polarity channels), $H_{\text{img}}=32, W_{\text{img}}=32, K=16, D_{\text{enc}}=128, D=128, D_q=32, D_p=96, D_u=6, J=6$.
-
-| Producer Component | Tensor / Variable | Consumer Component | Shape Contract | Mathematical Domain & Invariant |
-| :--- | :--- | :--- | :--- | :--- |
-| `EventWorldDataset` | `events` ($\mathbf{E}$) | `SPWM.forward` / `EventEncoder` | `[B, T, C, H_img, W_img]` | $\mathbb{R}_{\ge 0}$, $H_{\text{img}}, W_{\text{img}} \equiv 0 \pmod 4$ |
-| `EventWorldDataset` | `actions` ($\mathbf{u}$) | `SPWM.step` / `LatentPredictor` | `[B, T, action_dim]` | $[-1.0, 1.0]^{D_u}$ motor controls ($D_u=6$) |
-| `EventWorldDataset` | `phase_flags` | `PhaseStrategy` / `collate_event_batches` | `[B, T]` | $\text{int64} \in \{0, 1, 2\}$ (0: Approach, 1: Heft, 2: Transport) |
-| `EventWorldDataset` | `flat_kinematics` ($\mathbf{y}^*$) | `PhaseStrategy` / `RolloutEvaluator` | `[B, T, 2 * J]` | $[\mathbf{q}_1^*, \dots, \mathbf{q}_J^*, \mathbf{p}_1^*, \dots, \mathbf{p}_J^*]$ ($J=6$) |
-| `EventEncoder.conv` | `feat_maps` | `SpatialSoftmax` | `[B, K, H_img // 4, W_img // 4]` | Spatial activation logits |
-| `SpatialSoftmax` | `keypoints` ($\mathbf{k}_t$) | `EventEncoder.proj` & `SpikingLatentDynamics` | `[B, 2 * K]` (`2*K == D_q`) | Normalized Euclidean coordinates $[-1, 1]^{2K}$ |
-| `EventEncoder.proj` | `sensory_x` ($\mathbf{x}_t$) | `SPWM.step` error unit | `[B, D_enc]` | Continuous visual feature embedding |
-| `SPWM.sensory_predictor` | `epsilon_t` ($\boldsymbol{\epsilon}_t$) | `SpikingLatentDynamics.in_proj` | `[B, D_enc]` | Top-down sensory prediction error |
-| `MultiTimescaleMemory` | `concatenated_spikes` ($\mathbf{s}_t$) | `SpikingLatentDynamics` | `[B, D_fast + D_slow]` | Binary spikes $\{0.0, 1.0\}$ with surrogate grad |
-| `SpikingLatentDynamics` | `ema_spikes` ($\bar{\mathbf{s}}_t$) | `SpikingLatentDynamics.out_proj` | `[B, D_fast + D_slow]` | $\bar{\mathbf{s}}_t = \alpha_{\text{ema}}\bar{\mathbf{s}}_{t-1} + (1 - \alpha_{\text{ema}})\mathbf{s}_t$ |
-| `SpikingLatentDynamics` | `latent` ($\mathbf{z}_t = [\mathbf{q}_t, \mathbf{p}_t]$) | `LatentPredictor`, `PhysicalDecoder` | `[B, D]` (`D == D_q + D_p`) | $\mathbf{q}_t \in [-1, 1]^{D_q}$, $\mathbf{p}_t \in \mathbb{R}^{D_p}$ |
-| `LatentPredictor` | `trajectory` ($\hat{\mathbf{z}}_{1:H}$) | `PhysicalDecoder`, `PredictorLoss` | `[B, H, D]` | Action-conditioned latent predictions |
-| `PhysicalDecoder` | `decoded_kinematics` ($\hat{\mathbf{y}}$) | `position_error`, `velocity_error` | `[B, H, 2 * J]` | Joint angles and velocities $[\hat{\mathbf{q}}^*, \hat{\mathbf{p}}^*]$ ($2J=12$) |
-
-### 2.3 Component Deep Dive
-
-#### A. Dual-Camera Visual Fusion Event Encoder & Predictive Sensory Decoder ([`spwm/models/encoder.py`](file:///Users/Mattia/Desktop/Studies/Temp/spwm/models/encoder.py), [`spwm/models/world_model.py`](file:///Users/Mattia/Desktop/Studies/Temp/spwm/models/world_model.py))
-- **Purpose**: Ingests dual-stream event frames (`4` channels: channels `0..1` static global camera ON/OFF polarities; channels `2..3` egocentric wrist camera ON/OFF polarities), fuses multi-view representations, computes feature heatmaps, and extracts continuous 2D coordinates of spatial centers of mass (keypoints) via a differentiable spatial softmax bottleneck.
-- **Layer Configuration & Parameters (`EventEncoder`)**:
-  - **Global / Primary Convolutional Backbone (`conv`)**:
-    1. `Conv2d(in_channels=4, out_channels=16, kernel_size=3, stride=2, padding=1)` $\rightarrow$ `[B, 16, 16, 16]` (592 params)
-    2. `GroupNorm(num_groups=4, num_channels=16)` (32 params) $\rightarrow$ `SiLU()`
-    3. `Conv2d(in_channels=16, out_channels=32, kernel_size=3, stride=2, padding=1)` $\rightarrow$ `[B, 32, 8, 8]` (4,640 params)
-    4. `GroupNorm(num_groups=4, num_channels=32)` (64 params) $\rightarrow$ `SiLU()`
-    5. `Conv2d(in_channels=32, out_channels=16, kernel_size=1)` $\rightarrow$ `[B, 16, 8, 8]` (528 params)
-  - **Egocentric Wrist Branch (`wrist_stem`)**:
-    1. `Conv2d(in_channels=2, out_channels=16, kernel_size=3, stride=2, padding=1)` $\rightarrow$ `[B, 16, 16, 16]` (304 params)
-    2. `GroupNorm(num_groups=4, num_channels=16)` (32 params) $\rightarrow$ `SiLU()`
-    3. `Conv2d(in_channels=16, out_channels=32, kernel_size=3, stride=2, padding=1)` $\rightarrow$ `[B, 32, 8, 8]` (4,640 params)
-    4. `GroupNorm(num_groups=4, num_channels=32)` (64 params) $\rightarrow$ `SiLU()`
-  - **Fusion Head (`fusion_head`)**: `Conv2d(in_channels=32, out_channels=16, kernel_size=1)` $\rightarrow$ `[B, 16, 8, 8]` (528 params); $\Phi_{\text{fused}} = \text{conv}(x) + \text{fusion\_head}(\text{wrist\_stem}(x_{2:4}))$.
-  - **Spatial Softmax Bottleneck (`SpatialSoftmax`)**: Grid $8 \times 8$ over normalized coordinates $X, Y \in [-1, 1]$ with temperature $\tau = 1.0$:
-    $$A_{c, i, j} = \frac{\exp(F_{c, i, j} / \tau)}{\sum_{u, v} \exp(F_{c, u, v} / \tau)}, \quad \mu_{c}^x = \sum_{i, j} A_{c, i, j} \cdot X_{i, j}, \quad \mu_{c}^y = \sum_{i, j} A_{c, i, j} \cdot Y_{i, j}$$
-    Concatenated into `[B, 2 * num_keypoints] = [B, 32]`.
-  - **Projection MLP (`proj`)**: `Linear(32, 128)` (4,224 params) $\rightarrow$ `LayerNorm(128)` (256 params) $\rightarrow$ `SiLU()`, outputting sensory embedding $s_t \in \mathbb{R}^{128}$ (`encoder_dim = 128`).
-- **Predictive Sensory Decoder (`sensory_predictor`)**: Single linear projection `Linear(in_features=128, out_features=128, bias=False)` (16,384 params) mapping prior latent state $z_{t-1} \in \mathbb{R}^{128}$ to $\hat{s}_t \in \mathbb{R}^{128}$, yielding predictive coding residual $\epsilon_t = s_t - \hat{s}_t \in \mathbb{R}^{128}$.
-
-#### B. Action-Conditioned `LatentPredictor` (M1 Attractor Predictor) ([`spwm/models/predictors.py`](file:///Users/Mattia/Desktop/Studies/Temp/spwm/models/predictors.py))
-- **Layer Configuration & Parameters**:
-  - Concatenation: $[z_t, u_t] \in \mathbb{R}^{134}$.
-  - Shared Two-Layer MLP Backbone: `Linear(134, 256)` (34,560 params) $\rightarrow$ `LayerNorm(256)` (512 params) $\rightarrow$ `SiLU()` $\rightarrow$ `Linear(256, 256)` (65,792 params) $\rightarrow$ `LayerNorm(256)` (512 params) $\rightarrow$ `SiLU()`.
-  - Three Linear Prediction Heads:
-    - **Force Head (`force_head`)**: `Linear(256, 96)` $\rightarrow \mathbf{f}_p \in \mathbb{R}^{96}$ (24,672 params).
-    - **Dissipation Head (`dissipation_head`)**: `Linear(256, 96)` $\rightarrow \gamma_t = \sigma(\text{Linear}(\mathbf{h}_t)) \in (0, 1)^{96}$ (24,672 params, bias initialized to `-2.0`).
-    - **Restorative Coordinate Head (`restorative_q_head`)**: `Linear(256, 32)` $\rightarrow \mathbf{f}_q \in \mathbb{R}^{32}$ (8,224 params, weights and bias zero-initialized).
-- **Dissipative and Attractor Phase-Space Integration**:
-  Unlike conservative toy physics which required strict symplectic volume preservation, the 6-DOF manipulator operates under joint friction, gravity torques, and variable grasped payload mass.
-  $M_1$ accepts the motor command $\mathbf{u}_t \in \mathbb{R}^6$ alongside $\mathbf{z}_t$, learning a parameterizable dissipative field $\gamma_t = \sigma(\text{Linear}(\mathbf{h}_t))$ and force vectors $(\mathbf{f}_p, \mathbf{f}_q)$:
-  $$\mathbf{p}_{t+1} = (1 - \Delta t \cdot \gamma_t) \mathbf{p}_t + \mathbf{f}_p$$
-  $$\mathbf{q}_{t+1} = \mathbf{q}_t + \Delta t \cdot (\mathbf{p}_{t+1}[..., :q\_dim] + \mathbf{f}_q)$$
-- **Active Perception Continuous Soft-Fade Handover in Training & Evaluation**:
-  Unified across both [`M1PhaseStrategy`](file:///Users/Mattia/Desktop/Studies/Temp/spwm/training/phases/m1_nominal.py) and [`RolloutEvaluator`](file:///Users/Mattia/Desktop/Studies/Temp/spwm/evaluation/evaluator.py) via [`rollout_latent`](file:///Users/Mattia/Desktop/Studies/Temp/spwm/models/rollout.py):
-  - **Phase 0 Initialization**: Canonical schedule computed by `compute_rollout_schedule(phase_flags, T)`. Initial frames $t \in [0, t_{\text{start}}]$ ground $\hat{\mathbf{z}}_0$ through frozen Encoder & Dynamics via `ground_initial_state`.
-  - **Continuous Soft-Fade Blending**: Rather than a binary branch that halts $M_1$, $M_1$ unrolls continuously across all horizon steps. When active perception events are present, latent state blending authority $w_t$ softly couples the prediction with grounded sensory dynamics:
-    $$\mathbf{z}_{t+1} = (1 - w_t) \cdot \mathbf{z}_{\text{pred}} + w_t \cdot \mathbf{z}_{\text{grounded}}$$
-    - During **Approach & Grasp Sensory Window (`flag == 1`)**: $w_t = \text{ramp}(g_{\text{steps}}) \cdot w_{\text{max}}$ with $w_{\text{max}} = 0.60$, ramping smoothly over `gate_ramp_steps = 4` ($0.15 \to 0.30 \to 0.45 \to 0.60$).
-    - During **Transition into Blind Transport (`flag == 2`)**: $w_t$ ramps down over 2 frames ($0.30 \to 0.00$) to eliminate handover discontinuity.
-    - All other steps (`flag == 0` or late transport): $w_t = 0.00$ ($M_1$ autonomous unrolling).
-- **Anisotropic Downstream Latent MPPI Controller ([`spwm/evaluation/mppi.py`](file:///Users/Mattia/Desktop/Studies/Temp/spwm/evaluation/mppi.py))**:
-  - Closed-loop path-integral control evaluates $K=256$ candidate action trajectories over horizon $H=10$ directly in latent space using $M_1$.
-  - Uses an **anisotropic exploration covariance** $\boldsymbol{\Sigma} = [0.08, 0.128, 0.112, 0.08, 0.08, 0.08]$ (`noise_sigma = 0.08`, `shoulder_sigma_multiplier = 1.6`, `elbow_sigma_multiplier = 1.4`) and temperature $\lambda = 0.20$, preventing greedy collapse into local minima under heavy payload inertia.
-
-#### C. Event-Gated `SpikingLatentDynamics` & ALIF Memory ([`spwm/models/dynamics.py`](file:///Users/Mattia/Desktop/Studies/Temp/spwm/models/dynamics.py), `memory.py`, `neurons.py`)
-- **Population Partitioning & Learnable Time Constants (`ALIFCell`, `MultiTimescaleMemory`)**:
-  - 2 timescale tiers (`timescale_dims = (128, 128)`), total memory dimension $N_{\text{mem}} = 256$.
-  - Learnable per-neuron `nn.Parameter` membrane decay initialized at $\beta_{\text{mem}} = 0.80$, clamped in forward pass to $[0.50, 0.98]$ (256 params).
-  - Learnable per-neuron `nn.Parameter` adaptation decay initialized at $\beta_{\text{adapt}} = (0.90, 0.985)$ (Fast tier: $\beta_1 = 0.90$; Slow tier: $\beta_2 = 0.985$), clamped in forward pass to $[0.80, 0.995]$ (256 params).
-  - Baseline threshold $V_{\text{th0}} = 1.0$, adaptation coupling $\gamma = 0.18$, Arctangent surrogate gradient (`atan`, $\alpha = 2.0$):
-    $$S(x) = \Theta(x), \quad \frac{\partial S}{\partial x} = \frac{\alpha / 2}{1 + \left(\frac{\pi}{2} \alpha x\right)^2}$$
-  - Neuron dynamics at step $t$:
-    $$V_j(t) = \beta_{\text{mem}} V_j(t-1) + I_j(t) - z_j(t-1) V_{\text{th0}}, \quad A_j(t) = \beta_{\text{adapt}} A_j(t-1) + z_j(t-1)$$
-    $$V_{\text{th}, j}(t) = V_{\text{th0}} + \gamma A_j(t), \quad z_j(t) = \text{SurrogateSpike}(V_j(t) - V_{\text{th}, j}(t))$$
-- **Input Current Integration**:
-  $$I_t = W_{\text{in}} \epsilon_t + W_{\text{rec}} p_{t-1} + W_q q_{t-1} + W_u u_t$$
-  - `input_proj`: `Linear(128, 256, bias=True)` (33,024 params)
-  - `recurrent_proj`: `Linear(96, 256, bias=False)` (24,576 params)
-  - `q_proj`: `Linear(32, 256, bias=False)` (8,192 params)
-  - `action_proj`: `Linear(6, 256, bias=False)` (1,536 params, zero-initialized at `0.0`; during Phase 0 training, backpropagated gradients grow $\|W_u\|_2 \approx 1.365$, ratio $\approx 1.02$ vs $\|W_{\text{in}}\|_2$, ensuring immediate awareness of motor torque in closed-loop control).
-- **Continuous Kinematic Integration via Velocity Slicing & Stasis Zero-Velocity Damping**:
-  Momentum $p_t \in \mathbb{R}^{96}$ is mapped to coordinate velocity via direct slicing of the first 32 dimensions: $\mathbf{v}_p = \text{vel}(\mathbf{p}_t) = \mathbf{p}_t[..., :32]$ (aligned with Phase 0 $\mathcal{L}_{\text{derivative}}$ without projection layers).
-  - Dual-camera channel-wise maximum event activity: $a_t = \max\left(\text{mean}(|E_{t, \text{global}}|), \text{mean}(|E_{t, \text{wrist}}|)\right)$, keeping the gate open during localized wrist rotation even when the proximal arm decelerates.
-  - Stasis Zero-Velocity Damping Gate (suppressing post-motion drift from slow $\beta_2 = 0.985$ potentials when $a_t \to 0$):
-    $$v_{p, \text{eff}} = \tanh\left(\frac{a_t}{\sigma_{\text{stasis}}}\right) \cdot \mathbf{v}_p, \quad \sigma_{\text{stasis}} = 0.003$$
-- **Anti-Evanescence & Anti-Pullback Position Coupling ($K_{\text{max}} = 0.35$)**:
-  Sensory keypoint corrections are adaptively gated with $a_{\text{eff}} = \max(0, a_t - \theta_{\text{act}})$ ($\theta_{\text{act}} = 0.001$) and $w_{\text{gate}} \in \mathbb{R}^{32}$ initialized to `50.0`:
-  $$K_{\text{gate}} = \text{ramp} \cdot \left(1 - \exp\left(-\text{softplus}(w_{\text{gate}}) \cdot a_{\text{eff}}\right)\right) \cdot \tanh^2\left(\frac{a_{\text{eff}}}{\sigma_{\text{stasis}}}\right) \cdot K_{\text{max}}, \quad \text{ramp} = \operatorname{clamp}\left(\frac{g_{\text{steps}}}{\text{gate\_ramp\_steps}}, 0, 1\right)$$
-  $$\mathbf{q}_t = \mathbf{q}_{t-1} + \Delta t \cdot v_{p, \text{eff}} + K_{\text{gate}} \odot \text{clip}\left(\mathbf{k}_t^{\text{sensory}} - \mathbf{q}_{t-1}, \|\cdot\|_2 \le \delta_{\text{max}}\right)$$
-  During autonomous rollout without sensory keypoints, $\mathbf{q}_t = \mathbf{q}_{t-1} + \Delta t \cdot v_{p, \text{eff}}$.
-- **Normalized Continuous Momentum Subspace**:
-  Momentum $\mathbf{p}_t$ combines discrete spikes and analog membrane potentials $m_{\text{analog}} = \tanh(V_t) \in \mathbb{R}^{256}$, normalized by `LayerNorm(96)`:
-  $$\mathbf{p}_t = \text{LayerNorm}(\text{fuse\_spikes}(\text{spikes}) + \text{fuse\_mems}(m_{\text{analog}}))$$
-  (`fuse_spikes`: `Linear(256, 96, bias=True)`, 24,672 params; `fuse_mems`: `Linear(256, 96, bias=False)`, 24,576 params; `norm`: `LayerNorm(96)`, 192 params; spike EMA $\lambda_{\text{ema}} = 0.90$). Raw finite-difference momentum injection has been reverted, ensuring $|p| \le 3.5$ and protecting ALIF membrane potentials from current shocks.
-
-#### D. Articulated `PhysicalDecoder` with Dual Low-Pass EMA Filtering ([`spwm/models/predictors.py`](file:///Users/Mattia/Desktop/Studies/Temp/spwm/models/predictors.py))
-- Reads out articulated joint angles $\hat{\mathbf{q}}^* \in \mathbb{R}^6$ from coordinate subspace $\mathbf{q}_t \in \mathbb{R}^{32}$ and joint angular velocities $\hat{\mathbf{p}}^* \in \mathbb{R}^6$ from momentum subspace $\mathbf{p}_t \in \mathbb{R}^{96}$:
-  - **Position Head (`pos_head`)**: `Linear(32, 64)` (2,112 params) $\rightarrow$ `LayerNorm(64)` (128 params) $\rightarrow$ `SiLU()` $\rightarrow$ `Linear(64, 6)` (390 params; 2,630 total).
-  - **Velocity Head (`vel_head`)**: `Linear(96, 64)` (6,208 params) $\rightarrow$ `LayerNorm(64)` (128 params) $\rightarrow$ `SiLU()` $\rightarrow$ `Linear(64, 6)` (390 params; 6,726 total).
-- **Dual Low-Pass Smoothing**:
-  - **Position Filtering**: Controlled by `decoder_pos_alpha` ($\alpha_{\text{pos}} = 0.0$ default; can be set $> 0.0$ if discrete single-step joint jump damping is needed).
-  - **Velocity Filtering**: Controlled by `decoder_ema_alpha` ($\alpha_{\text{vel}} = 0.0$ default; $r_t = p_t$, avoiding low-pass phase lag while preserving continuous momentum readout).
-
-#### E. Terminal Value Critic Network `LatentCritic` ([`spwm/models/predictors.py`](file:///Users/Mattia/Desktop/Studies/Temp/spwm/models/predictors.py))
-- **Architecture**: 3-layer MLP (`Linear(128, 256)` [33,024 params] $\rightarrow$ `SiLU()` $\rightarrow$ `Linear(256, 128)` [32,896 params] $\rightarrow$ `SiLU()` $\rightarrow$ `Linear(128, 1)` [129 params]; **66,049 total parameters**) attached as `model.critic` alongside `m1` and `physical_decoder` on both `SPWM` and `ANNWorldModel`.
-- **Role**: Maps latent phase-space state $\mathbf{z}_t \in \mathbb{R}^{D}$ to scalar expected discounted cost-to-go $V(\mathbf{z}_t) \in \mathbb{R}^{B \times 1}$ during Phase 1 training (with detached latent inputs so it does not affect $M_1$). Currently serves as scaffolding for future goal-conditioned TD-MPC terminal value bootstrapping (`w_critic = 0.0` disables it in closed-loop MPPI).
-
-### 2.4 Parameter Count Summary
-
-| Module | Submodule / Layer | Parameter Count |
-|---|---|---|
-| **EventEncoder** | Convolutional Trunk (`conv`) | 5,856 |
-| | Egocentric Wrist Stem (`wrist_stem`) | 5,040 |
-| | Cross-View Fusion Head (`fusion_head`) | 528 |
-| | Linear Projection (`proj`) | 4,480 |
-| **sensory_predictor** | Linear Projection | 16,384 |
-| **SpikingLatentDynamics** | Input & Recurrent Projections | 67,328 |
-| | Momentum Fusion (`fuse_spikes`, `fuse_mems`, `norm`) | 49,440 |
-| | `W_vel` (8,192, unused in `step()`), `gate_scale` (32), `memory` (`beta_mem` + `beta_adapt`, 512) | 8,736 |
-| **LatentPredictor (M1)** | Backbone MLP | 101,376 |
-| | Output Heads (`force`, `dissipation`, `restorative_q`) | 57,568 |
-| **PhysicalDecoder** | Position Head (`pos_head`) | 2,630 |
-| | Velocity Head (`vel_head`) | 6,726 |
-| **LatentCritic** | Value MLP (`net`) | 66,049 |
-| **Total SPWM Parameters** | | **392,141** |
+### 6.3 Standalone Phase 0 Representation Metrics (`results/spwm_v0_12_4_train_representation/`)
+* **Training & Validation ([metrics_spwm_v0_12_4.json](file:///Users/Mattia/Desktop/Studies/Temp/results/spwm_v0_12_4_train_representation/metrics_spwm_v0_12_4.json)):** Seed 42 best checkpoint at **Ep 159** reaches `val_loss = 1.281731` (`-98.01%` from Ep 1 `65.4230`), `val_pos_err = 0.07430 rad`, `val_vel_err = 0.16678 rad/s`, `val_loss_cartesian = 0.002454` (Seed 101 Ep 160: `1.3251`; Seed 2024 Ep 146: `1.4362`).
+* **Grounded FK Accuracy & Homeostasis Ablation ([diagnostics.json](file:///Users/Mattia/Desktop/Studies/Temp/results/spwm_v0_12_4_train_representation/diagnostics.json)):** 50-episode grounded `forward_representation` at `t_grasp` achieves **`2.04 cm`** FK position MAE (`p90 = 3.33 cm`) and **`0.043 rad`** rotation error (`p90 = 0.082 rad`).
 
 ---
 
-## 3. Loss Computation, Training Flow & Strict Checkpoint Scoping
+## 7. Master Verification & SSOT Aggregation Commands
 
-### 3.1 Two-Phase Isolated Training Curriculum
+```bash
+# 1. Re-evaluate Table 1 (N=400 open-loop rollout across all seeds)
+.venv/bin/python scripts/eval_table1_ssot.py
 
-The architecture focuses on two clean, decoupled training phases:
+# 2. Regenerate forensic diagnostics & SSOT aggregation JSONs + summary
+.venv/bin/python scripts/diagnostics/forensic_rssm_gru_failure.py
+.venv/bin/python scripts/aggregate_corl_final_verification.py
+.venv/bin/python scripts/diagnostics/audit_spwm_seed_variance.py
 
-| Phase Mode | Strategy Class | Trainable Modules (`requires_grad=True`) | Frozen Modules (`requires_grad=False`) | Active Rollout Window |
-| :--- | :--- | :--- | :--- | :--- |
-| **`train_representation`** | [`RepresentationPhaseStrategy`](file:///Users/Mattia/Desktop/Studies/Temp/spwm/training/phases/representation.py) | `encoder`, `dynamics`, `sensory_predictor`, `physical_decoder` | `predictor` (`m1`), `critic` | $t \in [0, T_{\text{obs}}]$ (Pure State Estimation) |
-| **`train_m1`** | [`M1PhaseStrategy`](file:///Users/Mattia/Desktop/Studies/Temp/spwm/training/phases/m1_nominal.py) | `predictor` (`m1`), `critic` | `encoder`, `dynamics`, `sensory_predictor`, `physical_decoder` | $t \in [t_{\text{start}}, t_{\text{start}} + H]$ conditioned on $\mathbf{u}_t$ |
-
-### 3.2 Exact Mathematical Loss Formulations
-
-#### Phase 0 (`train_representation`) Objective
-In [`RepresentationPhaseStrategy`](file:///Users/Mattia/Desktop/Studies/Temp/spwm/training/phases/representation.py), the spiking network is trained strictly as a continuous state estimator over sensory input streams:
-1. **Articulated Kinematic Supervision & Differentiable FK End-Effector Loss**:
-   $$\mathcal{L}_{\text{kinematic}} = \mathcal{L}_{\text{pos\_kin}} + \mathcal{L}_{\text{vel\_kin}} + \lambda_{\text{cart}} \cdot \mathcal{L}_{\text{cartesian}}$$
-   where:
-   $$\mathcal{L}_{\text{pos\_kin}} = \frac{1}{BT}\sum_{b=0}^{B-1}\sum_{t=0}^{T-1} \|\text{decode\_pos}(\mathbf{q}_{b, t}) - \mathbf{q}_{b, t}^*\|_2^2, \quad \mathcal{L}_{\text{vel\_kin}} = \frac{1}{BT s_v^2}\sum_{b=0}^{B-1}\sum_{t=0}^{T-1} \|\text{decode\_vel}(\mathbf{p}_{b, t}) - \mathbf{p}_{b, t}^*\|_2^2$$
-   $$\mathcal{L}_{\text{cartesian}} = \frac{1}{BT}\sum_{b=0}^{B-1}\sum_{t=0}^{T-1} \|\mathbf{p}_{\text{ee}}(\text{decode\_pos}(\mathbf{q}_{b, t})) - \mathbf{p}_{\text{ee}}(\mathbf{q}_{b, t}^*)\|_2^2 + \text{ee\_rot\_weight} \cdot \mathcal{L}_{\text{ee\_rot}}$$
-   with $s_v = \text{velocity\_loss\_scale} = 1.0\,\text{rad/s}$, $\lambda_{\text{cart}} = \text{cartesian\_weight} = 40.0$, and `ee_rot_weight = 0.5` (configurable in `LossConfig`). $\mathcal{L}_{\text{cartesian}}$ uses [`DifferentiableForwardKinematics`](file:///Users/Mattia/Desktop/Studies/Temp/spwm/models/kinematics.py) to weight joint errors geometrically according to distal lever arms (e.g. $0.39\,\text{m}$ distal lever arm on J2 Elbow_Flex along inclined axis $\vec{a} = [0.5375, -0.2756, -0.7969]^T$) and supervise $SO(3)$ orientation.
-2. **Phase-Space Derivative Constraint**:
-   $$\mathcal{L}_{\text{derivative}} = \frac{1}{B(T-1)}\sum_{b=0}^{B-1}\sum_{t=0}^{T-2} \|(\mathbf{q}_{b, t+1} - \mathbf{q}_{b, t}) - \Delta t \cdot \mathbf{p}_{b, t}[..., :q\_dim]\|_2^2$$
-3. **ALIF Momentum Smoothness**:
-   $$\mathcal{L}_{\text{smoothness}} = \frac{1}{B(T-1)}\sum_{b=0}^{B-1}\sum_{t=0}^{T-2} \text{Smooth}_{L1}(\mathbf{p}_{b, t+1} - \mathbf{p}_{b, t}, \beta=0.1)$$
-4. **Decoded Kinematic Temporal Consistency & ALIF Homeostasis**: `lambda_kinematic_smooth = 0.5` enforces first- and second-order decoded joint trajectory consistency against ground truth and discrete velocity integration; `lambda_spike_balance = 0.25` stabilizes ALIF firing rates toward `target_spike_rate = 0.12`.
-5. **Sensory Prediction Reconstruction**:
-   $$\mathcal{L}_{\text{sensory}} = \frac{1}{BT}\sum_{b=0}^{B-1}\sum_{t=0}^{T-1} \|\boldsymbol{\epsilon}_{b, t}\|_2^2$$
-
-$$\mathcal{L}_{\text{Phase 0}} = \lambda_{\text{kinematic}}\mathcal{L}_{\text{kinematic}} + \lambda_{\text{derivative}}\mathcal{L}_{\text{derivative}} + \lambda_{\text{smoothness}}\mathcal{L}_{\text{smoothness}} + \lambda_{\text{sensory}}\mathcal{L}_{\text{sensory}} + \lambda_{\text{kinematic\_smooth}}\mathcal{L}_{\text{kin\_smooth}} + \lambda_{\text{spike\_balance}}\mathcal{L}_{\text{spike\_balance}}$$
-with default weights $\lambda_{\text{kinematic}} = 5.0, \; \lambda_{\text{derivative}} = 1.0, \; \lambda_{\text{smoothness}} = 0.1, \; \lambda_{\text{sensory}} = 1.0, \; \lambda_{\text{kinematic\_smooth}} = 0.5, \; \lambda_{\text{spike\_balance}} = 0.25$.
-
-#### Phase 1 (`train_m1`) Objective
-In [`M1PhaseStrategy`](file:///Users/Mattia/Desktop/Studies/Temp/spwm/training/phases/m1_nominal.py), all representation modules are **strictly frozen**. Pristine ground-truth latents $\mathbf{z}_{0:T}^*$ are generated via `forward_representation` and detached: $\mathbf{z}_{\text{target}} = \text{stop\_grad}(\mathbf{z}^*)$. Starting from grounded initial state $\hat{\mathbf{z}}_0$ (via `ground_initial_state`), $M_1$ unrolls via unified `rollout_latent(model, with_grad=True, fixed_predictor=model.m1, events=events, phase_flags=phase_flags)` conditioned on actions $\mathbf{u}_t$, synchronizing with grounded sensory dynamics during Phase 1.5 heft (flag == 1) and executing autonomous M1 steps during blind transport:
-$$\mathcal{L}_{M_1} = \lambda_{\text{position}} \frac{1}{BH}\sum_{b=0}^{B-1}\sum_{h=1}^H w_{\text{step}}(b, h) \|\hat{\mathbf{q}}_{b, h} - \mathbf{q}_{\text{target}, b, h}\|_2^2 + \lambda_{\text{velocity}} \frac{1}{BH}\sum_{b=0}^{B-1}\sum_{h=1}^H w_{\text{vel\_step}}(b, h) \|\hat{\mathbf{p}}_{b, h} - \mathbf{p}_{\text{target}, b, h}\|_2^2$$
-where `step_weights` ($w_{\text{step}}$ for $\mathbf{q}$) is $2.0$ over $[\max(0, h_0 - 5), \min(H, h_{\text{end}} + 10))$ and $1.0$ otherwise, `vel_step_weights` ($w_{\text{vel\_step}}$ for $\mathbf{p}$) is $3.0$ over $[\max(0, h_0), \min(H, h_{\text{end}} + 12))$ and $1.0$ otherwise, and $\lambda_{\text{velocity}} = 1.5$ (in `LossConfig`) scales momentum subspace precision during multi-step unrolling.
-$$\mathcal{L}_{\text{total}} = \lambda_{\text{latent}} \mathcal{L}_{M_1} + \mathcal{L}_{\text{kin\_m1}} + w_{\text{critic}} \mathcal{L}_{\text{critic}} \quad (+ \text{optional closed-loop DAgger terms})$$
-
-### 3.3 Scoped `strict=True` Checkpoint Protocol
-
-All checkpoint operations in [`spwm/training/checkpoints.py`](file:///Users/Mattia/Desktop/Studies/Temp/spwm/training/checkpoints.py) and [`spwm/training/engine.py`](file:///Users/Mattia/Desktop/Studies/Temp/spwm/training/engine.py) enforce `strict=True`:
-1. **`load_representation_checkpoint(model, ckpt_path)`**: Loads `encoder`, `sensory_predictor`, `dynamics`, and `physical_decoder` sub-dictionaries from Phase 0 with `strict=True`.
-2. **`BaseTrainer.load_checkpoint(ckpt_path)`**: Loads full model weights with `strict=True`, raising `RuntimeError` immediately upon any unexpected or missing key.
-
----
-
-## 4. Execution Validation & Confirmation Criteria
-
-- **Active Perception Inertial Estimation**: Verifies that the sensory heft micro-movement injects mass/inertia information into the latent dynamics, reducing blind transport rollout error.
-- **6-DOF Kinematic Reconstruction**: Physical decoder tracking ensures high $R^2$ / low MSE across all $J=6$ manipulator joints.
-- **Ghost Visualization Parity**: [`GhostVisualizerExporter`](file:///Users/Mattia/Desktop/Studies/Temp/spwm/evaluation/visualizer.py) exports rollout telemetry to Unity StreamingAssets (`trajectory_ghost.json`) for side-by-side holographic replay via [`GhostPlaybackManager`](file:///Users/Mattia/Desktop/Studies/Temp/sim/Assets/Scripts/Visualization/GhostPlaybackManager.cs).
-- **Zero Temporal Leakage**: Trajectory-level partitioning ensures validation and test splits evaluate strictly unseen robotic movement sequences.
-
----
-
-## 5. Comparative Non-Spiking Baseline Models
-
-To benchmark SPWM against standard deep recurrent world model paradigms under comparable parameter budgets (`ContinuousRSSM`: 380,460; `DeepGRUPredictor`: 338,868; `ContinuousConvLSTM`: 296,892) and identical event frame input streams $\mathbf{E}_t \in \mathbb{R}^{B \times T \times 4 \times 32 \times 32}$ and actions $\mathbf{u}_t \in \mathbb{R}^{B \times T \times 6}$, three baseline architectures are implemented in [`spwm/models/baselines.py`](file:///Users/Mattia/Desktop/Studies/Temp/spwm/models/baselines.py):
-
-### 5.1 Continuous RSSM (Recurrent State-Space Model / DreamerV3)
-- **Deterministic Recurrent State**: $h_t \in \mathbb{R}^{256}$ updated via `GRUCell` conditioned on concatenated stochastic state and motor actions $[s_{t-1}, \mathbf{u}_{t-1}] \in \mathbb{R}^{38}$.
-- **Stochastic State**: Continuous diagonal Gaussian $s_t \in \mathbb{R}^{32}$.
-- **Prior Network**: $p(s_t | h_t) = \mathcal{N}(\mu_p(h_t), \sigma_p^2(h_t))$.
-- **Posterior Network**: $q(s_t | h_t, \mathbf{e}_t) = \mathcal{N}(\mu_q(h_t, \mathbf{e}_t), \sigma_q^2(h_t, \mathbf{e}_t))$, conditioned on visual features $\mathbf{e}_t \in \mathbb{R}^{128}$ from `EventEncoder`.
-- **Kinematic Readout**: MLP mapping $[h_t, s_t] \in \mathbb{R}^{288} \to [\mathbf{q}_t, \mathbf{p}_t] \in \mathbb{R}^{12}$.
-- **Autonomous Rollout**: Warmed up via burn-in frames through posterior $q$, then autonomously unrolled for horizon $H$ using prior dynamics $p(s_t | h_t)$ and actions $\mathbf{u}_t$.
-
-### 5.2 Deep GRU Predictor
-- **Architecture**: 2-layer stacked `GRUCell` with hidden dimension $H_{\text{dim}} = 164$ (338,868 total parameters).
-- **Sensory Encoder**: Shared `EventEncoder` with SpatialSoftmax bottleneck mapping frames to $\mathbf{e}_t \in \mathbb{R}^{128}$.
-- **Kinematic Feedback**: Linear projector mapping previous decoded kinematics $\hat{\mathbf{y}}_{t-1} \in \mathbb{R}^{12} \to \mathbb{R}^{128}$ during autonomous rollout.
-- **Decoder**: MLP mapping second GRU layer hidden state to 12 kinematic outputs.
-
-### 5.3 Continuous ConvLSTM
-- **Spatial Recurrent Backbone**: 2D `ConvLSTMCell` maintaining spatial state maps $(H_t, C_t) \in \mathbb{R}^{56 \times 8 \times 8}$.
-- **Convolutional Stem**: Strided Conv2d layers with GroupNorm and SiLU extracting $[B, 48, 8, 8]$ feature maps.
-- **Spatial Action Conditioning**: Actions $\mathbf{u}_t \in \mathbb{R}^6$ projected to 16 channels and spatially broadcast across $8 \times 8$ grid.
-- **Autonomous Rollout**: Recurrent transition conv generates feature maps from previous hidden states in the absence of event frames.
-
----
-
-## 6. Non-Spiking SNN Ablation Architecture (`ANNWorldModel`)
-
-To rigorously isolate whether SPWM's predictive stability is driven by **spiking dynamics (ALIF)** or by the **symplectic phase-space factorization $(q, p)$ and SpatialSoftmax keypoint frontend**, a continuous leaky rate ablation model `ANNWorldModel` is implemented in [`spwm/models/ann_ablation.py`](file:///Users/Mattia/Desktop/Studies/Temp/spwm/models/ann_ablation.py):
-
-### 6.1 Architectural Parity & Leaky Rate Formulation
-- **Continuous Leaky Rate Unit**: `ContinuousRateMemory` replaces the 256 discrete ALIF spiking cells with continuous leaky rate integrator units across identical timescale tiers (e.g., reactive $\beta_1 = 0.90$, context $\beta_2 = 0.985$) and learnable `beta_gains` ($\text{gain}_i$):
-  $$\mathbf{m}_t = \beta_i \mathbf{m}_{t-1} + (1 - \beta_i) (\text{gain}_i \odot \mathbf{I}_t)$$
-  $$\mathbf{r}_t = \sigma(\mathbf{m}_t)$$
-  where $\mathbf{r}_t \in (0, 1)^{256}$ provides smooth rate activation analogous to the average firing rate $s_t \in [0, 1]$.
-- **Membrane Potential Analog**: $\mathbf{m}_{\text{analog}} = \tanh(\mathbf{m}_t)$ matches `torch.tanh(new_mem_state.concatenated_mems)` in `SpikingLatentDynamics`.
-- **Projection Parity**: `ContinuousRateDynamics` preserves identical projection matrices (`input_proj`: Linear(128, 256), `recurrent_proj`: Linear(96, 256, bias=False), `q_proj`: Linear(32, 256, bias=False), `action_proj`: Linear(6, 256, bias=False), `W_vel`: Linear(256, 32, bias=False), `fuse_spikes`: Linear(256, 96), `fuse_mems`: Linear(256, 96, bias=False), `norm`: LayerNorm(96)), and `vel()` slices $\mathbf{p}[..., :q\_\text{dim}]$.
-- **Exact Parameter Budget**: Exactly **392,141 parameters** (100.0% matched to `SPWM` including `LatentCritic`).
-- **Contract Conformance**: Conforms strictly to Layer 0 [`WorldModelProtocol`](file:///Users/Mattia/Desktop/Studies/Temp/spwm/contracts/protocols.py).
-
----
-
-## 7. Differentiable Forward Kinematics (`DifferentiableForwardKinematics`)
-
-To evaluate Cartesian end-effector coordinates and enable downstream robotic planning directly from decoded joint angles $\hat{\mathbf{q}} \in \mathbb{R}^6$ without querying an external simulation engine, a differentiable kinematic module is implemented in [`spwm/models/kinematics.py`](file:///Users/Mattia/Desktop/Studies/Temp/spwm/models/kinematics.py):
-
-### 7.1 Kinematic Chain & Exact Transform Parameters
-Extracted directly from the Unity Featherstone articulation hierarchy ([`ArticulatedRobotRig.cs`](file:///Users/Mattia/Desktop/Studies/Temp/sim/Assets/Scripts/ArticulatedRobotRig.cs)):
-
-| Link Index | Link Name | Parent Index | Local Anchor Offset $\mathbf{p}_i$ (m) | Joint Rotation Axis $\mathbf{a}_i$ | Axis Euler Angles |
-| :---: | :---: | :---: | :---: | :---: | :---: |
-| Base | `Base_Root` | -1 (World) | `[0.0, 1.25, 0.0]` | Fixed (None) | `(0, 0, 0)` |
-| 0 | `Shoulder_Pan` | Base | `[0.0, 0.05, 0.0]` | `[0.0, 1.0, 0.0]` | `(0, 0, 90)` |
-| 1 | `Shoulder_Lift` | 0 | `[0.0, 0.05, 0.0]` | `[1.0, 0.0, 0.0]` | `(0, 0, 0)` |
-| 2 | `Elbow_Flex` | 1 | `[0.0, 0.28, 0.0]` | `[0.5375313, -0.2756374, -0.7969221]` | `(0, 56, -16)` |
-| 3 | `Wrist_Pitch` | 2 | `[0.0, 0.25, 0.0]` | `[0.5375313, -0.2756374, -0.7969221]` | `(0, 56, -16)` |
-| 4 | `Wrist_Yaw` | 3 | `[0.0, 0.04, 0.0]` | `[0.0, 0.0, -1.0]` | `(0, 90, 0)` |
-| 5 | `Wrist_Roll` | 4 | `[0.0, 0.04, 0.0]` | `[0.0, 1.0, 0.0]` | `(0, 0, 90)` |
-
-- **End-Effector Tip Offset**: $\mathbf{p}_{\text{tip}} = [0.0, 0.06, 0.0]^T\,\text{m}$ along the local $+Y$ axis of `Wrist_Roll` (Spec 6).
-- **Zero Configuration Verification**: At $\mathbf{q} = \mathbf{0}$, the end-effector tip evaluates to exactly $[0.0, 2.02, 0.0]^T\,\text{m}$ (verified against Unity batchmode with $< 10^{-6}\,\text{m}$ error).
-
-### 7.2 Matrix Formulation
-For each joint $i$ with rotation axis $\mathbf{a}_i$ and joint angle $q_i$, the $3 \times 3$ rotation matrix is constructed differentiably via Rodrigues' rotation formula:
-$$\mathbf{R}(\mathbf{a}_i, q_i) = \cos(q_i) \mathbf{I}_3 + \sin(q_i) [\mathbf{a}_i]_\times + (1 - \cos(q_i)) \mathbf{a}_i \mathbf{a}_i^T$$
-where $[\mathbf{a}_i]_\times$ denotes the skew-symmetric cross-product matrix. The local $4 \times 4$ homogeneous transformation matrix is:
-$$\mathbf{T}_i(q_i) = \begin{bmatrix} \mathbf{R}(\mathbf{a}_i, q_i) & \mathbf{p}_i \\ \mathbf{0}_{1 \times 3} & 1 \end{bmatrix}$$
-The world transformation matrix for each link is accumulated recursively:
-$$\mathbf{W}_i = \mathbf{W}_{\text{parent}(i)} \mathbf{T}_i(q_i)$$
-The Cartesian position of the end-effector tip is extracted as:
-$$\begin{bmatrix} \mathbf{x}_{\text{ee}} \\ 1 \end{bmatrix} = \mathbf{W}_5 \begin{bmatrix} \mathbf{p}_{\text{tip}} \\ 1 \end{bmatrix}$$
-The forward kinematics module supports arbitrary batch shapes: $[B, 6]$, $[B, H, 6]$, or $[K, H, 6]$.
-
----
-
-## 8. Latent Model Predictive Path Integral Controller (`LatentMPPIController`)
-
-To demonstrate downstream closed-loop control without relying on an external physics engine, a Model Predictive Path Integral (MPPI) controller is implemented in [`spwm/evaluation/mppi_controller.py`](file:///Users/Mattia/Desktop/Studies/Temp/spwm/evaluation/mppi_controller.py) (re-exported via [`spwm/evaluation/mppi.py`](file:///Users/Mattia/Desktop/Studies/Temp/spwm/evaluation/mppi.py)):
-
-### 8.1 Controller Formulation & Mental Simulation
-- **Candidate Trajectories**: $K = 256$ candidate action sequences sampled per control cycle.
-- **Planning Horizon**: $H = 10$ timesteps ($0.5\,\text{s}$ at $20\,\text{Hz}$).
-- **Refinement Iterations**: $N_{\text{iter}} = 3$ iterations of importance sampling per step.
-- **Temporally Correlated Noise Generation**: Action samples incorporate AR(1) temporal noise smoothing:
-  $$\boldsymbol{\epsilon}_\tau = \beta \boldsymbol{\epsilon}_{\tau-1} + \sqrt{1 - \beta^2} \boldsymbol{\eta}_\tau, \quad \boldsymbol{\eta}_\tau \sim \mathcal{N}(\mathbf{0}, \boldsymbol{\Sigma})$$
-  with `noise_beta` $\beta = 0.90$, allowing the controller to explore and sustain smooth, continuous torques required for heavy payloads without high-frequency white noise cancellation.
-- **Mental Simulation Unroll**: Trajectory candidates are evaluated strictly inside the isolated symplectic `LatentPredictor` ($M_1$):
-  $$\mathbf{z}_{\tau+1} = M_1(\mathbf{z}_\tau, \mathbf{u}_\tau), \quad \hat{\mathbf{y}}_\tau = \text{PhysicalDecoder}(\mathbf{z}_\tau)$$
-  where $\mathbf{z}_0$ is grounded from the latest sensory frames via active perception. Neither the visual encoder nor ALIF spiking dynamics are executed during the $K \times H$ mental simulation, enabling ultra-fast vectorization.
-
-### 8.2 Lifting-Aware Physics-Grounded Cost Function & TD-MPC Critic Bootstrapping
-The cumulative trajectory cost $\mathcal{C}_k$ for candidate $k$ evaluates $M_1$'s latent rollout passed through `PhysicalDecoder`, `DifferentiableForwardKinematics`, and terminal `LatentCritic` ($V$):
-$$\mathcal{C}_k = \sum_{t=1}^H \left[ W_{\text{pos}} \|\mathbf{x}_{\text{ee}}(t) - \mathbf{x}_{\text{target}}\|_2 + W_{\text{rot}} (1 - \cos(\theta_{\text{error}}(t))) + W_{\text{jerk}} \|\mathbf{u}_t - \mathbf{u}_{t-1}\|_2^2 + W_{\text{damping}} \|\Delta \mathbf{p}_t\|_2 (1 - d_t) \right] - W_{\text{progress}} \sum_{t=1}^H (\Delta \mathbf{p}_t \cdot \hat{\mathbf{d}}_{\text{target}, t-1}) d_t + \gamma^H V(\mathbf{z}_{k, H})$$
-
-where:
-- **Positional Cost**: $W_{\text{pos}} \|\mathbf{x}_{\text{ee}}(t) - \mathbf{x}_{\text{target}}\|_2$ measures Euclidean distance to the target 3D coordinates ($W_{\text{pos}} = 80.0$).
-- **Rotational Cost**: $W_{\text{rot}} \left((1.0 - \cos(\theta_{\text{error}}(t))) + 0.5\,\theta_{\text{error}}(t)\right)$ measures geodesic $SO(3)$ orientation alignment error from $\cos(\theta_{\text{error}}) = \operatorname{clamp}((\operatorname{Tr}(\mathbf{R}_{\text{ee}}^\top \mathbf{R}_{\text{target}}) - 1)/2, -1, 1)$, parameterized with $W_{\text{rot}} = 100.0$.
-- **Action Smoothness (Jerk Penalty)**: $W_{\text{jerk}} \|\mathbf{u}_t - \mathbf{u}_{t-1}\|_2^2$ ($W_{\text{jerk}} = 4.0$) penalizes aggressive high-frequency action oscillations while avoiding penalty on heavy gravitational lifting against arm inertia.
-- **Directional Progress Reward**: $- W_{\text{progress}} \sum_{t=1}^H (\Delta \mathbf{p}_t \cdot \hat{\mathbf{d}}_{\text{target}, t-1}) d_t$ ($W_{\text{progress}} = 50.0$) rewards forward motion projected onto the unit vector $\hat{\mathbf{d}}_{\text{target}, t-1} = \frac{\mathbf{p}_{\text{target}} - \mathbf{p}_{t-1}}{\|\mathbf{p}_{\text{target}} - \mathbf{p}_{t-1}\|_2 + 10^{-6}}$, scaled by deadband attenuation $d_t = \operatorname{clamp}((\|\mathbf{x}_{\text{ee}}(t) - \mathbf{x}_{\text{target}}\|_2 - 0.03)/0.10, 0, 1)$.
-- **Cartesian Velocity Damping**: $W_{\text{damping}} \sum_{t=1}^H \|\Delta \mathbf{p}_t\|_2 (1 - d_t)$ ($W_{\text{damping}} = 12.0$) activates braking torque within the $3\,\text{cm}$ arrival deadband.
-- **Joint Acceleration & Joint Limit Penalties**: `w_joint_accel = 15.0` penalizes high-frequency joint velocity changes across consecutive rollout steps, and `w_joint_limit = 50.0` penalizes joint angles approaching or exceeding articulated hardware limits.
-- **Terminal Value Bootstrapping**: $w_{\text{critic}} \gamma^H V(\mathbf{z}_{k, H})$ ($\gamma = 0.95$, `w_critic = 0.0` default in `MPPIConfig`, disabled until `LatentCritic` is goal-conditioned) is scaffolding for estimating discounted cost-to-go beyond the finite planning horizon $H$.
-- **Action Chunking Execution**: `plan_step` returns an `action_chunk` of shape `[chunk_size, action_dim]` (`chunk_size = 1` default in `MPPIConfig`) by slicing `curr_nominal[:self.chunk_size]`, and `MPPIStructuralScorer.evaluate_trajectory` executes the entire chunk open-loop across `chunk_size` steps before replanning, filtering out single-step hesitation jitter.
-- **Offline Latent Unrolling**: `MPPIStructuralScorer.evaluate_trajectory` grounds the initial latent state $\mathbf{z}_{\text{start}}$ up to $t_{\text{start}}$ using sensory frames and actions. For steps $t \ge t_{\text{start}}$, the latent state is unrolled autoregressively via $M_1(\mathbf{z}_t, \mathbf{u}_t)$ without sensory frame injection.
-- **Reachable Decoder Manifold Projection**: Target poses $\mathbf{T}_{\text{grasp}}$ and $\mathbf{T}_{\text{final}}$ are projected onto the decoder manifold by passing grounded latent states $\mathbf{z}_{\text{gt}}(t_c)$ and $\mathbf{z}_{\text{gt}}(t_{\text{grasp}})$ through `PhysicalDecoder` before computing forward kinematics: $\mathbf{T}_{\text{target}} = \text{FK}(\text{PhysicalDecoder}(\mathbf{z}_{\text{gt}})_{1:6})$.
-
-- **Controller Parameters**:
-  - Typed schema in [`MPPIConfig`](file:///Users/Mattia/Desktop/Studies/Temp/spwm/contracts/config.py): $K = 256, H = 10, N_{\text{iter}} = 3$, `noise_beta` $= 0.90$, `temperature` $\lambda = 0.20$, `nominal_update_gamma` $= 0.60$, `chunk_size` $= 1$, $\gamma = 0.95$, $W_{\text{pos}} = 80.0, W_{\text{rot}} = 100.0, W_{\text{jerk}} = 4.0, W_{\text{damping}} = 12.0, W_{\text{joint\_accel}} = 15.0, W_{\text{joint\_limit}} = 50.0, W_{\text{critic}} = 0.0, \text{max\_action\_delta} = 0.10$, `noise_sigma` $= 0.08$ (with `shoulder_sigma_multiplier = 1.6`, `elbow_sigma_multiplier = 1.4`, giving $\boldsymbol{\Sigma} = [0.08, 0.128, 0.112, 0.08, 0.08, 0.08]$).
-  - Injected directly into [`LatentMPPIController(config=mppi_cfg)`](file:///Users/Mattia/Desktop/Studies/Temp/spwm/evaluation/mppi_controller.py) via strict object injection.
-  - Benchmark profile in [`benchmark_mppi_control.py`](file:///Users/Mattia/Desktop/Studies/Temp/experiments/benchmark_mppi_control.py): routes CLI arguments cleanly through `MPPIConfig` overrides with full SE(3) target pose extracted via `DifferentiableForwardKinematics.forward_homogeneous`.
-
-Candidate weights $w_k$ are computed via Boltzmann temperature scaling:
-$$\beta = \min_{j} \mathcal{C}_j, \quad w_k = \frac{\exp\left(-\frac{1}{\lambda} (\mathcal{C}_k - \beta)\right)}{\sum_{j=1}^K \exp\left(-\frac{1}{\lambda} (\mathcal{C}_j - \beta)\right)}$$
-The nominal action sequence is updated as:
-$$\mathbf{u}_\tau^* = \sum_{k=1}^K w_k \mathbf{u}_{\tau, k}$$
-- **Warm-Starting & Temporal Smoothing**: At each control step, the nominal action sequence is advanced by one step and smoothed using temporal inertia (`nominal_update_gamma = 0.60`), preventing high-frequency control chattering.
-- **Performance**: Achieves an **80.0% grasp success rate** ($\le 3.0\,\text{cm}$ minimum placement distance along rollout, $< 1.5\,\text{rad/s}$ terminal velocity) with **$2.17 \pm 1.80\,\text{cm}$ minimum placement distance** ($6.72\,\text{cm}$ final terminal error) and **$38.9\,\text{ms}$ step latency** across unseen payload masses ($1.20 - 4.50\,\text{kg}$).
-
-### `docs/TRAINING_AND_LOSSES.md`
-> Loss formulations and 2-phase / 4-latch curriculum details
-
-# Loss Formulations, Isolated Phase Strategies & Checkpoint Scoping (`spwm/training/`)
-
-This document details the mathematical formulations, gradient isolation guarantees, and checkpoint scoping rules implemented in Layer 2 ([`spwm/training/`](file:///Users/Mattia/Desktop/Studies/Temp/spwm/training/__init__.py)) for **SPWM (6-DOF Active Perception Grasping & Action-Conditioned Attractor Dynamics)**.
-
----
-
-## 1. Isolated Phase Strategy Architecture (`spwm/training/phases/`)
-
-SPWM decouples representation learning from action-conditioned latent predictive dynamics, isolating each phase into a dedicated `< 150`-line strategy class inheriting from [`PhaseStrategy`](file:///Users/Mattia/Desktop/Studies/Temp/spwm/contracts/protocols.py):
-
-```mermaid
-classDiagram
-    class PhaseStrategy {
-        <<abstract>>
-        +model: nn.Module
-        +cfg: ExperimentConfig
-        +loss_fn: nn.Module
-        +device: torch.device
-        +predictor_optimizer: Optional[Optimizer]
-        +setup()* None
-        +verify_gradient_isolation()* None
-        +train_step(batch, epoch)* Dict[str, float]
-        +validate_step(batch)* Dict[str, float]
-        +get_selection_score(val_metrics) float
-    }
-
-    class RepresentationPhaseStrategy {
-        +setup() None
-        +verify_gradient_isolation() None
-        +train_step(batch, epoch) Dict[str, float]
-        +validate_step(batch) Dict[str, float]
-    }
-
-    class M1PhaseStrategy {
-        +setup() None
-        +verify_gradient_isolation() None
-        +train_step(batch, epoch) Dict[str, float]
-        +validate_step(batch) Dict[str, float]
-    }
-
-    PhaseStrategy <|-- RepresentationPhaseStrategy
-    PhaseStrategy <|-- M1PhaseStrategy
+# 3. Run Zero-Fallback AST scan and full test suite
+.venv/bin/python scripts/scan_fallbacks.py spwm/ experiments/ scripts/
+.venv/bin/pytest tests/ -q
 ```
 
 ---
 
-## 2. Granular Breakdown of Training Strategies
-
-### 2.0 Phase 0: `RepresentationPhaseStrategy` ([`spwm/training/phases/representation.py`](file:///Users/Mattia/Desktop/Studies/Temp/spwm/training/phases/representation.py))
-- **Purpose**: Train the Spiking Network to act as a grounded, continuous state estimator on sensory input streams $t \in [0, T_{\text{obs}}]$. Zero autoregressive mental rollouts are permitted in this phase.
-- **Parameter Mask**:
-  - **Active (`requires_grad=True`)**: `model.encoder`, `model.dynamics` (`SpikingLatentDynamics`), `model.sensory_predictor`, `model.physical_decoder`.
-  - **Frozen / Inactive (`requires_grad=False`)**: `model.predictor` (`model.m1`) (must not receive gradients or participate in the forward pass of Phase 0).
-- **Optimizer Groups**:
-  - `model.encoder`, `model.dynamics` (excluding `beta_*`), `model.sensory_predictor`: `lr = cfg.training.learning_rate`, `weight_decay = cfg.training.weight_decay`.
-  - `model.dynamics` `beta_*` parameters: `lr = cfg.training.learning_rate * 0.5`, `weight_decay = 0.0`.
-  - `model.physical_decoder`: `lr = cfg.training.probe_lr`, `weight_decay = cfg.training.probe_weight_decay`.
-- **Forward Pass**:
-  Executes `model.forward_representation_with_spikes(events, actions=actions)` over $t \in [0, T_{\text{obs}}]$ computing $\mathbf{z}_t = (\mathbf{q}_t, \mathbf{p}_t)$ directly from sensory input streams.
-  > [!NOTE] Dynamics Action Coupling in Phase 0 & Gradient Flow Verification
-  > Because `action_proj` ($W_u$) in `SpikingLatentDynamics` is zero-initialized (`nn.init.zeros_`), decoding gradients initially flow primarily through the visual pathway ($\epsilon_t$ and $\mathbf{k}_t^{\text{sensory}}$). Empirical norm verification on trained checkpoints confirms that BPTT activates and converges $W_u$ to a magnitude comparable to $W_{\text{in}}$ (`seed_42`: $\|W_u\|_2 = 1.3653$, $\|W_{\text{in}}\|_2 = 1.3388$, ratio $\approx 1.020$; `seed_101`: ratio $\approx 0.521$; `seed_2024`: ratio $\approx 0.434$), ensuring immediate motor-torque awareness during closed-loop MPPI control.
-- **Strict Loss Constraints**:
-  1. **$\mathcal{L}_{\text{kinematic}}$**: Supervised loss decoding articulated joint angles $\mathbf{q}^*$, angular velocities $\mathbf{p}^*$ ($J=6$), and differentiable Forward Kinematics end-effector pose ($\mathbf{p}_{\text{ee}}(\hat{\mathbf{q}}) = T_{\text{FK}}(\hat{\mathbf{q}})_{:3, 3}$, $R = T_{\text{FK}}(\hat{\mathbf{q}})_{:3, :3}$):
-     $$\mathcal{L}_{\text{kinematic}} = \mathcal{L}_{\text{pos\_kin}} + \mathcal{L}_{\text{vel\_kin}} + \lambda_{\text{cart}} \cdot \mathcal{L}_{\text{cartesian}}$$
-     where:
-     $$\mathcal{L}_{\text{pos\_kin}} = \frac{1}{BT}\sum_{b=0}^{B-1}\sum_{t=0}^{T-1} \|\text{decode\_pos}(\mathbf{q}_{b, t}) - \mathbf{q}_{b, t}^*\|_2^2, \quad \mathcal{L}_{\text{vel\_kin}} = \frac{1}{BT s_v^2}\sum_{b=0}^{B-1}\sum_{t=0}^{T-1} \|\text{decode\_vel}(\mathbf{p}_{b, t}) - \mathbf{p}_{b, t}^*\|_2^2$$
-     $$\mathcal{L}_{\text{cartesian}} = \frac{1}{BT}\sum_{b=0}^{B-1}\sum_{t=0}^{T-1} \left(\|\mathbf{p}_{\text{ee}}(\hat{\mathbf{q}}_{b, t}) - \mathbf{p}_{\text{ee}}(\mathbf{q}^*_{b, t})\|_2^2 + \lambda_{\text{rot}} \cdot \|R_{\text{pred}} - R_{\text{true}}\|_F^2\right)$$
-     with $s_v = \text{velocity\_loss\_scale} = 1.0\,\text{rad/s}$, $\lambda_{\text{cart}} = \text{cartesian\_weight} = 40.0$, and $\lambda_{\text{rot}} = \text{ee\_rot\_weight} = 0.5$ (configurable in `LossConfig`). $\mathcal{L}_{\text{cartesian}}$ weights joint errors geometrically by their kinematic lever arm (e.g., $0.39\,\text{m}$ distal lever on J2 `Elbow_Flex` along inclined axis $\vec{a} = [0.5375, -0.2756, -0.7969]^T$) while supervising $SO(3)$ orientation.
-  2. **$\mathcal{L}_{\text{derivative}}$**: Strict phase-space factorization constraint:
-     $$\mathcal{L}_{\text{derivative}} = \frac{1}{B(T-1)}\sum_{b=0}^{B-1}\sum_{t=0}^{T-2} \|(\mathbf{q}_{b, t+1} - \mathbf{q}_{b, t}) - \Delta t \cdot \mathbf{p}_{b, t}[..., :q\_dim]\|_2^2$$
-  3. **$\mathcal{L}_{\text{smoothness}}$**: High-frequency noise suppression with Huber loss on ALIF outputs:
-     $$\mathcal{L}_{\text{smoothness}} = \frac{1}{B(T-1)}\sum_{b=0}^{B-1}\sum_{t=0}^{T-2} \text{Smooth}_{L1}(\mathbf{p}_{b, t+1} - \mathbf{p}_{b, t}, \beta=0.1)$$
-  4. **$\mathcal{L}_{\text{kinematic\_smooth}}$** (`lambda_kinematic_smooth = 0.5`): Temporal velocity, kinematic integration ($\Delta\hat{\mathbf{q}}/\Delta t$ vs $\frac{1}{2}(\hat{\mathbf{p}}_{t+1} + \hat{\mathbf{p}}_t)$), and second-order acceleration consistency on decoded physical joints.
-  5. **$\mathcal{L}_{\text{spike\_balance}}$** (`lambda_spike_balance = 0.25`, `target_spike_rate = 0.12`): Per-neuron ALIF population firing-rate homeostasis (`forward_representation_with_spikes`) summing $\sum_{i=1}^N (\bar{s}_i - r_{\text{target}})^2$ plus hinge penalties $4.0 \sum_i \max(0, 0.02 - \bar{s}_i)^2 + 2.0 \sum_i \max(0, \bar{s}_i - 0.45)^2$ against silent collapse ($< 0.02$) and hyperactivity ($> 0.45$).
-  6. **$\mathcal{L}_{\text{sensory}}$**: Top-down sensory reconstruction loss from `sensory_predictor`:
-     $$\mathcal{L}_{\text{sensory}} = \frac{1}{BT}\sum_{b=0}^{B-1}\sum_{t=0}^{T-1} \|\boldsymbol{\epsilon}_{b, t}\|_2^2$$
-  $$\mathcal{L}_{\text{Phase 0}} = \lambda_{\text{kinematic}} \mathcal{L}_{\text{kinematic}} + \lambda_{\text{derivative}} \mathcal{L}_{\text{derivative}} + \lambda_{\text{smoothness}} \mathcal{L}_{\text{smoothness}} + \lambda_{\text{kinematic\_smooth}} \mathcal{L}_{\text{kinematic\_smooth}} + \lambda_{\text{spike\_balance}} \mathcal{L}_{\text{spike\_balance}} + \lambda_{\text{sensory}} \mathcal{L}_{\text{sensory}}$$
-  with default weights $\lambda_{\text{kinematic}} = 5.0, \; \lambda_{\text{derivative}} = 1.0, \; \lambda_{\text{smoothness}} = 0.1, \; \lambda_{\text{kinematic\_smooth}} = 0.5, \; \lambda_{\text{spike\_balance}} = 0.25, \; \lambda_{\text{sensory}} = 1.0$, alongside cosine LR annealing ($1.0\times \to 0.20\times$) over `epochs`.
-
-### 2.1 Phase 1: `M1PhaseStrategy` ([`spwm/training/phases/m1_nominal.py`](file:///Users/Mattia/Desktop/Studies/Temp/spwm/training/phases/m1_nominal.py)) & Closed-Loop DAgger Blending
-- **Purpose**: Train the Action-Conditioned Latent Attractor Predictor ($M_1$) conditioned on continuous motor commands $\mathbf{u}_t \in \mathbb{R}^6$, incorporating Active Perception sensory injection during Phase 1.5 heft (flag == 1), while blending demonstration open-loop batches with closed-loop rollouts (DAgger replay) to eliminate exposure bias.
-- **State Pre-condition**:
-  - `encoder`, `dynamics`, `sensory_predictor`, and `physical_decoder` **MUST BE FROZEN** (`requires_grad = False`).
-  - Optimizer updates **both `model.predictor` (`model.m1`) and `model.critic`**.
-- **Forward Pass & Active Perception Injection**:
-  1. Identifies trajectory phases from `phase_flags`:
-     - Flag `0`: Blind Approach
-     - Flag `1`: Sensory Grounding Injection (initiated `pre_contact_sensory_steps = 7` prior to contact, ramping to 100% injection over 4 steps, held across grasp contact through `post_contact_sensory_steps = 7`, then released)
-     - Flag `2`: Blind Transport
-  2. Computes the canonical schedule `(t_start, horizon)` via `compute_rollout_schedule(phase_flags, T)`.
-  3. Grounds the initial state and dynamics memory $\hat{\mathbf{z}}_0$ through frozen Encoder & Dynamics over initial frames $t \in [0, t_{\text{start}}]$ via `ground_initial_state` conditioned on motor actions $\mathbf{u}_t$.
-  4. Delegates multi-step unrolling to [`rollout_latent`](file:///Users/Mattia/Desktop/Studies/Temp/spwm/models/rollout.py) (`with_grad=True`, `fixed_predictor=model.m1`):
-     - $M_1$ unrolls continuously across all horizon steps.
-     - When active perception events are present (`flag == 1`), `step_grounded` evaluates the sensory representation and softly blends the latent state: $\mathbf{z}_{t+1} = (1 - w_t) \cdot \mathbf{z}_{\text{pred}} + w_t \cdot \mathbf{z}_{\text{grounded}}$ with blend authority $w_t \in [0, 0.60]$ ramping up over 4 frames ($0.15 \to 0.30 \to 0.45 \to 0.60$), and ramping down over 2 frames ($0.30 \to 0.00$) upon releasing into Phase 2 blind transport.
-     - When `w_t == 0` (Blind Approach / Transport): $\mathbf{z}_{t+1} = \mathbf{z}_{\text{pred}}$ unrolls autoregressively conditioned on motor command $\mathbf{u}_t$.
-
-- **Open-Loop & Closed-Loop Trajectory Blending (DAgger Replay in `BaseTrainer`)**:
-  Pure teacher-forced training on open-loop demonstration trajectories suffers from compounding autoregressive drift ("exposure bias") during downstream closed-loop MPPI control. To counteract this, [`BaseTrainer`](file:///Users/Mattia/Desktop/Studies/Temp/spwm/training/engine.py) seamlessly integrates an on-policy / off-policy closed-loop buffer:
-  1. **Trajectory Collection at Tier 2 Validation**: Every `tier2_frequency` epochs (default `5`), [`LatentMPPIController`](file:///Users/Mattia/Desktop/Studies/Temp/spwm/evaluation/mppi_controller.py) evaluates candidate models in closed loop. Full executed closed-loop trajectory sequences (initial state $\mathbf{z}_{\text{init}}$, executed actions $\mathbf{u}_{0:H-1}$, and resulting ground-truth latent targets $\mathbf{z}^*_{1:H}$) are captured and ingested into [`ClosedLoopBuffer`](file:///Users/Mattia/Desktop/Studies/Temp/spwm/training/replay_buffer.py).
-  2. **Fresh Initialization & Anti-Contamination**: New training runs initialize completely fresh buffers; cross-run buffer globbing from older directories is strictly prohibited. Only explicit path inputs or resuming an interrupted checkpoint (`is_resuming=True`) within `save_dir` loads existing buffers via [`resolve_closed_loop_buffer`](file:///Users/Mattia/Desktop/Studies/Temp/spwm/training/checkpoints.py).
-  3. **Strict Generational FIFO Rolling Window**: To prevent distributional drift from obsolete early policies, [`ClosedLoopBuffer`](file:///Users/Mattia/Desktop/Studies/Temp/spwm/training/replay_buffer.py) enforces a rolling window of Tier 2 evaluation generations (`max_eval_generations=3`). When a new Tier 2 evaluation occurs, trajectories from generation `N-3` are cleanly discarded before ingesting the new ones.
-  4. **State-Machine 4-Phase Curriculum via Irreversible Latch (`LatchCurriculumState`)**:
-     - Controlled by [`LatchCurriculumState`](file:///Users/Mattia/Desktop/Studies/Temp/spwm/training/noise.py#L16-L105) in [`BaseTrainer.train_epoch`](file:///Users/Mattia/Desktop/Studies/Temp/spwm/training/engine.py#L223-L326). Transitions are strictly irreversible (latch) and evaluated **strictly against $\mathcal{L}_{M1,\text{latent}}$** (excluding $\mathcal{L}_{\text{critic}}$ and $\mathcal{L}_{\text{kin\_M1}}$):
-       1. **Phase 1 (Warmup Nominal)**: 100% Open-Loop (`dagger_ratio = 0.0`), MPPI Noise `alpha = 0.0`, Active Perception `w_t = 0.60`. Transitions to Phase 2 when `loss_m1_latent < phase1_loss_threshold` (`0.10` in `TrainingConfig`).
-       2. **Phase 2 (Sensory Fade-Out)**: 100% Open-Loop, `alpha = 0.0`, linearly decays `w_t` from `0.60` down to `0.0` over 7 epochs. Transitions to Phase 3 when `w_t == 0.0` and `loss_m1_latent < phase2_loss_threshold` (`0.095` in `TrainingConfig`).
-       3. **Phase 3 (Noise Ramp-Up)**: 100% Open-Loop, `w_t = 0.0`, linearly ramps MPPI Noise `alpha` from `0.0` to `mppi_noise_target_alpha` (`0.25`) over `mppi_noise_ramp_epochs` (`20`). Transitions to Phase 4 when `alpha == mppi_noise_target_alpha`.
-       4. **Phase 4 (Fast DAgger Integration)**: Mixed batch scaling `dagger_ratio` from `10%` (`0.10`) to `50%` (`0.50`) over `2 * tier2_frequency` epochs while keeping `w_t = 0.0` and `alpha = mppi_noise_target_alpha` (injected into the open-loop portion of the batch). Runs until Tier 2 Early Stopping halts training (or logs and continues when `classic_patience=False`, the default).
-  5. **Full-Subset Natural Evaluation with Partial `ClosedLoopBuffer` Expert Blending**:
-     - `MPPIStructuralScorer` always evaluates **all 6** fixed validation trajectories in natural MPPI mode across Phases 1–4 (`mppi_evaluated_trajectories == 6.0`), so `best_model.pt` selection compares full 6-trajectory natural scores apples-to-apples from Phase 1 onward.
-     - For `ClosedLoopBuffer` ingestion, Phases 1–3 still supply 4 expert trajectories (`u_t`) + 2 rotating natural trajectories `(eval_idx + i) % 6`, decaying expert buffer entries `4 -> 3 -> 2 -> 1 -> 0` across Phase 4 evaluations.
-     - **Strict Metric Isolation**: All returned validation metrics (`mppi_score`, `mppi_success_rate`, `mppi_mean_error_cm`, `mppi_rot_err_rad`, etc.) are computed **exclusively** on the 6 natural MPPI trajectories; expert buffer rollouts never pollute validation scores.
-     - **Full-Subset `best_model.pt` Gating & Resume State Persistence**: `BaseTrainer` gates `best_model.pt` / `model.pt` selection, `best_score`, and Tier 2 early stopping patience on full natural coverage (`num_mppi_eval >= len(cl_trajectories)` when trajectories are present, or `num_expert_eval == 0`). Evaluators implementing `StatefulTier2EvaluatorProtocol` serialize (`eval_count`, `phase4_eval_count`, `last_natural_success_rate`) into `checkpoint.pt` under `"tier2_evaluator_state"` so resumed runs continue seamlessly without resetting the Phase 4 decay schedule.
-  6. **Multi-Step Closed-Loop BPTT**: In `_compute_m1_objectives`, the closed-loop batch is unrolled autoregressively via $M_1$:
-     $$\hat{\mathbf{z}}_{b, h+1} = M_1(\hat{\mathbf{z}}_{b, h}, \mathbf{u}_{b, h}), \quad \hat{\mathbf{z}}_{b, 0} = \mathbf{z}_{\text{init}, b}$$
-     The resulting predictions $\hat{\mathbf{z}}_{b, 1:H}$ and real targets $\mathbf{z}^*_{b, 1:H}$ are concatenated directly with the flattened open-loop trajectory predictions and targets. Dynamically sized batch dimensions are handled cleanly without shape mismatches.
-  7. **Combined Objective & Weight Balancing**:
-     The mixed batch loss applies element-wise `.mean()` over `[N_total, q_dim]` / `[N_total, p_dim]` (dividing by $N_{\text{total}} \cdot \text{dim}$) with coordinate and velocity weighting across both open-loop and closed-loop data points:
-     $$\mathcal{L}_{\text{pos}} = \frac{1}{N_{\text{total}} \cdot q\_dim} \sum_{i=1}^{N_{\text{total}}} \sum_{j=1}^{q\_dim} w_{\text{pos}}(i) \cdot (\hat{q}_{i,j} - q^*_{i,j})^2, \quad \mathcal{L}_{\text{vel}} = \frac{1}{N_{\text{total}} \cdot p\_dim} \sum_{i=1}^{N_{\text{total}}} \sum_{j=1}^{p\_dim} w_{\text{vel}}(i) \cdot (\hat{p}_{i,j} - p^*_{i,j})^2$$
-     where open-loop steps retain the contact-heft weight profiles ($w_t^{\text{pos}} = 2.0$ over $[t_{\text{heft\_start}} - 5, t_{\text{heft\_end}} + 10]$, $w_t^{\text{vel}} = 3.0$ over $[t_{\text{heft\_start}}, t_{\text{heft\_end}} + 12]$, and $1.0$ otherwise), while closed-loop transitions receive uniform weight $1.0$.
-  8. **Telemetry & Tracking**: Epoch metrics record `closed_loop_trajs_epoch`, `closed_loop_trans_epoch`, active buffer capacities, and `dagger_ratio`, confirming continuous exposure correction.
-
-- **Loss Constraint, Kinematic Supervision & Monte Carlo Critic Bootstrapping**:
-  $$\mathcal{L}_{M1,\text{latent}} = \lambda_{\text{position}} \mathcal{L}_{\text{pos}} + \lambda_{\text{velocity}} \mathcal{L}_{\text{vel}}$$
-  - **Kinematic Supervision for M1 ($\mathcal{L}_{\text{kin\_M1}}$)**: Predicted latents $(\hat{\mathbf{q}}_t, \hat{\mathbf{p}}_t)$ are passed through the frozen `PhysicalDecoder` heads (`pos_head`, `vel_head`) and `DifferentiableForwardKinematics`:
-    $$\hat{\mathbf{q}}^*_t = \text{pos\_head}(\hat{\mathbf{q}}_t), \quad \hat{\mathbf{p}}^*_t = \text{vel\_head}(\hat{\mathbf{p}}_t)$$
-    $$\mathcal{L}_{\text{kin\_M1}} = \frac{1}{B \cdot H \cdot J} \sum_{b,t,j} (\hat{q}^*_{b,t,j} - q^*_{b,t,j})^2 + \frac{0.5}{B \cdot H \cdot J} \sum_{b,t,j} (\hat{p}^*_{b,t,j} - p^*_{b,t,j})^2 + \lambda_{\text{cart}} \left(\frac{1}{B \cdot H} \sum_{b,t} \|\text{FK}(\hat{\mathbf{q}}^*_{b,t}) - \text{FK}(\mathbf{q}^*_{b,t})\|_2^2 + \lambda_{\text{rot}} \cdot \mathcal{L}_{\text{ee\_rot}}\right) + \lambda_{\text{kinematic\_smooth}} \cdot \mathcal{L}_{\text{kin\_smooth}}$$
-    with $\lambda_{\text{rot}} = \text{ee\_rot\_weight} = 0.5$ and $\lambda_{\text{kinematic\_smooth}} = 0.5$.
-    $$\mathcal{L}_{M1,\text{total}} = \mathcal{L}_{M1,\text{latent}} + 1.0 \cdot \mathcal{L}_{\text{kin\_M1}}$$
-  - **Monte Carlo Critic Value Loss (`compute_critic_mc_loss`)**: Predicted latent states are strictly detached ($\hat{\mathbf{z}}_{b,t}.\text{detach}()$) so critic value gradients never corrupt the $M_1$ attractor backbone (the loss only updates `model.critic` as scaffolding for future goal-conditioned TD-MPC, while `w_critic = 0.0` disables it at closed-loop control time):
-    $$\mathcal{L}_{\text{critic}} = \text{MSE}\left(V(\hat{\mathbf{z}}_t.\text{detach}()), \text{stop\_grad}(V_{\text{target}, t})\right)$$
-    $$V_{\text{target}, t} = \left(\|\mathbf{x}_{\text{ee}}(\hat{\mathbf{z}}_t) - \mathbf{x}^*_{\text{ee}}(t)\|_2 + w_{\text{rot\_critic}} (1 - \cos(\theta_{\text{error}}(t)))\right) + \gamma V_{\text{target}, t+1}$$
-    $$\mathcal{L}_{\text{total}} = \mathcal{L}_{M1,\text{total}} + w_{\text{critic}} \mathcal{L}_{\text{critic}}$$
-    with discount factor $\gamma = 0.95$, rotational critic weight $w_{\text{rot\_critic}} = 1.0$, and $w_{\text{critic}} = \lambda_{\text{critic}} \times (5.0 \text{ if curriculum\_phase} \ge 3 \text{ else } 1.0)$ evaluated across both demonstration rollouts and `ClosedLoopBuffer` trajectories. Both training and [`RolloutEvaluator`](file:///Users/Mattia/Desktop/Studies/Temp/spwm/evaluation/evaluator.py) share the identical Active Perception unrolling logic from `rollout_latent`.
-- **Dynamic Learning Rate**: Base learning rate is initialized at $0.0001$ (`cfg.training.learning_rate`), dynamically dropping to $0.00005$ upon entering curriculum Phase 4 (DAgger closed-loop blending) across predictor optimizer parameter groups.
-
----
-
-## 3. Action-Conditioned Attractor Vector Field Learning
-
-When continuous robotic systems operate in real physical worlds, interactions with ground contact friction, gravity, and motor torques create dissipative vector fields and limit-cycle attractors.
-
-In [`LatentPredictor`](file:///Users/Mattia/Desktop/Studies/Temp/spwm/models/predictors.py):
-1. State $\mathbf{z}_t$ is concatenated with continuous action $\mathbf{u}_t \in \mathbb{R}^{D_u}$:
-   $$\mathbf{h}_t = \text{Backbone}([\mathbf{z}_t, \mathbf{u}_t])$$
-2. The network decomposes the update into state-dependent dissipation $\gamma_t = \sigma(\text{Head}_{\text{diss}}(\mathbf{h}_t))$, momentum force head $\mathbf{f}_p = \text{Head}_p(\mathbf{h}_t)$, and coordinate velocity head $\mathbf{f}_q = \text{Head}_q(\mathbf{h}_t)$:
-   $$\mathbf{p}_{t+1} = (1 - \Delta t \cdot \gamma_t) \mathbf{p}_t + \mathbf{f}_p$$
-   $$\mathbf{q}_{t+1} = \mathbf{q}_t + \Delta t \cdot (\mathbf{p}_{t+1}[..., :q\_dim] + \mathbf{f}_q)$$
-   $$\hat{\mathbf{z}}_{t+1} = [\mathbf{q}_{t+1}, \mathbf{p}_{t+1}]$$
-
-This construction enables the model to natively stabilize around CPG walking limit cycles and fixed-point posture equilibria without requiring artificial manifold denoisers or external projection steps.
-
----
-
-## 4. Scoped `strict=True` Checkpoint Protocol
-
-To prevent silent weight corruption or partial state-dict mismatches across phases, [`spwm/training/checkpoints.py`](file:///Users/Mattia/Desktop/Studies/Temp/spwm/training/checkpoints.py) and [`spwm/training/engine.py`](file:///Users/Mattia/Desktop/Studies/Temp/spwm/training/engine.py) provide dedicated scoped loaders:
-
-| Function | Source Checkpoint | Target Sub-Modules Loaded (`strict=True`) | Untouched Modules |
-| :--- | :--- | :--- | :--- |
-| [`load_representation_checkpoint(model, path)`](file:///Users/Mattia/Desktop/Studies/Temp/spwm/training/checkpoints.py) | Phase 0 (`train_representation`) `model.pt` | `model.encoder`, `model.dynamics`, `model.sensory_predictor`, `model.physical_decoder` | `model.predictor` |
-| [`BaseTrainer.load_checkpoint(path)`](file:///Users/Mattia/Desktop/Studies/Temp/spwm/training/engine.py) | Full `SPWM` `checkpoint.pt` / `model.pt` | Full `model` (`model.load_state_dict(..., strict=True)`) + optimizer state | None |
-| [`enforce_phase_prerequisites(model, cfg, ...)`](file:///Users/Mattia/Desktop/Studies/Temp/spwm/training/checkpoints.py) | Prerequisite checkpoints auto-resolved by version | Loads Phase 0 for Phase 1 (`train_m1`) | Unrelated phase modules |
-
----
-
-## 5. Two-Tiered Validation Strategy & Zero-Stochasticity Guarantee
-
-Phase 1 (`train_m1`) employs a decoupled **Two-Tiered Validation Strategy** orchestrated by [`BaseTrainer`](file:///Users/Mattia/Desktop/Studies/Temp/spwm/training/engine.py) and [`MPPIStructuralScorer`](file:///Users/Mattia/Desktop/Studies/Temp/spwm/evaluation/mppi_scorer.py):
-
-### 5.1 Tier 1: High-Frequency, Open-Loop Validation (Every Epoch)
-- **Objective**: Drives gradient updates during training and monitors general numerical convergence across all validation batches every single epoch.
-- **Metrics**: Standard open-loop MSE on `LatentPredictor` ($\mathcal{L}_{\text{pos}}$, $\mathcal{L}_{\text{vel}}$, $\mathcal{L}_{M_1}$) and `PhysicalDecoder` joint position/velocity tracking error (`pos_err`, `vel_err`) computed as the mean L2 Euclidean norm across joints (`torch.mean(torch.norm(pred - true, dim=-1))`):
-  $$\text{pos\_err} = \frac{1}{B \cdot T} \sum_{b,t} \|\hat{\mathbf{q}}^*_{b,t} - \mathbf{q}^*_{b,t}\|_2, \quad \text{vel\_err} = \frac{1}{B \cdot T} \sum_{b,t} \|\hat{\mathbf{p}}^*_{b,t} - \mathbf{p}^*_{b,t}\|_2$$
-- **Decoupling Guarantee**: Tier 1 open-loop validation loss does **not** trigger checkpoint selection or advance early-stopping patience when Tier 2 is active, isolating model selection from open-loop teacher-forcing overfitting.
-
-### 5.2 Tier 2: Low-Frequency, Closed-Loop MPPI Validation (Every 5 to 10 Epochs)
-- **Objective**: Evaluates downstream closed-loop Model Predictive Path Integral (MPPI) control execution strictly for **checkpoint selection** (`is_best`, saving `best_model.pt` and `model.pt`) and **early stopping**, completely ignoring Tier 1 open-loop MSE.
-- **Fixed Validation Subset**: Evaluates a balanced subset of 6 fixed trajectories spanning **Low** ($< 1.08\,\text{m}$), **Mid** ($1.08 \le y < 1.18\,\text{m}$), and **High** ($\ge 1.18\,\text{m}$) elevation planes, pre-selected at initialization.
-- **Sequential Trajectory Target Definition (`target_pose_seq`)**:
-  The pose reference supplied to `LatentMPPIController` supports both a static $SE(3)$ waypoint $\mathbf{T}_{\text{target}} \in \mathbb{R}^{4 \times 4}$ and a time-indexed prediction horizon sequence $\mathbf{T}_{\text{target},\tau} \in \mathbb{R}^{H \times 4 \times 4}$ for $\tau \in \{1, \dots, H\}$ (padded at the sequence boundary):
-  - **Two-Stage Tier 2 Validation (`MPPIStructuralScorer`) & Closed-Loop Benchmark (`benchmark_mppi_control.py`)**: Supplies a 2-stage lookahead horizon (`target_grasp_mat` for $t + \tau \le t_c$, switching to `target_final_mat` for $t + \tau > t_c$) across the $H$-step rollout while stepping `curr_z` via $M_1$ with residual-gated active perception during `phase_flags == 1`.
-  - **Full-Horizon Closed-Loop Simulation Export (`experiments/export_mppi_trajectory.py`)**: Supplies the time-indexed slice `target_pose_seq[t + 1 : t + 1 + H]` across approach, sensory handover (with smooth `gate_ramp_steps` ramp-in and 2-step Phase 2 fade-out), upward heft lift, and post-grasp wrist transport.
-- **Lifting-Aware Physics-Grounded MPPI Cost Formulation**:
-  Evaluates $K$ candidate trajectories across horizon $H$ via $M_1$ latent rollout, `PhysicalDecoder`, and `DifferentiableForwardKinematics` against `target_pose_seq[tau]`:
-  - **Positional Cost**: $w_{\text{pos}} \sum_{\tau=1}^H \|\mathbf{p}_{\text{ee},\tau} - \mathbf{p}_{\text{target},\tau}\|_2$
-  - **Rotational Cost**: $w_{\text{rot}} \sum_{\tau=1}^H ((1 - \cos \theta_{\text{err},\tau}) + 0.5\,\theta_{\text{err},\tau})$ (geodesic $SO(3)$ error)
-  - **Action Smoothness / Jerk Penalty**: $w_{\text{jerk}} \sum_{\tau=1}^H \|\mathbf{u}_\tau - \mathbf{u}_{\tau-1}\|_2^2$ (with `max_action_delta = 0.10` normalized action units/step slew-rate clamping)
-  - **Joint Acceleration Penalty**: $w_{\text{joint\_accel}} \sum_{\tau=1}^H \|\Delta \dot{\mathbf{q}}_\tau\|_2^2$ (`w_joint_accel = 15.0`)
-  - **Joint Limit Penalty**: $w_{\text{joint\_limit}}$ (`50.0`) penalizing joint-angle excursions beyond mechanical bounds
-  - **Directional Progress Reward**: $-w_{\text{progress}} \sum_{\tau=1}^H (\Delta \mathbf{p}_\tau \cdot \hat{\mathbf{d}}_{\text{target},\tau}) \cdot \text{dist\_factor}$ (modulated by deadband)
-  - **Cartesian Velocity Damping**: $w_{\text{damping}} \sum_{\tau=1}^H \|\Delta \mathbf{p}_\tau - \Delta \mathbf{p}_{\text{ref},\tau}\|_2 \cdot (1 - \text{dist\_factor})$ when tracking a time-indexed trajectory ($\Delta \mathbf{p}_{\text{ref},\tau} = \mathbf{0}$ for static point goals), damping velocity relative to the reference trajectory within the $13\,\text{cm}$ target deadband without braking moving lift/transport trajectories.
-  - **Terminal Value Bootstrapping (`LatentCritic`)**: Forced to $w_{\text{critic}} = 0.0$ for online control until goal-conditioning is introduced.
-  - Tracks raw physical metrics: `Mean Cartesian Err (cm)`, `Rotational Err (rad)`, and `Success Rate`.
-- **Autonomous vs. Teacher-Forced Mode (`is_expert`)**:
-  - **`is_expert = False` (Natural MPPI)**: Closed-loop execution uses `LatentMPPIController` actions; all official benchmark metrics (`mppi_score`, `mppi_success_rate`, `mppi_mean_error_cm`, etc.) and early-stopping/checkpointing decisions are computed **exclusively** on natural trials (*Strict Metric Isolation*), with `best_model.pt` / `model.pt` updates gated on `is_full_subset` (`num_mppi_eval >= len(cl_trajectories)` when trajectories are present, or `num_expert_eval == 0`).
-  - **`is_expert = True` (Teacher-Forced / Expert Override)**: Bypasses MPPI with recorded expert actions $u_t^*$ to verify oracle kinematic response and populate `ClosedLoopBuffer` without corrupting natural MPPI statistics.
-- **Ground-Truth-Relative Terminal Velocity Stability Criterion**:
-  - Standard low-speed trajectories enforce `final_vel < 1.5 rad/s` at $t_{\text{grasp}}$. For high-speed trajectories whose ground-truth grasp angular velocity exceeds $1.5\,\text{rad/s}$ (e.g., validation trajectory `3201` where $t_{\text{grasp}} = 15$ coincides with peak acceleration $\|\dot{\mathbf{q}}^*_{15}\|_2 = 3.419\,\text{rad/s}$), `resolve_effective_vel_threshold` scales the velocity threshold to $\max(1.5, 1.1 \cdot \|\dot{\mathbf{q}}^*_{t_{\text{grasp}}}\|_2)$ in both `compute_structural_score` and `experiments/benchmark_mppi_control.py`.
-
-### 5.3 Zero-Stochasticity Guarantee
-In downstream stochastic sampling controllers, pseudo-random exploration jitter across epochs corrupts the signal-to-noise ratio of validation metrics. SPWM guarantees zero stochasticity:
-1. The MPPI controller maintains a dedicated [`torch.Generator`](file:///Users/Mattia/Desktop/Studies/Temp/spwm/evaluation/mppi_controller.py#L153-L195) on the active device.
-2. For each trajectory in the fixed validation subset, [`LatentMPPIController.reset`](file:///Users/Mattia/Desktop/Studies/Temp/spwm/evaluation/mppi_controller.py#L153-L195) explicitly re-seeds the generator to `tier2_seed + trajectory_id` prior to unrolling.
-3. Every step $t \in [t_{\text{start}}, t_{\text{grasp}}]$ evaluates the **exact identical sequence of action perturbations** across validation epochs, ensuring that any metric change reflects true neural weight improvement rather than stochastic sampling variance.
-
-### 5.4 Candidate Model Selection (Exponential Moving Average Default)
-To resolve pathological divergence and high-frequency parameter oscillations between open-loop validation and downstream closed-loop control, [`BaseTrainer`](file:///Users/Mattia/Desktop/Studies/Temp/spwm/training/engine.py) tracks weights using an Exponential Moving Average ([`EMATracker`](file:///Users/Mattia/Desktop/Studies/Temp/spwm/training/replay_buffer.py)) with `tier2_candidate_selection = "ema"`:
-1. **Continuous Weight Smoothing**: On each training step, shadow weights are updated via $\theta_{\text{EMA}} \leftarrow \tau \theta_{\text{EMA}} + (1 - \tau) \theta$ (default decay $\tau = 0.99$), filtering high-frequency gradient noise.
-2. **Targeted Closed-Loop Evaluation**: At each Tier 2 evaluation epoch ($k\cdot 5$), the trainer temporarily loads the smoothed EMA weights into the model and evaluates closed-loop MPPI control against the fixed validation subset.
-3. **Decoupled Model Checkpointing**: If the EMA candidate improves the global MPPI structural score, it is saved to `model.pt`.
-4. **Seamless Resume**: Current active training weights are restored immediately after Tier 2 evaluation, preserving gradient momentum and Adam optimizer statistics.
-
-### 5.5 Tier 2 Early Stopping Criteria & Check Cadence
-Early stopping under Two-Tiered Validation is matched strictly to the closed-loop MPPI structural score rather than noisy open-loop MSE:
-1. **Zero Intermediate Stoppage**: Tier 1 open-loop validation fluctuations on intermediate epochs ($t \not\equiv 0 \pmod{\text{tier2\_frequency}}$) **never** trigger early stopping.
-2. **Consecutive Tier 2 Evaluation Checks**: Early stopping is evaluated strictly at the end of each Tier 2 epoch against `tier2_patience` (default: 5 checks, spanning 25 epochs under the default 5-epoch frequency). Note that `classic_patience` defaults to `False` (logs and continues training rather than halting).
-3. **Improvement Delta Guard (`tier2_min_delta`)**: A candidate's `mppi_score` must strictly improve over `best_score` by more than `tier2_min_delta` (default: 0.001) to reset the patience counter (`tier2_checks_without_improvement = 0`). Minor variations below this threshold are rejected as stagnation.
-4. **Single-Tier Mode**: When running Phase 0 representation learning or when `--no-tier2` is specified, `BaseTrainer` uses epoch-by-epoch early stopping governed by `early_stopping_patience`.
-
-### 5.6 MPPI-Aware Training: Action AR(1) Perturbation with Curriculum Scheduling
-To prevent off-distribution covariate shift during closed-loop MPPI unrolls, Phase 1 (`train_m1`) injects temporally correlated AR(1) Gaussian noise into demonstration actions during autoregressive predictor unrolls:
-1. **AR(1) Process Matching MPPI**: Action perturbations follow an identical stationary Gauss-Markov process matching [`LatentMPPIController`](file:///Users/Mattia/Desktop/Studies/Temp/spwm/evaluation/mppi_controller.py) ($\beta = 0.90$, $\sigma = 0.08$, anisotropic $1.6\times$ shoulder / $1.4\times$ elbow, clamped to $[-1, 1]$).
-2. **Linear Curriculum Scheduling**: Noise intensity $\alpha \in [0.0, 0.25]$ is scheduled via `LatchCurriculumState` / [`compute_mppi_noise_alpha`](file:///Users/Mattia/Desktop/Studies/Temp/spwm/training/noise.py). Training starts at $\alpha = 0$ during warmup, linearly ramping to `mppi_noise_target_alpha = 0.25` over `mppi_noise_ramp_epochs = 20` to give the dynamic DAgger schedule time to mitigate drift.
-3. **Pure Open-Loop Validation**: In Tier 1 validation (`validate_step`), noise injection is disabled ($\alpha = 0$), maintaining uncorrupted open-loop benchmark metrics.
-
-### `docs/WORLD.md`
-> Unity PhysX 4 environment, payload distribution, and dataset splits
-
-# Simulation Environment & Event Camera Specification (`WORLD.md`)
-
-This document provides the authoritative mathematical and computational specification of the simulation environment and dual-camera neuromorphic sensor pipeline utilized to train and benchmark **SPWM (Dual-Camera 6-DOF Active Perception Grasping & Spiking Predictive World Model for 3D Articulated Manipulation)**.
-
-All code implementations reside in Layer 1 of the architecture ([`spwm/data/`](file:///Users/Mattia/Desktop/Studies/Temp/spwm/data/__init__.py)) and Unity C# physics assets ([`sim/Assets/Scripts/`](file:///Users/Mattia/Desktop/Studies/Temp/sim/Assets/Scripts/ArticulatedRobotRig.cs)), governed strictly by Layer 0 contracts ([`spwm/contracts/config.py`](file:///Users/Mattia/Desktop/Studies/Temp/spwm/contracts/config.py)).
-
----
-
-## 1. Overview & 3D Unity Robotics Environment
-
-The simulation environment provides a **Unity 6 / PhysX 4 Featherstone `ArticulationBody` continuous 3D robotics simulation** implemented in Unity C# with Python streaming interop. The system models a 6-DOF articulated robotic manipulator arm driven by continuous motor action vectors $\mathbf{u}_t \in \mathbb{R}^{D_u}$ ($D_u = J = 6$), manipulating procedurally spawned rigid payloads of varying shape and mass, observed by a differential neuromorphic vision sensor ([`EventCameraSimulator`](file:///Users/Mattia/Desktop/Studies/Temp/spwm/data/event_camera.py) / [`NeuromorphicEventBridge`](file:///Users/Mattia/Desktop/Studies/Temp/sim/Assets/Scripts/NeuromorphicEventBridge.cs)).
-
-### Physics Timestep & Solver Configuration
-- **Macro Timestep**: $\Delta t = 0.05\,\text{s}$ ($20\,\text{Hz}$).
-- **PhysX Physics Sub-Steps**: `physicsSubSteps = 5`, yielding fixed delta time $\Delta t_{\text{fixed}} = \frac{\Delta t}{5} = 0.01\,\text{s}$ ($100\,\text{Hz}$).
-- **Solver Iterations**: `24` position iterations, `8` velocity iterations (`ArticulatedRobotRig.cs`, `ProceduralObjectSpawner.cs`).
-- **Gravity Vector**: $\vec{g} = [0, -9.81, 0]^T\,\text{m/s}^2$.
-
-```mermaid
-flowchart LR
-    subgraph Unity["Unity 3D Continuous Articulated Robotics Engine (sim/)"]
-        Rig["ArticulatedRobotRig\nFeatherstone 6-DOF Manipulator Chain\n(Joint count J = 6)"]
-        Spawner["ProceduralObjectSpawner\nPayload (Sphere, Box, Cylinder)\nMass: 1.20kg - 4.50kg, Inertia Tensor"]
-        Ctrl["ActionConditionedController\nSequential Waypoint PD Controller u_t\n(Approach -> Heft -> Transport)"]
-        Phys["PhysX 4 Physics Integration\ndt = 0.05s, Contact Friction, Gravity"]
-        Spawner --> Phys
-        Ctrl --> Rig
-        Rig --> Phys
-        Phys --> Rig
-    end
-
-    subgraph Sensor["Neuromorphic Vision Bridge (Compute Shader & EventCameraSimulator)"]
-        Phys -.->|"Visual Luminance / Scene Projections"| Render["Log-Intensity Field L(u, v; t)\n(Resolution H x W = 32 x 32)"]
-        Render --> Diff["Temporal Differential\nΔL = L(t) - L(t - Δt)"]
-        Diff --> Spikes["Threshold Polarity Spike Generation\n(Threshold θ = 0.08)"]
-    end
-
-    subgraph Output["Dataset & Training Pipeline"]
-        Spikes --> Dense["Dense Event Tensor\n[B, T, 4, H, W]"]
-        Phys -.->|"Ground-Truth Telemetry"| Kin["Joint Angles q* & Velocities p*\nMotor Actions u_t\nPhase Flags"]
-        Dense & Kin --> Dataset["EventWorldDataset\nStrict Trajectory Partitioning\n(Zero Temporal Leakage)"]
-    end
-```
-
-### 1.1 Robotic Kinematic Morphology & Archetype
-
-The core robotic rig ([`ArticulatedRobotRig`](file:///Users/Mattia/Desktop/Studies/Temp/sim/Assets/Scripts/ArticulatedRobotRig.cs)) and its playback replica ([`KinematicRobotRig`](file:///Users/Mattia/Desktop/Studies/Temp/sim/Assets/Scripts/Visualization/GhostPlaybackManager.cs)) are configured as an **Anthropomorphic 6-DOF Right Humanoid Arm (`RobotArchetype.ManipulatorArm`, $J=6$ actuated revolute joints, `MaxJointAngleRad = 3.14` rad)**:
-- **Root Socket (`Base_Root`)**: Immovable shoulder socket mounted at `ShoulderMountHeight = 1.25m` (`BaseHeight = 0.05m`, $20.0\,\text{kg}$) with zero vertical industrial support column beneath the shoulder.
-- **Joint 0 (`Shoulder_Pan`)**: Compact shoulder pan / internal-external yaw socket (`TurretHeight = 0.05m`, $2.5\,\text{kg}$, limits $[-120^\circ, 120^\circ]$), placing the glenohumeral joint at human shoulder height (`ShoulderElevation = 1.35m`).
-- **Joint 1 (`Shoulder_Lift`)**: Human upper arm / humerus (`UpperArmLength = 0.28m`, $2.2\,\text{kg}$, limits $[-90^\circ, 185^\circ]$), enabling the upper arm to hang naturally downward from the right shoulder (`q1 = 3.00 rad` / $\sim 172^\circ$ from $+Y$ in resting pose).
-- **Joint 2 (`Elbow_Flex`)**: Human forearm / radius-ulna (`ForearmLength = 0.25m`, $1.6\,\text{kg}$, limits $[-155^\circ, 15^\circ]$, medial carrying/swivel axis `AxisRotationEuler = (0°, 56°, -16°)`), operating in an anatomical human posture ($q_2 \le 0$) where the elbow starts closed/flexed down at the right side and opens/extends diagonally toward the left target as the elbow raises and turns right.
-- **Joint 3 (`Wrist_Pitch`)**: Proximal carpal flexion/extension (`WristPitchLength = 0.04m`, $0.6\,\text{kg}$, limits $[-95^\circ, 95^\circ]$, `AxisRotationEuler = (0°, 56°, -16°)`). Serves as the base anchor for the unified anatomical wrist cuff sleeve (spanning the full $0.14\,\text{m}$ transition to the hand).
-- **Joint 4 (`Wrist_Yaw`)**: Distal carpal radial/ulnar deviation (`WristYawLength = 0.04m`, $0.5\,\text{kg}$, limits $[-75^\circ, 75^\circ]$). Kinematic anchor unified visually within the wrist cuff sleeve.
-- **Joint 5 (`Wrist_Roll`)**: Forearm/hand pronation-supination (`WristRollLength = 0.06m`, $0.5\,\text{kg}$, limits $[-180^\circ, 180^\circ]$ so the palm can rotate from facing down (270°) at grasp to open up-left (135°) at the end, solved in closed form by `SolveInverseKinematicsOrientedStatic` (palm normal = tip local +Z; `Wrist_Pitch`/`Wrist_Yaw` held at 0, orientation achieved by roll only); `TotalWristToolLength = 0.14m`), visually rendered as a compact terminal wrist band and terminating in an anatomical **right humanoid hand** (`HumanoidPalm`, `HumanoidKnuckles`, 4 two-segment articulated fingers `HumanoidFingerProx_*` / `HumanoidFingerDist_*`, and a medial/radial right-hand thumb `WristOrientationFiducial` / `HumanoidThumbDistal` on $-X$). The previous visual appearance of multiple segmented wrist slices and redundant joint sphere clusters has been consolidated into a continuous anatomical forearm-to-wrist sleeve across both [`ArticulatedRobotRig`](file:///Users/Mattia/Desktop/Studies/Temp/sim/Assets/Scripts/ArticulatedRobotRig.cs) and [`GhostPlaybackManager`](file:///Users/Mattia/Desktop/Studies/Temp/sim/Assets/Scripts/Visualization/GhostPlaybackManager.cs).
-- **Anthropomorphic Head Camera Perspective ([`CinematicCameraTracker`](file:///Users/Mattia/Desktop/Studies/Temp/sim/Assets/Scripts/Visualization/CinematicCameraTracker.cs) & [`SensoryStreamDisplay`](file:///Users/Mattia/Desktop/Studies/Temp/sim/Assets/Scripts/Visualization/SensoryStreamDisplay.cs))**:
-  - Positioned at human eye-level head perspective relative to the right shoulder (`HeadOffsetFromShoulder = (-0.22m, +0.25m, -0.28m)`, world position `(-0.22m, 1.60m, -0.28m)`), tilted downward toward the left-side manipulation workspace (`EyeCameraLookTargetOffset = (-0.12m, 1.06m, 0.44m)`), bringing the complete shoulder cap, humerus, elbow hinge, forearm, wrist, hand, and left target into clear visual framing.
-  - **Diagonal Opening Reach Biomechanics**: Target objects are spawned on the left (`startPos.x ≈ -0.185m`, reachable forward reach `z ∈ [0.45m, 0.49m]`). Starting from a closed resting posture (`q_neutral = [1.42, 3.00, -1.78, 0.05, -0.70, -0.25]` rad, elbow down at `y = 1.07m` flexed at `-102°`, hand on the right at `x = +0.02m`), reaching toward the left target causes the shoulder to open slightly right (`q1: 3.00 -> 2.41 rad`), the elbow to raise and turn right (`y: 1.07m -> 1.14m`, `x: +0.04m -> +0.09m -> +0.06m`), the forearm to open and extend (`q2: -1.78 -> -0.95 rad`, opening from `102°` to `54°`), and the hand to follow a diagonal trajectory from the lower-right (`x = +0.02m`) to grasp and lift the payload on the left (`x = -0.18m`), maintaining natural inward wrist supination (negative `Wrist_Roll` in `[-1.45, 0.10]` rad IK warm-start clamp, physical limits `[-180°, 180°]`).
-- **Physical Quantities**:
-  - Global joint friction: $\mu_{\text{joint}} = 0.06\,\text{N}\cdot\text{s}$
-  - Angular damping: $0.25\,\text{s}^{-1}$
-  - Ground static/dynamic friction: $\mu_s = 0.90, \mu_k = 0.80$
-  - Gravity: $\mathbf{g} = [0, -9.81, 0]^T\,\text{m/s}^2$
-  - Maximum Joint Angle Normalization: `MaxJointAngleRad = 3.14f` rad
-
-### 1.2 Kinematic Segment Table & `ArticulationBody` Parameters
-
-| Index | Segment Name | Parent | Local Anchor $(x, y, z)$ [m] | Dimensions $(w, h, d)$ [m] | Mass [kg] | Joint Friction | Angular Damping | Motion Limits [deg] | Drive Stiffness $K_p$ | Drive Damping $K_d$ | Max Force [N] | Joint Axis Euler $(x, y, z)$ | Rotation Axis Vector |
-|---|---|---|---|---|---|---|---|---|---|---|---|---|---|
-| — | **Base_Root** | -1 (Ground) | $(0.0, 1.25, 0.0)$ | $(0.088, 0.05, 0.088)$ | 20.0 | 0.05 | 0.25 | Fixed | — | — | — | — | Fixed Base |
-| 0 | **Shoulder_Pan** | 0 | $(0.0, 0.05, 0.0)$ | $(0.082, 0.05, 0.082)$ | 2.5 | 0.06 | 0.25 | $[-120^\circ, +120^\circ]$ | 300 | 75 | 600 | $(0, 0, 90)$ | $(0, 1, 0)$ |
-| 1 | **Shoulder_Lift** | 1 | $(0.0, 0.05, 0.0)$ | $(0.072, 0.28, 0.072)$ | 2.2 | 0.06 | 0.25 | $[-90^\circ, +185^\circ]$ | 320 | 80 | 600 | $(0, 0, 0)$ | $(1, 0, 0)$ |
-| 2 | **Elbow_Flex** | 2 | $(0.0, 0.28, 0.0)$ | $(0.060, 0.25, 0.060)$ | 1.6 | 0.06 | 0.25 | $[-155^\circ, +15^\circ]$ | 260 | 65 | 500 | $(0, 56, -16)$ | $(0.5375, -0.2756, -0.7969)$ |
-| 3 | **Wrist_Pitch** | 3 | $(0.0, 0.25, 0.0)$ | $(0.050, 0.04, 0.050)$ | 0.6 | 0.05 | 0.25 | $[-95^\circ, +95^\circ]$ | 200 | 50 | 350 | $(0, 56, -16)$ | $(0.5375, -0.2756, -0.7969)$ |
-| 4 | **Wrist_Yaw** | 4 | $(0.0, 0.04, 0.0)$ | $(0.046, 0.04, 0.046)$ | 0.5 | 0.05 | 0.25 | $[-75^\circ, +75^\circ]$ | 180 | 45 | 300 | $(0, 90, 0)$ | $(0, 0, -1)$ |
-| 5 | **Wrist_Roll** | 5 | $(0.0, 0.04, 0.0)$ | $(0.044, 0.06, 0.044)$ | 0.5 | 0.04 | 0.25 | $[-180^\circ, +180^\circ]$ | 150 | 40 | 250 | $(0, 0, 90)$ | $(0, 1, 0)$ |
-
----
-
-## 2. Action Conditioning & Active Perception Grasping ([`ActionConditionedController`](file:///Users/Mattia/Desktop/Studies/Temp/sim/Assets/Scripts/ActionConditionedController.cs))
-
-### 2.1 State Representation, PD Mechanics & Phasic Workflow
-At discrete time index $t \in \{0, 1, \dots, T-1\}$ ($T = 105$, total duration $5.25\,\text{s}$ at $\Delta t = 0.05\,\text{s}$):
-- **Joint Positions (Generalized Coordinates)**: $\mathbf{q}_t^* \in [-3.14, 3.14]^J$ ($J=6$, in radians)
-- **Joint Angular Velocities (Generalized Momenta)**: $\mathbf{p}_t^* \in \mathbb{R}^J$ ($J=6$)
-- **Applied Motor Action Vector**: $\mathbf{u}_t \in [-1.0, 1.0]^{D_u}$ ($D_u = \text{action\_dim} = 6$), mapped to drive targets via $\theta_{\text{target}} = u_t \cdot \theta_{\text{max}}$. Default `MotorTargetPD` commands `ArticulationBody.xDrive` directly; `Kp = 0.35`, `Kd = 0.08` are baseline divisors for drive multipliers, while `maxMotorTorque = 240 N·m` only applies to `DirectJointTorque`:
-  $$\tau_{\text{motor}} = K_p (\theta_{\text{target}} - \theta_{\text{current}}) + K_d (\dot{\theta}_{\text{target}} - \dot{\theta}_{\text{current}})$$
-- **Phasic Workflow Stages & Execution Phase Flags** (`phase_flag`):
-  - **Phase 0 (`t ∈ [0, 5]`, `phase_flag = 0` / `BlindApproach`)**: Neutral resting posture with closed-loop hold steps (`setupHoldSteps = 6`).
-  - **Phase 1 (`t ∈ [6, t_contact - 8]`, `phase_flag = 0` / `BlindApproach`)**: Smooth quintic polynomial trajectory toward grasp contact point; approach duration randomized across $14\text{--}58$ steps ($t_{\text{contact}} \sim \text{step } 20\text{--}64$) with random stiffness/damping multipliers $K_p, K_d \in [0.65, 1.45]$.
-  - **Phase 1.5 (`phase_flag = 1` / `SensoryHeft`)**:
-    - Pre-contact sensory grounding starts `pre_contact_sensory_steps = 7` steps before contact (`t_contact - 7`), ramping over 4 steps. Unity uses `postContactSensorySteps = 3` (`[t_contact - 7, t_contact + 3)`) before switching to `phase_flag = 2`, whereas Python `parse_unity_trajectory_file` re-windows `phase_flag = 1` to `[t_contact - 7, t_contact + 7)`.
-    - **Transition & `FixedJoint` Grasp Attachment**: At $t = \text{approachEnd} = \text{setupHoldSteps} + \text{curApproachSteps}$, `ActionConditionedController` deterministically invokes `_spawner.EnsureRigidGrasp(_rig)` to enforce the `FixedJoint` constraint (snapping the payload into palm/fingers if not yet touching), while `PayloadGraspConstraint.OnCollisionEnter` triggers early physical attachment upon prior contact.
-    - Executes an immediate upward lift of `heftLiftMeters = 0.10f` ($\Delta y = +0.10\,\text{m}$) combined with `Wrist_Roll` twist (`-0.20 rad` in Unity), inducing gravitational-torque event bursts proportional to payload mass and inertia.
-  - **Phase 2 (`t ≥ t_contact + 3` in Unity / `t ≥ t_contact + 7` in Python, `phase_flag = 2` / `BlindTransport`)**: Curved 3D transport to target elevation and flat-to-upright wrist reorientation.
-
-### 2.2 Procedural Object Spawner & Rigid Grasp Attachment
-
-[`ProceduralObjectSpawner`](file:///Users/Mattia/Desktop/Studies/Temp/sim/Assets/Scripts/ProceduralObjectSpawner.cs) (and Python parity helper `unity_episode_meta.py`) instantiates payloads deterministically using Knuth's subtractive generator (`DotNetRandom`) across three workspace elevation planes:
-- **Elevation Planes**:
-  - **Low Plane**: $y \approx 1.04\,\text{m}$ (tabletop level, $-0.31\,\text{m}$ below shoulder).
-  - **Mid Plane**: $y \approx 1.14\,\text{m}$ (mid manipulation level, $-0.21\,\text{m}$ below shoulder).
-  - **High Plane**: $y \approx 1.26\,\text{m}$ (upper chest reach level, $-0.09\,\text{m}$ below shoulder). `GenerateDeterministicSpec` hardcodes forward reach $[0.45, 0.49]\,\text{m}$ (target $[0.46, 0.50]\,\text{m}$).
-- **Primitive Shapes**:
-  - **Sphere** (`Shape = 0`): Radius $r \in [0.04, 0.055]\,\text{m}$.
-  - **Elongated Cylinder** (`Shape = 1`): Radius $r \in [0.03, 0.0425]\,\text{m}$, Length $L \in [0.16, 0.24]\,\text{m}$.
-  - **Box** (`Shape = 2`): Width $w \in [0.09, 0.13]\,\text{m}$, thickness $h \in [0.06, 0.085]\,\text{m}$, depth $d \in [0.08, 0.12]\,\text{m}$.
-- **Mass Distribution ($m \in [1.20, 4.50]\,\text{kg}$)**:
-  - **Light**: $[1.20, 2.30]\,\text{kg}$ | **Normal**: $(2.30, 3.40]\,\text{kg}$ | **Heavy**: $(3.40, 4.50]\,\text{kg}$.
-- **Attachment**: A `FixedJoint` constraint attaches the object into the humanoid right palm and curved fingers upon contact, eliminating finger slip friction and directly transferring the payload's mass and inertia tensor into the Featherstone kinematic chain.
-
-### 2.3 Numerical Physics Integration
-
-Dynamics follow second-order dissipative equations integrated via PhysX 4 Featherstone solver (or Python reference kinematics simulation [`simulate_articulated_trajectory`](file:///Users/Mattia/Desktop/Studies/Temp/spwm/data/sim_6dof.py)):
-$$\mathbf{p}_{t+1} = \mathbf{p}_t + \Delta t \cdot \frac{1}{I_{\text{eff}}} \left[ K_{\text{stiff}}(\mathbf{u}_t - \mathbf{q}_t) - \mathbf{\tau}_{\text{gravity}}(\mathbf{q}_t, m_{\text{payload}}) - \mu_c \tanh(5 \mathbf{p}_t) - \tau_{\text{viscous}} \right]$$
-$$\mathbf{q}_{t+1} = \text{clip}\left(\mathbf{q}_t + \Delta t \cdot \mathbf{p}_{t+1}, -3.14, 3.14\right)$$
-where $K_{\text{stiff}} = \text{drive\_stiffness} = 16.5$, $\tau_{\text{viscous}} = 1.125 \cdot \mathbf{p}_t$, and acceleration divides by `eff_inertia` ($I_{\text{eff}}$).
-
----
-
-## 3. Neuromorphic Event Camera Sensor ([`EventCameraSimulator`](file:///Users/Mattia/Desktop/Studies/Temp/spwm/data/event_camera.py) & `NeuromorphicEventBridge`)
-
-The neuromorphic visual pipeline captures dynamic scene motion without emitting synchronous frame matrices.
-
-### 3.1 Dual Pipeline Execution: GPU Compute Shader & Continuous Projection
-
-1. **Unity GPU Compute Shader ([`EventCameraLogDiff.compute`](file:///Users/Mattia/Desktop/Studies/Temp/sim/Assets/Shaders/EventCameraLogDiff.compute))**:
-   - Renders both $32 \times 32$ cameras into `RenderTexture` (`RenderTextureFormat.ARGB32`).
-   - Computes ITU-R BT.709 luminance $I(u, v; t) = 0.2126 \cdot R + 0.7152 \cdot G + 0.0722 \cdot B$ and logarithmic luminance $L(u, v; t) = \ln(\max(I(u, v; t), 0) + 10^{-3})$.
-   - Emits asynchronous ON/OFF polarity spikes ($\theta = 0.08$) into a structured compute buffer at native physics FPS, updating $L_{\text{ref}} \leftarrow L(u, v; t)$ on spike.
-2. **Layer 1 Python Simulator ([`EventCameraSimulator`](file:///Users/Mattia/Desktop/Studies/Temp/spwm/data/event_camera.py))**:
-   - Supports direct ingestion of Unity pre-rendered event tensors or high-FPS grayscale luminance sequences.
-   - For standalone testing and synthetic benchmarking, generates forward-kinematic projected articulated link intensities across normalized coordinates $(u, v) \in [-1, 1]^2$.
-
-### 3.2 Temporal Contrast Accumulation & Event Generation
-
-Rather than naive frame-to-frame subtraction (which causes event dropout during slow articulated motions), [`EventCameraSimulator`](file:///Users/Mattia/Desktop/Studies/Temp/spwm/data/event_camera.py) implements **temporal contrast accumulation** with a persistent reference intensity state $I_{\text{ref}}(u, v)$:
-$$\Delta L(u, v; t) = I(u, v; t) - I_{\text{ref}}(u, v; t)$$
-$$S_{\text{pos}}(u, v; t) = \mathbb{I}\left( \Delta L(u, v; t) > \theta \right) \quad (\text{Channel 0: Brightening})$$
-$$S_{\text{neg}}(u, v; t) = \mathbb{I}\left( \Delta L(u, v; t) < -\theta \right) \quad (\text{Channel 1: Dimming})$$
-
-When either polarity condition is triggered, the reference intensity is updated exclusively for the spiking pixel:
-$$I_{\text{ref}}(u, v; t + 1) = \begin{cases} I(u, v; t) & \text{if } S_{\text{pos}}(u, v; t) \lor S_{\text{neg}}(u, v; t) \\ I_{\text{ref}}(u, v; t) & \text{otherwise} \end{cases}$$
-Default threshold $\theta = \text{event\_threshold} = 0.08$.
-
-### 3.3 Event Stream Formats
-
-- **Dense Event Tensor** (`dense_events`): $\mathbf{E} \in \{0, 1\}^{B \times T \times 4 \times H \times W}$ ($C=4$: channels `0..1` static global ON/OFF, channels `2..3` egocentric wrist-mounted ON/OFF; $H=W=32$ by default).
-- **Sparse Event List** (`sparse_events`): Tuples of $(t, c, y, x)$ for neuromorphic backends.
-
----
-
-## 4. Dataset Partitioning & Zero Temporal Leakage ([`spwm/data/datasets.py`](file:///Users/Mattia/Desktop/Studies/Temp/spwm/data/datasets.py))
-
-### 4.1 Strict Trajectory-Level Partitioning
-
-To strictly prevent temporal leakage, partitioning is performed strictly at the **trajectory index** level via [`partition_trajectories`](file:///Users/Mattia/Desktop/Studies/Temp/spwm/data/datasets.py), supporting gzip-compressed Unity logs (`trajectory_*.json.gz`), uncompressed JSON (`trajectory_*.json`), and pre-rendered NPZ (`trajectory_*.npz`):
-
-| Split | Trajectory ID Range | Default Fraction | Trajectory Count (out of 4,000) | Dynamics Regime |
-| :--- | :--- | :--- | :--- | :--- |
-| **Train** | $[0, N_{\text{train}})$ | $80\%$ | 3,200 trajectories | Standard joint velocities $[-1.0, 1.0]$, randomized payloads and grasping paths |
-| **Validation** | $[N_{\text{train}}, N_{\text{train}} + N_{\text{val}})$ | $10\%$ | 400 trajectories | Standard joint velocities $[-1.0, 1.0]$, unseen payload/target configurations |
-| **Test** | $[N_{\text{train}} + N_{\text{val}}, N_{\text{total}})$ | $10\%$ | 400 trajectories | Standard joint velocities $[-1.0, 1.0]$, unseen payload/target configurations |
-| **Extrapolation** | `test_ids[:100]` (`[3600, 3700)` with `strict_dataset=True`) | Held-out | 100 trajectories | Higher velocity bounds $[-2.0, 2.0]$ for out-of-distribution dynamic stress testing |
-
-### 4.2 Determinism & Reproducibility
-
-Every trajectory $k$ is deterministically generated or replayed from exported Unity logs using `np.random.default_rng(seed=k)` or Unity `trajectory_id` initialization, ensuring exact bitwise consistency.
-
----
-
-## 5. Configuration Contract Parameters (`EnvironmentConfig` & `DataConfig`)
-
-Defined in [`spwm/contracts/config.py`](file:///Users/Mattia/Desktop/Studies/Temp/spwm/contracts/config.py):
-
-### 5.1 [`EnvironmentConfig`](file:///Users/Mattia/Desktop/Studies/Temp/spwm/contracts/config.py#L68-L90)
-
-| Parameter | Type | Default | Description | Invariants / Constraints |
-| :--- | :--- | :--- | :--- | :--- |
-| `joint_count` | `int` | `6` | Number of articulated joints $J$ in the 6-DOF manipulator arm | Must equal $J=6$ |
-| `action_dim` | `int` | `6` | Dimensionality $D_u$ of continuous motor action vectors $\mathbf{u}_t$ | Must equal $D_u=6$ |
-| `height` | `int` | `32` | Sensor pixel height | Must be $> 0$ and divisible by 4 |
-| `width` | `int` | `32` | Sensor pixel width | Must be $> 0$ and divisible by 4 |
-| `dt` | `float` | `0.05` | Simulation timestep duration (seconds) | $\Delta t = 50\,\text{ms}$ per discrete step |
-| `event_threshold`| `float` | `0.08` | Log-intensity change threshold $\theta$ | Positive float |
-
-### 5.2 [`DataConfig`](file:///Users/Mattia/Desktop/Studies/Temp/spwm/contracts/config.py#L93-L124)
-
-| Parameter | Type | Default | Description |
-| :--- | :--- | :--- | :--- |
-| `dataset_dir` | `str` | `"sim/ExportedTrajectories"` | Path to exported Unity robotic trajectory JSON / JSON.GZ files |
-| `joint_count` | `int` | `6` | Articulated joint count expected in dataset trajectories ($J=6$) |
-| `action_dim` | `int` | `6` | Motor action vector dimensionality ($D_u=6$) |
-| `total_trajectories` | `int` | `4000` | Total number of trajectories generated across all splits |
-| `train_split` | `float` | `0.8` | Fraction of dataset allocated to training ($\text{train} + \text{val} < 1.0$) |
-| `val_split` | `float` | `0.1` | Fraction of dataset allocated to validation |
-| `sequence_length` | `int` | `105` | Number of timesteps per trajectory ($T$) |
-| `batch_size` | `int` | `32` | Batch size $B$ for PyTorch DataLoaders |
-| `standard_velocity_range` | `(float, float)`| `(-1.0, 1.0)` | Joint angular velocity scaling range for standard trajectories |
-| `extrapolation_velocity_range` | `(float, float)`| `(-2.0, 2.0)` | Velocity range for out-of-distribution stress testing |
-| `num_workers` | `int` | `0` | Number of subprocesses used by PyTorch DataLoaders |
-| `cache_data` | `bool` | `True` | Whether to pre-render and cache event tensors in memory |
-| `strict_dataset` | `bool` | `True` | Whether to strictly require real exported Unity trajectories (fail if missing) |
-| `pre_contact_sensory_steps` | `int` | `7` | Number of approach steps before physical contact where Phase 1.5 sensory grounding begins |
-| `post_contact_sensory_steps` | `int` | `7` | Number of steps after contact where sensory grounding injection is maintained before release |
-| `weighted_sampling` | `bool` | `False` | Whether to use weighted trajectory sampling during training |
-
----
-
-## 6. Batch Collation & Contract Shapes
-
-Each item returned by [`EventWorldDataset`](file:///Users/Mattia/Desktop/Studies/Temp/spwm/data/datasets.py) and batched by `collate_event_batches` adheres to the following contract shapes:
-
-| Key | Tensor Shape | Dtype | Semantic Meaning |
-| :--- | :--- | :--- | :--- |
-| `"events"` | `[B, T, 4, H, W]` | `torch.float32` | Dual-camera sparse binary event frames (Ch 0..1: Global $+$/$-$, Ch 2..3: Egocentric Wrist $+$/$-$) |
-| `"positions"` | `[B, T, joint_count]` | `torch.float32` | Ground-truth joint angles $\mathbf{q}^*$ ($J=6$) in radians |
-| `"velocities"` | `[B, T, joint_count]` | `torch.float32` | Ground-truth joint angular velocities $\mathbf{p}^*$ ($J=6$) |
-| `"joint_positions"` | `[B, T, joint_count]` | `torch.float32` | Alias/copy of ground-truth joint angles $\mathbf{q}^*$ ($J=6$) |
-| `"joint_velocities"` | `[B, T, joint_count]` | `torch.float32` | Alias/copy of ground-truth joint angular velocities $\mathbf{p}^*$ ($J=6$) |
-| `"actions"` | `[B, T, action_dim]` | `torch.float32` | Motor action commands $\mathbf{u}_t$ ($D_u=6$) |
-| `"phase_flags"` | `[B, T]` | `torch.int64` | Phasic trajectory tag in $\{0, 1, 2\}$ |
-| `"flat_kinematics"` | `[B, T, 2 * joint_count]` | `torch.float32` | Concatenated $[\mathbf{q}^*, \mathbf{p}^*]$ vectors ($2J=12$) |
-| `"trajectory_ids"` | `[B]` | `torch.int64` | Globally unique trajectory index |
-
-These kinematic tensors serve as ground-truth supervision targets for representation learning ([`RepresentationPhaseStrategy`](file:///Users/Mattia/Desktop/Studies/Temp/spwm/training/phases/representation.py)), joint angle/velocity probing, and action-conditioned multi-horizon physical rollout evaluation ([`RolloutEvaluator`](file:///Users/Mattia/Desktop/Studies/Temp/spwm/evaluation/evaluator.py)).
-
----
-
-## 7. Telemetry Logging Contract (`RoboticTelemetryLogger.cs`)
-
-Trajectories exported by Unity into compressed JSON archives (`trajectory_XXXXX.json.gz`) follow this schema:
-- **Top-Level Metadata**: `trajectory_id` (int), `archetype` (`"ManipulatorArm"`), `payload_shape` (`"Sphere" | "ElongatedCylinder" | "Box"`), `payload_mass` (`[1.20, 4.50]` kg), `sequence_length` (`105`), `joint_count` (`6`), `action_dim` (`6`), `sensor_channels` (`4`), `sensor_height` (`32`), `sensor_width` (`32`), `dt` (`0.05`), `event_threshold` (`0.08`), `phase_flags` (`int[]` of length `105`).
-- **Timestep Record (`steps[t]`)**: `step` ($t \in [0, 104]$), `timestamp` ($t \cdot \Delta t$), `phase_flag` ($\in \{0, 1, 2\}$), `joint_positions` ($[q_0^*, \dots, q_5^*]$ rad), `joint_velocities` ($[p_0^*, \dots, p_5^*]$ rad/s), `actions` ($[u_0, \dots, u_5] \in [-1, 1]^6$), `grayscale_frame` ($32 \times 32 = 1024$ floats, Global), `wrist_grayscale_frame` ($32 \times 32 = 1024$ floats, Wrist), and `dense_events` ($4 \times 32 \times 32 = 4096$ binary floats, optional/regenerable via `EventCameraSimulator`; `includeDenseEvents` defaults to `false`).
+## 8. Compute Hardware, Software Stack & Wall-Clock Training Times
+
+* **Compute & Execution Devices:** Apple **M2** (`8` CPU cores, `8 GB` unified memory, `arm64`, **macOS 26.3.1**). All model training ran on Apple **`mps`**; PIL closed-loop benchmarks ran on **`cpu`** (`OMP_NUM_THREADS=2`).
+* **Software Stack:** Python `3.11.12`, PyTorch `2.14.0` (`MPS built: True`), NumPy `2.4.6`, SciPy `1.17.1`, Matplotlib `3.11.2`, Pandas `3.0.6`, PyYAML `6.0.3` ([pyproject.toml](file:///Users/Mattia/Desktop/Studies/Temp/pyproject.toml#L13-L28)).
+* **Wall-Clock Training Times:**
+  * **SPWM (`mps`):** Seed 42 `2.58 h` (P0) + `7.82 h` (P1); Seed 101 `1.76 h` (P0) + `4.10 h` (P1); Seed 2024 `1.76 h` (P0) + `4.65 h` (P1).
+  * **Equalized Baselines (`mps`):** `Continuous RSSM`: `46.0 + 13.0 min` (Seed 42), `44.0 + 12.9 min` (Seed 101), `44.0 + 13.8 min` (Seed 2024); `Deep GRU`: `46.6 + 33.8 min` (Seed 42, 99 ep), `67.1 min` (Seed 101, 80 ep scratch), `66.8 min` (Seed 2024, 80 ep scratch); `Continuous ConvLSTM`: `86.9 min` (Seed 42, 60 ep).
 
 ### `results/spwm_v0_12_4_train_m1/config.yaml`
 > Exact hyperparameters used for the v0.12.4 run

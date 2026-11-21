@@ -85,15 +85,15 @@ SPWM-v0.12.4 ($N=6$ Tier-2, 3 seeds) & 58.0 $\pm$ 27.1 & 0.90 $\pm$ 0.04 & 2.23 
 
 > **Critical Findings from Baseline Equalization & Shared FK Residual Gating:**
 > 1. **Why un-gated online baselines collapsed (`0.0%`):** Forcing unconditional overwrites (`w_t = 1.0`) from Python's domain-gapped 2D `OnlineEventCameraStream` causes both `Continuous RSSM` (`0.0%`, term `25.49 ± 1.31 cm`) and `Deep GRU` (`0.0%`, term `7.35 ± 1.34 cm`) to fail. Applying the identical causal FK residual rejection gate restores `Continuous RSSM` to its open-loop ceiling (`15.3 ± 5.0%` vs `15.3 ± 7.0%`, term `2.72 ± 0.11 cm`), confirming RSSM's `15.3%` limit is architectural (MPPI jitter `|Δ²q| = 0.02049`, `36.94` flips). Conversely, equalized `Deep GRU` recovers to **`76.7 ± 5.0%`** (`82.0% / 72.0% / 76.0%`; `77.3 ± 4.2%` open-loop) with `0/150` velocity violations.
-> 2. **Architectural Trade-Off vs. Equalized Deep GRU:** While equalized `Deep GRU` achieves higher nominal PIL grasp success (`76.7 ± 5.0%` vs. `60.7 ± 2.3%` for SPWM) and smoother controls (`|Δ²q| = 0.00449` vs. `0.00931`), `Deep GRU` exceeds the `50.0 ms` (`20 Hz`) real-time budget at **`57.7 ms/step`** (`2.17×` slower than SPWM's `26.6 ms/step` under identical `OMP_NUM_THREADS=2`), exhibits **`9.0×` higher $H=100$ open-loop velocity MSE** (`0.08716` vs. `0.00971 rad²/s²`), and consumes **`22.1×` higher standby core energy** (`269.57 nJ/step` on Orin vs. `12.22 nJ/step` on Loihi-2) and **`1.59×` higher E2E step energy** (`1.7490 mJ` vs. `1.0979 mJ`).
-> 3. **Controlled Spiking Isolation (`SPWM` vs. `ANN-Rate`):** Under identical parameter budget (`317.9k` active), `(q, p)` factorization, `160+240` training curriculum, and MPPI controller, SPWM's discrete ALIF thresholding outperforms `ANN-Rate` by **`+23.4 pp`** (`60.7 ± 2.3%` vs. `37.3 ± 9.5%`) and delivers `4.3×` better relative retention under `1.0%` sensory noise.
+> 2. **Architectural Trade-Off vs. Equalized Deep GRU (Latency, Velocity & Mechanical OOD Collapse):** While equalized `Deep GRU` achieves higher nominal PIL grasp success (`76.7 ± 5.0%` vs. `60.7 ± 2.3%` for SPWM) and smoother nominal controls (`|Δ²q| = 0.00449` vs. `0.00931`), `Deep GRU` (i) exceeds the `50.0 ms` (`20 Hz`) real-time budget at **`57.7 ms/step`** (`2.17×` slower than SPWM's `26.6 ms/step` under identical `OMP_NUM_THREADS=2`), (ii) exhibits **`9.0×` higher $H=100$ open-loop velocity MSE** (`0.08716` vs. `0.00971 rad²/s²`), (iii) **collapses under zero-shot mechanical distribution shifts** (`23.3 ± 12.9%` at `4.80 kg` payload, `26.7 ± 23.9%` at `0.80×` friction, `30.0 ± 15.1%` at `1.20×` friction — trailing SPWM by **`+18.0 to +26.0 pp`** across all three physical perturbations in Table 4), and (iv) consumes **`22.1×` higher standby core energy** (`269.57 nJ/step` on Orin vs. `12.22 nJ/step` on Loihi-2) and **`1.59×` higher E2E step energy** (`1.7490 mJ` vs. `1.0979 mJ`).
+> 3. **Controlled Spiking Isolation (`SPWM` vs. `ANN-Rate`):** Under identical parameter budget (`317.9k` active), `(q, p)` factorization, `160+240` training curriculum, and MPPI controller, SPWM's discrete ALIF thresholding outperforms `ANN-Rate` by **`+23.4 pp`** nominally (`60.7 ± 2.3%` vs. `37.3 ± 9.5%`), **`+24.7 pp`** under `1.0%` sensory noise (`54.7 ± 1.2%` vs. `30.0 ± 3.5%`, `2.0×` better relative retention `-9.9%` vs. `-19.6%`), and **`+14.7 to +22.0 pp`** across out-of-distribution payload and friction shifts.
 
-### Table 3: Full 3-Seed 5-Stage SPWM Architectural Ablation in PIL (`50` Test Episodes `[3600, 3649]`, $t \ge t_c$, Seeds `42, 101, 2024`)
+### Table 3: Full 3-Seed 6-Row SPWM Architectural Ablation in PIL (`50` Test Episodes `[3600, 3649]`, $t \ge t_c$, Seeds `42, 101, 2024`)
 
 ```latex
 \begin{table}[t]
 \centering
-\caption{\textbf{3-Seed 5-Stage SPWM Architectural Ablation in PIL (`50` Episodes `[3600, 3649]`, $t \ge t_c$, Seeds `42, 101, 2024`).} Stages 1--2 evaluate pre-DAgger Phase 1 warmup weights (`checkpoint\_phase\_1.pt`), Stage 3 evaluates Phase 3/4 AR(1)+DAgger curriculum weights (`checkpoint\_phase\_4.pt`) without lookahead/handover, and Stages 4a--4b apply 2-Stage $\text{SE}(3)$ Lookahead and Residual Handover to the $N=25$ validation-selected checkpoints (`42: phase\_4`, `101: phase\_1`, `2024: phase\_2`).}
+\caption{\textbf{3-Seed 6-Row SPWM Architectural Ablation in PIL (`50` Episodes `[3600, 3649]`, $t \ge t_c$, Seeds `42, 101, 2024`).} Stages 1--2 evaluate pre-DAgger Phase 1 warmup weights (`checkpoint\_phase\_1.pt`), Stage 3a evaluates Phase 3/4 AR(1)+DAgger curriculum weights (`checkpoint\_phase\_4.pt`) without lookahead/handover, Stage 3b evaluates the $N=25$ validation-selected checkpoints (`42: phase\_4`, `101: phase\_1`, `2024: phase\_2`) \emph{without} lookahead/handover to cleanly isolate checkpoint selection, and Stages 4a--4b apply 2-Stage $\text{SE}(3)$ Lookahead and Residual Handover to those same $N=25$ validation-selected checkpoints.}
 \label{tab:spwm_ablation}
 \resizebox{\textwidth}{!}{%
 \begin{tabular}{lccccccc}
@@ -102,7 +102,8 @@ SPWM-v0.12.4 ($N=6$ Tier-2, 3 seeds) & 58.0 $\pm$ 27.1 & 0.90 $\pm$ 0.04 & 2.23 
 \midrule
 1. SPWM-Base (Phase 1 Warmup, Unsmoothed) & 62 / 44 / 30 & 45.3 $\pm$ 16.0 & 1.03 $\pm$ 0.21 & 2.50 $\pm$ 0.11 & 0.00983 & 0.00765 & 23.03 \\
 2. + Smooth MPPI Controls (Pre-DAgger) & 62 / 44 / 48 & 51.3 $\pm$ 9.5 & 1.02 $\pm$ 0.08 & 2.41 $\pm$ 0.13 & 0.00991 & 0.00705 & 21.99 \\
-3. + Phase 3/4 Curriculum (AR(1)+DAgger, No Lookahead/Handover) & 56 / 18 / 40 & 38.0 $\pm$ 19.1 & 1.53 $\pm$ 0.59 & 3.27 $\pm$ 1.13 & 0.00589 & 0.00354 & 11.17 \\
+3a. + Phase 3/4 Curriculum (\texttt{phase\_4}, No Lookahead/Handover) & 56 / 18 / 40 & 38.0 $\pm$ 19.1 & 1.53 $\pm$ 0.59 & 3.27 $\pm$ 1.13 & 0.00589 & 0.00354 & 11.17 \\
+3b. + $N=25$ Validation Checkpoint Selection (Val-Sel., No Lookahead/Handover) & 56 / 44 / 48 & 49.3 $\pm$ 6.1 & 1.00 $\pm$ 0.16 & 2.29 $\pm$ 0.23 & 0.00921 & 0.00659 & 21.18 \\
 4a. + 2-Stage SE(3) Lookahead (Val-Sel., $w_t \equiv 0$) & 58 / 62 / 62 & 60.7 $\pm$ 2.3 & 0.88 $\pm$ 0.11 & 2.01 $\pm$ 0.12 & 0.00931 & 0.00663 & 21.14 \\
 \textbf{4b. + Residual Rejection Gate (Full SPWM, Val-Sel.)} & 58 / 62 / 62 & \textbf{60.7 $\pm$ 2.3} & \textbf{0.88 $\pm$ 0.11} & \textbf{2.01 $\pm$ 0.12} & 0.00931 & 0.00663 & 21.14 \\
 \bottomrule
@@ -111,27 +112,27 @@ SPWM-v0.12.4 ($N=6$ Tier-2, 3 seeds) & 58.0 $\pm$ 27.1 & 0.90 $\pm$ 0.04 & 2.23 
 \end{table}
 ```
 
-> **Honest Negative/Mixed-Result Diagnostic (Stage 2 vs. Stage 3):** Comparing Stage 2 (`51.3 ± 9.5%`) against Stage 3 (`38.0 ± 19.1%`) across all 3 seeds shows that while Phase 3/4 AR(1)+DAgger replay substantially smooths control trajectories (`|Δ²q|: 0.00991 -> 0.00589 rad/step²`, `|Δ³q|: 0.00705 -> 0.00354 rad/step³`, flips `21.99 -> 11.17`), it **degrades 3-seed mean PIL grasp success by `-13.3 pp`** (`56.0% / 18.0% / 40.0%`) and **doubles inter-seed standard deviation (`9.5% -> 19.1%`)**. Because on-policy DAgger overfitting can raise single-seed performance (e.g., Seed 42 validation `92.0%`) while destabilizing other seeds (`18.0%` on Seed 101 at `phase_4`), **$N=25$ validation-split (`[3200, 3224]`) checkpoint selection** is mandatory to select pre-overfit checkpoints where needed (`101: phase_1`, `2024: phase_2`), enabling 2-Stage SE(3) Lookahead (`Stage 4a/4b`) to achieve **`60.7 ± 2.3%`** (`58.0% / 62.0% / 62.0%`).
+> **Honest Disentangled Diagnostic (Stage 2 vs. Stage 3a vs. Stage 3b vs. Stage 4a):** Comparing Stage 2 (`51.3 ± 9.5%`) against Stage 3a (`38.0 ± 19.1%`) across all 3 seeds shows that while Phase 3/4 AR(1)+DAgger replay (`checkpoint_phase_4.pt`) smooths control trajectories (`|Δ²q|: 0.00991 -> 0.00589 rad/step²`, flips `21.99 -> 11.17`), it **degrades 3-seed mean PIL grasp success by `-13.3 pp`** (`56.0% / 18.0% / 40.0%`) and **doubles inter-seed standard deviation (`9.5% -> 19.1%`)**. Isolating **$N=25$ validation-split (`[3200, 3224]`) checkpoint selection** *without* Lookahead (`Stage 3b`, `42: phase_4`, `101: phase_1`, `2024: phase_2`) recovers 3-seed PIL success to **`49.3 ± 6.1%`** (`56.0% / 44.0% / 48.0%`, `+11.3 pp` from checkpoint selection alone). Applying **2-Stage SE(3) Lookahead** to those exact same $N=25$ validation-selected checkpoints (`Stage 4a/4b`) then contributes a further **`+11.3 pp`** gain (`49.3% -> 60.7 ± 2.3%`, `58.0% / 62.0% / 62.0%`), cleanly separating validation checkpoint selection from 2-Stage SE(3) Lookahead.
 
-### Table 4: Symmetric 3-Seed Zero-Shot Sim-to-Real PIL Robustness Stress Test — SPWM vs. ANN-Rate (`50` Test Episodes, $t \ge t_c$)
+### Table 4: Symmetric 3-Seed Zero-Shot Sim-to-Real PIL Robustness Stress Test — SPWM ($N=25$ Val-Sel.) vs. ANN-Rate vs. Equalized Deep GRU (`50` Test Episodes, $t \ge t_c$)
 
 ```latex
 \begin{table}[t]
 \centering
-\caption{\textbf{Zero-Shot Physical \& Sensory Robustness Stress Test in PIL (`50` Test Episodes `[3600, 3649]`, $t \ge t_c$, $N=6$ Tier-2 Checkpoints).} Symmetric 3-seed comparison ($42, 101, 2024$) of frozen SPWM-v0.12.4 vs. parameter-matched ANN-Rate. Relative success retention ($\Delta_{\text{rel}}$) is computed against each model's Nominal Baseline.}
+\caption{\textbf{Zero-Shot Physical \& Sensory Robustness Stress Test in PIL (`50` Test Episodes `[3600, 3649]`, $t \ge t_c$).} Symmetric 3-seed comparison ($42, 101, 2024$) of frozen SPWM-v0.12.4 ($N=25$ validation-selected checkpoints: `42: phase\_4`, `101: phase\_1`, `2024: phase\_2`), parameter-matched ANN-Rate, and Equalized Deep GRU (Residual-Gated Online). Relative success retention ($\Delta_{\text{rel}}$) is computed against each model's Nominal Baseline.}
 \label{tab:pil_robustness}
 \resizebox{\textwidth}{!}{%
-\begin{tabular}{lcccccc}
+\begin{tabular}{lccccccccc}
 \toprule
-\textbf{Perturbation Condition} & \multicolumn{3}{c}{\textbf{SPWM-v0.12.4 (3-Seed Mean $\pm$ Std)}} & \multicolumn{3}{c}{\textbf{ANN-Rate (3-Seed Mean $\pm$ Std)}} \\
-\cmidrule(lr){2-4} \cmidrule(lr){5-7}
- & \textbf{Succ (\%)} & \textbf{Min Err (cm)} & \textbf{Term Err (cm)} & \textbf{Succ (\%)} & \textbf{Min Err (cm)} & \textbf{Term Err (cm)} \\
+\textbf{Perturbation Condition} & \multicolumn{3}{c}{\textbf{SPWM-v0.12.4 ($N=25$ Val-Sel., 3 Seeds)}} & \multicolumn{3}{c}{\textbf{ANN-Rate (3 Seeds)}} & \multicolumn{3}{c}{\textbf{Equalized Deep GRU (Residual-Gated, 3 Seeds)}} \\
+\cmidrule(lr){2-4} \cmidrule(lr){5-7} \cmidrule(lr){8-10}
+ & \textbf{Succ (\%)} & \textbf{Min Err (cm)} & \textbf{Term Err (cm)} & \textbf{Succ (\%)} & \textbf{Min Err (cm)} & \textbf{Term Err (cm)} & \textbf{Succ (\%)} & \textbf{Min Err (cm)} & \textbf{Term Err (cm)} \\
 \midrule
-Nominal Baseline & \textbf{58.0 $\pm$ 27.1} & \textbf{0.90 $\pm$ 0.04} & \textbf{2.23 $\pm$ 0.68} & 37.3 $\pm$ 9.5 & 1.07 $\pm$ 0.28 & 2.98 $\pm$ 0.46 \\
-Sensory Noise Injection (1.0\%) & \textbf{55.3 $\pm$ 19.4 (-4.6\% rel)} & \textbf{0.90 $\pm$ 0.09} & \textbf{2.34 $\pm$ 0.63} & 30.0 $\pm$ 3.5 (-19.6\% rel) & 1.04 $\pm$ 0.18 & 3.36 $\pm$ 0.53 \\
-Payload Extrapolation (4.80 kg) & \textbf{39.3 $\pm$ 33.7 (-32.2\% rel)} & \textbf{1.18 $\pm$ 0.15} & \textbf{2.50 $\pm$ 0.62} & 26.7 $\pm$ 16.2 (-28.6\% rel) & 1.36 $\pm$ 0.20 & 3.64 $\pm$ 0.80 \\
-Actuator Drift (0.80$\times$ Friction) & \textbf{40.7 $\pm$ 27.3 (-29.9\% rel)} & \textbf{1.19 $\pm$ 0.11} & \textbf{2.61 $\pm$ 0.54} & 30.7 $\pm$ 14.0 (-17.9\% rel) & 1.42 $\pm$ 0.22 & 3.74 $\pm$ 0.83 \\
-Actuator Drift (1.20$\times$ Friction) & \textbf{44.0 $\pm$ 28.0 (-24.1\% rel)} & \textbf{1.22 $\pm$ 0.11} & \textbf{2.53 $\pm$ 0.56} & 33.3 $\pm$ 16.7 (-10.7\% rel) & 1.34 $\pm$ 0.21 & 3.51 $\pm$ 1.21 \\
+Nominal Baseline & \textbf{60.7 $\pm$ 2.3} & \textbf{0.88 $\pm$ 0.11} & \textbf{2.01 $\pm$ 0.12} & 37.3 $\pm$ 9.5 & 1.07 $\pm$ 0.28 & 2.98 $\pm$ 0.46 & 76.7 $\pm$ 5.0 & 1.14 $\pm$ 0.31 & 1.90 $\pm$ 0.18 \\
+Sensory Noise Injection (1.0\%) & \textbf{54.7 $\pm$ 1.2 (-9.9\% rel)} & \textbf{0.92 $\pm$ 0.24} & \textbf{2.26 $\pm$ 0.45} & 30.0 $\pm$ 3.5 (-19.6\% rel) & 1.04 $\pm$ 0.18 & 3.36 $\pm$ 0.53 & 74.7 $\pm$ 3.1 (-2.6\% rel) & 1.52 $\pm$ 0.30 & 1.85 $\pm$ 0.23 \\
+Payload Extrapolation (4.80 kg) & \textbf{44.7 $\pm$ 13.3 (-26.4\% rel)} & \textbf{1.31 $\pm$ 0.41} & \textbf{2.49 $\pm$ 0.29} & 26.7 $\pm$ 16.2 (-28.6\% rel) & 1.36 $\pm$ 0.20 & 3.64 $\pm$ 0.80 & 23.3 $\pm$ 12.9 (-69.6\% rel) & 3.21 $\pm$ 1.47 & 4.35 $\pm$ 1.06 \\
+Actuator Drift (0.80$\times$ Friction) & \textbf{52.7 $\pm$ 13.3 (-13.2\% rel)} & \textbf{1.31 $\pm$ 0.35} & \textbf{2.39 $\pm$ 0.26} & 30.7 $\pm$ 14.0 (-17.9\% rel) & 1.42 $\pm$ 0.22 & 3.74 $\pm$ 0.83 & 26.7 $\pm$ 23.9 (-65.2\% rel) & 3.24 $\pm$ 1.45 & 4.38 $\pm$ 1.00 \\
+Actuator Drift (1.20$\times$ Friction) & \textbf{48.0 $\pm$ 19.3 (-20.9\% rel)} & \textbf{1.29 $\pm$ 0.46} & \textbf{2.28 $\pm$ 0.29} & 33.3 $\pm$ 16.7 (-10.7\% rel) & 1.34 $\pm$ 0.21 & 3.51 $\pm$ 1.21 & 30.0 $\pm$ 15.1 (-60.9\% rel) & 3.10 $\pm$ 1.34 & 4.19 $\pm$ 1.03 \\
 \bottomrule
 \end{tabular}%
 }
@@ -162,7 +163,7 @@ Continuous ConvLSTM (Orin GPU) & 2,359,296 MACs & 2123.37 & 42.467 mW & 1.00$\ti
 ```
 
 > **Recalibrated Energy Interpretation:**
-> - **Primary Advantage Over `ANN-Rate`:** `SPWM`'s advantage over `ANN-Rate` is **closed-loop dynamical stability and noise robustness** (`+23.4 pp` 3-seed PIL grasp success, `4.3×` better relative retention under `1.0%` sensory noise), **not** end-to-end closed-loop energy savings: saving `48.14 nJ/step` on Loihi-2 (`60.36 -> 12.22 nJ/step`) atop `1.0971 mJ/step` of dense GPU MPPI rollouts is a **`0.004%`** end-to-end difference (`1.0979 mJ/step` / `21.96 mW` @ `20 Hz` for both).
+> - **Primary Advantage Over `ANN-Rate`:** `SPWM`'s advantage over `ANN-Rate` is **closed-loop dynamical stability and noise/dynamics robustness** (`+23.4 pp` nominal 3-seed PIL grasp success, `+24.7 pp` and `2.0×` better relative retention under `1.0%` sensory noise with $N=25$ validation-selected checkpoints), **not** end-to-end closed-loop energy savings: saving `48.14 nJ/step` on Loihi-2 (`60.36 -> 12.22 nJ/step`) atop `1.0971 mJ/step` of dense GPU MPPI rollouts is a **`0.004%`** end-to-end difference (`1.0979 mJ/step` / `21.96 mW` @ `20 Hz` for both).
 > - **Always-On Standby Benefit & `M1` Rollout Compactness:** The `4.94×` Loihi-2 recurrent core reduction (`12.22 ± 0.19 nJ/step`, `0.244 mW` @ `20 Hz`, computed from synaptic SOPs excluding passive membrane leak) is specifically an **always-on, sub-milliwatt standby state-estimation benefit** when batched MPPI planning is dormant. The `1.93×` E2E energy reduction vs. `Continuous RSSM` (`2.1236 mJ/step`) and `1.59×` reduction vs. `Deep GRU` (`1.7490 mJ/step`) stem from `M1`'s compact MLP rollout architecture (`1.219 GMACs` vs. `2.358 GMACs` and `1.942 GMACs`).
 
 ---
@@ -173,9 +174,9 @@ Continuous ConvLSTM (Orin GPU) & 2,359,296 MACs & 2123.37 & 42.467 mW & 1.00$\ti
 | :--- | :---: | :---: | :---: | :---: |
 | **Nominal Baseline** | `0.0% / 0.0% / 0.000` | `0.0% / 0.0% / 0.000` | `0.0% / 0.0% / 0.000` | `0.00 ± 0.00%` |
 | **Sensory Noise Injection (1.0%)** | `0.0% / 0.0% / 0.000` | `0.0% / 0.0% / 0.000` | `0.0% / 0.0% / 0.000` | `0.00 ± 0.00%` |
-| **Payload Extrapolation (4.80 kg)** | `0.0% / 0.0% / 0.000` | `0.0% / 0.0% / 0.000` | `4.0% / 0.5% / 0.165` | `0.17 ± 0.29%` |
-| **Actuator Drift (0.80x Friction)** | `0.0% / 0.0% / 0.000` | `0.0% / 0.0% / 0.000` | `4.0% / 0.5% / 0.229` | `0.17 ± 0.29%` |
-| **Actuator Drift (1.20x Friction)** | `0.0% / 0.0% / 0.000` | `0.0% / 0.0% / 0.000` | `4.0% / 0.5% / 0.169` | `0.17 ± 0.29%` |
+| **Payload Extrapolation (4.80 kg)** | `0.0% / 0.0% / 0.000` | `0.0% / 0.0% / 0.000` | `0.0% / 0.0% / 0.000` | `0.00 ± 0.00%` |
+| **Actuator Drift (0.80x Friction)** | `0.0% / 0.0% / 0.000` | `0.0% / 0.0% / 0.000` | `0.0% / 0.0% / 0.000` | `0.00 ± 0.00%` |
+| **Actuator Drift (1.20x Friction)** | `0.0% / 0.0% / 0.000` | `0.0% / 0.0% / 0.000` | `0.0% / 0.0% / 0.000` | `0.00 ± 0.00%` |
 
 | Seed & Threshold $\tau$ | Nominal (Succ / Ep $w_t>0$) | 1.0% Noise (Succ / Ep $w_t>0$) | 4.80 kg Payload (Succ / Ep $w_t>0$) | 0.80$\times$ Friction (Succ / Ep $w_t>0$) | 1.20$\times$ Friction (Succ / Ep $w_t>0$) |
 | :--- | :---: | :---: | :---: | :---: | :---: |
@@ -581,212 +582,212 @@ energy_spwm_mean_std:
   energy_neuro_nj: [12.224996206577009,0.1940336413590309]
   speedup_vs_own_gpu: [4.938654535978057,0.07910719976272344]
 robustness_pil_3seed:
-  SPWM-v0.12.4 (5 items):
+  SPWM-v0.12.4 (N=25 Val-Selected) (5 items):
     - [0]
       condition_name: Nominal Baseline
-      grasp_success_rate_pct: [58.0,27.055498516937366]
+      grasp_success_rate_pct: [60.666666666666664,2.3094010767585074]
       delta_rel_pct: 0.0
-      min_placement_error_mean_cm: [0.8992845916748048,0.0417493623118023]
-      terminal_placement_error_mean_cm: [2.231203550299009,0.6846823009200784]
-      terminal_velocity_mean: [0.42377924611171086,0.0838157235336139]
+      min_placement_error_mean_cm: [0.8798704931139946,0.10505539807183523]
+      terminal_placement_error_mean_cm: [2.006662103931109,0.11581144347528279]
+      terminal_velocity_mean: [0.4501866717636585,0.07299750426577846]
       episodes_with_handover_pct: [0.0,0.0]
       phi1_steps_with_handover_pct: [0.0,0.0]
       mean_nonzero_handover_w_when_active: 0.0
       per_seed:
         42:
-          grasp_success_rate_pct: 86.0
-          min_placement_error_mean_cm: 0.8552020224928856
-          terminal_placement_error_mean_cm: 1.5668222349882126
-          terminal_velocity_mean: 0.32701518952846526
-          mean_latency_ms: 36.05713042749771
+          grasp_success_rate_pct: 57.99999999999999
+          min_placement_error_mean_cm: 0.9966417002677918
+          terminal_placement_error_mean_cm: 2.117010636925697
+          terminal_velocity_mean: 0.37095459580421447
+          mean_latency_ms: 32.431992493769116
           episodes_with_handover_pct: 0.0
           phi1_steps_with_handover_pct: 0.0
           mean_nonzero_handover_w: 0.0
           delta_rel_pct: 0.0
         101:
-          grasp_success_rate_pct: 56.00000000000001
-          min_placement_error_mean_cm: 0.9044275161623955
-          terminal_placement_error_mean_cm: 2.1922635650634765
-          terminal_velocity_mean: 0.4737779149413109
-          mean_latency_ms: 35.94414352529596
+          grasp_success_rate_pct: 62.0
+          min_placement_error_mean_cm: 0.8499453981220723
+          terminal_placement_error_mean_cm: 2.0169071877002716
+          terminal_velocity_mean: 0.5147094203531742
+          mean_latency_ms: 39.79635441773567
           episodes_with_handover_pct: 0.0
           phi1_steps_with_handover_pct: 0.0
           mean_nonzero_handover_w: 0.0
           delta_rel_pct: 0.0
         2024:
-          grasp_success_rate_pct: 32.0
-          min_placement_error_mean_cm: 0.938224236369133
-          terminal_placement_error_mean_cm: 2.934524850845337
-          terminal_velocity_mean: 0.47054463386535644
-          mean_latency_ms: 36.51248038936411
+          grasp_success_rate_pct: 62.0
+          min_placement_error_mean_cm: 0.7930243809521198
+          terminal_placement_error_mean_cm: 1.8860684871673583
+          terminal_velocity_mean: 0.46489599913358687
+          mean_latency_ms: 39.787420788930085
           episodes_with_handover_pct: 0.0
           phi1_steps_with_handover_pct: 0.0
           mean_nonzero_handover_w: 0.0
           delta_rel_pct: 0.0
     - [1]
       condition_name: Sensory Noise Injection (1.0%)
-      grasp_success_rate_pct: [55.333333333333336,19.42506971244462]
-      delta_rel_pct: -4.597701149425283
-      min_placement_error_mean_cm: [0.8995885254442691,0.0864853745399293]
-      terminal_placement_error_mean_cm: [2.342214393814405,0.6310488458771016]
-      terminal_velocity_mean: [0.3995537382364273,0.12232065703258524]
+      grasp_success_rate_pct: [54.666666666666664,1.1547005383792557]
+      delta_rel_pct: -9.89010989010989
+      min_placement_error_mean_cm: [0.9180183924237887,0.24189672923787867]
+      terminal_placement_error_mean_cm: [2.259123495916526,0.45390662193171594]
+      terminal_velocity_mean: [0.40925723339120545,0.07120021870960654]
       episodes_with_handover_pct: [0.0,0.0]
       phi1_steps_with_handover_pct: [0.0,0.0]
       mean_nonzero_handover_w_when_active: 0.0
       per_seed:
         42:
-          grasp_success_rate_pct: 72.0
-          min_placement_error_mean_cm: 0.9837424418330193
-          terminal_placement_error_mean_cm: 1.8598396837711335
-          terminal_velocity_mean: 0.2989905294775963
-          mean_latency_ms: 34.990572020690095
+          grasp_success_rate_pct: 54.0
+          min_placement_error_mean_cm: 1.1959887701272964
+          terminal_placement_error_mean_cm: 2.683878175020218
+          terminal_velocity_mean: 0.33141832798719406
+          mean_latency_ms: 32.060862347789936
           episodes_with_handover_pct: 0.0
           phi1_steps_with_handover_pct: 0.0
           mean_nonzero_handover_w: 0.0
-          delta_rel_pct: -16.27906976744186
+          delta_rel_pct: -6.89655172413792
         101:
-          grasp_success_rate_pct: 60.0
-          min_placement_error_mean_cm: 0.9040766698122025
-          terminal_placement_error_mean_cm: 2.1104232871532442
-          terminal_velocity_mean: 0.5357284384965897
-          mean_latency_ms: 36.52126013849798
+          grasp_success_rate_pct: 54.0
+          min_placement_error_mean_cm: 0.7552975878119469
+          terminal_placement_error_mean_cm: 2.3126762568950654
+          terminal_velocity_mean: 0.4710961046814919
+          mean_latency_ms: 32.065856869886694
           episodes_with_handover_pct: 0.0
           phi1_steps_with_handover_pct: 0.0
           mean_nonzero_handover_w: 0.0
-          delta_rel_pct: 7.14285714285713
+          delta_rel_pct: -12.903225806451612
         2024:
-          grasp_success_rate_pct: 34.0
-          min_placement_error_mean_cm: 0.8109464646875858
-          terminal_placement_error_mean_cm: 3.056380210518837
-          terminal_velocity_mean: 0.36394224673509595
-          mean_latency_ms: 36.52111676256183
+          grasp_success_rate_pct: 56.00000000000001
+          min_placement_error_mean_cm: 0.8027688193321229
+          terminal_placement_error_mean_cm: 1.7808160558342934
+          terminal_velocity_mean: 0.4252572675049305
+          mean_latency_ms: 32.0065951976089
           episodes_with_handover_pct: 0.0
           phi1_steps_with_handover_pct: 0.0
           mean_nonzero_handover_w: 0.0
-          delta_rel_pct: 6.25
+          delta_rel_pct: -9.6774193548387
     - [2]
       condition_name: Payload Extrapolation (4.80 kg)
-      grasp_success_rate_pct: [39.333333333333336,33.724372986511305]
-      delta_rel_pct: -32.183908045977006
-      min_placement_error_mean_cm: [1.1808227265874545,0.1475518910933885]
-      terminal_placement_error_mean_cm: [2.5032857662439345,0.6239346910373739]
-      terminal_velocity_mean: [0.5195224117239315,0.1069074967853979]
-      episodes_with_handover_pct: [1.3333333333333333,2.3094010767585034]
-      phi1_steps_with_handover_pct: [0.16666666666666666,0.2886751345948129]
-      mean_nonzero_handover_w_when_active: 0.16452792689204215
+      grasp_success_rate_pct: [44.666666666666664,13.316656236958789]
+      delta_rel_pct: -26.373626373626376
+      min_placement_error_mean_cm: [1.3093093851208688,0.41128174441194415]
+      terminal_placement_error_mean_cm: [2.4906945570309955,0.29389661766704617]
+      terminal_velocity_mean: [0.6077169207235178,0.10828262151038422]
+      episodes_with_handover_pct: [0.0,0.0]
+      phi1_steps_with_handover_pct: [0.0,0.0]
+      mean_nonzero_handover_w_when_active: 0.0
       per_seed:
         42:
-          grasp_success_rate_pct: 78.0
-          min_placement_error_mean_cm: 1.245790022313595
-          terminal_placement_error_mean_cm: 1.7834283006191254
-          terminal_velocity_mean: 0.43445359870791433
-          mean_latency_ms: 37.20313749923503
+          grasp_success_rate_pct: 56.00000000000001
+          min_placement_error_mean_cm: 1.7644587180018425
+          terminal_placement_error_mean_cm: 2.4560093522071837
+          terminal_velocity_mean: 0.5556513021886349
+          mean_latency_ms: 32.58270962906839
           episodes_with_handover_pct: 0.0
           phi1_steps_with_handover_pct: 0.0
           mean_nonzero_handover_w: 0.0
-          delta_rel_pct: -9.30232558139535
+          delta_rel_pct: -3.4482758620689413
         101:
-          grasp_success_rate_pct: 24.0
-          min_placement_error_mean_cm: 1.2847428852319718
-          terminal_placement_error_mean_cm: 2.837750395536423
-          terminal_velocity_mean: 0.6395273652672767
-          mean_latency_ms: 36.43832626988797
+          grasp_success_rate_pct: 30.0
+          min_placement_error_mean_cm: 1.1991314259171486
+          terminal_placement_error_mean_cm: 2.800394687652588
+          terminal_velocity_mean: 0.7321977093815804
+          mean_latency_ms: 32.619208271916534
           episodes_with_handover_pct: 0.0
           phi1_steps_with_handover_pct: 0.0
           mean_nonzero_handover_w: 0.0
-          delta_rel_pct: -57.14285714285715
+          delta_rel_pct: -51.61290322580645
         2024:
-          grasp_success_rate_pct: 16.0
-          min_placement_error_mean_cm: 1.011935272216797
-          terminal_placement_error_mean_cm: 2.8886786025762556
-          terminal_velocity_mean: 0.4845862711966038
-          mean_latency_ms: 36.41863351428478
-          episodes_with_handover_pct: 4.0
-          phi1_steps_with_handover_pct: 0.5
-          mean_nonzero_handover_w: 0.16452792689204215
-          delta_rel_pct: -50.0
+          grasp_success_rate_pct: 48.0
+          min_placement_error_mean_cm: 0.964338011443615
+          terminal_placement_error_mean_cm: 2.215679631233215
+          terminal_velocity_mean: 0.535301750600338
+          mean_latency_ms: 32.6236858331127
+          episodes_with_handover_pct: 0.0
+          phi1_steps_with_handover_pct: 0.0
+          mean_nonzero_handover_w: 0.0
+          delta_rel_pct: -22.580645161290324
     - [3]
       condition_name: Actuator Drift (0.80x Friction)
-      grasp_success_rate_pct: [40.666666666666664,27.30079363925769]
-      delta_rel_pct: -29.88505747126437
-      min_placement_error_mean_cm: [1.1887371614575386,0.11060501933302767]
-      terminal_placement_error_mean_cm: [2.6100856752196946,0.5422566355658548]
-      terminal_velocity_mean: [0.45519848535458246,0.09270916234318358]
-      episodes_with_handover_pct: [1.3333333333333333,2.3094010767585034]
-      phi1_steps_with_handover_pct: [0.16666666666666666,0.2886751345948129]
-      mean_nonzero_handover_w_when_active: 0.22864747449755668
+      grasp_success_rate_pct: [52.666666666666664,13.316656236958785]
+      delta_rel_pct: -13.186813186813188
+      min_placement_error_mean_cm: [1.3143045140306153,0.353262980084955]
+      terminal_placement_error_mean_cm: [2.387875195145607,0.255073983879998]
+      terminal_velocity_mean: [0.5382303596039614,0.06750221070397516]
+      episodes_with_handover_pct: [0.0,0.0]
+      phi1_steps_with_handover_pct: [0.0,0.0]
+      mean_nonzero_handover_w_when_active: 0.0
+      per_seed:
+        42:
+          grasp_success_rate_pct: 68.0
+          min_placement_error_mean_cm: 1.7202977061271667
+          terminal_placement_error_mean_cm: 2.383537862300873
+          terminal_velocity_mean: 0.4953418381512165
+          mean_latency_ms: 33.133227099747344
+          episodes_with_handover_pct: 0.0
+          phi1_steps_with_handover_pct: 0.0
+          mean_nonzero_handover_w: 0.0
+          delta_rel_pct: 17.24137931034484
+        101:
+          grasp_success_rate_pct: 44.0
+          min_placement_error_mean_cm: 1.1455406373739243
+          terminal_placement_error_mean_cm: 2.6450901865959167
+          terminal_velocity_mean: 0.6160393211245537
+          mean_latency_ms: 29.67846919087327
+          episodes_with_handover_pct: 0.0
+          phi1_steps_with_handover_pct: 0.0
+          mean_nonzero_handover_w: 0.0
+          delta_rel_pct: -29.032258064516128
+        2024:
+          grasp_success_rate_pct: 46.0
+          min_placement_error_mean_cm: 1.0770751985907554
+          terminal_placement_error_mean_cm: 2.1349975365400313
+          terminal_velocity_mean: 0.5033099195361137
+          mean_latency_ms: 29.627431735741776
+          episodes_with_handover_pct: 0.0
+          phi1_steps_with_handover_pct: 0.0
+          mean_nonzero_handover_w: 0.0
+          delta_rel_pct: -25.806451612903224
+    - [4]
+      condition_name: Actuator Drift (1.20x Friction)
+      grasp_success_rate_pct: [48.0,19.28730152198591]
+      delta_rel_pct: -20.879120879120876
+      min_placement_error_mean_cm: [1.2900217257936797,0.4582222980166343]
+      terminal_placement_error_mean_cm: [2.2831829558809598,0.2896295039858489]
+      terminal_velocity_mean: [0.5080112110078335,0.040404712953968615]
+      episodes_with_handover_pct: [0.0,0.0]
+      phi1_steps_with_handover_pct: [0.0,0.0]
+      mean_nonzero_handover_w_when_active: 0.0
       per_seed:
         42:
           grasp_success_rate_pct: 70.0
-          min_placement_error_mean_cm: 1.3162081634998322
-          terminal_placement_error_mean_cm: 2.0683961123228074
-          terminal_velocity_mean: 0.3934475040435791
-          mean_latency_ms: 36.6571082404878
+          min_placement_error_mean_cm: 1.787329178750515
+          terminal_placement_error_mean_cm: 2.4599468809366227
+          terminal_velocity_mean: 0.49150543451309203
+          mean_latency_ms: 33.69387655897015
           episodes_with_handover_pct: 0.0
           phi1_steps_with_handover_pct: 0.0
           mean_nonzero_handover_w: 0.0
-          delta_rel_pct: -18.6046511627907
+          delta_rel_pct: 20.689655172413808
         101:
-          grasp_success_rate_pct: 36.0
-          min_placement_error_mean_cm: 1.1181585595011712
-          terminal_placement_error_mean_cm: 2.6089533033967016
-          terminal_velocity_mean: 0.5618044257164001
-          mean_latency_ms: 36.38057136931481
+          grasp_success_rate_pct: 34.0
+          min_placement_error_mean_cm: 1.197834121286869
+          terminal_placement_error_mean_cm: 2.440669119954109
+          terminal_velocity_mean: 0.554055769443512
+          mean_latency_ms: 29.96104107358774
           episodes_with_handover_pct: 0.0
           phi1_steps_with_handover_pct: 0.0
           mean_nonzero_handover_w: 0.0
-          delta_rel_pct: -35.71428571428572
+          delta_rel_pct: -45.16129032258065
         2024:
-          grasp_success_rate_pct: 16.0
-          min_placement_error_mean_cm: 1.1318447613716125
-          terminal_placement_error_mean_cm: 3.152907609939575
-          terminal_velocity_mean: 0.41034352630376814
-          mean_latency_ms: 36.43481188892321
-          episodes_with_handover_pct: 4.0
-          phi1_steps_with_handover_pct: 0.5
-          mean_nonzero_handover_w: 0.22864747449755668
-          delta_rel_pct: -50.0
-    - [4]
-      condition_name: Actuator Drift (1.20x Friction)
-      grasp_success_rate_pct: [44.0,28.0]
-      delta_rel_pct: -24.137931034482758
-      min_placement_error_mean_cm: [1.2160442214210827,0.10678522747967399]
-      terminal_placement_error_mean_cm: [2.5337881688276926,0.5567605187409086]
-      terminal_velocity_mean: [0.4324431197345257,0.07896359786568626]
-      episodes_with_handover_pct: [1.3333333333333333,2.3094010767585034]
-      phi1_steps_with_handover_pct: [0.16666666666666666,0.2886751345948129]
-      mean_nonzero_handover_w_when_active: 0.16903226852416992
-      per_seed:
-        42:
-          grasp_success_rate_pct: 76.0
-          min_placement_error_mean_cm: 1.3224645945429803
-          terminal_placement_error_mean_cm: 1.9732722735404968
-          terminal_velocity_mean: 0.3801573750376701
-          mean_latency_ms: 36.835968496259994
+          grasp_success_rate_pct: 40.0
+          min_placement_error_mean_cm: 0.8849018773436547
+          terminal_placement_error_mean_cm: 1.9489328667521477
+          terminal_velocity_mean: 0.47847242906689647
+          mean_latency_ms: 29.91935059930899
           episodes_with_handover_pct: 0.0
           phi1_steps_with_handover_pct: 0.0
           mean_nonzero_handover_w: 0.0
-          delta_rel_pct: -11.627906976744185
-        101:
-          grasp_success_rate_pct: 32.0
-          min_placement_error_mean_cm: 1.2167702281475068
-          terminal_placement_error_mean_cm: 2.5413764929771423
-          terminal_velocity_mean: 0.5232767987251282
-          mean_latency_ms: 36.59299420893834
-          episodes_with_handover_pct: 0.0
-          phi1_steps_with_handover_pct: 0.0
-          mean_nonzero_handover_w: 0.0
-          delta_rel_pct: -42.85714285714287
-        2024:
-          grasp_success_rate_pct: 24.0
-          min_placement_error_mean_cm: 1.1088978415727615
-          terminal_placement_error_mean_cm: 3.086715739965439
-          terminal_velocity_mean: 0.39389518544077873
-          mean_latency_ms: 36.48604587311423
-          episodes_with_handover_pct: 4.0
-          phi1_steps_with_handover_pct: 0.5
-          mean_nonzero_handover_w: 0.16903226852416992
-          delta_rel_pct: -25.0
+          delta_rel_pct: -35.483870967741936
   ANN-Rate (5 items):
     - [0]
       condition_name: Nominal Baseline
@@ -993,12 +994,219 @@ robustness_pil_3seed:
           phi1_steps_with_handover_pct: 0.0
           mean_nonzero_handover_w: 0.0
           delta_rel_pct: 8.333333333333334
-disentangled_ablation_3seed (5 rows):
+  Deep GRU (Residual-Gated) (5 items):
+    - [0]
+      condition_name: Nominal Baseline
+      grasp_success_rate_pct: [76.66666666666667,5.033222956847166]
+      delta_rel_pct: 0.0
+      min_placement_error_mean_cm: [1.142546683549881,0.3141746410639535]
+      terminal_placement_error_mean_cm: [1.9001078454653422,0.1792502651931432]
+      terminal_velocity_mean: [0.29516326268514,0.07536613976838809]
+      episodes_with_handover_pct: [6.0,3.4641016151377544]
+      phi1_steps_with_handover_pct: [1.0,0.8660254037844386]
+      mean_nonzero_handover_w_when_active: 0.05455098082621892
+      per_seed:
+        42:
+          grasp_success_rate_pct: 82.0
+          min_placement_error_mean_cm: 0.8276583582162857
+          terminal_placement_error_mean_cm: 1.7074048507213593
+          terminal_velocity_mean: 0.29966184198856355
+          mean_latency_ms: 57.95750650222223
+          episodes_with_handover_pct: 10.0
+          phi1_steps_with_handover_pct: 2.0
+          mean_nonzero_handover_w: 0.09825952008366584
+          delta_rel_pct: 0.0
+        101:
+          grasp_success_rate_pct: 72.0
+          min_placement_error_mean_cm: 1.143978949189186
+          terminal_placement_error_mean_cm: 2.06187970995903
+          terminal_velocity_mean: 0.36817935094237325
+          mean_latency_ms: 54.371179489554706
+          episodes_with_handover_pct: 4.0
+          phi1_steps_with_handover_pct: 0.5
+          mean_nonzero_handover_w: 0.04547070369124412
+          delta_rel_pct: 0.0
+        2024:
+          grasp_success_rate_pct: 76.0
+          min_placement_error_mean_cm: 1.4560027432441711
+          terminal_placement_error_mean_cm: 1.9310389757156372
+          terminal_velocity_mean: 0.21764859512448312
+          mean_latency_ms: 54.6402853776519
+          episodes_with_handover_pct: 4.0
+          phi1_steps_with_handover_pct: 0.5
+          mean_nonzero_handover_w: 0.01992271870374679
+          delta_rel_pct: 0.0
+    - [1]
+      condition_name: Sensory Noise Injection (1.0%)
+      grasp_success_rate_pct: [74.66666666666667,3.055050463303893]
+      delta_rel_pct: -2.608695652173913
+      min_placement_error_mean_cm: [1.5151751696070033,0.30314335112481977]
+      terminal_placement_error_mean_cm: [1.853916923602422,0.23174274041202594]
+      terminal_velocity_mean: [0.2947493451088667,0.09277998260340467]
+      episodes_with_handover_pct: [34.666666666666664,11.015141094572202]
+      phi1_steps_with_handover_pct: [10.666666666666666,4.488411003165077]
+      mean_nonzero_handover_w_when_active: 0.15266501222733564
+      per_seed:
+        42:
+          grasp_success_rate_pct: 72.0
+          min_placement_error_mean_cm: 1.8375933802127837
+          terminal_placement_error_mean_cm: 2.056955361366272
+          terminal_velocity_mean: 0.3729041929543018
+          mean_latency_ms: 45.58725326396069
+          episodes_with_handover_pct: 46.0
+          phi1_steps_with_handover_pct: 15.75
+          mean_nonzero_handover_w: 0.1645895887414614
+          delta_rel_pct: -12.195121951219512
+        101:
+          grasp_success_rate_pct: 74.0
+          min_placement_error_mean_cm: 1.4719947236776352
+          terminal_placement_error_mean_cm: 1.9033488303422927
+          terminal_velocity_mean: 0.31913049027323726
+          mean_latency_ms: 54.78286882565354
+          episodes_with_handover_pct: 34.0
+          phi1_steps_with_handover_pct: 9.0
+          mean_nonzero_handover_w: 0.20296063053111232
+          delta_rel_pct: 2.7777777777777777
+        2024:
+          grasp_success_rate_pct: 78.0
+          min_placement_error_mean_cm: 1.2359374049305916
+          terminal_placement_error_mean_cm: 1.6014465790987016
+          terminal_velocity_mean: 0.192213352099061
+          mean_latency_ms: 55.27344265506174
+          episodes_with_handover_pct: 24.0
+          phi1_steps_with_handover_pct: 7.25
+          mean_nonzero_handover_w: 0.09044481740943319
+          delta_rel_pct: 2.6315789473684212
+    - [2]
+      condition_name: Payload Extrapolation (4.80 kg)
+      grasp_success_rate_pct: [23.333333333333332,12.858201014657272]
+      delta_rel_pct: -69.56521739130436
+      min_placement_error_mean_cm: [3.2138332206010816,1.4700081785960324]
+      terminal_placement_error_mean_cm: [4.3460664258400605,1.0614877655467412]
+      terminal_velocity_mean: [0.49405148267745974,0.21990952766148325]
+      episodes_with_handover_pct: [29.333333333333332,40.611985094714754]
+      phi1_steps_with_handover_pct: [7.75,11.715374513859981]
+      mean_nonzero_handover_w_when_active: 0.34301347039677516
+      per_seed:
+        42:
+          grasp_success_rate_pct: 14.000000000000002
+          min_placement_error_mean_cm: 2.678343471288681
+          terminal_placement_error_mean_cm: 4.692428379058838
+          terminal_velocity_mean: 0.3116999238729477
+          mean_latency_ms: 39.307929548496304
+          episodes_with_handover_pct: 10.0
+          phi1_steps_with_handover_pct: 1.75
+          mean_nonzero_handover_w: 0.3143822686587061
+          delta_rel_pct: -82.92682926829268
+        101:
+          grasp_success_rate_pct: 38.0
+          min_placement_error_mean_cm: 2.086636486649513
+          terminal_placement_error_mean_cm: 3.154660854935646
+          terminal_velocity_mean: 0.7382669043540955
+          mean_latency_ms: 56.36546777295293
+          episodes_with_handover_pct: 2.0
+          phi1_steps_with_handover_pct: 0.25
+          mean_nonzero_handover_w: 0.4
+          delta_rel_pct: -47.22222222222222
+        2024:
+          grasp_success_rate_pct: 18.0
+          min_placement_error_mean_cm: 4.876519703865052
+          terminal_placement_error_mean_cm: 5.191110043525696
+          terminal_velocity_mean: 0.432187619805336
+          mean_latency_ms: 56.881797438130974
+          episodes_with_handover_pct: 76.0
+          phi1_steps_with_handover_pct: 21.25
+          mean_nonzero_handover_w: 0.31465814253161933
+          delta_rel_pct: -76.3157894736842
+    - [3]
+      condition_name: Actuator Drift (0.80x Friction)
+      grasp_success_rate_pct: [26.666666666666668,23.86070689089771]
+      delta_rel_pct: -65.21739130434783
+      min_placement_error_mean_cm: [3.236167592306932,1.4473405546296252]
+      terminal_placement_error_mean_cm: [4.381567585865656,1.0010487774447363]
+      terminal_velocity_mean: [0.44115810414155326,0.20521995946808633]
+      episodes_with_handover_pct: [28.666666666666668,39.46306289852998]
+      phi1_steps_with_handover_pct: [8.083333333333334,11.877850535064555]
+      mean_nonzero_handover_w_when_active: 0.3593107620300309
+      per_seed:
+        42:
+          grasp_success_rate_pct: 10.0
+          min_placement_error_mean_cm: 2.719559631347656
+          terminal_placement_error_mean_cm: 4.764410569667816
+          terminal_velocity_mean: 0.26115636616945265
+          mean_latency_ms: 39.652253493452214
+          episodes_with_handover_pct: 10.0
+          phi1_steps_with_handover_pct: 2.25
+          mean_nonzero_handover_w: 0.37809689356221093
+          delta_rel_pct: -87.8048780487805
+        101:
+          grasp_success_rate_pct: 54.0
+          min_placement_error_mean_cm: 2.1180153104662893
+          terminal_placement_error_mean_cm: 3.2455974757671355
+          terminal_velocity_mean: 0.6646309271454811
+          mean_latency_ms: 57.60456265818991
+          episodes_with_handover_pct: 2.0
+          phi1_steps_with_handover_pct: 0.25
+          mean_nonzero_handover_w: 0.4
+          delta_rel_pct: -25.0
+        2024:
+          grasp_success_rate_pct: 16.0
+          min_placement_error_mean_cm: 4.8709278351068495
+          terminal_placement_error_mean_cm: 5.134694712162018
+          terminal_velocity_mean: 0.3976870191097259
+          mean_latency_ms: 57.76709282414901
+          episodes_with_handover_pct: 74.0
+          phi1_steps_with_handover_pct: 21.75
+          mean_nonzero_handover_w: 0.29983539252788166
+          delta_rel_pct: -78.94736842105263
+    - [4]
+      condition_name: Actuator Drift (1.20x Friction)
+      grasp_success_rate_pct: [30.0,15.0996688705415]
+      delta_rel_pct: -60.869565217391305
+      min_placement_error_mean_cm: [3.104780209859212,1.3417177318534945]
+      terminal_placement_error_mean_cm: [4.190640026132265,1.0252366530107015]
+      terminal_velocity_mean: [0.42541863799095153,0.1914834173354981]
+      episodes_with_handover_pct: [26.0,38.157568056677825]
+      phi1_steps_with_handover_pct: [7.083333333333333,10.981044273352756]
+      mean_nonzero_handover_w_when_active: 0.3567154332125237
+      per_seed:
+        42:
+          grasp_success_rate_pct: 16.0
+          min_placement_error_mean_cm: 2.6001962661743163
+          terminal_placement_error_mean_cm: 4.637553496360779
+          terminal_velocity_mean: 0.2670792493224144
+          mean_latency_ms: 40.279339710981084
+          episodes_with_handover_pct: 6.0
+          phi1_steps_with_handover_pct: 1.25
+          mean_nonzero_handover_w: 0.37100348895788193
+          delta_rel_pct: -80.48780487804878
+        101:
+          grasp_success_rate_pct: 46.0
+          min_placement_error_mean_cm: 2.0885089176893232
+          terminal_placement_error_mean_cm: 3.0178090459108353
+          terminal_velocity_mean: 0.6382385385036469
+          mean_latency_ms: 57.86060653928422
+          episodes_with_handover_pct: 2.0
+          phi1_steps_with_handover_pct: 0.25
+          mean_nonzero_handover_w: 0.4
+          delta_rel_pct: -36.111111111111114
+        2024:
+          grasp_success_rate_pct: 28.000000000000004
+          min_placement_error_mean_cm: 4.625635445713997
+          terminal_placement_error_mean_cm: 4.916557536125183
+          terminal_velocity_mean: 0.3709381261467934
+          mean_latency_ms: 57.83468828605162
+          episodes_with_handover_pct: 70.0
+          phi1_steps_with_handover_pct: 19.75
+          mean_nonzero_handover_w: 0.2991428106796892
+          delta_rel_pct: -63.1578947368421
+disentangled_ablation_3seed (6 rows):
   |label|mean_std|per_seed_success_pct|
   |---|---|---|
   |1. SPWM-Base (Phase 1 Warmup, Unsmoothed)|{grasp_success_rate_pct:[45.333333333333336,16.041612554021285],terminal_placement_accuracy_cm:[1.026371354262034,0.21267911327447728],terminal_error_cm:[2.502900831302007,0.10674231587914605],mean_joint_accel_rad_s2:[0.009831757796928286,0.002547908271341173],mean_joint_jerk_rad_s3:[0.007646870988731583,0.002496011682578312],mean_direction_flips:[23.03333333333333,6.83585644475755],mppi_inference_latency_ms:[26.607863672024582,0.31494921572578505]}|{42:62.0,101:44.0,2024:30.0}|
   |2. + Smooth MPPI Controls (Pre-DAgger)|{grasp_success_rate_pct:[51.333333333333336,9.451631252505216],terminal_placement_accuracy_cm:[1.0174584152301154,0.07739428773724741],terminal_error_cm:[2.413362322449684,0.131995777812547],mean_joint_accel_rad_s2:[0.009906536138926942,0.0024003560204176517],mean_joint_jerk_rad_s3:[0.007045794217847287,0.002429997855850162],mean_direction_flips:[21.993333333333336,6.660010010002488],mppi_inference_latency_ms:[27.186699187828037,0.15842402005752645]}|{42:62.0,101:44.0,2024:48.0}|
-  |3. + Phase 3/4 Curriculum (AR(1)+DAgger, No Lookahead/Handover)|{grasp_success_rate_pct:[38.0,19.078784028338916],terminal_placement_accuracy_cm:[1.5255670695503554,0.5931443681847731],terminal_error_cm:[3.2744056106607116,1.1318006892038883],mean_joint_accel_rad_s2:[0.0058877142627413075,0.0008819400178644788],mean_joint_jerk_rad_s3:[0.0035392556875012814,0.0008280183162976543],mean_direction_flips:[11.166666666666666,0.6463229326995401],mppi_inference_latency_ms:[27.422173555313975,0.18268943009863092]}|{42:56.00000000000001,101:18.0,2024:40.0}|
+  |3a. + Phase 3/4 Curriculum (\texttt{phase\_4}, No Lookahead/Handover)|{grasp_success_rate_pct:[38.0,19.078784028338916],terminal_placement_accuracy_cm:[1.5255670695503554,0.5931443681847731],terminal_error_cm:[3.2744056106607116,1.1318006892038883],mean_joint_accel_rad_s2:[0.0058877142627413075,0.0008819400178644788],mean_joint_jerk_rad_s3:[0.0035392556875012814,0.0008280183162976543],mean_direction_flips:[11.166666666666666,0.6463229326995401],mppi_inference_latency_ms:[27.422173555313975,0.18268943009863092]}|{42:56.00000000000001,101:18.0,2024:40.0}|
+  |3b. + $N=25$ Validation Checkpoint Selection (Val-Sel., No Lookahead/Handover)|{grasp_success_rate_pct:[49.333333333333336,6.110100926607791],terminal_placement_accuracy_cm:[1.0013195854425432,0.16452091586443013],terminal_error_cm:[2.2880257406830786,0.23124014692649303],mean_joint_accel_rad_s2:[0.009205199683395525,0.0033555613127640954],mean_joint_jerk_rad_s3:[0.006593972489548226,0.003202463912087665],mean_direction_flips:[21.18,8.536767538125892],mppi_inference_latency_ms:[30.746634633097653,5.982046411903032]}|{42:56.00000000000001,101:44.0,2024:48.0}|
   |4a. + 2-Stage SE(3) Lookahead (Val-Sel., $w_t \equiv 0$)|{grasp_success_rate_pct:[60.666666666666664,2.3094010767585074],terminal_placement_accuracy_cm:[0.8798704931139946,0.10505539807183523],terminal_error_cm:[2.006662103931109,0.11581144347528279],mean_joint_accel_rad_s2:[0.009308865414932371,0.0034586698705177275],mean_joint_jerk_rad_s3:[0.006634432549277941,0.003263484407032791],mean_direction_flips:[21.14,8.549807015365904],mppi_inference_latency_ms:[28.034092626839513,0.24046964122825348]}|{42:57.99999999999999,101:62.0,2024:62.0}|
   |4b. + Residual Rejection Gate (Full SPWM, Val-Sel.)|{grasp_success_rate_pct:[60.666666666666664,2.3094010767585074],terminal_placement_accuracy_cm:[0.8798704931139946,0.10505539807183523],terminal_error_cm:[2.006662103931109,0.11581144347528279],mean_joint_accel_rad_s2:[0.009308865414932371,0.0034586698705177275],mean_joint_jerk_rad_s3:[0.006634432549277941,0.003263484407032791],mean_direction_flips:[21.14,8.549807015365904],mppi_inference_latency_ms:[26.649352693166346,2.271980219747186]}|{42:57.99999999999999,101:62.0,2024:62.0}|
 baseline_training_budgets:
@@ -3867,7 +4075,7 @@ corl_final_verification:
             phi1_steps_with_w_gt_0_pct: 0.5
             mean_nonzero_w: 0.01992271870374679
       handover_telemetry_3seed: {episodes_with_w_gt_0_pct:[6.0,3.4641016151377544],phi1_steps_with_w_gt_0_pct:[1.0,0.8660254037844386],mean_nonzero_w_when_active:0.05455098082621892}
-  disentangled_ablation_3seed (5 items):
+  disentangled_ablation_3seed (6 items):
     - [0]
       mean_std:
         grasp_success_rate_pct: [45.333333333333336,16.041612554021285]
@@ -4139,9 +4347,100 @@ corl_final_verification:
             phi1_steps_with_w_gt_0_pct: 0.0
             mean_nonzero_w: 0.0
       handover_telemetry_3seed: {episodes_with_w_gt_0_pct:[0.0,0.0],phi1_steps_with_w_gt_0_pct:[0.0,0.0],mean_nonzero_w_when_active:0.0}
-      label: 3. + Phase 3/4 Curriculum (AR(1)+DAgger, No Lookahead/Handover)
+      label: 3a. + Phase 3/4 Curriculum (\texttt{phase\_4}, No Lookahead/Handover)
       bold: false
     - [3]
+      mean_std:
+        grasp_success_rate_pct: [49.333333333333336,6.110100926607791]
+        terminal_placement_accuracy_cm: [1.0013195854425432,0.16452091586443013]
+        terminal_error_cm: [2.2880257406830786,0.23124014692649303]
+        mean_joint_accel_rad_s2: [0.009205199683395525,0.0033555613127640954]
+        mean_joint_jerk_rad_s3: [0.006593972489548226,0.003202463912087665]
+        mean_direction_flips: [21.18,8.536767538125892]
+        mppi_inference_latency_ms: [30.746634633097653,5.982046411903032]
+      per_seed:
+        42:
+          checkpoint: results/spwm_v0_12_4_train_m1/checkpoint_phase_4.pt
+          evaluation_protocol: physics_in_loop
+          baseline_handover_mode: open_loop
+          episodes_evaluated: 50
+          overall_metrics:
+            grasp_success_rate_pct: 56.00000000000001
+            terminal_placement_accuracy_cm: 1.1886036065220833
+            placement_accuracy_std_cm: 1.0840099983177816
+            terminal_error_cm: 2.372771575152874
+            terminal_error_std_cm: 1.4912734211279743
+            mppi_inference_latency_ms: 27.322396415769973
+            mean_joint_accel_rad_s2: 0.005483685848303139
+            std_joint_accel_rad_s2: 0.001604663932872117
+            mean_joint_jerk_rad_s3: 0.0030811078241094947
+            std_joint_jerk_rad_s3: 0.0007820425899183598
+            mean_direction_flips: 11.88
+            std_direction_flips: 5.891145898719535
+          handover_telemetry:
+            episodes_evaluated: 50
+            triggered_episodes: 0
+            episodes_with_w_gt_0_pct: 0.0
+            total_phi1_steps: 400
+            triggered_phi1_steps: 0
+            phi1_steps_with_w_gt_0_pct: 0.0
+            mean_nonzero_w: 0.0
+        101:
+          checkpoint: results/multiseed/seed_101_m1/checkpoint_phase_1.pt
+          evaluation_protocol: physics_in_loop
+          baseline_handover_mode: open_loop
+          episodes_evaluated: 50
+          overall_metrics:
+            grasp_success_rate_pct: 44.0
+            terminal_placement_accuracy_cm: 0.9352575194835663
+            placement_accuracy_std_cm: 0.6859384826701114
+            terminal_error_cm: 2.464937143921852
+            terminal_error_std_cm: 1.2342414829049078
+            mppi_inference_latency_ms: 27.26348437940824
+            mean_joint_accel_rad_s2: 0.012000056598335505
+            std_joint_accel_rad_s2: 0.0037190684706323927
+            mean_joint_jerk_rad_s3: 0.009350710520520807
+            std_joint_jerk_rad_s3: 0.002442366979561876
+            mean_direction_flips: 28.66
+            std_direction_flips: 8.320120191439544
+          handover_telemetry:
+            episodes_evaluated: 50
+            triggered_episodes: 0
+            episodes_with_w_gt_0_pct: 0.0
+            total_phi1_steps: 400
+            triggered_phi1_steps: 0
+            phi1_steps_with_w_gt_0_pct: 0.0
+            mean_nonzero_w: 0.0
+        2024:
+          checkpoint: results/multiseed/seed_2024_m1/checkpoint_phase_2.pt
+          evaluation_protocol: physics_in_loop
+          baseline_handover_mode: open_loop
+          episodes_evaluated: 50
+          overall_metrics:
+            grasp_success_rate_pct: 48.0
+            terminal_placement_accuracy_cm: 0.8800976303219795
+            placement_accuracy_std_cm: 0.5272036061850179
+            terminal_error_cm: 2.02636850297451
+            terminal_error_std_cm: 1.242492101039257
+            mppi_inference_latency_ms: 37.65402310411474
+            mean_joint_accel_rad_s2: 0.01013185660354793
+            std_joint_accel_rad_s2: 0.0035494300180994444
+            mean_joint_jerk_rad_s3: 0.0073500991240143775
+            std_joint_jerk_rad_s3: 0.002394249901087773
+            mean_direction_flips: 23.0
+            std_direction_flips: 5.678027826631356
+          handover_telemetry:
+            episodes_evaluated: 50
+            triggered_episodes: 0
+            episodes_with_w_gt_0_pct: 0.0
+            total_phi1_steps: 400
+            triggered_phi1_steps: 0
+            phi1_steps_with_w_gt_0_pct: 0.0
+            mean_nonzero_w: 0.0
+      handover_telemetry_3seed: {episodes_with_w_gt_0_pct:[0.0,0.0],phi1_steps_with_w_gt_0_pct:[0.0,0.0],mean_nonzero_w_when_active:0.0}
+      label: 3b. + $N=25$ Validation Checkpoint Selection (Val-Sel., No Lookahead/Handover)
+      bold: false
+    - [4]
       mean_std:
         grasp_success_rate_pct: [60.666666666666664,2.3094010767585074]
         terminal_placement_accuracy_cm: [0.8798704931139946,0.10505539807183523]
@@ -4232,7 +4531,7 @@ corl_final_verification:
       handover_telemetry_3seed: {episodes_with_w_gt_0_pct:[0.0,0.0],phi1_steps_with_w_gt_0_pct:[0.0,0.0],mean_nonzero_w_when_active:0.0}
       label: 4a. + 2-Stage SE(3) Lookahead (Val-Sel., $w_t \equiv 0$)
       bold: false
-    - [4]
+    - [5]
       mean_std:
         grasp_success_rate_pct: [60.666666666666664,2.3094010767585074]
         terminal_placement_accuracy_cm: [0.8798704931139946,0.10505539807183523]
@@ -4408,209 +4707,209 @@ corl_final_verification:
     conditions (5 items):
       - [0]
         condition_name: Nominal Baseline
-        grasp_success_rate_pct: [58.0,27.055498516937366]
+        grasp_success_rate_pct: [60.666666666666664,2.3094010767585074]
         delta_rel_pct: 0.0
-        min_placement_error_mean_cm: [0.8992845916748048,0.0417493623118023]
-        terminal_placement_error_mean_cm: [2.231203550299009,0.6846823009200784]
-        terminal_velocity_mean: [0.42377924611171086,0.0838157235336139]
+        min_placement_error_mean_cm: [0.8798704931139946,0.10505539807183523]
+        terminal_placement_error_mean_cm: [2.006662103931109,0.11581144347528279]
+        terminal_velocity_mean: [0.4501866717636585,0.07299750426577846]
         episodes_with_handover_pct: [0.0,0.0]
         phi1_steps_with_handover_pct: [0.0,0.0]
         mean_nonzero_handover_w_when_active: 0.0
         per_seed:
           42:
-            grasp_success_rate_pct: 86.0
-            min_placement_error_mean_cm: 0.8552020224928856
-            terminal_placement_error_mean_cm: 1.5668222349882126
-            terminal_velocity_mean: 0.32701518952846526
-            mean_latency_ms: 36.05713042749771
+            grasp_success_rate_pct: 57.99999999999999
+            min_placement_error_mean_cm: 0.9966417002677918
+            terminal_placement_error_mean_cm: 2.117010636925697
+            terminal_velocity_mean: 0.37095459580421447
+            mean_latency_ms: 32.431992493769116
             episodes_with_handover_pct: 0.0
             phi1_steps_with_handover_pct: 0.0
             mean_nonzero_handover_w: 0.0
             delta_rel_pct: 0.0
           101:
-            grasp_success_rate_pct: 56.00000000000001
-            min_placement_error_mean_cm: 0.9044275161623955
-            terminal_placement_error_mean_cm: 2.1922635650634765
-            terminal_velocity_mean: 0.4737779149413109
-            mean_latency_ms: 35.94414352529596
+            grasp_success_rate_pct: 62.0
+            min_placement_error_mean_cm: 0.8499453981220723
+            terminal_placement_error_mean_cm: 2.0169071877002716
+            terminal_velocity_mean: 0.5147094203531742
+            mean_latency_ms: 39.79635441773567
             episodes_with_handover_pct: 0.0
             phi1_steps_with_handover_pct: 0.0
             mean_nonzero_handover_w: 0.0
             delta_rel_pct: 0.0
           2024:
-            grasp_success_rate_pct: 32.0
-            min_placement_error_mean_cm: 0.938224236369133
-            terminal_placement_error_mean_cm: 2.934524850845337
-            terminal_velocity_mean: 0.47054463386535644
-            mean_latency_ms: 36.51248038936411
+            grasp_success_rate_pct: 62.0
+            min_placement_error_mean_cm: 0.7930243809521198
+            terminal_placement_error_mean_cm: 1.8860684871673583
+            terminal_velocity_mean: 0.46489599913358687
+            mean_latency_ms: 39.787420788930085
             episodes_with_handover_pct: 0.0
             phi1_steps_with_handover_pct: 0.0
             mean_nonzero_handover_w: 0.0
             delta_rel_pct: 0.0
       - [1]
         condition_name: Sensory Noise Injection (1.0%)
-        grasp_success_rate_pct: [55.333333333333336,19.42506971244462]
-        delta_rel_pct: -4.597701149425283
-        min_placement_error_mean_cm: [0.8995885254442691,0.0864853745399293]
-        terminal_placement_error_mean_cm: [2.342214393814405,0.6310488458771016]
-        terminal_velocity_mean: [0.3995537382364273,0.12232065703258524]
+        grasp_success_rate_pct: [54.666666666666664,1.1547005383792557]
+        delta_rel_pct: -9.89010989010989
+        min_placement_error_mean_cm: [0.9180183924237887,0.24189672923787867]
+        terminal_placement_error_mean_cm: [2.259123495916526,0.45390662193171594]
+        terminal_velocity_mean: [0.40925723339120545,0.07120021870960654]
         episodes_with_handover_pct: [0.0,0.0]
         phi1_steps_with_handover_pct: [0.0,0.0]
         mean_nonzero_handover_w_when_active: 0.0
         per_seed:
           42:
-            grasp_success_rate_pct: 72.0
-            min_placement_error_mean_cm: 0.9837424418330193
-            terminal_placement_error_mean_cm: 1.8598396837711335
-            terminal_velocity_mean: 0.2989905294775963
-            mean_latency_ms: 34.990572020690095
+            grasp_success_rate_pct: 54.0
+            min_placement_error_mean_cm: 1.1959887701272964
+            terminal_placement_error_mean_cm: 2.683878175020218
+            terminal_velocity_mean: 0.33141832798719406
+            mean_latency_ms: 32.060862347789936
             episodes_with_handover_pct: 0.0
             phi1_steps_with_handover_pct: 0.0
             mean_nonzero_handover_w: 0.0
-            delta_rel_pct: -16.27906976744186
+            delta_rel_pct: -6.89655172413792
           101:
-            grasp_success_rate_pct: 60.0
-            min_placement_error_mean_cm: 0.9040766698122025
-            terminal_placement_error_mean_cm: 2.1104232871532442
-            terminal_velocity_mean: 0.5357284384965897
-            mean_latency_ms: 36.52126013849798
+            grasp_success_rate_pct: 54.0
+            min_placement_error_mean_cm: 0.7552975878119469
+            terminal_placement_error_mean_cm: 2.3126762568950654
+            terminal_velocity_mean: 0.4710961046814919
+            mean_latency_ms: 32.065856869886694
             episodes_with_handover_pct: 0.0
             phi1_steps_with_handover_pct: 0.0
             mean_nonzero_handover_w: 0.0
-            delta_rel_pct: 7.14285714285713
+            delta_rel_pct: -12.903225806451612
           2024:
-            grasp_success_rate_pct: 34.0
-            min_placement_error_mean_cm: 0.8109464646875858
-            terminal_placement_error_mean_cm: 3.056380210518837
-            terminal_velocity_mean: 0.36394224673509595
-            mean_latency_ms: 36.52111676256183
+            grasp_success_rate_pct: 56.00000000000001
+            min_placement_error_mean_cm: 0.8027688193321229
+            terminal_placement_error_mean_cm: 1.7808160558342934
+            terminal_velocity_mean: 0.4252572675049305
+            mean_latency_ms: 32.0065951976089
             episodes_with_handover_pct: 0.0
             phi1_steps_with_handover_pct: 0.0
             mean_nonzero_handover_w: 0.0
-            delta_rel_pct: 6.25
+            delta_rel_pct: -9.6774193548387
       - [2]
         condition_name: Payload Extrapolation (4.80 kg)
-        grasp_success_rate_pct: [39.333333333333336,33.724372986511305]
-        delta_rel_pct: -32.183908045977006
-        min_placement_error_mean_cm: [1.1808227265874545,0.1475518910933885]
-        terminal_placement_error_mean_cm: [2.5032857662439345,0.6239346910373739]
-        terminal_velocity_mean: [0.5195224117239315,0.1069074967853979]
-        episodes_with_handover_pct: [1.3333333333333333,2.3094010767585034]
-        phi1_steps_with_handover_pct: [0.16666666666666666,0.2886751345948129]
-        mean_nonzero_handover_w_when_active: 0.16452792689204215
+        grasp_success_rate_pct: [44.666666666666664,13.316656236958789]
+        delta_rel_pct: -26.373626373626376
+        min_placement_error_mean_cm: [1.3093093851208688,0.41128174441194415]
+        terminal_placement_error_mean_cm: [2.4906945570309955,0.29389661766704617]
+        terminal_velocity_mean: [0.6077169207235178,0.10828262151038422]
+        episodes_with_handover_pct: [0.0,0.0]
+        phi1_steps_with_handover_pct: [0.0,0.0]
+        mean_nonzero_handover_w_when_active: 0.0
         per_seed:
           42:
-            grasp_success_rate_pct: 78.0
-            min_placement_error_mean_cm: 1.245790022313595
-            terminal_placement_error_mean_cm: 1.7834283006191254
-            terminal_velocity_mean: 0.43445359870791433
-            mean_latency_ms: 37.20313749923503
+            grasp_success_rate_pct: 56.00000000000001
+            min_placement_error_mean_cm: 1.7644587180018425
+            terminal_placement_error_mean_cm: 2.4560093522071837
+            terminal_velocity_mean: 0.5556513021886349
+            mean_latency_ms: 32.58270962906839
             episodes_with_handover_pct: 0.0
             phi1_steps_with_handover_pct: 0.0
             mean_nonzero_handover_w: 0.0
-            delta_rel_pct: -9.30232558139535
+            delta_rel_pct: -3.4482758620689413
           101:
-            grasp_success_rate_pct: 24.0
-            min_placement_error_mean_cm: 1.2847428852319718
-            terminal_placement_error_mean_cm: 2.837750395536423
-            terminal_velocity_mean: 0.6395273652672767
-            mean_latency_ms: 36.43832626988797
+            grasp_success_rate_pct: 30.0
+            min_placement_error_mean_cm: 1.1991314259171486
+            terminal_placement_error_mean_cm: 2.800394687652588
+            terminal_velocity_mean: 0.7321977093815804
+            mean_latency_ms: 32.619208271916534
             episodes_with_handover_pct: 0.0
             phi1_steps_with_handover_pct: 0.0
             mean_nonzero_handover_w: 0.0
-            delta_rel_pct: -57.14285714285715
+            delta_rel_pct: -51.61290322580645
           2024:
-            grasp_success_rate_pct: 16.0
-            min_placement_error_mean_cm: 1.011935272216797
-            terminal_placement_error_mean_cm: 2.8886786025762556
-            terminal_velocity_mean: 0.4845862711966038
-            mean_latency_ms: 36.41863351428478
-            episodes_with_handover_pct: 4.0
-            phi1_steps_with_handover_pct: 0.5
-            mean_nonzero_handover_w: 0.16452792689204215
-            delta_rel_pct: -50.0
+            grasp_success_rate_pct: 48.0
+            min_placement_error_mean_cm: 0.964338011443615
+            terminal_placement_error_mean_cm: 2.215679631233215
+            terminal_velocity_mean: 0.535301750600338
+            mean_latency_ms: 32.6236858331127
+            episodes_with_handover_pct: 0.0
+            phi1_steps_with_handover_pct: 0.0
+            mean_nonzero_handover_w: 0.0
+            delta_rel_pct: -22.580645161290324
       - [3]
         condition_name: Actuator Drift (0.80x Friction)
-        grasp_success_rate_pct: [40.666666666666664,27.30079363925769]
-        delta_rel_pct: -29.88505747126437
-        min_placement_error_mean_cm: [1.1887371614575386,0.11060501933302767]
-        terminal_placement_error_mean_cm: [2.6100856752196946,0.5422566355658548]
-        terminal_velocity_mean: [0.45519848535458246,0.09270916234318358]
-        episodes_with_handover_pct: [1.3333333333333333,2.3094010767585034]
-        phi1_steps_with_handover_pct: [0.16666666666666666,0.2886751345948129]
-        mean_nonzero_handover_w_when_active: 0.22864747449755668
+        grasp_success_rate_pct: [52.666666666666664,13.316656236958785]
+        delta_rel_pct: -13.186813186813188
+        min_placement_error_mean_cm: [1.3143045140306153,0.353262980084955]
+        terminal_placement_error_mean_cm: [2.387875195145607,0.255073983879998]
+        terminal_velocity_mean: [0.5382303596039614,0.06750221070397516]
+        episodes_with_handover_pct: [0.0,0.0]
+        phi1_steps_with_handover_pct: [0.0,0.0]
+        mean_nonzero_handover_w_when_active: 0.0
+        per_seed:
+          42:
+            grasp_success_rate_pct: 68.0
+            min_placement_error_mean_cm: 1.7202977061271667
+            terminal_placement_error_mean_cm: 2.383537862300873
+            terminal_velocity_mean: 0.4953418381512165
+            mean_latency_ms: 33.133227099747344
+            episodes_with_handover_pct: 0.0
+            phi1_steps_with_handover_pct: 0.0
+            mean_nonzero_handover_w: 0.0
+            delta_rel_pct: 17.24137931034484
+          101:
+            grasp_success_rate_pct: 44.0
+            min_placement_error_mean_cm: 1.1455406373739243
+            terminal_placement_error_mean_cm: 2.6450901865959167
+            terminal_velocity_mean: 0.6160393211245537
+            mean_latency_ms: 29.67846919087327
+            episodes_with_handover_pct: 0.0
+            phi1_steps_with_handover_pct: 0.0
+            mean_nonzero_handover_w: 0.0
+            delta_rel_pct: -29.032258064516128
+          2024:
+            grasp_success_rate_pct: 46.0
+            min_placement_error_mean_cm: 1.0770751985907554
+            terminal_placement_error_mean_cm: 2.1349975365400313
+            terminal_velocity_mean: 0.5033099195361137
+            mean_latency_ms: 29.627431735741776
+            episodes_with_handover_pct: 0.0
+            phi1_steps_with_handover_pct: 0.0
+            mean_nonzero_handover_w: 0.0
+            delta_rel_pct: -25.806451612903224
+      - [4]
+        condition_name: Actuator Drift (1.20x Friction)
+        grasp_success_rate_pct: [48.0,19.28730152198591]
+        delta_rel_pct: -20.879120879120876
+        min_placement_error_mean_cm: [1.2900217257936797,0.4582222980166343]
+        terminal_placement_error_mean_cm: [2.2831829558809598,0.2896295039858489]
+        terminal_velocity_mean: [0.5080112110078335,0.040404712953968615]
+        episodes_with_handover_pct: [0.0,0.0]
+        phi1_steps_with_handover_pct: [0.0,0.0]
+        mean_nonzero_handover_w_when_active: 0.0
         per_seed:
           42:
             grasp_success_rate_pct: 70.0
-            min_placement_error_mean_cm: 1.3162081634998322
-            terminal_placement_error_mean_cm: 2.0683961123228074
-            terminal_velocity_mean: 0.3934475040435791
-            mean_latency_ms: 36.6571082404878
+            min_placement_error_mean_cm: 1.787329178750515
+            terminal_placement_error_mean_cm: 2.4599468809366227
+            terminal_velocity_mean: 0.49150543451309203
+            mean_latency_ms: 33.69387655897015
             episodes_with_handover_pct: 0.0
             phi1_steps_with_handover_pct: 0.0
             mean_nonzero_handover_w: 0.0
-            delta_rel_pct: -18.6046511627907
+            delta_rel_pct: 20.689655172413808
           101:
-            grasp_success_rate_pct: 36.0
-            min_placement_error_mean_cm: 1.1181585595011712
-            terminal_placement_error_mean_cm: 2.6089533033967016
-            terminal_velocity_mean: 0.5618044257164001
-            mean_latency_ms: 36.38057136931481
+            grasp_success_rate_pct: 34.0
+            min_placement_error_mean_cm: 1.197834121286869
+            terminal_placement_error_mean_cm: 2.440669119954109
+            terminal_velocity_mean: 0.554055769443512
+            mean_latency_ms: 29.96104107358774
             episodes_with_handover_pct: 0.0
             phi1_steps_with_handover_pct: 0.0
             mean_nonzero_handover_w: 0.0
-            delta_rel_pct: -35.71428571428572
+            delta_rel_pct: -45.16129032258065
           2024:
-            grasp_success_rate_pct: 16.0
-            min_placement_error_mean_cm: 1.1318447613716125
-            terminal_placement_error_mean_cm: 3.152907609939575
-            terminal_velocity_mean: 0.41034352630376814
-            mean_latency_ms: 36.43481188892321
-            episodes_with_handover_pct: 4.0
-            phi1_steps_with_handover_pct: 0.5
-            mean_nonzero_handover_w: 0.22864747449755668
-            delta_rel_pct: -50.0
-      - [4]
-        condition_name: Actuator Drift (1.20x Friction)
-        grasp_success_rate_pct: [44.0,28.0]
-        delta_rel_pct: -24.137931034482758
-        min_placement_error_mean_cm: [1.2160442214210827,0.10678522747967399]
-        terminal_placement_error_mean_cm: [2.5337881688276926,0.5567605187409086]
-        terminal_velocity_mean: [0.4324431197345257,0.07896359786568626]
-        episodes_with_handover_pct: [1.3333333333333333,2.3094010767585034]
-        phi1_steps_with_handover_pct: [0.16666666666666666,0.2886751345948129]
-        mean_nonzero_handover_w_when_active: 0.16903226852416992
-        per_seed:
-          42:
-            grasp_success_rate_pct: 76.0
-            min_placement_error_mean_cm: 1.3224645945429803
-            terminal_placement_error_mean_cm: 1.9732722735404968
-            terminal_velocity_mean: 0.3801573750376701
-            mean_latency_ms: 36.835968496259994
+            grasp_success_rate_pct: 40.0
+            min_placement_error_mean_cm: 0.8849018773436547
+            terminal_placement_error_mean_cm: 1.9489328667521477
+            terminal_velocity_mean: 0.47847242906689647
+            mean_latency_ms: 29.91935059930899
             episodes_with_handover_pct: 0.0
             phi1_steps_with_handover_pct: 0.0
             mean_nonzero_handover_w: 0.0
-            delta_rel_pct: -11.627906976744185
-          101:
-            grasp_success_rate_pct: 32.0
-            min_placement_error_mean_cm: 1.2167702281475068
-            terminal_placement_error_mean_cm: 2.5413764929771423
-            terminal_velocity_mean: 0.5232767987251282
-            mean_latency_ms: 36.59299420893834
-            episodes_with_handover_pct: 0.0
-            phi1_steps_with_handover_pct: 0.0
-            mean_nonzero_handover_w: 0.0
-            delta_rel_pct: -42.85714285714287
-          2024:
-            grasp_success_rate_pct: 24.0
-            min_placement_error_mean_cm: 1.1088978415727615
-            terminal_placement_error_mean_cm: 3.086715739965439
-            terminal_velocity_mean: 0.39389518544077873
-            mean_latency_ms: 36.48604587311423
-            episodes_with_handover_pct: 4.0
-            phi1_steps_with_handover_pct: 0.5
-            mean_nonzero_handover_w: 0.16903226852416992
-            delta_rel_pct: -25.0
+            delta_rel_pct: -35.483870967741936
   robustness_3seed_ann_rate:
     conditions (5 items):
       - [0]
@@ -4818,6 +5117,213 @@ corl_final_verification:
             phi1_steps_with_handover_pct: 0.0
             mean_nonzero_handover_w: 0.0
             delta_rel_pct: 8.333333333333334
+  robustness_3seed_deep_gru:
+    conditions (5 items):
+      - [0]
+        condition_name: Nominal Baseline
+        grasp_success_rate_pct: [76.66666666666667,5.033222956847166]
+        delta_rel_pct: 0.0
+        min_placement_error_mean_cm: [1.142546683549881,0.3141746410639535]
+        terminal_placement_error_mean_cm: [1.9001078454653422,0.1792502651931432]
+        terminal_velocity_mean: [0.29516326268514,0.07536613976838809]
+        episodes_with_handover_pct: [6.0,3.4641016151377544]
+        phi1_steps_with_handover_pct: [1.0,0.8660254037844386]
+        mean_nonzero_handover_w_when_active: 0.05455098082621892
+        per_seed:
+          42:
+            grasp_success_rate_pct: 82.0
+            min_placement_error_mean_cm: 0.8276583582162857
+            terminal_placement_error_mean_cm: 1.7074048507213593
+            terminal_velocity_mean: 0.29966184198856355
+            mean_latency_ms: 57.95750650222223
+            episodes_with_handover_pct: 10.0
+            phi1_steps_with_handover_pct: 2.0
+            mean_nonzero_handover_w: 0.09825952008366584
+            delta_rel_pct: 0.0
+          101:
+            grasp_success_rate_pct: 72.0
+            min_placement_error_mean_cm: 1.143978949189186
+            terminal_placement_error_mean_cm: 2.06187970995903
+            terminal_velocity_mean: 0.36817935094237325
+            mean_latency_ms: 54.371179489554706
+            episodes_with_handover_pct: 4.0
+            phi1_steps_with_handover_pct: 0.5
+            mean_nonzero_handover_w: 0.04547070369124412
+            delta_rel_pct: 0.0
+          2024:
+            grasp_success_rate_pct: 76.0
+            min_placement_error_mean_cm: 1.4560027432441711
+            terminal_placement_error_mean_cm: 1.9310389757156372
+            terminal_velocity_mean: 0.21764859512448312
+            mean_latency_ms: 54.6402853776519
+            episodes_with_handover_pct: 4.0
+            phi1_steps_with_handover_pct: 0.5
+            mean_nonzero_handover_w: 0.01992271870374679
+            delta_rel_pct: 0.0
+      - [1]
+        condition_name: Sensory Noise Injection (1.0%)
+        grasp_success_rate_pct: [74.66666666666667,3.055050463303893]
+        delta_rel_pct: -2.608695652173913
+        min_placement_error_mean_cm: [1.5151751696070033,0.30314335112481977]
+        terminal_placement_error_mean_cm: [1.853916923602422,0.23174274041202594]
+        terminal_velocity_mean: [0.2947493451088667,0.09277998260340467]
+        episodes_with_handover_pct: [34.666666666666664,11.015141094572202]
+        phi1_steps_with_handover_pct: [10.666666666666666,4.488411003165077]
+        mean_nonzero_handover_w_when_active: 0.15266501222733564
+        per_seed:
+          42:
+            grasp_success_rate_pct: 72.0
+            min_placement_error_mean_cm: 1.8375933802127837
+            terminal_placement_error_mean_cm: 2.056955361366272
+            terminal_velocity_mean: 0.3729041929543018
+            mean_latency_ms: 45.58725326396069
+            episodes_with_handover_pct: 46.0
+            phi1_steps_with_handover_pct: 15.75
+            mean_nonzero_handover_w: 0.1645895887414614
+            delta_rel_pct: -12.195121951219512
+          101:
+            grasp_success_rate_pct: 74.0
+            min_placement_error_mean_cm: 1.4719947236776352
+            terminal_placement_error_mean_cm: 1.9033488303422927
+            terminal_velocity_mean: 0.31913049027323726
+            mean_latency_ms: 54.78286882565354
+            episodes_with_handover_pct: 34.0
+            phi1_steps_with_handover_pct: 9.0
+            mean_nonzero_handover_w: 0.20296063053111232
+            delta_rel_pct: 2.7777777777777777
+          2024:
+            grasp_success_rate_pct: 78.0
+            min_placement_error_mean_cm: 1.2359374049305916
+            terminal_placement_error_mean_cm: 1.6014465790987016
+            terminal_velocity_mean: 0.192213352099061
+            mean_latency_ms: 55.27344265506174
+            episodes_with_handover_pct: 24.0
+            phi1_steps_with_handover_pct: 7.25
+            mean_nonzero_handover_w: 0.09044481740943319
+            delta_rel_pct: 2.6315789473684212
+      - [2]
+        condition_name: Payload Extrapolation (4.80 kg)
+        grasp_success_rate_pct: [23.333333333333332,12.858201014657272]
+        delta_rel_pct: -69.56521739130436
+        min_placement_error_mean_cm: [3.2138332206010816,1.4700081785960324]
+        terminal_placement_error_mean_cm: [4.3460664258400605,1.0614877655467412]
+        terminal_velocity_mean: [0.49405148267745974,0.21990952766148325]
+        episodes_with_handover_pct: [29.333333333333332,40.611985094714754]
+        phi1_steps_with_handover_pct: [7.75,11.715374513859981]
+        mean_nonzero_handover_w_when_active: 0.34301347039677516
+        per_seed:
+          42:
+            grasp_success_rate_pct: 14.000000000000002
+            min_placement_error_mean_cm: 2.678343471288681
+            terminal_placement_error_mean_cm: 4.692428379058838
+            terminal_velocity_mean: 0.3116999238729477
+            mean_latency_ms: 39.307929548496304
+            episodes_with_handover_pct: 10.0
+            phi1_steps_with_handover_pct: 1.75
+            mean_nonzero_handover_w: 0.3143822686587061
+            delta_rel_pct: -82.92682926829268
+          101:
+            grasp_success_rate_pct: 38.0
+            min_placement_error_mean_cm: 2.086636486649513
+            terminal_placement_error_mean_cm: 3.154660854935646
+            terminal_velocity_mean: 0.7382669043540955
+            mean_latency_ms: 56.36546777295293
+            episodes_with_handover_pct: 2.0
+            phi1_steps_with_handover_pct: 0.25
+            mean_nonzero_handover_w: 0.4
+            delta_rel_pct: -47.22222222222222
+          2024:
+            grasp_success_rate_pct: 18.0
+            min_placement_error_mean_cm: 4.876519703865052
+            terminal_placement_error_mean_cm: 5.191110043525696
+            terminal_velocity_mean: 0.432187619805336
+            mean_latency_ms: 56.881797438130974
+            episodes_with_handover_pct: 76.0
+            phi1_steps_with_handover_pct: 21.25
+            mean_nonzero_handover_w: 0.31465814253161933
+            delta_rel_pct: -76.3157894736842
+      - [3]
+        condition_name: Actuator Drift (0.80x Friction)
+        grasp_success_rate_pct: [26.666666666666668,23.86070689089771]
+        delta_rel_pct: -65.21739130434783
+        min_placement_error_mean_cm: [3.236167592306932,1.4473405546296252]
+        terminal_placement_error_mean_cm: [4.381567585865656,1.0010487774447363]
+        terminal_velocity_mean: [0.44115810414155326,0.20521995946808633]
+        episodes_with_handover_pct: [28.666666666666668,39.46306289852998]
+        phi1_steps_with_handover_pct: [8.083333333333334,11.877850535064555]
+        mean_nonzero_handover_w_when_active: 0.3593107620300309
+        per_seed:
+          42:
+            grasp_success_rate_pct: 10.0
+            min_placement_error_mean_cm: 2.719559631347656
+            terminal_placement_error_mean_cm: 4.764410569667816
+            terminal_velocity_mean: 0.26115636616945265
+            mean_latency_ms: 39.652253493452214
+            episodes_with_handover_pct: 10.0
+            phi1_steps_with_handover_pct: 2.25
+            mean_nonzero_handover_w: 0.37809689356221093
+            delta_rel_pct: -87.8048780487805
+          101:
+            grasp_success_rate_pct: 54.0
+            min_placement_error_mean_cm: 2.1180153104662893
+            terminal_placement_error_mean_cm: 3.2455974757671355
+            terminal_velocity_mean: 0.6646309271454811
+            mean_latency_ms: 57.60456265818991
+            episodes_with_handover_pct: 2.0
+            phi1_steps_with_handover_pct: 0.25
+            mean_nonzero_handover_w: 0.4
+            delta_rel_pct: -25.0
+          2024:
+            grasp_success_rate_pct: 16.0
+            min_placement_error_mean_cm: 4.8709278351068495
+            terminal_placement_error_mean_cm: 5.134694712162018
+            terminal_velocity_mean: 0.3976870191097259
+            mean_latency_ms: 57.76709282414901
+            episodes_with_handover_pct: 74.0
+            phi1_steps_with_handover_pct: 21.75
+            mean_nonzero_handover_w: 0.29983539252788166
+            delta_rel_pct: -78.94736842105263
+      - [4]
+        condition_name: Actuator Drift (1.20x Friction)
+        grasp_success_rate_pct: [30.0,15.0996688705415]
+        delta_rel_pct: -60.869565217391305
+        min_placement_error_mean_cm: [3.104780209859212,1.3417177318534945]
+        terminal_placement_error_mean_cm: [4.190640026132265,1.0252366530107015]
+        terminal_velocity_mean: [0.42541863799095153,0.1914834173354981]
+        episodes_with_handover_pct: [26.0,38.157568056677825]
+        phi1_steps_with_handover_pct: [7.083333333333333,10.981044273352756]
+        mean_nonzero_handover_w_when_active: 0.3567154332125237
+        per_seed:
+          42:
+            grasp_success_rate_pct: 16.0
+            min_placement_error_mean_cm: 2.6001962661743163
+            terminal_placement_error_mean_cm: 4.637553496360779
+            terminal_velocity_mean: 0.2670792493224144
+            mean_latency_ms: 40.279339710981084
+            episodes_with_handover_pct: 6.0
+            phi1_steps_with_handover_pct: 1.25
+            mean_nonzero_handover_w: 0.37100348895788193
+            delta_rel_pct: -80.48780487804878
+          101:
+            grasp_success_rate_pct: 46.0
+            min_placement_error_mean_cm: 2.0885089176893232
+            terminal_placement_error_mean_cm: 3.0178090459108353
+            terminal_velocity_mean: 0.6382385385036469
+            mean_latency_ms: 57.86060653928422
+            episodes_with_handover_pct: 2.0
+            phi1_steps_with_handover_pct: 0.25
+            mean_nonzero_handover_w: 0.4
+            delta_rel_pct: -36.111111111111114
+          2024:
+            grasp_success_rate_pct: 28.000000000000004
+            min_placement_error_mean_cm: 4.625635445713997
+            terminal_placement_error_mean_cm: 4.916557536125183
+            terminal_velocity_mean: 0.3709381261467934
+            mean_latency_ms: 57.83468828605162
+            episodes_with_handover_pct: 70.0
+            phi1_steps_with_handover_pct: 19.75
+            mean_nonzero_handover_w: 0.2991428106796892
+            delta_rel_pct: -63.1578947368421
   val_handover_threshold_sweep:
     seed42:
       0026 (5 rows):
@@ -5084,7 +5590,7 @@ corl_final_verification:
         std_direction_flips: 3.990789395595814
         epoch: 260
   energy_summary:
-    framing_note: SPWM's primary advantage over ANN-Rate is closed-loop dynamical stability (+23.4 pp PIL grasp success) and 1.0% sensory noise retention (4.3x better), not E2E energy savings (1.0979 mJ/step matches ANN-Rate; 48.14 nJ Loihi-2 core reduction is 0.004% of E2E power). The 4.94x Loihi-2 recurrent core reduction (12.22 +- 0.19 nJ/step, 0.244 mW @ 20 Hz, SOPs excluding passive leak) is an always-on standby state-estimation benefit when batched MPPI rollouts are dormant; the 1.93x E2E reduction vs. Continuous RSSM (2.1236 mJ/step) comes from M1's compact MLP rollout architecture.
+    framing_note: SPWM's primary advantage over ANN-Rate is closed-loop dynamical stability (+23.4 pp PIL grasp success) and 1.0% sensory noise retention (+24.7 pp absolute, 2.0x better relative retention on N=25 val-selected checkpoints), not E2E energy savings (1.0979 mJ/step matches ANN-Rate; 48.14 nJ Loihi-2 core reduction is 0.004% of E2E power). The 4.94x Loihi-2 recurrent core reduction (12.22 +- 0.19 nJ/step, 0.244 mW @ 20 Hz, SOPs excluding passive leak) is an always-on standby state-estimation benefit when batched MPPI rollouts are dormant; the 1.93x E2E reduction vs. Continuous RSSM (2.1236 mJ/step) comes from M1's compact MLP rollout architecture.
     spwm_3seed:
       spike_rate_pct: [12.151117412707743,0.192861046198146]
       sops_per_step: [8150.0,129.11622671066561]
@@ -5366,41 +5872,41 @@ episodes (50 rows):
 ```yaml
 benchmark_name: Zero-Shot Sim-to-Real Domain Gap & Robustness Stress Test
 version: SPWM-v0.12.3
-checkpoint: results/spwm_v0_12_4_train_m1/best_model.pt
+checkpoint: results/spwm_v0_12_4_train_m1/checkpoint_phase_4.pt
 split: test
 handover_dist_threshold: 0.026
-total_benchmark_time_sec: 579.821102707996
-sensor_benchmark_time_sec: 306.1516772499308
-mppi_benchmark_time_sec: 273.6689721249277
+total_benchmark_time_sec: 540.10493016697
+sensor_benchmark_time_sec: 290.17435620795004
+mppi_benchmark_time_sec: 249.930085292086
 sensor_suite (7 rows):
   |condition_name|condition_description|evaluated_trajectories|pos_mae_per_horizon|pos_mse_per_horizon|vel_mae_per_horizon|vel_mse_per_horizon|latent_mse_per_horizon|mean_spike_rate|drift_ratio|rollout_mae|rollout_vel_mae|
   |---|---|---|---|---|---|---|---|---|---|---|---|
-  |Nominal Baseline|Clean events (theta = 0.08, 0% noise)|400|{1:0.021866663430745784,10:0.0280087895404834,50:0.08357812464237213,100:0.10119512734504846}|{1:8.261299920447457e-05,10:0.00025150049791241495,50:0.0018420498728608857,100:0.0025279655461557782}|{1:0.043133348799668826,10:0.2146205615538817,50:0.2703980757639958,100:0.28352354352290815}|{1:0.0003449317278304639,10:0.01601280694684157,50:0.020913268081270732,100:0.021970406317940123}|{1:0.0036323230821066177,10:0.029199937501778968,50:0.1523307068989827,100:0.4701635379057664}|0.16886679369669694|4.627826630502864|0.058662176239662446|0.20291888241011363|
-  |Threshold Shift (theta = 0.05)|Hypersensitive contrast threshold (excessive triggers)|400|{1:0.02434844022186903,10:0.0311208377377345,50:0.08291540753382903,100:0.10027076017398101}|{1:0.00010200044422302968,10:0.00027270377680766757,50:0.0017328091019477982,100:0.0024490583455190063}|{1:0.04525788472248958,10:0.21077184837598067,50:0.2722240182069632,100:0.2828080172722156}|{1:0.0004267896068855547,10:0.015791650001819316,50:0.021022879017087128,100:0.021868897745242484}|{1:0.0036948650108220484,10:0.02638488678404918,50:0.10624228360561225,100:0.379447503731801}|0.16239957282176384|4.118159490311863|0.0596638614168534|0.20276544214441228|
-  |Threshold Shift (theta = 0.12)|Hyposensitive contrast threshold (event dropout)|400|{1:0.02378764204107798,10:0.030523547616142493,50:0.09119394077704503,100:0.1088219560109652}|{1:9.874529832114394e-05,10:0.0002712722623702855,50:0.002337033027568116,100:0.0029515724163502455}|{1:0.04488573853786175,10:0.21711571858479425,50:0.2768082320690155,100:0.2975696875498845}|{1:0.00035693880188493774,10:0.016278337973814744,50:0.022404052317142487,100:0.024400545713993218}|{1:0.0036737392119203624,10:0.033397352179655664,50:0.2237849900355706,100:0.6997736096382141}|0.18293448021778694|4.574726482895811|0.06358177161130768|0.20909484418538898|
-  |Background Activity (0.5%)|Thermal dark current Poisson flip noise (0.5% rate)|400|{1:0.30989960523752064,10:0.283331403365502,50:0.21347965987829062,100:0.1741357113306339}|{1:0.017396035962379895,10:0.015061042844676055,50:0.010069513191970495,100:0.007026396297778075}|{1:0.28225606221419114,10:0.4105911667530353,50:0.6197603803414565,100:0.4707247775334578}|{1:0.01515914098574565,10:0.06220898691278238,50:0.09822860933267154,100:0.06217856533252276}|{1:0.012375020851882605,10:0.04393538202230747,50:0.14769999568278974,100:0.42187062822855437}|0.16496152717333573|0.5619100779336865|0.24521159495298678|0.44583309671053517|
-  |Background Activity (1.0%)|Thermal dark current Poisson flip noise (1.0% rate)|400|{1:0.3967986267346602,10:0.3823115940277393,50:0.26958138667620146,100:0.21231906574506026}|{1:0.027938672413046543,10:0.02713170790901551,50:0.015920649425914653,100:0.010550613443438824}|{1:0.41660942710362947,10:0.48122223294698274,50:0.7480433491560129,100:0.5626890888580909}|{1:0.03242027917160438,10:0.07405852612394553,50:0.13276195239562255,100:0.08351876586675644}|{1:0.013969818201775733,10:0.05016351806429716,50:0.14118089240330917,100:0.37954342594513524}|0.16082481810679802|0.5350801425203477|0.3152526682959153|0.552141024516179|
-  |Refractory Dropout (10%)|Dead-time/bus saturation active event masking (10% rate)|400|{1:0.023128399052298985,10:0.02896793272632819,50:0.08507037793214504,100:0.10247140778945042}|{1:9.313903025870856e-05,10:0.0002581641937677677,50:0.0019213098119227933,100:0.002592817987673558}|{1:0.04307255234855872,10:0.21461740938516763,50:0.2702915072441101,100:0.2851291230091682}|{1:0.0003505987786831191,10:0.015979128459898326,50:0.02102163118811754,100:0.02227333947443045}|{1:0.0036899231625004457,10:0.030018638962736495,50:0.1686514042890989,100:0.5061306701256678}|0.1711532209928219|4.43054478426014|0.059909529375055656|0.20327764799675113|
-  |Refractory Dropout (20%)|Dead-time/bus saturation active event masking (20% rate)|400|{1:0.024738904948417958,10:0.029932929202914238,50:0.08702022926165508,100:0.10421608503048237}|{1:0.00010756217502953055,10:0.00026523186086426274,50:0.002029965604798725,100:0.0026821902630707393}|{1:0.043136574901067294,10:0.21473453365839446,50:0.27093966878377473,100:0.28750301553652835}|{1:0.00035260149161331356,10:0.0160292827595885,50:0.02124805347277568,100:0.022672553188525714}|{1:0.0037681947354800426,10:0.030889696943072174,50:0.1845304725261835,100:0.5457320488416232}|0.1735646678851201|4.21263937299484|0.06147703711086741|0.2040784482199412|
+  |Nominal Baseline|Clean events (theta = 0.08, 0% noise)|400|{1:0.023200019764212463,10:0.02914743970793027,50:0.09496219055010723,100:0.12599697594459242}|{1:9.270948458624144e-05,10:0.0002862775447563483,50:0.002346467746135134,100:0.0037753761101227542}|{1:0.03487798657554846,10:0.193737920660239,50:0.2915314229635092,100:0.3264090854388017}|{1:0.00023363830741100872,10:0.017213198069769602,50:0.02561490022792266,100:0.028923398456894435}|{1:0.0034456770473088208,10:0.03336573793337895,50:0.14944499616439527,100:0.4552898705005646}|0.16886679484294012|5.430899508928476|0.0683266564917106|0.21163910390952462|
+  |Threshold Shift (theta = 0.05)|Hypersensitive contrast threshold (excessive triggers)|400|{1:0.024730355837024175,10:0.029505800885649826,50:0.09451624636466686,100:0.12587882234500006}|{1:0.00010471417548475214,10:0.00028009701838107925,50:0.0022852978257175824,100:0.0037466236748374426}|{1:0.03602095349476887,10:0.19536264813863313,50:0.29220786919960606,100:0.3215826107905461}|{1:0.0002907233182878162,10:0.017898809666243885,50:0.02550199284003331,100:0.028077146038413048}|{1:0.003464652905957057,10:0.03037899976166395,50:0.1060851405446346,100:0.3690155813327202}|0.16239805290332207|5.090053017213163|0.06865780635808523|0.21129352040588856|
+  |Threshold Shift (theta = 0.12)|Hyposensitive contrast threshold (event dropout)|400|{1:0.023581712291790888,10:0.031107897082200416,50:0.10158508614851879,100:0.13018850409067595}|{1:9.633198687179874e-05,10:0.00029724174573157844,50:0.0028267552932867636,100:0.004083285967891033}|{1:0.03636597756009836,10:0.19551872519346383,50:0.2999404966831207,100:0.3458442504589374}|{1:0.0002451437097848751,10:0.017195390394100778,50:0.02750812370616656,100:0.032117279103169076}|{1:0.0034971129185018632,10:0.037674871201698594,50:0.21911612153053284,100:0.6815015031741216}|0.18293510606655708|5.520740075180899|0.0716157999032965|0.2194173624739051|
+  |Background Activity (0.5%)|Thermal dark current Poisson flip noise (0.5% rate)|400|{1:0.31446244854193467,10:0.3130458914316617,50:0.24148339835497049,100:0.1990219675577604}|{1:0.017893086689022872,10:0.018401766195893288,50:0.012290612006416688,100:0.008773094723717524}|{1:0.2884048590293297,10:0.407500127187142,50:0.6605527217571552,100:0.5391311874756446}|{1:0.015800764569296286,10:0.06501392991496967,50:0.11117749374646407,100:0.0750805540726735}|{1:0.012719172841081252,10:0.04755970147939829,50:0.14018257879293883,100:0.40129072620318484}|0.16496412112162664|0.6328958146849134|0.2670034264715818|0.47389722386231786|
+  |Background Activity (1.0%)|Thermal dark current Poisson flip noise (1.0% rate)|400|{1:0.40155811034716093,10:0.4219544736238626,50:0.30423943125284636,100:0.24146529344411996}|{1:0.028586954021683104,10:0.03298173343332914,50:0.01928400004712435,100:0.013036714723476997}|{1:0.42406835693579453,10:0.4751130457107837,50:0.7700750873639033,100:0.6146105619577261}|{1:0.0335168858560232,10:0.07526819837781099,50:0.1416193166604409,100:0.0936875704389352}|{1:0.014243993979807083,10:0.05295944815644851,50:0.13227384480146262,100:0.3583175264872037}|0.16082660624614128|0.6013209227311206|0.34230432716699744|0.570966762992052|
+  |Refractory Dropout (10%)|Dead-time/bus saturation active event masking (10% rate)|400|{1:0.023716040098896392,10:0.029676143223276504,50:0.09631844552663657,100:0.1269878871165789}|{1:9.798971195078384e-05,10:0.00029030294144132105,50:0.002433990334303906,100:0.003845633276236745}|{1:0.03561046060461264,10:0.1951288626744197,50:0.2929766751252688,100:0.3297435549589304}|{1:0.00024922941520344466,10:0.017276655739316575,50:0.025928828578728896,100:0.02948701438995508}|{1:0.003493771906225727,10:0.034238147047849804,50:0.16500934729209313,100:0.49022589509303754}|0.17115286336495325|5.354514775107342|0.0691746289913471|0.21336488834080788|
+  |Refractory Dropout (20%)|Dead-time/bus saturation active event masking (20% rate)|400|{1:0.024733260560494203,10:0.030587169986504775,50:0.0973021611571312,100:0.12772450882654923}|{1:0.0001075945547199808,10:0.00029786214313039987,50:0.0024925051615215265,100:0.003891697314639504}|{1:0.0367551466020254,10:0.19575042449511015,50:0.29445403126569897,100:0.3328194045103513}|{1:0.0002661194347848113,10:0.0173449946853977,50:0.02626550254913477,100:0.03003255292200125}|{1:0.0035658765476770126,10:0.035167103490004174,50:0.18052387122924513,100:0.5291586151489844}|0.1735653831408574|5.16407889344603|0.07008677513266985|0.21494475171829644|
 mppi_suite (5 items):
   - [0]
     condition_name: Nominal Baseline
     condition_description: Nominal visual telemetry, calibrated dynamics and friction
     episodes_evaluated: 50
-    grasp_success_rate_pct: 86.0
-    min_placement_error_mean_cm: 0.8552020224928856
-    min_placement_error_std_cm: 0.7991095820631844
-    terminal_placement_error_mean_cm: 1.5668222349882126
-    terminal_velocity_mean: 0.32701518952846526
-    mean_latency_ms: 36.05713042749771
+    grasp_success_rate_pct: 57.99999999999999
+    min_placement_error_mean_cm: 0.9966417002677918
+    min_placement_error_std_cm: 0.7168366082198878
+    terminal_placement_error_mean_cm: 2.117010636925697
+    terminal_velocity_mean: 0.37095459580421447
+    mean_latency_ms: 32.431992493769116
     elevation_plane_breakdown:
-      Low: {count:22.0,success_rate_pct:86.36363636363636,mean_error_cm:0.855392383580858,mean_terminal_error_cm:1.9869136796756224}
-      Mid: {count:18.0,success_rate_pct:77.77777777777779,mean_error_cm:1.054786902334955,mean_terminal_error_cm:1.3530784381760492}
-      High: {count:10.0,success_rate_pct:100.0,mean_error_cm:0.4955304443836212,mean_terminal_error_cm:1.0273598909378052}
+      Low: {count:22.0,success_rate_pct:40.909090909090914,mean_error_cm:0.9283917966214094,mean_terminal_error_cm:2.744907847859643}
+      Mid: {count:18.0,success_rate_pct:61.111111111111114,mean_error_cm:1.3163958506451712,mean_terminal_error_cm:1.8659200933244493}
+      High: {count:10.0,success_rate_pct:90.0,mean_error_cm:0.5712340176105499,mean_terminal_error_cm:1.187599751353264}
     mass_tier_breakdown:
-      Light (1.2 - 2.3 kg): {count:17.0,success_rate_pct:82.35294117647058,mean_error_cm:0.6789520838681389,mean_terminal_error_cm:1.643607579609927}
-      Medium (2.3 - 3.4 kg): {count:17.0,success_rate_pct:100.0,mean_error_cm:0.767013340311892,mean_terminal_error_cm:1.453135742860682}
-      Heavy (3.4 - 4.5+ kg): {count:16.0,success_rate_pct:75.0,mean_error_cm:1.1361680570989847,mean_terminal_error_cm:1.6060297042131424}
+      Light (1.2 - 2.3 kg): {count:17.0,success_rate_pct:41.17647058823529,mean_error_cm:0.8797548360684339,mean_terminal_error_cm:2.0735019743442535}
+      Medium (2.3 - 3.4 kg): {count:17.0,success_rate_pct:82.35294117647058,mean_error_cm:0.8255256133921006,mean_terminal_error_cm:2.0967908571748173}
+      Heavy (3.4 - 4.5+ kg): {count:16.0,success_rate_pct:50.0,mean_error_cm:1.3026448357850313,mean_terminal_error_cm:2.1847221069037914}
     episodes_with_handover_pct: 0.0
     phi1_steps_with_handover_pct: 0.0
     mean_nonzero_handover_w: 0.0
@@ -5411,20 +5917,20 @@ mppi_suite (5 items):
     condition_name: Sensory Noise Injection (1.0%)
     condition_description: Visual events corrupted with 1.0% Background Activity noise
     episodes_evaluated: 50
-    grasp_success_rate_pct: 72.0
-    min_placement_error_mean_cm: 0.9837424418330193
-    min_placement_error_std_cm: 0.8029913824759806
-    terminal_placement_error_mean_cm: 1.8598396837711335
-    terminal_velocity_mean: 0.2989905294775963
-    mean_latency_ms: 34.990572020690095
+    grasp_success_rate_pct: 54.0
+    min_placement_error_mean_cm: 1.1959887701272964
+    min_placement_error_std_cm: 0.891931935595883
+    terminal_placement_error_mean_cm: 2.683878175020218
+    terminal_velocity_mean: 0.33141832798719406
+    mean_latency_ms: 32.060862347789936
     elevation_plane_breakdown:
-      Low: {count:22.0,success_rate_pct:63.63636363636363,mean_error_cm:1.1564414731480859,mean_terminal_error_cm:2.533061908050017}
-      Mid: {count:18.0,success_rate_pct:66.66666666666666,mean_error_cm:0.9351571831438277,mean_terminal_error_cm:1.383733461300532}
-      High: {count:10.0,success_rate_pct:100.0,mean_error_cm:0.6912580385804177,mean_terminal_error_cm:1.2357419908046723}
+      Low: {count:22.0,success_rate_pct:50.0,mean_error_cm:1.377844351259145,mean_terminal_error_cm:3.0191407068209215}
+      Mid: {count:18.0,success_rate_pct:33.33333333333333,mean_error_cm:1.1520791616704729,mean_terminal_error_cm:2.761846797333823}
+      High: {count:10.0,success_rate_pct:100.0,mean_error_cm:0.8749437868595124,mean_terminal_error_cm:1.8059570848941804}
     mass_tier_breakdown:
-      Light (1.2 - 2.3 kg): {count:17.0,success_rate_pct:82.35294117647058,mean_error_cm:0.8425054918317234,mean_terminal_error_cm:1.7817925039459677}
-      Medium (2.3 - 3.4 kg): {count:17.0,success_rate_pct:82.35294117647058,mean_error_cm:0.9956889766104081,mean_terminal_error_cm:1.9012414111810572}
-      Heavy (3.4 - 4.5+ kg): {count:16.0,success_rate_pct:50.0,mean_error_cm:1.1211135080084205,mean_terminal_error_cm:1.898775476962328}
+      Light (1.2 - 2.3 kg): {count:17.0,success_rate_pct:52.94117647058824,mean_error_cm:0.97267567059573,mean_terminal_error_cm:2.49932455665925}
+      Medium (2.3 - 3.4 kg): {count:17.0,success_rate_pct:64.70588235294117,mean_error_cm:1.1479233976672678,mean_terminal_error_cm:2.8443444406285003}
+      Heavy (3.4 - 4.5+ kg): {count:16.0,success_rate_pct:43.75,mean_error_cm:1.4843283966183662,mean_terminal_error_cm:2.7094709873199463}
     episodes_with_handover_pct: 0.0
     phi1_steps_with_handover_pct: 0.0
     mean_nonzero_handover_w: 0.0
@@ -5435,20 +5941,20 @@ mppi_suite (5 items):
     condition_name: Payload Extrapolation (4.80 kg)
     condition_description: Out-of-distribution heavy payload (m=4.80 kg vs [1.20, 4.50] kg)
     episodes_evaluated: 50
-    grasp_success_rate_pct: 78.0
-    min_placement_error_mean_cm: 1.245790022313595
-    min_placement_error_std_cm: 1.0984275509927777
-    terminal_placement_error_mean_cm: 1.7834283006191254
-    terminal_velocity_mean: 0.43445359870791433
-    mean_latency_ms: 37.20313749923503
+    grasp_success_rate_pct: 56.00000000000001
+    min_placement_error_mean_cm: 1.7644587180018425
+    min_placement_error_std_cm: 1.8775155414354365
+    terminal_placement_error_mean_cm: 2.4560093522071837
+    terminal_velocity_mean: 0.5556513021886349
+    mean_latency_ms: 32.58270962906839
     elevation_plane_breakdown:
-      Low: {count:22.0,success_rate_pct:77.27272727272727,mean_error_cm:1.1498750068924644,mean_terminal_error_cm:2.083613170818849}
-      Mid: {count:18.0,success_rate_pct:77.77777777777779,mean_error_cm:1.4548369869589806,mean_terminal_error_cm:1.7425566514333088}
-      High: {count:10.0,success_rate_pct:80.0,mean_error_cm:1.0805185198783875,mean_terminal_error_cm:1.1965905547142028}
+      Low: {count:22.0,success_rate_pct:63.63636363636363,mean_error_cm:1.4761234576051885,mean_terminal_error_cm:2.2185537300326605}
+      Mid: {count:18.0,success_rate_pct:38.88888888888889,mean_error_cm:2.432745859854751,mean_terminal_error_cm:3.117100712325838}
+      High: {count:10.0,success_rate_pct:70.0,mean_error_cm:1.1958794355392457,mean_terminal_error_cm:1.7884472727775573}
     mass_tier_breakdown:
-      Light (1.2 - 2.3 kg): {count:17.0,success_rate_pct:76.47058823529412,mean_error_cm:0.876447988783612,mean_terminal_error_cm:1.3729157938676722}
-      Medium (2.3 - 3.4 kg): {count:17.0,success_rate_pct:88.23529411764706,mean_error_cm:1.072767906329211,mean_terminal_error_cm:1.7970439546248491}
-      Heavy (3.4 - 4.5+ kg): {count:16.0,success_rate_pct:68.75,mean_error_cm:1.8220519311726093,mean_terminal_error_cm:2.205131206661463}
+      Light (1.2 - 2.3 kg): {count:17.0,success_rate_pct:58.82352941176471,mean_error_cm:1.0763100201592726,mean_terminal_error_cm:1.8543823571766125}
+      Medium (2.3 - 3.4 kg): {count:17.0,success_rate_pct:70.58823529411765,mean_error_cm:1.6607786907869226,mean_terminal_error_cm:2.4388887181001553}
+      Heavy (3.4 - 4.5+ kg): {count:16.0,success_rate_pct:37.5,mean_error_cm:2.6057767383754253,mean_terminal_error_cm:3.113428708165884}
     episodes_with_handover_pct: 0.0
     phi1_steps_with_handover_pct: 0.0
     mean_nonzero_handover_w: 0.0
@@ -5459,20 +5965,20 @@ mppi_suite (5 items):
     condition_name: Actuator Drift (0.80x Friction)
     condition_description: Mechanical wear / loose joints (-20% friction/damping)
     episodes_evaluated: 50
-    grasp_success_rate_pct: 70.0
-    min_placement_error_mean_cm: 1.3162081634998322
-    min_placement_error_std_cm: 1.1690919022908202
-    terminal_placement_error_mean_cm: 2.0683961123228074
-    terminal_velocity_mean: 0.3934475040435791
-    mean_latency_ms: 36.6571082404878
+    grasp_success_rate_pct: 68.0
+    min_placement_error_mean_cm: 1.7202977061271667
+    min_placement_error_std_cm: 1.8452188046070126
+    terminal_placement_error_mean_cm: 2.383537862300873
+    terminal_velocity_mean: 0.4953418381512165
+    mean_latency_ms: 33.133227099747344
     elevation_plane_breakdown:
-      Low: {count:22.0,success_rate_pct:63.63636363636363,mean_error_cm:1.1889834607189351,mean_terminal_error_cm:2.53419767184691}
-      Mid: {count:18.0,success_rate_pct:72.22222222222221,mean_error_cm:1.5544826421472762,mean_terminal_error_cm:1.7902768933110766}
-      High: {count:10.0,success_rate_pct:80.0,mean_error_cm:1.1672084480524063,mean_terminal_error_cm:1.5442472755908967}
+      Low: {count:22.0,success_rate_pct:72.72727272727273,mean_error_cm:1.3773770914836363,mean_terminal_error_cm:2.070421573790637}
+      Mid: {count:18.0,success_rate_pct:50.0,mean_error_cm:2.5278382500012717,mean_terminal_error_cm:3.2292134364446006}
+      High: {count:10.0,success_rate_pct:90.0,mean_error_cm:1.021150079369545,mean_terminal_error_cm:1.550177663564682}
     mass_tier_breakdown:
-      Light (1.2 - 2.3 kg): {count:17.0,success_rate_pct:88.23529411764706,mean_error_cm:0.8253367402974296,mean_terminal_error_cm:1.5288092020679922}
-      Medium (2.3 - 3.4 kg): {count:17.0,success_rate_pct:70.58823529411765,mean_error_cm:1.1374130424331217,mean_terminal_error_cm:2.021532507503734}
-      Heavy (3.4 - 4.5+ kg): {count:16.0,success_rate_pct:50.0,mean_error_cm:2.0277288667857647,mean_terminal_error_cm:2.691499784588814}
+      Light (1.2 - 2.3 kg): {count:17.0,success_rate_pct:88.23529411764706,mean_error_cm:1.0297587829477646,mean_terminal_error_cm:1.9232896531329435}
+      Medium (2.3 - 3.4 kg): {count:17.0,success_rate_pct:76.47058823529412,mean_error_cm:1.6581512759713566,mean_terminal_error_cm:2.3134185040698334}
+      Heavy (3.4 - 4.5+ kg): {count:16.0,success_rate_pct:37.5,mean_error_cm:2.5200258940458298,mean_terminal_error_cm:2.947053402662277}
     episodes_with_handover_pct: 0.0
     phi1_steps_with_handover_pct: 0.0
     mean_nonzero_handover_w: 0.0
@@ -5483,20 +5989,20 @@ mppi_suite (5 items):
     condition_name: Actuator Drift (1.20x Friction)
     condition_description: Mechanical wear / stiff transmission (+20% friction/damping)
     episodes_evaluated: 50
-    grasp_success_rate_pct: 76.0
-    min_placement_error_mean_cm: 1.3224645945429803
-    min_placement_error_std_cm: 1.2224200163900485
-    terminal_placement_error_mean_cm: 1.9732722735404968
-    terminal_velocity_mean: 0.3801573750376701
-    mean_latency_ms: 36.835968496259994
+    grasp_success_rate_pct: 70.0
+    min_placement_error_mean_cm: 1.787329178750515
+    min_placement_error_std_cm: 1.8200874079923721
+    terminal_placement_error_mean_cm: 2.4599468809366227
+    terminal_velocity_mean: 0.49150543451309203
+    mean_latency_ms: 33.69387655897015
     elevation_plane_breakdown:
-      Low: {count:22.0,success_rate_pct:72.72727272727273,mean_error_cm:1.1845615858381444,mean_terminal_error_cm:2.3086387406695974}
-      Mid: {count:18.0,success_rate_pct:72.22222222222221,mean_error_cm:1.6079355710082583,mean_terminal_error_cm:1.8520427114433713}
-      High: {count:10.0,success_rate_pct:90.0,mean_error_cm:1.112003456056118,mean_terminal_error_cm:1.4536792576313018}
+      Low: {count:22.0,success_rate_pct:68.18181818181817,mean_error_cm:1.4700086469000035,mean_terminal_error_cm:2.166050752455538}
+      Mid: {count:18.0,success_rate_pct:66.66666666666666,mean_error_cm:2.5528457396560245,mean_terminal_error_cm:3.327590372827318}
+      High: {count:10.0,success_rate_pct:80.0,mean_error_cm:1.1075045391917229,mean_terminal_error_cm:1.5447600781917572}
     mass_tier_breakdown:
-      Light (1.2 - 2.3 kg): {count:17.0,success_rate_pct:100.0,mean_error_cm:0.8716237729086596,mean_terminal_error_cm:1.2805503992473377}
-      Medium (2.3 - 3.4 kg): {count:17.0,success_rate_pct:76.47058823529412,mean_error_cm:1.0381577838869656,mean_terminal_error_cm:2.0561175486620735}
-      Heavy (3.4 - 4.5+ kg): {count:16.0,success_rate_pct:50.0,mean_error_cm:2.1035589538514614,mean_terminal_error_cm:2.621266160160303}
+      Light (1.2 - 2.3 kg): {count:17.0,success_rate_pct:82.35294117647058,mean_error_cm:1.001258819418795,mean_terminal_error_cm:1.8067133040989147}
+      Medium (2.3 - 3.4 kg): {count:17.0,success_rate_pct:82.35294117647058,mean_error_cm:1.7711794867235071,mean_terminal_error_cm:2.4717557535452}
+      Heavy (3.4 - 4.5+ kg): {count:16.0,success_rate_pct:43.75,mean_error_cm:2.6396879833191633,mean_terminal_error_cm:3.1414606291800737}
     episodes_with_handover_pct: 0.0
     phi1_steps_with_handover_pct: 0.0
     mean_nonzero_handover_w: 0.0
@@ -5527,9 +6033,9 @@ mppi_suite (5 items):
 The reported SPWM and comparative baseline numbers evolved directly as evaluation rigor, baseline training equality, and gating fairness tightened:
 1. **Non-PIL Latent-Grounded (`96.0%`) & Pre-Fix PIL (`88.0%`):** Early runs either blended ground-truth latents (`z_gt_next`) during $\phi_t = 1$ or delayed payload attachment to `t >= t_grasp` (historical Nov 17 snapshot).
 2. **Causal Physics-in-the-Loop (`60.7 ± 2.3%` $N=25$ Validation-Selected 3-Seed Mean):** Enforced causal `payload_attached=(t >= t_c)` in [experiments/benchmark_mppi_control.py](file:///Users/Mattia/Desktop/Studies/Temp/experiments/benchmark_mppi_control.py#L390) and [spwm/evaluation/mppi_scorer.py](file:///Users/Mattia/Desktop/Studies/Temp/spwm/evaluation/mppi_scorer.py#L369), where $t_c$ indexes the $\phi_t=1$ sensory-window onset (`p1_indices[0] = t_contact - 7`) and PIL evaluates the 7-step loaded transition through $t_{\text{grasp}} = t_c + 7 = t_{\text{contact}}$, with zero `z_gt_next` leakage, causal `OnlineEventCameraStream`, and strict grasp success criteria (`< 3.0 cm` 3-step settling, `< 0.05 rad` $\text{SO}(3)$ error, $\tau_{\text{vel}} = \max(1.5, 1.1\|\dot{\mathbf{q}}^*_{t_{\text{grasp}}}\|_2)$) ([tests/test_leakage.py](file:///Users/Mattia/Desktop/Studies/Temp/tests/test_leakage.py), [tests/test_pil_integrity.py](file:///Users/Mattia/Desktop/Studies/Temp/tests/test_pil_integrity.py)).
-3. **Baseline Equalization (AR(1)+DAgger) & Identical FK Residual Rejection Gate:** Fixed the truncated `18`-epoch `Deep GRU` runs on Seeds `101, 2024`, trained both `Continuous RSSM` and `Deep GRU` across all 3 seeds (`42, 101, 2024`) with multi-step SE(3) rollout + AR(1) MPPI-matched action noise + `ClosedLoopBuffer` DAgger replay, and evaluated all three PIL regimes (**Open-Loop $w_t=0$**, **Un-Gated Online $w_t=1.0$**, and **Residual-Gated Online** using the identical FK rejection gate as SPWM). Under residual gating, `Continuous RSSM` remains at `15.3 ± 5.0%` (`0.0%` un-gated, confirming its ceiling is architectural), while equalized `Deep GRU` recovers from `0.0%` (un-gated) to `76.7 ± 5.0%` (`77.3 ± 4.2%` open-loop)—achieving higher nominal PIL success than `SPWM` (`60.7 ± 2.3%`) while exceeding the `50 ms` (`20 Hz`) real-time budget (`57.7 ms/step` vs `26.6 ms/step`), trailing `SPWM` by `9.0×` on $H=100$ velocity MSE (`0.08716` vs `0.00971`), and using `22.1×` higher standby core energy / `1.59×` higher E2E step energy.
-4. **Full 3-Seed 5-Stage Disentangled Ablation (`45.3 ± 16.0% -> 51.3 ± 9.5% -> 38.0 ± 19.1% -> 60.7 ± 2.3% -> 60.7 ± 2.3%`):** Evaluated across all 3 seeds (`42, 101, 2024`) on `[3600, 3649]`. Transparently reveals that Phase 3/4 AR(1)+DAgger replay (`Stage 3`) reduces trajectory jitter (`|Δ²q|: 0.00991 -> 0.00589`) while degrading 3-seed mean PIL success (`-13.3 pp`) and doubling seed std (`9.5% -> 19.1%`), making `N=25` validation checkpoint selection (`[3200, 3224]`) essential before 2-Stage SE(3) Lookahead (`Stage 4a/4b`) yields `60.7 ± 2.3%` (`11.7×` variance cut vs. `N=6` Tier-2 `58.0 ± 27.1%`).
-5. **Standby Core vs. E2E Energy Recalibration:** Frames the `4.94×` Loihi-2 core reduction (`12.22 ± 0.19 nJ/step`, `0.244 mW` @ `20 Hz`, excluding passive membrane leak) strictly as an **always-on standby state-estimation benefit** when dense MPPI planning is dormant; E2E step energy (`1.0979 mJ/step`) matches `ANN-Rate` (`0.004%` diff), so `SPWM`'s primary advantage over `ANN-Rate` is dynamical stability (`+23.4 pp` PIL success) and `4.3×` better `1.0%` noise retention.
+3. **Baseline Equalization (AR(1)+DAgger) & Identical FK Residual Rejection Gate:** Fixed the truncated `18`-epoch `Deep GRU` runs on Seeds `101, 2024`, trained both `Continuous RSSM` and `Deep GRU` across all 3 seeds (`42, 101, 2024`) with multi-step SE(3) rollout + AR(1) MPPI-matched action noise + `ClosedLoopBuffer` DAgger replay, and evaluated all three PIL regimes (**Open-Loop $w_t=0$**, **Un-Gated Online $w_t=1.0$**, and **Residual-Gated Online** using the identical FK rejection gate as SPWM). Under residual gating, `Continuous RSSM` remains at `15.3 ± 5.0%` (`0.0%` un-gated, confirming its ceiling is architectural), while equalized `Deep GRU` recovers from `0.0%` (un-gated) to `76.7 ± 5.0%` (`77.3 ± 4.2%` open-loop)—achieving higher nominal PIL success than `SPWM` (`60.7 ± 2.3%`) while exceeding the `50 ms` (`20 Hz`) real-time budget (`57.7 ms/step` vs `26.6 ms/step`), trailing `SPWM` by `9.0×` on $H=100$ velocity MSE (`0.08716` vs `0.00971`), **collapsing under zero-shot mechanical perturbations** (`23.3 ± 12.9%` at `4.80 kg` payload, `26.7 ± 23.9%` at `0.80×` friction, `30.0 ± 15.1%` at `1.20×` friction vs. `SPWM` `44.7 ± 13.3% / 52.7 ± 13.3% / 48.0 ± 19.3%`), and using `22.1×` higher standby core energy / `1.59×` higher E2E step energy.
+4. **Full 3-Seed 6-Row Disentangled Ablation (`45.3 ± 16.0% -> 51.3 ± 9.5% -> 38.0 ± 19.1% -> 49.3 ± 6.1% -> 60.7 ± 2.3% -> 60.7 ± 2.3%`):** Evaluated across all 3 seeds (`42, 101, 2024`) on `[3600, 3649]`. Transparently reveals that Phase 3/4 AR(1)+DAgger replay (`Stage 3a`, `checkpoint_phase_4.pt`) reduces trajectory jitter (`|Δ²q|: 0.00991 -> 0.00589`) while degrading 3-seed mean PIL success (`-13.3 pp`) and doubling seed std (`9.5% -> 19.1%`). Isolating **`N=25` validation checkpoint selection (`[3200, 3224]`) without Lookahead (`Stage 3b`: `42: phase_4`, `101: phase_1`, `2024: phase_2`)** recovers 3-seed PIL success to **`49.3 ± 6.1%`** (`56 / 44 / 48%`, `+11.3 pp` from checkpoint selection alone), and adding **2-Stage SE(3) Lookahead (`Stage 4a/4b`)** contributes a further **`+11.3 pp`** gain to **`60.7 ± 2.3%`** (`58 / 62 / 62%`).
+5. **Standby Core vs. E2E Energy Recalibration:** Frames the `4.94×` Loihi-2 core reduction (`12.22 ± 0.19 nJ/step`, `0.244 mW` @ `20 Hz`, excluding passive membrane leak) strictly as an **always-on standby state-estimation benefit** when dense MPPI planning is dormant; E2E step energy (`1.0979 mJ/step`) matches `ANN-Rate` (`0.004%` diff), so `SPWM`'s primary advantage over `ANN-Rate` is dynamical stability (`+23.4 pp` nominal PIL success, `+24.7 pp` and `2.0×` better relative retention under `1.0%` sensory noise on `$N=25$` validation-selected checkpoints).
 
 ---
 
@@ -5538,7 +6044,7 @@ The reported SPWM and comparative baseline numbers evolved directly as evaluatio
 | Historical Issue Resolved | Ground Truth Verified in Code / Artifacts | Where Resolved Here |
 | :--- | :--- | :--- |
 | Un-gated (`w_t=1.0`) online baseline collapse & truncated `Deep GRU` epochs (`59/18/18`) | Equalized `Continuous RSSM` (`60+16/16/17`) & `Deep GRU` (`59+40=99`, `80`, `80`) with AR(1)+DAgger; evaluated Open-Loop, Un-Gated, and Residual-Gated PIL regimes across all 3 seeds | [03_BENCHMARKS_EVIDENCE_AND_REPLICATION.md](file:///Users/Mattia/Desktop/Studies/Temp/docs_verified/03_BENCHMARKS_EVIDENCE_AND_REPLICATION.md#L22-L70) |
-| Single-seed `"Canonical Seed 42"` (`86.0%`) headline & Seed-42-only ablation | Removed all `"Canonical Seed 42"` headline claims; lead strictly with $N=25$ val-selected (`60.7 ± 2.3%`) and 3-seed 5-stage ablation (`45.3 -> 51.3 -> 38.0 -> 60.7 -> 60.7%`) | [03_BENCHMARKS_EVIDENCE_AND_REPLICATION.md](file:///Users/Mattia/Desktop/Studies/Temp/docs_verified/03_BENCHMARKS_EVIDENCE_AND_REPLICATION.md#L72-L88) |
+| Single-seed `"Canonical Seed 42"` (`86.0%`) headline & Seed-42-only ablation | Removed all `"Canonical Seed 42"` headline claims; lead strictly with $N=25$ val-selected (`60.7 ± 2.3%`) and 3-seed 6-row ablation isolating $N=25$ selection without Lookahead (`45.3 -> 51.3 -> 38.0 -> 49.3 -> 60.7 -> 60.7%`) | [03_BENCHMARKS_EVIDENCE_AND_REPLICATION.md](file:///Users/Mattia/Desktop/Studies/Temp/docs_verified/03_BENCHMARKS_EVIDENCE_AND_REPLICATION.md#L72-L90) |
 | Contradictory `heft_shock_timeseries` & extra plots / scripts | Removed all non-architecture figures (`fig1..fig4`, `heft_shock_timeseries`) and plotting scripts (`figure_style.py`, `plot_heft_shock_timeseries.py`, `run_ssot_benchmark_and_plot.py`); retained [architecture.pdf](file:///Users/Mattia/Desktop/Studies/Temp/figures/architecture.pdf) | [01_SYSTEM_AND_ARCHITECTURE.md](file:///Users/Mattia/Desktop/Studies/Temp/docs_verified/01_SYSTEM_AND_ARCHITECTURE.md#L16) |
 | Overstated neuromorphic E2E energy framing (`48.14 nJ` atop `1.0971 mJ` MPPI) | Recalibrated Loihi-2 `12.22 nJ` (`4.94×`) as an always-on standby core benefit; E2E matches `ANN-Rate` (`1.0979 mJ`), while `1.93×` E2E gain vs `RSSM` comes from `M1`'s compact MLP | [03_BENCHMARKS_EVIDENCE_AND_REPLICATION.md](file:///Users/Mattia/Desktop/Studies/Temp/docs_verified/03_BENCHMARKS_EVIDENCE_AND_REPLICATION.md#L106-L130) |
 | `GLOBAL_VERSION` vs YAML project name & legacy formula drift | [spwm/contracts/version.py](file:///Users/Mattia/Desktop/Studies/Temp/spwm/contracts/version.py#L29-L32) defines `0.12.3` (`spwm_v0_12_3`); YAML overrides `project.name: spwm_v0_12_4`. Equations verified directly from code | [01_SYSTEM_AND_ARCHITECTURE.md](file:///Users/Mattia/Desktop/Studies/Temp/docs_verified/01_SYSTEM_AND_ARCHITECTURE.md#L28) |
@@ -5822,16 +6328,16 @@ All closed-loop control metrics below were executed under causal **Physics-in-th
 
 | Model / Seed | Checkpoint File | Epochs (Best) | Wall-Clock (`MPS`) | Primary Consumers |
 | :--- | :--- | :---: | :---: | :--- |
-| `SPWM` (`42`) | [results/spwm_v0_12_4_train_m1/checkpoint_phase_4.pt](file:///Users/Mattia/Desktop/Studies/Temp/results/spwm_v0_12_4_train_m1/checkpoint_phase_4.pt) | `160+240` (`240`) | `10.40 h` | Table 2 (`N=25` Val-Sel.), Table 3 (Stages 3–4b), `forensic` |
-| `SPWM` (`42`) | [results/spwm_v0_12_4_train_m1/model.pt](file:///Users/Mattia/Desktop/Studies/Temp/results/spwm_v0_12_4_train_m1/model.pt) / `best_model.pt` | `160+240` (`200`) | `10.40 h` | Table 1, Table 2 (`N=6`), Table 4, Table 5 |
+| `SPWM` (`42`) | [results/spwm_v0_12_4_train_m1/checkpoint_phase_4.pt](file:///Users/Mattia/Desktop/Studies/Temp/results/spwm_v0_12_4_train_m1/checkpoint_phase_4.pt) | `160+240` (`240`) | `10.40 h` | Table 2 (`N=25` Val-Sel.), Table 3 (Stages 3a–4b), Table 4, `forensic` |
+| `SPWM` (`42`) | [results/spwm_v0_12_4_train_m1/model.pt](file:///Users/Mattia/Desktop/Studies/Temp/results/spwm_v0_12_4_train_m1/model.pt) / `best_model.pt` | `160+240` (`200`) | `10.40 h` | Table 1, Table 2 (`N=6`), Table 5 |
 | `SPWM` (`42`) | `checkpoint_phase_1.pt` | `181` | — | Table 3 (Stages 1–2) |
-| `SPWM` (`101`) | [results/multiseed/seed_101_m1/checkpoint_phase_1.pt](file:///Users/Mattia/Desktop/Studies/Temp/results/multiseed/seed_101_m1/checkpoint_phase_1.pt) | `160+240` (`96`) | `5.86 h` | Table 2 (`N=25` Val-Sel.), Table 3 (Stages 1, 2, 4a, 4b), `forensic` |
-| `SPWM` (`101`) | [results/multiseed/seed_101_m1/model.pt](file:///Users/Mattia/Desktop/Studies/Temp/results/multiseed/seed_101_m1/model.pt) / `checkpoint_phase_4.pt` | `80` / `240` | `5.86 h` | Table 1, Table 2 (`N=6`), Table 3 (Stage 3), Tables 4–5 |
-| `SPWM` (`2024`) | [results/multiseed/seed_2024_m1/checkpoint_phase_2.pt](file:///Users/Mattia/Desktop/Studies/Temp/results/multiseed/seed_2024_m1/checkpoint_phase_2.pt) | `160+260` (`102`) | `6.41 h` | Table 2 (`N=25` Val-Sel.), Table 3 (Stages 4a, 4b), `forensic` |
-| `SPWM` (`2024`) | [results/multiseed/seed_2024_m1/model.pt](file:///Users/Mattia/Desktop/Studies/Temp/results/multiseed/seed_2024_m1/model.pt) / `checkpoint_phase_1.pt` / `phase_4.pt` | `130` / `94` / `260` | `6.41 h` | Table 1, Table 2 (`N=6`), Table 3 (Stages 1–3), Tables 4–5 |
+| `SPWM` (`101`) | [results/multiseed/seed_101_m1/checkpoint_phase_1.pt](file:///Users/Mattia/Desktop/Studies/Temp/results/multiseed/seed_101_m1/checkpoint_phase_1.pt) | `160+240` (`96`) | `5.86 h` | Table 2 (`N=25` Val-Sel.), Table 3 (Stages 1, 2, 3b, 4a, 4b), Table 4, `forensic` |
+| `SPWM` (`101`) | [results/multiseed/seed_101_m1/model.pt](file:///Users/Mattia/Desktop/Studies/Temp/results/multiseed/seed_101_m1/model.pt) / `checkpoint_phase_4.pt` | `80` / `240` | `5.86 h` | Table 1, Table 2 (`N=6`), Table 3 (Stage 3a), Table 5 |
+| `SPWM` (`2024`) | [results/multiseed/seed_2024_m1/checkpoint_phase_2.pt](file:///Users/Mattia/Desktop/Studies/Temp/results/multiseed/seed_2024_m1/checkpoint_phase_2.pt) | `160+260` (`102`) | `6.41 h` | Table 2 (`N=25` Val-Sel.), Table 3 (Stages 3b, 4a, 4b), Table 4, `forensic` |
+| `SPWM` (`2024`) | [results/multiseed/seed_2024_m1/model.pt](file:///Users/Mattia/Desktop/Studies/Temp/results/multiseed/seed_2024_m1/model.pt) / `checkpoint_phase_1.pt` / `phase_4.pt` | `130` / `94` / `260` | `6.41 h` | Table 1, Table 2 (`N=6`), Table 3 (Stages 1–3a), Table 5 |
 | `ANN-Rate` (`42/101/2024`) | `results/ann_ablation/seed_{42,101,2024}_m1/model.pt` | `160+240` | — | Tables 1, 2, 4, 5, `forensic` |
 | `Continuous RSSM` (`42/101/2024`) | `results/baselines/continuous_rssm/model.pt`, `results/multiseed_rssm/seed_{101,2024}/continuous_rssm/model.pt` *(60-ep backups in `model_pre_dagger_60ep.pt`)* | `60+16=76` (`61`), `60+16=76` (`61`), `60+17=77` (`62`) | `46.0+13.0 m`, `44.0+12.9 m`, `44.0+13.8 m` | Tables 1, 2 (Open-Loop, Un-Gated, Residual-Gated), `forensic` |
-| `Deep GRU` (`42/101/2024`) | `results/baselines/deep_gru/model.pt`, `results/multiseed_rssm/seed_{101,2024}/deep_gru/model.pt` *(backups in `model_pre_dagger_60ep.pt` / `model_pre_equalized_18ep.pt`)* | `59+40=99` (`90`), `80` (`68`), `80` (`80`) | `46.6+33.8 m`, `67.1 m`, `66.8 m` | Tables 1, 2 (Open-Loop, Un-Gated, Residual-Gated), `forensic` |
+| `Deep GRU` (`42/101/2024`) | `results/baselines/deep_gru/model.pt`, `results/multiseed_rssm/seed_{101,2024}/deep_gru/model.pt` *(backups in `model_pre_dagger_60ep.pt` / `model_pre_equalized_18ep.pt`)* | `59+40=99` (`90`), `80` (`68`), `80` (`80`) | `46.6+33.8 m`, `67.1 m`, `66.8 m` | Tables 1, 2 (Open-Loop, Un-Gated, Residual-Gated), Table 4 (Residual-Gated), `forensic` |
 | `Continuous ConvLSTM` (`42`) | [results/baselines/continuous_convlstm/model.pt](file:///Users/Mattia/Desktop/Studies/Temp/results/baselines/continuous_convlstm/model.pt) | `60` (`54`) | `86.9 m` | Table 1, Table 5 |
 
 ---
@@ -5873,12 +6379,12 @@ All closed-loop control metrics below were executed under causal **Physics-in-th
 
 * **Key Baseline Equalization & Trade-Off Takeaways:**
   1. Applying the identical causal FK residual gate eliminates the `0.0%` online collapse caused by un-gated domain-gapped 2D-vs-3D `OnlineEventCameraStream` frames (`w_t = 1.0`). Under residual gating, `Continuous RSSM` remains capped at `15.3 ± 5.0%` (`|Δ²q| = 0.02049`, `36.94` flips), confirming its failure is architectural.
-  2. Once equalized across all 3 seeds (`99 / 80 / 80` epochs with AR(1)+DAgger) and gated identically, `Deep GRU` achieves `76.7 ± 5.0%` PIL success (`77.3 ± 4.2%` open-loop)—exceeding `SPWM` (`60.7 ± 2.3%`) in nominal grasp rate and smoothness (`|Δ²q| = 0.00449`), **but** violates the `50.0 ms` (`20 Hz`) real-time budget (`57.7 ms/step` vs `SPWM` `26.6 ms/step`), suffers `9.0×` higher $H=100$ open-loop velocity MSE (`0.08716` vs `0.00971 rad²/s²`), and consumes `22.1×` higher standby core energy / `1.59×` higher E2E step energy.
-  3. Compared against parameter-matched `ANN-Rate` (`37.3 ± 9.5%`), `SPWM` retains a **`+23.4 pp`** 3-seed PIL gain (`60.7%` vs `37.3%`) isolating discrete ALIF spike thresholding.
+  2. Once equalized across all 3 seeds (`99 / 80 / 80` epochs with AR(1)+DAgger) and gated identically, `Deep GRU` achieves `76.7 ± 5.0%` PIL success (`77.3 ± 4.2%` open-loop)—exceeding `SPWM` (`60.7 ± 2.3%`) in nominal grasp rate and smoothness (`|Δ²q| = 0.00449`), **but** (i) violates the `50.0 ms` (`20 Hz`) real-time budget (`57.7 ms/step` vs `SPWM` `26.6 ms/step`), (ii) suffers `9.0×` higher $H=100$ open-loop velocity MSE (`0.08716` vs `0.00971 rad²/s²`), (iii) **collapses under zero-shot mechanical perturbations** (`23.3 ± 12.9%` at `4.80 kg` payload, `26.7 ± 23.9%` at `0.80×` friction, `30.0 ± 15.1%` at `1.20×` friction vs. `SPWM` `44.7 ± 13.3% / 52.7 ± 13.3% / 48.0 ± 19.3%`, trailing `SPWM` by `+18.0 to +26.0 pp`), and (iv) consumes `22.1×` higher standby core energy / `1.59×` higher E2E step energy.
+  3. Compared against parameter-matched `ANN-Rate` (`37.3 ± 9.5%`), `SPWM` retains a **`+23.4 pp`** 3-seed PIL gain (`60.7%` vs `37.3%`) and **`+24.7 pp`** under `1.0%` sensory noise (`54.7 ± 1.2%` vs `30.0 ± 3.5%`, `2.0×` better relative retention) isolating discrete ALIF spike thresholding.
 
 ---
 
-## 3. Table 3 — Full 3-Seed 5-Stage SPWM PIL Ablation (`[3600, 3649]`, Seeds `42, 101, 2024`)
+## 3. Table 3 — Full 3-Seed 6-Row SPWM PIL Ablation (`[3600, 3649]`, Seeds `42, 101, 2024`)
 
 **Evidence:** [ssot_eval_metrics.json](file:///Users/Mattia/Desktop/Studies/Temp/results/ssot_eval_metrics.json) (`corl_final_verification.disentangled_ablation_3seed`), `results/ablations/multiseed/stage*_seed{42,101,2024}/mppi_benchmark_metrics.json`.
 
@@ -5886,26 +6392,30 @@ All closed-loop control metrics below were executed under causal **Physics-in-th
 | :--- | :---: | :---: | :---: | :---: | :---: | :---: | :---: |
 | 1. SPWM-Base (`checkpoint_phase_1.pt`, Unsmoothed) | `62 / 44 / 30` | `45.3 ± 16.0` | `1.03 ± 0.21` | `2.50 ± 0.11` | `0.00983` | `0.00765` | `23.03` |
 | 2. + Smooth MPPI Controls (`checkpoint_phase_1.pt`) | `62 / 44 / 48` | `51.3 ± 9.5` | `1.02 ± 0.08` | `2.41 ± 0.13` | `0.00991` | `0.00705` | `21.99` |
-| 3. + Phase 3/4 Curriculum (AR(1)+DAgger, `checkpoint_phase_4.pt`, No Lookahead/Handover) | `56 / 18 / 40` | `38.0 ± 19.1` | `1.53 ± 0.59` | `3.27 ± 1.13` | `0.00589` | `0.00354` | `11.17` |
+| 3a. + Phase 3/4 Curriculum (AR(1)+DAgger, `checkpoint_phase_4.pt`, No Lookahead/Handover) | `56 / 18 / 40` | `38.0 ± 19.1` | `1.53 ± 0.59` | `3.27 ± 1.13` | `0.00589` | `0.00354` | `11.17` |
+| 3b. + $N=25$ Validation Checkpoint Selection (Val-Sel., No Lookahead/Handover) | `56 / 44 / 48` | `49.3 ± 6.1` | `1.00 ± 0.16` | `2.29 ± 0.23` | `0.00921` | `0.00659` | `21.18` |
 | 4a. + 2-Stage SE(3) Lookahead ($N=25$ Val-Sel., $w_t \equiv 0$) | `58 / 62 / 62` | `60.7 ± 2.3` | `0.88 ± 0.11` | `2.01 ± 0.12` | `0.00931` | `0.00663` | `21.14` |
 | **4b. + Residual Rejection Gate (Full SPWM, $N=25$ Val-Sel.)** | **`58 / 62 / 62`** | **`60.7 ± 2.3`** | **`0.88 ± 0.11`** | **`2.01 ± 0.12`** | **`0.00931`** | **`0.00663`** | **`21.14`** |
 
-* **Transparent Stage 2 vs. Stage 3 DAgger Diagnostic:** Comparing Stage 2 (`51.3 ± 9.5%`) vs. Stage 3 (`38.0 ± 19.1%`) across all 3 seeds shows that Phase 3/4 AR(1)+DAgger replay cuts trajectory jitter (`|Δ²q|: 0.00991 -> 0.00589`, flips `21.99 -> 11.17`) **while degrading 3-seed mean PIL success by `-13.3 pp` and doubling inter-seed std (`9.5% -> 19.1%`)**. While DAgger improves validation peak on individual seeds (Seed 42 `phase_4`: `92.0%` val), it introduces multi-seed overfitting variance (`18.0%` test on Seed 101 `phase_4`), requiring **`N=25` validation-split (`[3200, 3224]`) checkpoint selection** (`42: phase_4`, `101: phase_1`, `2024: phase_2`) so 2-Stage SE(3) Lookahead delivers `60.7 ± 2.3%` (`11.7×` std reduction vs. `N=6` Tier-2).
+* **Transparent Disentangled Diagnostic (Stage 2 vs. Stage 3a vs. Stage 3b vs. Stage 4a):** Comparing Stage 2 (`51.3 ± 9.5%`) vs. Stage 3a (`38.0 ± 19.1%`) across all 3 seeds shows that Phase 3/4 AR(1)+DAgger replay (`checkpoint_phase_4.pt`) cuts trajectory jitter (`|Δ²q|: 0.00991 -> 0.00589`, flips `21.99 -> 11.17`) **while degrading 3-seed mean PIL success by `-13.3 pp` and doubling inter-seed std (`9.5% -> 19.1%`)**. Isolating **`N=25` validation-split (`[3200, 3224]`) checkpoint selection** *without* Lookahead (`Stage 3b`: `42: phase_4`, `101: phase_1`, `2024: phase_2`) recovers 3-seed PIL success to **`49.3 ± 6.1%`** (`56% / 44% / 48%`, `+11.3 pp` recovery and `3.1×` std reduction from checkpoint selection alone). Adding **2-Stage SE(3) Lookahead** on those same validation-selected checkpoints (`Stage 4a/4b`) then delivers a further **`+11.3 pp`** gain (`49.3% -> 60.7 ± 2.3%`, `58% / 62% / 62%`), cleanly separating validation checkpoint selection from 2-Stage SE(3) Lookahead.
 
 ---
 
-## 4. Table 4 — 3-Seed PIL Robustness & Residual Handover Telemetry
+## 4. Table 4 — 3-Seed PIL Robustness (`$N=25$` Val-Sel. SPWM vs. ANN-Rate vs. Equalized Deep GRU)
 
-**Evidence:** [robustness_metrics.json](file:///Users/Mattia/Desktop/Studies/Temp/results/robustness_benchmark/robustness_metrics.json), `results/robustness_benchmark_pil_spwm_seed{101,2024}/robustness_metrics.json`, `results/robustness_benchmark_pil_ann_rate_seed{42,101,2024}/robustness_metrics.json` ($N=6$ Tier-2 frozen checkpoints).
+**Evidence:** [robustness_metrics.json](file:///Users/Mattia/Desktop/Studies/Temp/results/robustness_benchmark/robustness_metrics.json) (`42: checkpoint_phase_4.pt`), `results/robustness_benchmark_pil_spwm_seed{101,2024}/robustness_metrics.json` (`101: checkpoint_phase_1.pt`, `2024: checkpoint_phase_2.pt`), `results/robustness_benchmark_pil_ann_rate_seed{42,101,2024}/robustness_metrics.json`, `results/robustness_benchmark_pil_deep_gru_seed{42,101,2024}/robustness_metrics.json` (Equalized Deep GRU under `residual_gated` mode).
 
-| Perturbation Condition (`50` Test Ep) | SPWM 3-Seed Mean (Succ / Min / Term) | SPWM Step $w_t>0$ (42 / 101 / 2024) | ANN-Rate 3-Seed Mean (Succ / Min / Term) |
+| Perturbation Condition (`50` Test Ep) | SPWM ($N=25$ Val-Sel., 3 Seeds: Succ / Min / Term) | ANN-Rate (3 Seeds: Succ / Min / Term) | Equalized Deep GRU (Residual-Gated, 3 Seeds: Succ / Min / Term) |
 | :--- | :---: | :---: | :---: |
-| Nominal Baseline | **`58.0 ± 27.1%`** / `0.90` / `2.23 cm` | `0.0% / 0.0% / 0.0%` | `37.3 ± 9.5%` / `1.07` / `2.98 cm` |
-| Sensory Noise (`1.0%`) | **`55.3 ± 19.4%`** (`-4.6% rel`) / `0.90` / `2.34 cm` | `0.0% / 0.0% / 0.0%` | `30.0 ± 3.5%` (`-19.6% rel`) / `1.04` / `3.36 cm` |
-| Payload Extrapolation (`4.80 kg`) | **`39.3 ± 33.7%`** (`-32.2% rel`) / `1.18` / `2.50 cm` | `0.0% / 0.0% / 0.5%` (`4.0% ep, w=0.165`) | `26.7 ± 16.2%` (`-28.6% rel`) / `1.36` / `3.64 cm` |
-| Actuator Drift (`0.80x` Friction) | **`40.7 ± 27.3%`** (`-29.9% rel`) / `1.19` / `2.61 cm` | `0.0% / 0.0% / 0.5%` (`4.0% ep, w=0.229`) | `30.7 ± 14.0%` (`-17.9% rel`) / `1.42` / `3.74 cm` |
-| Actuator Drift (`1.20x` Friction) | **`44.0 ± 28.0%`** (`-24.1% rel`) / `1.22` / `2.53 cm` | `0.0% / 0.0% / 0.5%` (`4.0% ep, w=0.169`) | `33.3 ± 16.7%` (`-10.7% rel`) / `1.34` / `3.51 cm` |
+| Nominal Baseline | **`60.7 ± 2.3%`** / **`0.88`** / `2.01 cm` | `37.3 ± 9.5%` / `1.07` / `2.98 cm` | `76.7 ± 5.0%` / `1.14` / `1.90 cm` |
+| Sensory Noise (`1.0%`) | **`54.7 ± 1.2%`** (`-9.9% rel`) / **`0.92`** / `2.26 cm` | `30.0 ± 3.5%` (`-19.6% rel`) / `1.04` / `3.36 cm` | `74.7 ± 3.1%` (`-2.6% rel`) / `1.52` / `1.85 cm` |
+| Payload Extrapolation (`4.80 kg`) | **`44.7 ± 13.3%`** (`-26.4% rel`) / **`1.31`** / **`2.49 cm`** | `26.7 ± 16.2%` (`-28.6% rel`) / `1.36` / `3.64 cm` | `23.3 ± 12.9%` (`-69.6% rel`) / `3.21` / `4.35 cm` |
+| Actuator Drift (`0.80x` Friction) | **`52.7 ± 13.3%`** (`-13.2% rel`) / **`1.31`** / **`2.39 cm`** | `30.7 ± 14.0%` (`-17.9% rel`) / `1.42` / `3.74 cm` | `26.7 ± 23.9%` (`-65.2% rel`) / `3.24` / `4.38 cm` |
+| Actuator Drift (`1.20x` Friction) | **`48.0 ± 19.3%`** (`-20.9% rel`) / **`1.29`** / **`2.28 cm`** | `33.3 ± 16.7%` (`-10.7% rel`) / `1.34` / `3.51 cm` | `30.0 ± 15.1%` (`-60.9% rel`) / `3.10` / `4.19 cm` |
 
+* **Key Robustness Findings ($N=25$ Val-Selected SPWM vs. ANN-Rate vs. Deep GRU):**
+  1. **Sensory Noise (`1.0%`):** `$N=25$` validation-selected `SPWM` achieves `54.7 ± 1.2%` (`-9.9%` relative drop, reducing inter-seed std `16×` vs. `N=6` Tier-2 `55.3 ± 19.4%`), outperforming `ANN-Rate` (`30.0 ± 3.5%`, `-19.6%` relative drop) by **`+24.7 pp`** (`2.0×` better relative retention).
+  2. **Zero-Shot Physical / Mechanical OOD Collapse of `Deep GRU`:** While equalized `Deep GRU` leads on in-distribution nominal (`76.7%`) and sensory-noise (`74.7%`) episodes, it **collapses by `-60.9% to -69.6%` relative under unmodeled physical perturbations** (`23.3 ± 12.9%` on `4.80 kg` payloads, `26.7 ± 23.9%` on `0.80×` friction, `30.0 ± 15.1%` on `1.20×` friction; terminal error `4.19–4.38 cm`). Because `SPWM` factorizes dynamics into dissipative `(q, p)` phase space rather than an unstructured `164`-d GRU state, `SPWM` outperforms `Deep GRU` by **`+21.4 pp`** (`44.7%` vs. `23.3%`), **`+26.0 pp`** (`52.7%` vs. `26.7%`), and **`+18.0 pp`** (`48.0%` vs. `30.0%`) across all three mechanical distribution shifts.
 * **Validation Handover Sweep ($\tau \in \{0.026, 0.020, 0.015\}\,\text{m}$, `[3200, 3249]`):** Across all 6 JSONs (`results/diagnostics/val_handover_sweep_{seed42,seed2024}_tau_{0026,0020,0015}/robustness_metrics.json`), **all 3 thresholds produce identical results with `0.0%` handovers** (`Seed 42`: `78.0 / 78.0 / 66.0 / 70.0 / 72.0%`; `Seed 2024`: `46.0 / 36.0 / 42.0 / 38.0 / 38.0%`).
 * **Diagnostic Proof (`val` `[3200, 3214]`, `120` $\phi_t=1$ steps):** `Seed 42`: `dist_pred` median `0.0139 m`, `dist_obs` median `0.2155 m`, `rot_obs` median `0.6377 rad`, `obs < pred = 0.0%`; `Seed 2024`: `dist_pred` median `0.0174 m`, `dist_obs` median `0.1598 m`, `rot_obs` median `0.3850 rad`, `obs < pred = 0.0%`.
 
@@ -5925,7 +6435,7 @@ All closed-loop control metrics below were executed under causal **Physics-in-th
 | Continuous ConvLSTM (Orin GPU) | `2,359,296 MACs` | `2123.37` | `42.467 mW` | `1.00×` | `111.312 G` | `100.1833` | `2003.67 mW` |
 
 * **Recalibrated Energy Framing:**
-  1. `SPWM`'s primary advantage over `ANN-Rate` is **closed-loop dynamical stability and noise robustness** (`+23.4 pp` 3-seed PIL grasp success, `4.3×` better relative retention under `1.0%` sensory noise), **not** end-to-end energy savings: saving `48.14 nJ/step` on Loihi-2 (`60.36 -> 12.22 nJ/step`) atop `1.0971 mJ/step` (`1,097,100 nJ/step`) of dense GPU MPPI rollouts is a **`0.004%`** end-to-end difference (`1.0979 mJ/step`, `21.96 mW` @ `20 Hz` for both).
+  1. `SPWM`'s primary advantage over `ANN-Rate` is **closed-loop dynamical stability and noise/dynamics robustness** (`+23.4 pp` 3-seed PIL grasp success, `+24.7 pp` and `2.0×` better relative retention under `1.0%` sensory noise on `$N=25$` validation-selected checkpoints), **not** end-to-end energy savings: saving `48.14 nJ/step` on Loihi-2 (`60.36 -> 12.22 nJ/step`) atop `1.0971 mJ/step` (`1,097,100 nJ/step`) of dense GPU MPPI rollouts is a **`0.004%`** end-to-end difference (`1.0979 mJ/step`, `21.96 mW` @ `20 Hz` for both).
   2. The **`4.94×`** Loihi-2 recurrent core reduction (`12.22 ± 0.19 nJ/step`, `0.244 mW` @ `20 Hz`, computed from synaptic SOPs excluding passive membrane leak) is specifically an **always-on, sub-milliwatt standby state-estimation benefit** when batched MPPI planning is dormant.
   3. The **`1.93×`** E2E reduction vs. `Continuous RSSM` (`2.1236 mJ/step`) and `1.59×` reduction vs. `Deep GRU` (`1.7490 mJ/step`) come from **`M1`'s compact MLP rollout architecture** (`1.219 GMACs` vs. `2.358` and `1.942 GMACs`).
 * **Analytical SOP & MAC Derivation ([profile_energy_sops.py](file:///Users/Mattia/Desktop/Studies/Temp/experiments/profile_energy_sops.py#L67-L146,L354-L388)):** `spwm_core_macs = (128+6)*256 + 256*128 = 67,072` MACs; multiplying by empirical ALIF spike rates (`12.27%`, `12.26%`, `11.93%`) yields `8,229`, `8,220`, and `8,001` SOPs/step (`1.5e-3 nJ/SOP`, passive membrane leak excluded).

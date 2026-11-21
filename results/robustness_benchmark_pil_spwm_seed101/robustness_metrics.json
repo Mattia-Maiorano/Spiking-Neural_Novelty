@@ -1,62 +1,62 @@
 {
   "benchmark_name": "Zero-Shot Sim-to-Real Domain Gap & Robustness Stress Test",
   "version": "SPWM-v0.12.3",
-  "checkpoint": "results/multiseed/seed_101_m1/best_model.pt",
+  "checkpoint": "results/multiseed/seed_101_m1/checkpoint_phase_1.pt",
   "split": "test",
   "handover_dist_threshold": 0.026,
-  "total_benchmark_time_sec": 273.20382958301343,
+  "total_benchmark_time_sec": 248.53949108405504,
   "sensor_benchmark_time_sec": 0.0,
-  "mppi_benchmark_time_sec": 273.1972482500132,
+  "mppi_benchmark_time_sec": 248.53926679200958,
   "sensor_suite": [],
   "mppi_suite": [
     {
       "condition_name": "Nominal Baseline",
       "condition_description": "Nominal visual telemetry, calibrated dynamics and friction",
       "episodes_evaluated": 50,
-      "grasp_success_rate_pct": 56.00000000000001,
-      "min_placement_error_mean_cm": 0.9044275161623955,
-      "min_placement_error_std_cm": 0.6471105496304267,
-      "terminal_placement_error_mean_cm": 2.1922635650634765,
-      "terminal_velocity_mean": 0.4737779149413109,
-      "mean_latency_ms": 35.94414352529596,
+      "grasp_success_rate_pct": 62.0,
+      "min_placement_error_mean_cm": 0.8499453981220723,
+      "min_placement_error_std_cm": 0.5894733005655424,
+      "terminal_placement_error_mean_cm": 2.0169071877002716,
+      "terminal_velocity_mean": 0.5147094203531742,
+      "mean_latency_ms": 39.79635441773567,
       "elevation_plane_breakdown": {
         "Low": {
           "count": 22.0,
-          "success_rate_pct": 27.27272727272727,
-          "mean_error_cm": 1.158713385462761,
-          "mean_terminal_error_cm": 2.8928921303965827
+          "success_rate_pct": 54.54545454545454,
+          "mean_error_cm": 1.1109315184029667,
+          "mean_terminal_error_cm": 2.5897748172283173
         },
         "Mid": {
           "count": 18.0,
-          "success_rate_pct": 72.22222222222221,
-          "mean_error_cm": 0.7201241196857558,
-          "mean_terminal_error_cm": 1.7886968288156722
+          "success_rate_pct": 55.55555555555556,
+          "mean_error_cm": 0.6044824789795611,
+          "mean_terminal_error_cm": 1.4795386791229248
         },
         "High": {
           "count": 10.0,
           "success_rate_pct": 90.0,
-          "mean_error_cm": 0.6767447173595429,
-          "mean_terminal_error_cm": 1.3773008465766907
+          "mean_error_cm": 0.7176091879606247,
+          "mean_terminal_error_cm": 1.7238617181777953
         }
       },
       "mass_tier_breakdown": {
         "Light (1.2 - 2.3 kg)": {
           "count": 17.0,
           "success_rate_pct": 88.23529411764706,
-          "mean_error_cm": 0.703847265418838,
-          "mean_terminal_error_cm": 1.7927058163811178
+          "mean_error_cm": 0.7071644580539536,
+          "mean_terminal_error_cm": 1.234077299342436
         },
         "Medium (2.3 - 3.4 kg)": {
           "count": 17.0,
-          "success_rate_pct": 47.05882352941176,
-          "mean_error_cm": 0.9145204056711758,
-          "mean_terminal_error_cm": 2.252158620778252
+          "success_rate_pct": 64.70588235294117,
+          "mean_error_cm": 0.9236096494338092,
+          "mean_terminal_error_cm": 2.237322144648608
         },
         "Heavy (3.4 - 4.5+ kg)": {
           "count": 16.0,
           "success_rate_pct": 31.25,
-          "mean_error_cm": 1.1068203374743462,
-          "mean_terminal_error_cm": 2.5531551763415337
+          "mean_error_cm": 0.9233818799257278,
+          "mean_terminal_error_cm": 2.6144730523228645
         }
       },
       "episodes_with_handover_pct": 0.0,
@@ -70,50 +70,50 @@
       "condition_name": "Sensory Noise Injection (1.0%)",
       "condition_description": "Visual events corrupted with 1.0% Background Activity noise",
       "episodes_evaluated": 50,
-      "grasp_success_rate_pct": 60.0,
-      "min_placement_error_mean_cm": 0.9040766698122025,
-      "min_placement_error_std_cm": 0.5172582303668558,
-      "terminal_placement_error_mean_cm": 2.1104232871532442,
-      "terminal_velocity_mean": 0.5357284384965897,
-      "mean_latency_ms": 36.52126013849798,
+      "grasp_success_rate_pct": 54.0,
+      "min_placement_error_mean_cm": 0.7552975878119469,
+      "min_placement_error_std_cm": 0.4167622009708752,
+      "terminal_placement_error_mean_cm": 2.3126762568950654,
+      "terminal_velocity_mean": 0.4710961046814919,
+      "mean_latency_ms": 32.065856869886694,
       "elevation_plane_breakdown": {
         "Low": {
           "count": 22.0,
-          "success_rate_pct": 54.54545454545454,
-          "mean_error_cm": 1.0817397318103097,
-          "mean_terminal_error_cm": 2.5695091485977173
+          "success_rate_pct": 36.36363636363637,
+          "mean_error_cm": 0.9181614396246996,
+          "mean_terminal_error_cm": 3.0868778987364336
         },
         "Mid": {
           "count": 18.0,
-          "success_rate_pct": 55.55555555555556,
-          "mean_error_cm": 0.8389696859651141,
-          "mean_terminal_error_cm": 1.713089856836531
+          "success_rate_pct": 66.66666666666666,
+          "mean_error_cm": 0.6373492644892799,
+          "mean_terminal_error_cm": 1.655595526099205
         },
         "High": {
           "count": 10.0,
-          "success_rate_pct": 80.0,
-          "mean_error_cm": 0.6304105043411254,
-          "mean_terminal_error_cm": 1.8156345665454865
+          "success_rate_pct": 70.0,
+          "mean_error_cm": 0.6093040958046914,
+          "mean_terminal_error_cm": 1.7921779602766037
         }
       },
       "mass_tier_breakdown": {
         "Light (1.2 - 2.3 kg)": {
           "count": 17.0,
-          "success_rate_pct": 76.47058823529412,
-          "mean_error_cm": 0.8248848038561204,
-          "mean_terminal_error_cm": 1.6376257012872135
+          "success_rate_pct": 82.35294117647058,
+          "mean_error_cm": 0.5522294894737356,
+          "mean_terminal_error_cm": 1.7276617989820593
         },
         "Medium (2.3 - 3.4 kg)": {
           "count": 17.0,
-          "success_rate_pct": 52.94117647058824,
-          "mean_error_cm": 0.9804869311697343,
-          "mean_terminal_error_cm": 2.512141269796035
+          "success_rate_pct": 41.17647058823529,
+          "mean_error_cm": 0.8033788765178007,
+          "mean_terminal_error_cm": 2.7147435230367325
         },
         "Heavy (3.4 - 4.5+ kg)": {
           "count": 16.0,
-          "success_rate_pct": 50.0,
-          "mean_error_cm": 0.9070321246981621,
-          "mean_terminal_error_cm": 2.185945365577936
+          "success_rate_pct": 37.5,
+          "mean_error_cm": 0.9199710730463266,
+          "mean_terminal_error_cm": 2.507057648152113
         }
       },
       "episodes_with_handover_pct": 0.0,
@@ -127,50 +127,50 @@
       "condition_name": "Payload Extrapolation (4.80 kg)",
       "condition_description": "Out-of-distribution heavy payload (m=4.80 kg vs [1.20, 4.50] kg)",
       "episodes_evaluated": 50,
-      "grasp_success_rate_pct": 24.0,
-      "min_placement_error_mean_cm": 1.2847428852319718,
-      "min_placement_error_std_cm": 0.8102500475870821,
-      "terminal_placement_error_mean_cm": 2.837750395536423,
-      "terminal_velocity_mean": 0.6395273652672767,
-      "mean_latency_ms": 36.43832626988797,
+      "grasp_success_rate_pct": 30.0,
+      "min_placement_error_mean_cm": 1.1991314259171486,
+      "min_placement_error_std_cm": 0.7902963079499035,
+      "terminal_placement_error_mean_cm": 2.800394687652588,
+      "terminal_velocity_mean": 0.7321977093815804,
+      "mean_latency_ms": 32.619208271916534,
       "elevation_plane_breakdown": {
         "Low": {
           "count": 22.0,
-          "success_rate_pct": 9.090909090909092,
-          "mean_error_cm": 1.514089210466905,
-          "mean_terminal_error_cm": 3.3698600232601166
+          "success_rate_pct": 18.181818181818183,
+          "mean_error_cm": 1.3517765511165967,
+          "mean_terminal_error_cm": 3.319153032519601
         },
         "Mid": {
           "count": 18.0,
-          "success_rate_pct": 33.33333333333333,
-          "mean_error_cm": 1.1588957889212503,
-          "mean_terminal_error_cm": 2.54302708307902
+          "success_rate_pct": 27.77777777777778,
+          "mean_error_cm": 1.1894624456763268,
+          "mean_terminal_error_cm": 2.4281591524680457
         },
         "High": {
           "count": 10.0,
-          "success_rate_pct": 40.0,
-          "mean_error_cm": 1.006705743074417,
-          "mean_terminal_error_cm": 2.1976111769676208
+          "success_rate_pct": 60.0,
+          "mean_error_cm": 0.8807163149118423,
+          "mean_terminal_error_cm": 2.329150292277336
         }
       },
       "mass_tier_breakdown": {
         "Light (1.2 - 2.3 kg)": {
           "count": 17.0,
-          "success_rate_pct": 5.88235294117647,
-          "mean_error_cm": 1.0194386436658747,
-          "mean_terminal_error_cm": 2.006487762226778
+          "success_rate_pct": 41.17647058823529,
+          "mean_error_cm": 1.1480621677987717,
+          "mean_terminal_error_cm": 2.0588600986144123
         },
         "Medium (2.3 - 3.4 kg)": {
           "count": 17.0,
-          "success_rate_pct": 47.05882352941176,
-          "mean_error_cm": 1.3209974976146923,
-          "mean_terminal_error_cm": 2.5792240921188805
+          "success_rate_pct": 29.411764705882355,
+          "mean_error_cm": 1.144731936209342,
+          "mean_terminal_error_cm": 2.72361153013566
         },
         "Heavy (3.4 - 4.5+ kg)": {
           "count": 16.0,
           "success_rate_pct": 18.75,
-          "mean_error_cm": 1.5281081162393093,
-          "mean_terminal_error_cm": 3.995651140809059
+          "mean_error_cm": 1.3111919704824686,
+          "mean_terminal_error_cm": 3.669857293367386
         }
       },
       "episodes_with_handover_pct": 0.0,
@@ -184,50 +184,50 @@
       "condition_name": "Actuator Drift (0.80x Friction)",
       "condition_description": "Mechanical wear / loose joints (-20% friction/damping)",
       "episodes_evaluated": 50,
-      "grasp_success_rate_pct": 36.0,
-      "min_placement_error_mean_cm": 1.1181585595011712,
-      "min_placement_error_std_cm": 0.7027149189097297,
-      "terminal_placement_error_mean_cm": 2.6089533033967016,
-      "terminal_velocity_mean": 0.5618044257164001,
-      "mean_latency_ms": 36.38057136931481,
+      "grasp_success_rate_pct": 44.0,
+      "min_placement_error_mean_cm": 1.1455406373739243,
+      "min_placement_error_std_cm": 0.7247768410099809,
+      "terminal_placement_error_mean_cm": 2.6450901865959167,
+      "terminal_velocity_mean": 0.6160393211245537,
+      "mean_latency_ms": 29.67846919087327,
       "elevation_plane_breakdown": {
         "Low": {
           "count": 22.0,
-          "success_rate_pct": 18.181818181818183,
-          "mean_error_cm": 1.5468894324519418,
-          "mean_terminal_error_cm": 3.617065565152602
+          "success_rate_pct": 40.909090909090914,
+          "mean_error_cm": 1.272810842503201,
+          "mean_terminal_error_cm": 3.2148255543275313
         },
         "Mid": {
           "count": 18.0,
-          "success_rate_pct": 44.44444444444444,
-          "mean_error_cm": 0.739318520658546,
-          "mean_terminal_error_cm": 1.8659795663423009
+          "success_rate_pct": 38.88888888888889,
+          "mean_error_cm": 1.1443693786859512,
+          "mean_terminal_error_cm": 2.3168826831711664
         },
         "High": {
           "count": 10.0,
           "success_rate_pct": 60.0,
-          "mean_error_cm": 0.8568627089262009,
-          "mean_terminal_error_cm": 1.7284590542316436
+          "mean_error_cm": 0.8676544517278671,
+          "mean_terminal_error_cm": 1.9824458837509156
         }
       },
       "mass_tier_breakdown": {
         "Light (1.2 - 2.3 kg)": {
           "count": 17.0,
-          "success_rate_pct": 29.411764705882355,
-          "mean_error_cm": 0.9419650233843747,
-          "mean_terminal_error_cm": 1.5307281797423082
+          "success_rate_pct": 82.35294117647058,
+          "mean_error_cm": 0.8898419772877413,
+          "mean_terminal_error_cm": 1.7456932137994206
         },
         "Medium (2.3 - 3.4 kg)": {
           "count": 17.0,
-          "success_rate_pct": 52.94117647058824,
-          "mean_error_cm": 1.220274450147853,
-          "mean_terminal_error_cm": 2.519799488432267
+          "success_rate_pct": 29.411764705882355,
+          "mean_error_cm": 1.1110707468846266,
+          "mean_terminal_error_cm": 2.832318095599904
         },
         "Heavy (3.4 - 4.5+ kg)": {
           "count": 16.0,
-          "success_rate_pct": 25.0,
-          "mean_error_cm": 1.1968660578131676,
-          "mean_terminal_error_cm": 3.849293425679207
+          "success_rate_pct": 18.75,
+          "mean_error_cm": 1.4538447223603725,
+          "mean_terminal_error_cm": 3.4017698168754578
         }
       },
       "episodes_with_handover_pct": 0.0,
@@ -241,50 +241,50 @@
       "condition_name": "Actuator Drift (1.20x Friction)",
       "condition_description": "Mechanical wear / stiff transmission (+20% friction/damping)",
       "episodes_evaluated": 50,
-      "grasp_success_rate_pct": 32.0,
-      "min_placement_error_mean_cm": 1.2167702281475068,
-      "min_placement_error_std_cm": 0.664156817346023,
-      "terminal_placement_error_mean_cm": 2.5413764929771423,
-      "terminal_velocity_mean": 0.5232767987251282,
-      "mean_latency_ms": 36.59299420893834,
+      "grasp_success_rate_pct": 34.0,
+      "min_placement_error_mean_cm": 1.197834121286869,
+      "min_placement_error_std_cm": 0.7481080609471653,
+      "terminal_placement_error_mean_cm": 2.440669119954109,
+      "terminal_velocity_mean": 0.554055769443512,
+      "mean_latency_ms": 29.96104107358774,
       "elevation_plane_breakdown": {
         "Low": {
           "count": 22.0,
-          "success_rate_pct": 27.27272727272727,
-          "mean_error_cm": 1.4793441133065657,
-          "mean_terminal_error_cm": 3.3761590177362617
+          "success_rate_pct": 31.818181818181817,
+          "mean_error_cm": 1.4262069849805399,
+          "mean_terminal_error_cm": 3.2478819001804697
         },
         "Mid": {
           "count": 18.0,
-          "success_rate_pct": 27.77777777777778,
-          "mean_error_cm": 1.1632701175080404,
-          "mean_terminal_error_cm": 1.9067178815603256
+          "success_rate_pct": 33.33333333333333,
+          "mean_error_cm": 1.1098684519529343,
+          "mean_terminal_error_cm": 1.7024639397859573
         },
         "High": {
           "count": 10.0,
-          "success_rate_pct": 50.0,
-          "mean_error_cm": 0.735407879948616,
-          "mean_terminal_error_cm": 1.8472404390573502
+          "success_rate_pct": 40.0,
+          "mean_error_cm": 0.8537520259618759,
+          "mean_terminal_error_cm": 1.993570327758789
         }
       },
       "mass_tier_breakdown": {
         "Light (1.2 - 2.3 kg)": {
           "count": 17.0,
-          "success_rate_pct": 35.294117647058826,
-          "mean_error_cm": 1.1039593289880192,
-          "mean_terminal_error_cm": 1.981510546277551
+          "success_rate_pct": 41.17647058823529,
+          "mean_error_cm": 1.1494912715519177,
+          "mean_terminal_error_cm": 2.046304190860075
         },
         "Medium (2.3 - 3.4 kg)": {
           "count": 17.0,
-          "success_rate_pct": 41.17647058823529,
-          "mean_error_cm": 1.245383025968776,
-          "mean_terminal_error_cm": 2.4617955193800083
+          "success_rate_pct": 52.94117647058824,
+          "mean_error_cm": 1.3144946860916473,
+          "mean_terminal_error_cm": 2.271590704427046
         },
         "Heavy (3.4 - 4.5+ kg)": {
           "count": 16.0,
-          "success_rate_pct": 18.75,
-          "mean_error_cm": 1.3062307108193636,
-          "mean_terminal_error_cm": 3.2207888457924128
+          "success_rate_pct": 6.25,
+          "mean_error_cm": 1.125246549025178,
+          "mean_terminal_error_cm": 3.039327673614025
         }
       },
       "episodes_with_handover_pct": 0.0,

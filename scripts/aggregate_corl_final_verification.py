@@ -170,6 +170,7 @@ def _build_corl_summary_markdown(
     baseline_budgets: Dict[str, Any],
     rob_spwm: Dict[str, Any],
     rob_ann: Dict[str, Any],
+    rob_dgru: Dict[str, Any],
     val_sweep: Dict[str, Any],
     val25_matrix: Dict[str, Any],
     energy_summary: Dict[str, Any],
@@ -304,15 +305,15 @@ def _build_corl_summary_markdown(
         "",
         "> **Critical Findings from Baseline Equalization & Shared FK Residual Gating:**",
         f"> 1. **Why un-gated online baselines collapsed (`0.0%`):** Forcing unconditional overwrites (`w_t = 1.0`) from Python's domain-gapped 2D `OnlineEventCameraStream` causes both `Continuous RSSM` (`0.0%`, term `25.49 ± 1.31 cm`) and `Deep GRU` (`0.0%`, term `7.35 ± 1.34 cm`) to fail. Applying the identical causal FK residual rejection gate restores `Continuous RSSM` to its open-loop ceiling (`15.3 ± 5.0%` vs `15.3 ± 7.0%`, term `2.72 ± 0.11 cm`), confirming RSSM's `15.3%` limit is architectural (MPPI jitter `|Δ²q| = 0.02049`, `36.94` flips). Conversely, equalized `Deep GRU` recovers to **`76.7 ± 5.0%`** (`82.0% / 72.0% / 76.0%`; `77.3 ± 4.2%` open-loop) with `0/150` velocity violations.",
-        "> 2. **Architectural Trade-Off vs. Equalized Deep GRU:** While equalized `Deep GRU` achieves higher nominal PIL grasp success (`76.7 ± 5.0%` vs. `60.7 ± 2.3%` for SPWM) and smoother controls (`|Δ²q| = 0.00449` vs. `0.00931`), `Deep GRU` exceeds the `50.0 ms` (`20 Hz`) real-time budget at **`57.7 ms/step`** (`2.17×` slower than SPWM's `26.6 ms/step` under identical `OMP_NUM_THREADS=2`), exhibits **`9.0×` higher $H=100$ open-loop velocity MSE** (`0.08716` vs. `0.00971 rad²/s²`), and consumes **`22.1×` higher standby core energy** (`269.57 nJ/step` on Orin vs. `12.22 nJ/step` on Loihi-2) and **`1.59×` higher E2E step energy** (`1.7490 mJ` vs. `1.0979 mJ`).",
-        "> 3. **Controlled Spiking Isolation (`SPWM` vs. `ANN-Rate`):** Under identical parameter budget (`317.9k` active), `(q, p)` factorization, `160+240` training curriculum, and MPPI controller, SPWM's discrete ALIF thresholding outperforms `ANN-Rate` by **`+23.4 pp`** (`60.7 ± 2.3%` vs. `37.3 ± 9.5%`) and delivers `4.3×` better relative retention under `1.0%` sensory noise.",
+        "> 2. **Architectural Trade-Off vs. Equalized Deep GRU (Latency, Velocity & Mechanical OOD Collapse):** While equalized `Deep GRU` achieves higher nominal PIL grasp success (`76.7 ± 5.0%` vs. `60.7 ± 2.3%` for SPWM) and smoother nominal controls (`|Δ²q| = 0.00449` vs. `0.00931`), `Deep GRU` (i) exceeds the `50.0 ms` (`20 Hz`) real-time budget at **`57.7 ms/step`** (`2.17×` slower than SPWM's `26.6 ms/step` under identical `OMP_NUM_THREADS=2`), (ii) exhibits **`9.0×` higher $H=100$ open-loop velocity MSE** (`0.08716` vs. `0.00971 rad²/s²`), (iii) **collapses under zero-shot mechanical distribution shifts** (`23.3 ± 12.9%` at `4.80 kg` payload, `26.7 ± 23.9%` at `0.80×` friction, `30.0 ± 15.1%` at `1.20×` friction — trailing SPWM by **`+18.0 to +26.0 pp`** across all three physical perturbations in Table 4), and (iv) consumes **`22.1×` higher standby core energy** (`269.57 nJ/step` on Orin vs. `12.22 nJ/step` on Loihi-2) and **`1.59×` higher E2E step energy** (`1.7490 mJ` vs. `1.0979 mJ`).",
+        "> 3. **Controlled Spiking Isolation (`SPWM` vs. `ANN-Rate`):** Under identical parameter budget (`317.9k` active), `(q, p)` factorization, `160+240` training curriculum, and MPPI controller, SPWM's discrete ALIF thresholding outperforms `ANN-Rate` by **`+23.4 pp`** nominally (`60.7 ± 2.3%` vs. `37.3 ± 9.5%`), **`+24.7 pp`** under `1.0%` sensory noise (`54.7 ± 1.2%` vs. `30.0 ± 3.5%`, `2.0×` better relative retention `-9.9%` vs. `-19.6%`), and **`+14.7 to +22.0 pp`** across out-of-distribution payload and friction shifts.",
         "",
-        "### Table 3: Full 3-Seed 5-Stage SPWM Architectural Ablation in PIL (`50` Test Episodes `[3600, 3649]`, $t \\ge t_c$, Seeds `42, 101, 2024`)",
+        "### Table 3: Full 3-Seed 6-Row SPWM Architectural Ablation in PIL (`50` Test Episodes `[3600, 3649]`, $t \\ge t_c$, Seeds `42, 101, 2024`)",
         "",
         "```latex",
         "\\begin{table}[t]",
         "\\centering",
-        "\\caption{\\textbf{3-Seed 5-Stage SPWM Architectural Ablation in PIL (`50` Episodes `[3600, 3649]`, $t \\ge t_c$, Seeds `42, 101, 2024`).} Stages 1--2 evaluate pre-DAgger Phase 1 warmup weights (`checkpoint\\_phase\\_1.pt`), Stage 3 evaluates Phase 3/4 AR(1)+DAgger curriculum weights (`checkpoint\\_phase\\_4.pt`) without lookahead/handover, and Stages 4a--4b apply 2-Stage $\\text{SE}(3)$ Lookahead and Residual Handover to the $N=25$ validation-selected checkpoints (`42: phase\\_4`, `101: phase\\_1`, `2024: phase\\_2`).}",
+        "\\caption{\\textbf{3-Seed 6-Row SPWM Architectural Ablation in PIL (`50` Episodes `[3600, 3649]`, $t \\ge t_c$, Seeds `42, 101, 2024`).} Stages 1--2 evaluate pre-DAgger Phase 1 warmup weights (`checkpoint\\_phase\\_1.pt`), Stage 3a evaluates Phase 3/4 AR(1)+DAgger curriculum weights (`checkpoint\\_phase\\_4.pt`) without lookahead/handover, Stage 3b evaluates the $N=25$ validation-selected checkpoints (`42: phase\\_4`, `101: phase\\_1`, `2024: phase\\_2`) \\emph{without} lookahead/handover to cleanly isolate checkpoint selection, and Stages 4a--4b apply 2-Stage $\\text{SE}(3)$ Lookahead and Residual Handover to those same $N=25$ validation-selected checkpoints.}",
         "\\label{tab:spwm_ablation}",
         "\\resizebox{\\textwidth}{!}{%",
         "\\begin{tabular}{lccccccc}",
@@ -336,8 +337,11 @@ def _build_corl_summary_markdown(
             f"{name_tex} & {seed_triplet} & {succ_tex} & {min_tex} & {term_tex} & {ms['mean_joint_accel_rad_s2'][0]:.5f} & {ms['mean_joint_jerk_rad_s3'][0]:.5f} & {ms['mean_direction_flips'][0]:.2f} \\\\"
         )
     s2_m = ablation_stages_3seed[1]["mean_std"]["grasp_success_rate_pct"]
-    s3_m = ablation_stages_3seed[2]["mean_std"]["grasp_success_rate_pct"]
-    s4a_m = ablation_stages_3seed[3]["mean_std"]["grasp_success_rate_pct"]
+    s3a_m = ablation_stages_3seed[2]["mean_std"]["grasp_success_rate_pct"]
+    s3b_m = ablation_stages_3seed[3]["mean_std"]["grasp_success_rate_pct"]
+    s4a_m = ablation_stages_3seed[4]["mean_std"]["grasp_success_rate_pct"]
+    s3b_ps = ablation_stages_3seed[3]["per_seed"]
+    s3b_trip = f"{s3b_ps['42']['overall_metrics']['grasp_success_rate_pct']:.1f}% / {s3b_ps['101']['overall_metrics']['grasp_success_rate_pct']:.1f}% / {s3b_ps['2024']['overall_metrics']['grasp_success_rate_pct']:.1f}%"
     lines.extend([
         "\\bottomrule",
         "\\end{tabular}%",
@@ -345,30 +349,32 @@ def _build_corl_summary_markdown(
         "\\end{table}",
         "```",
         "",
-        f"> **Honest Negative/Mixed-Result Diagnostic (Stage 2 vs. Stage 3):** Comparing Stage 2 (`{s2_m[0]:.1f} ± {s2_m[1]:.1f}%`) against Stage 3 (`{s3_m[0]:.1f} ± {s3_m[1]:.1f}%`) across all 3 seeds shows that while Phase 3/4 AR(1)+DAgger replay substantially smooths control trajectories (`|Δ²q|: 0.00991 -> 0.00589 rad/step²`, `|Δ³q|: 0.00705 -> 0.00354 rad/step³`, flips `21.99 -> 11.17`), it **degrades 3-seed mean PIL grasp success by `{s3_m[0] - s2_m[0]:+.1f} pp`** (`56.0% / 18.0% / 40.0%`) and **doubles inter-seed standard deviation (`{s2_m[1]:.1f}% -> {s3_m[1]:.1f}%`)**. Because on-policy DAgger overfitting can raise single-seed performance (e.g., Seed 42 validation `92.0%`) while destabilizing other seeds (`18.0%` on Seed 101 at `phase_4`), **$N=25$ validation-split (`[3200, 3224]`) checkpoint selection** is mandatory to select pre-overfit checkpoints where needed (`101: phase_1`, `2024: phase_2`), enabling 2-Stage SE(3) Lookahead (`Stage 4a/4b`) to achieve **`{s4a_m[0]:.1f} ± {s4a_m[1]:.1f}%`** (`58.0% / 62.0% / 62.0%`).",
+        f"> **Honest Disentangled Diagnostic (Stage 2 vs. Stage 3a vs. Stage 3b vs. Stage 4a):** Comparing Stage 2 (`{s2_m[0]:.1f} ± {s2_m[1]:.1f}%`) against Stage 3a (`{s3a_m[0]:.1f} ± {s3a_m[1]:.1f}%`) across all 3 seeds shows that while Phase 3/4 AR(1)+DAgger replay (`checkpoint_phase_4.pt`) smooths control trajectories (`|Δ²q|: 0.00991 -> 0.00589 rad/step²`, flips `21.99 -> 11.17`), it **degrades 3-seed mean PIL grasp success by `{s3a_m[0] - s2_m[0]:+.1f} pp`** (`56.0% / 18.0% / 40.0%`) and **doubles inter-seed standard deviation (`{s2_m[1]:.1f}% -> {s3a_m[1]:.1f}%`)**. Isolating **$N=25$ validation-split (`[3200, 3224]`) checkpoint selection** *without* Lookahead (`Stage 3b`, `42: phase_4`, `101: phase_1`, `2024: phase_2`) recovers 3-seed PIL success to **`{s3b_m[0]:.1f} ± {s3b_m[1]:.1f}%`** (`{s3b_trip}`, `{s3b_m[0] - s3a_m[0]:+.1f} pp` from checkpoint selection alone). Applying **2-Stage SE(3) Lookahead** to those exact same $N=25$ validation-selected checkpoints (`Stage 4a/4b`) then contributes a further **`{s4a_m[0] - s3b_m[0]:+.1f} pp`** gain (`{s3b_m[0]:.1f}% -> {s4a_m[0]:.1f} ± {s4a_m[1]:.1f}%`, `58.0% / 62.0% / 62.0%`), cleanly separating validation checkpoint selection from 2-Stage SE(3) Lookahead.",
         "",
-        "### Table 4: Symmetric 3-Seed Zero-Shot Sim-to-Real PIL Robustness Stress Test — SPWM vs. ANN-Rate (`50` Test Episodes, $t \\ge t_c$)",
+        "### Table 4: Symmetric 3-Seed Zero-Shot Sim-to-Real PIL Robustness Stress Test — SPWM ($N=25$ Val-Sel.) vs. ANN-Rate vs. Equalized Deep GRU (`50` Test Episodes, $t \\ge t_c$)",
         "",
         "```latex",
         "\\begin{table}[t]",
         "\\centering",
-        "\\caption{\\textbf{Zero-Shot Physical \\& Sensory Robustness Stress Test in PIL (`50` Test Episodes `[3600, 3649]`, $t \\ge t_c$, $N=6$ Tier-2 Checkpoints).} Symmetric 3-seed comparison ($42, 101, 2024$) of frozen SPWM-v0.12.4 vs. parameter-matched ANN-Rate. Relative success retention ($\\Delta_{\\text{rel}}$) is computed against each model's Nominal Baseline.}",
+        "\\caption{\\textbf{Zero-Shot Physical \\& Sensory Robustness Stress Test in PIL (`50` Test Episodes `[3600, 3649]`, $t \\ge t_c$).} Symmetric 3-seed comparison ($42, 101, 2024$) of frozen SPWM-v0.12.4 ($N=25$ validation-selected checkpoints: `42: phase\\_4`, `101: phase\\_1`, `2024: phase\\_2`), parameter-matched ANN-Rate, and Equalized Deep GRU (Residual-Gated Online). Relative success retention ($\\Delta_{\\text{rel}}$) is computed against each model's Nominal Baseline.}",
         "\\label{tab:pil_robustness}",
         "\\resizebox{\\textwidth}{!}{%",
-        "\\begin{tabular}{lcccccc}",
+        "\\begin{tabular}{lccccccccc}",
         "\\toprule",
-        "\\textbf{Perturbation Condition} & \\multicolumn{3}{c}{\\textbf{SPWM-v0.12.4 (3-Seed Mean $\\pm$ Std)}} & \\multicolumn{3}{c}{\\textbf{ANN-Rate (3-Seed Mean $\\pm$ Std)}} \\\\",
-        "\\cmidrule(lr){2-4} \\cmidrule(lr){5-7}",
-        " & \\textbf{Succ (\\%)} & \\textbf{Min Err (cm)} & \\textbf{Term Err (cm)} & \\textbf{Succ (\\%)} & \\textbf{Min Err (cm)} & \\textbf{Term Err (cm)} \\\\",
+        "\\textbf{Perturbation Condition} & \\multicolumn{3}{c}{\\textbf{SPWM-v0.12.4 ($N=25$ Val-Sel., 3 Seeds)}} & \\multicolumn{3}{c}{\\textbf{ANN-Rate (3 Seeds)}} & \\multicolumn{3}{c}{\\textbf{Equalized Deep GRU (Residual-Gated, 3 Seeds)}} \\\\",
+        "\\cmidrule(lr){2-4} \\cmidrule(lr){5-7} \\cmidrule(lr){8-10}",
+        " & \\textbf{Succ (\\%)} & \\textbf{Min Err (cm)} & \\textbf{Term Err (cm)} & \\textbf{Succ (\\%)} & \\textbf{Min Err (cm)} & \\textbf{Term Err (cm)} & \\textbf{Succ (\\%)} & \\textbf{Min Err (cm)} & \\textbf{Term Err (cm)} \\\\",
         "\\midrule",
     ])
-    for cs, ca in zip(rob_spwm["conditions"], rob_ann["conditions"]):
+    for cs, ca, cg in zip(rob_spwm["conditions"], rob_ann["conditions"], rob_dgru["conditions"]):
         cname_tex = cs["condition_name"].replace("0.80x", "0.80$\\times$").replace("1.20x", "1.20$\\times$").replace("%", "\\%")
         sp3_succ = f"{cs['grasp_success_rate_pct'][0]:.1f} $\\pm$ {cs['grasp_success_rate_pct'][1]:.1f}" + (f" ({cs['delta_rel_pct']:+.1f}\\% rel)" if cs["delta_rel_pct"] != 0.0 else "")
         an3_succ = f"{ca['grasp_success_rate_pct'][0]:.1f} $\\pm$ {ca['grasp_success_rate_pct'][1]:.1f}" + (f" ({ca['delta_rel_pct']:+.1f}\\% rel)" if ca["delta_rel_pct"] != 0.0 else "")
+        gr3_succ = f"{cg['grasp_success_rate_pct'][0]:.1f} $\\pm$ {cg['grasp_success_rate_pct'][1]:.1f}" + (f" ({cg['delta_rel_pct']:+.1f}\\% rel)" if cg["delta_rel_pct"] != 0.0 else "")
         lines.append(
             f"{cname_tex} & \\textbf{{{sp3_succ}}} & \\textbf{{{f2(cs['min_placement_error_mean_cm'])}}} & \\textbf{{{f2(cs['terminal_placement_error_mean_cm'])}}} & "
-            f"{an3_succ} & {f2(ca['min_placement_error_mean_cm'])} & {f2(ca['terminal_placement_error_mean_cm'])} \\\\"
+            f"{an3_succ} & {f2(ca['min_placement_error_mean_cm'])} & {f2(ca['terminal_placement_error_mean_cm'])} & "
+            f"{gr3_succ} & {f2(cg['min_placement_error_mean_cm'])} & {f2(cg['terminal_placement_error_mean_cm'])} \\\\"
         )
     lines.extend([
         "\\bottomrule",
@@ -401,7 +407,7 @@ def _build_corl_summary_markdown(
         "```",
         "",
         "> **Recalibrated Energy Interpretation:**",
-        "> - **Primary Advantage Over `ANN-Rate`:** `SPWM`'s advantage over `ANN-Rate` is **closed-loop dynamical stability and noise robustness** (`+23.4 pp` 3-seed PIL grasp success, `4.3×` better relative retention under `1.0%` sensory noise), **not** end-to-end closed-loop energy savings: saving `48.14 nJ/step` on Loihi-2 (`60.36 -> 12.22 nJ/step`) atop `1.0971 mJ/step` of dense GPU MPPI rollouts is a **`0.004%`** end-to-end difference (`1.0979 mJ/step` / `21.96 mW` @ `20 Hz` for both).",
+        "> - **Primary Advantage Over `ANN-Rate`:** `SPWM`'s advantage over `ANN-Rate` is **closed-loop dynamical stability and noise/dynamics robustness** (`+23.4 pp` nominal 3-seed PIL grasp success, `+24.7 pp` and `2.0×` better relative retention under `1.0%` sensory noise with $N=25$ validation-selected checkpoints), **not** end-to-end closed-loop energy savings: saving `48.14 nJ/step` on Loihi-2 (`60.36 -> 12.22 nJ/step`) atop `1.0971 mJ/step` of dense GPU MPPI rollouts is a **`0.004%`** end-to-end difference (`1.0979 mJ/step` / `21.96 mW` @ `20 Hz` for both).",
         "> - **Always-On Standby Benefit & `M1` Rollout Compactness:** The `4.94×` Loihi-2 recurrent core reduction (`12.22 ± 0.19 nJ/step`, `0.244 mW` @ `20 Hz`, computed from synaptic SOPs excluding passive membrane leak) is specifically an **always-on, sub-milliwatt standby state-estimation benefit** when batched MPPI planning is dormant. The `1.93×` E2E energy reduction vs. `Continuous RSSM` (`2.1236 mJ/step`) and `1.59×` reduction vs. `Deep GRU` (`1.7490 mJ/step`) stem from `M1`'s compact MLP rollout architecture (`1.219 GMACs` vs. `2.358 GMACs` and `1.942 GMACs`).",
         "",
         "---",
@@ -554,7 +560,8 @@ def main() -> None:
     ablation_defs = [
         ("1. SPWM-Base (Phase 1 Warmup, Unsmoothed)", "stage1_base", False),
         ("2. + Smooth MPPI Controls (Pre-DAgger)", "stage2_smooth_mppi", False),
-        ("3. + Phase 3/4 Curriculum (AR(1)+DAgger, No Lookahead/Handover)", "stage3_dagger_curriculum", False),
+        ("3a. + Phase 3/4 Curriculum (\\texttt{phase\\_4}, No Lookahead/Handover)", "stage3_dagger_curriculum", False),
+        ("3b. + $N=25$ Validation Checkpoint Selection (Val-Sel., No Lookahead/Handover)", "stage3b_val_sel_no_lookahead", False),
         ("4a. + 2-Stage SE(3) Lookahead (Val-Sel., $w_t \\equiv 0$)", "stage4a_lookahead", False),
         ("4b. + Residual Rejection Gate (Full SPWM, Val-Sel.)", "stage4b_full", True),
     ]
@@ -592,6 +599,11 @@ def main() -> None:
         101: "results/robustness_benchmark_pil_ann_rate_seed101/robustness_metrics.json",
         2024: "results/robustness_benchmark_pil_ann_rate_seed2024/robustness_metrics.json",
     })
+    rob_dgru = _aggregate_robustness_3seed({
+        42: "results/robustness_benchmark_pil_deep_gru_seed42/robustness_metrics.json",
+        101: "results/robustness_benchmark_pil_deep_gru_seed101/robustness_metrics.json",
+        2024: "results/robustness_benchmark_pil_deep_gru_seed2024/robustness_metrics.json",
+    })
 
     val_sweep: Dict[str, Any] = {}
     for s_key in ("seed42", "seed2024"):
@@ -621,7 +633,7 @@ def main() -> None:
     energy_summary = {
         "framing_note": (
             "SPWM's primary advantage over ANN-Rate is closed-loop dynamical stability (+23.4 pp PIL grasp success) "
-            "and 1.0% sensory noise retention (4.3x better), not E2E energy savings (1.0979 mJ/step matches ANN-Rate; "
+            "and 1.0% sensory noise retention (+24.7 pp absolute, 2.0x better relative retention on N=25 val-selected checkpoints), not E2E energy savings (1.0979 mJ/step matches ANN-Rate; "
             "48.14 nJ Loihi-2 core reduction is 0.004% of E2E power). The 4.94x Loihi-2 recurrent core reduction "
             "(12.22 +- 0.19 nJ/step, 0.244 mW @ 20 Hz, SOPs excluding passive leak) is an always-on standby "
             "state-estimation benefit when batched MPPI rollouts are dormant; the 1.93x E2E reduction vs. "
@@ -662,6 +674,7 @@ def main() -> None:
         "baseline_training_budgets": baseline_budgets,
         "robustness_3seed_spwm": rob_spwm,
         "robustness_3seed_ann_rate": rob_ann,
+        "robustness_3seed_deep_gru": rob_dgru,
         "val_handover_threshold_sweep": {
             s_key: {
                 tag: [
@@ -711,8 +724,9 @@ def main() -> None:
     ]
     ms_data["baseline_training_budgets"] = baseline_budgets
     ms_data["robustness_pil_3seed"] = {
-        "SPWM-v0.12.4": rob_spwm["conditions"],
+        "SPWM-v0.12.4 (N=25 Val-Selected)": rob_spwm["conditions"],
         "ANN-Rate": rob_ann["conditions"],
+        "Deep GRU (Residual-Gated)": rob_dgru["conditions"],
     }
     ms_path.write_text(json.dumps(ms_data, indent=2) + "\n", encoding="utf-8")
 
@@ -723,6 +737,7 @@ def main() -> None:
         baseline_budgets=baseline_budgets,
         rob_spwm=rob_spwm,
         rob_ann=rob_ann,
+        rob_dgru=rob_dgru,
         val_sweep=val_sweep,
         val25_matrix=val25_matrix,
         energy_summary=energy_summary,

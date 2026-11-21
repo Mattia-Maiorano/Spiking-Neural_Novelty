@@ -16,18 +16,18 @@ Batched closed-loop Latent MPPI controller ($K=256, H=20, N_{\text{iter}}=3$) ov
 
 | Perturbation Condition | Episodes | Grasp Success Rate (%) | Placement Accuracy (cm) | Terminal Error (cm) | Terminal Vel (rad/s) | MPPI Latency (ms) | Ep w_t>0 (%) | Step w_t>0 (%) | Mean w_t>0 |
 | :--- | :---: | :---: | :---: | :---: | :---: | :---: | :---: | :---: | :---: |
-| **Nominal Baseline** | 50 | **56.0%** | **0.90 ± 0.65 cm** | 2.19 cm | 0.47 rad/s | 35.9 ms | 0.0% | 0.0% | 0.000 |
-| **Sensory Noise Injection (1.0%)** | 50 | **60.0%** | **0.90 ± 0.52 cm** | 2.11 cm | 0.54 rad/s | 36.5 ms | 0.0% | 0.0% | 0.000 |
-| **Payload Extrapolation (4.80 kg)** | 50 | **24.0%** | **1.28 ± 0.81 cm** | 2.84 cm | 0.64 rad/s | 36.4 ms | 0.0% | 0.0% | 0.000 |
-| **Actuator Drift (0.80x Friction)** | 50 | **36.0%** | **1.12 ± 0.70 cm** | 2.61 cm | 0.56 rad/s | 36.4 ms | 0.0% | 0.0% | 0.000 |
-| **Actuator Drift (1.20x Friction)** | 50 | **32.0%** | **1.22 ± 0.66 cm** | 2.54 cm | 0.52 rad/s | 36.6 ms | 0.0% | 0.0% | 0.000 |
+| **Nominal Baseline** | 50 | **62.0%** | **0.85 ± 0.59 cm** | 2.02 cm | 0.51 rad/s | 39.8 ms | 0.0% | 0.0% | 0.000 |
+| **Sensory Noise Injection (1.0%)** | 50 | **54.0%** | **0.76 ± 0.42 cm** | 2.31 cm | 0.47 rad/s | 32.1 ms | 0.0% | 0.0% | 0.000 |
+| **Payload Extrapolation (4.80 kg)** | 50 | **30.0%** | **1.20 ± 0.79 cm** | 2.80 cm | 0.73 rad/s | 32.6 ms | 0.0% | 0.0% | 0.000 |
+| **Actuator Drift (0.80x Friction)** | 50 | **44.0%** | **1.15 ± 0.72 cm** | 2.65 cm | 0.62 rad/s | 29.7 ms | 0.0% | 0.0% | 0.000 |
+| **Actuator Drift (1.20x Friction)** | 50 | **34.0%** | **1.20 ± 0.75 cm** | 2.44 cm | 0.55 rad/s | 30.0 ms | 0.0% | 0.0% | 0.000 |
 
 ### Stratification of Downstream Performance Across Shifted Conditions
 
 | Perturbation Condition | Low Plane Succ (%) | Mid Plane Succ (%) | High Plane Succ (%) | Light Mass Succ (%) | Med Mass Succ (%) | Heavy Mass Succ (%) |
 | :--- | :---: | :---: | :---: | :---: | :---: | :---: |
-| **Nominal Baseline** | 27.3% | 72.2% | 90.0% | 88.2% | 47.1% | 31.2% |
-| **Sensory Noise Injection (1.0%)** | 54.5% | 55.6% | 80.0% | 76.5% | 52.9% | 50.0% |
-| **Payload Extrapolation (4.80 kg)** | 9.1% | 33.3% | 40.0% | 5.9% | 47.1% | 18.8% |
-| **Actuator Drift (0.80x Friction)** | 18.2% | 44.4% | 60.0% | 29.4% | 52.9% | 25.0% |
-| **Actuator Drift (1.20x Friction)** | 27.3% | 27.8% | 50.0% | 35.3% | 41.2% | 18.8% |
+| **Nominal Baseline** | 54.5% | 55.6% | 90.0% | 88.2% | 64.7% | 31.2% |
+| **Sensory Noise Injection (1.0%)** | 36.4% | 66.7% | 70.0% | 82.4% | 41.2% | 37.5% |
+| **Payload Extrapolation (4.80 kg)** | 18.2% | 27.8% | 60.0% | 41.2% | 29.4% | 18.8% |
+| **Actuator Drift (0.80x Friction)** | 40.9% | 38.9% | 60.0% | 82.4% | 29.4% | 18.8% |
+| **Actuator Drift (1.20x Friction)** | 31.8% | 33.3% | 40.0% | 41.2% | 52.9% | 6.2% |

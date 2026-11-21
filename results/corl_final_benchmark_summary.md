@@ -76,15 +76,15 @@ SPWM-v0.12.4 ($N=6$ Tier-2, 3 seeds) & 58.0 $\pm$ 27.1 & 0.90 $\pm$ 0.04 & 2.23 
 
 > **Critical Findings from Baseline Equalization & Shared FK Residual Gating:**
 > 1. **Why un-gated online baselines collapsed (`0.0%`):** Forcing unconditional overwrites (`w_t = 1.0`) from Python's domain-gapped 2D `OnlineEventCameraStream` causes both `Continuous RSSM` (`0.0%`, term `25.49 ± 1.31 cm`) and `Deep GRU` (`0.0%`, term `7.35 ± 1.34 cm`) to fail. Applying the identical causal FK residual rejection gate restores `Continuous RSSM` to its open-loop ceiling (`15.3 ± 5.0%` vs `15.3 ± 7.0%`, term `2.72 ± 0.11 cm`), confirming RSSM's `15.3%` limit is architectural (MPPI jitter `|Δ²q| = 0.02049`, `36.94` flips). Conversely, equalized `Deep GRU` recovers to **`76.7 ± 5.0%`** (`82.0% / 72.0% / 76.0%`; `77.3 ± 4.2%` open-loop) with `0/150` velocity violations.
-> 2. **Architectural Trade-Off vs. Equalized Deep GRU:** While equalized `Deep GRU` achieves higher nominal PIL grasp success (`76.7 ± 5.0%` vs. `60.7 ± 2.3%` for SPWM) and smoother controls (`|Δ²q| = 0.00449` vs. `0.00931`), `Deep GRU` exceeds the `50.0 ms` (`20 Hz`) real-time budget at **`57.7 ms/step`** (`2.17×` slower than SPWM's `26.6 ms/step` under identical `OMP_NUM_THREADS=2`), exhibits **`9.0×` higher $H=100$ open-loop velocity MSE** (`0.08716` vs. `0.00971 rad²/s²`), and consumes **`22.1×` higher standby core energy** (`269.57 nJ/step` on Orin vs. `12.22 nJ/step` on Loihi-2) and **`1.59×` higher E2E step energy** (`1.7490 mJ` vs. `1.0979 mJ`).
-> 3. **Controlled Spiking Isolation (`SPWM` vs. `ANN-Rate`):** Under identical parameter budget (`317.9k` active), `(q, p)` factorization, `160+240` training curriculum, and MPPI controller, SPWM's discrete ALIF thresholding outperforms `ANN-Rate` by **`+23.4 pp`** (`60.7 ± 2.3%` vs. `37.3 ± 9.5%`) and delivers `4.3×` better relative retention under `1.0%` sensory noise.
+> 2. **Architectural Trade-Off vs. Equalized Deep GRU (Latency, Velocity & Mechanical OOD Collapse):** While equalized `Deep GRU` achieves higher nominal PIL grasp success (`76.7 ± 5.0%` vs. `60.7 ± 2.3%` for SPWM) and smoother nominal controls (`|Δ²q| = 0.00449` vs. `0.00931`), `Deep GRU` (i) exceeds the `50.0 ms` (`20 Hz`) real-time budget at **`57.7 ms/step`** (`2.17×` slower than SPWM's `26.6 ms/step` under identical `OMP_NUM_THREADS=2`), (ii) exhibits **`9.0×` higher $H=100$ open-loop velocity MSE** (`0.08716` vs. `0.00971 rad²/s²`), (iii) **collapses under zero-shot mechanical distribution shifts** (`23.3 ± 12.9%` at `4.80 kg` payload, `26.7 ± 23.9%` at `0.80×` friction, `30.0 ± 15.1%` at `1.20×` friction — trailing SPWM by **`+18.0 to +26.0 pp`** across all three physical perturbations in Table 4), and (iv) consumes **`22.1×` higher standby core energy** (`269.57 nJ/step` on Orin vs. `12.22 nJ/step` on Loihi-2) and **`1.59×` higher E2E step energy** (`1.7490 mJ` vs. `1.0979 mJ`).
+> 3. **Controlled Spiking Isolation (`SPWM` vs. `ANN-Rate`):** Under identical parameter budget (`317.9k` active), `(q, p)` factorization, `160+240` training curriculum, and MPPI controller, SPWM's discrete ALIF thresholding outperforms `ANN-Rate` by **`+23.4 pp`** nominally (`60.7 ± 2.3%` vs. `37.3 ± 9.5%`), **`+24.7 pp`** under `1.0%` sensory noise (`54.7 ± 1.2%` vs. `30.0 ± 3.5%`, `2.0×` better relative retention `-9.9%` vs. `-19.6%`), and **`+14.7 to +22.0 pp`** across out-of-distribution payload and friction shifts.
 
-### Table 3: Full 3-Seed 5-Stage SPWM Architectural Ablation in PIL (`50` Test Episodes `[3600, 3649]`, $t \ge t_c$, Seeds `42, 101, 2024`)
+### Table 3: Full 3-Seed 6-Row SPWM Architectural Ablation in PIL (`50` Test Episodes `[3600, 3649]`, $t \ge t_c$, Seeds `42, 101, 2024`)
 
 ```latex
 \begin{table}[t]
 \centering
-\caption{\textbf{3-Seed 5-Stage SPWM Architectural Ablation in PIL (`50` Episodes `[3600, 3649]`, $t \ge t_c$, Seeds `42, 101, 2024`).} Stages 1--2 evaluate pre-DAgger Phase 1 warmup weights (`checkpoint\_phase\_1.pt`), Stage 3 evaluates Phase 3/4 AR(1)+DAgger curriculum weights (`checkpoint\_phase\_4.pt`) without lookahead/handover, and Stages 4a--4b apply 2-Stage $\text{SE}(3)$ Lookahead and Residual Handover to the $N=25$ validation-selected checkpoints (`42: phase\_4`, `101: phase\_1`, `2024: phase\_2`).}
+\caption{\textbf{3-Seed 6-Row SPWM Architectural Ablation in PIL (`50` Episodes `[3600, 3649]`, $t \ge t_c$, Seeds `42, 101, 2024`).} Stages 1--2 evaluate pre-DAgger Phase 1 warmup weights (`checkpoint\_phase\_1.pt`), Stage 3a evaluates Phase 3/4 AR(1)+DAgger curriculum weights (`checkpoint\_phase\_4.pt`) without lookahead/handover, Stage 3b evaluates the $N=25$ validation-selected checkpoints (`42: phase\_4`, `101: phase\_1`, `2024: phase\_2`) \emph{without} lookahead/handover to cleanly isolate checkpoint selection, and Stages 4a--4b apply 2-Stage $\text{SE}(3)$ Lookahead and Residual Handover to those same $N=25$ validation-selected checkpoints.}
 \label{tab:spwm_ablation}
 \resizebox{\textwidth}{!}{%
 \begin{tabular}{lccccccc}
@@ -93,7 +93,8 @@ SPWM-v0.12.4 ($N=6$ Tier-2, 3 seeds) & 58.0 $\pm$ 27.1 & 0.90 $\pm$ 0.04 & 2.23 
 \midrule
 1. SPWM-Base (Phase 1 Warmup, Unsmoothed) & 62 / 44 / 30 & 45.3 $\pm$ 16.0 & 1.03 $\pm$ 0.21 & 2.50 $\pm$ 0.11 & 0.00983 & 0.00765 & 23.03 \\
 2. + Smooth MPPI Controls (Pre-DAgger) & 62 / 44 / 48 & 51.3 $\pm$ 9.5 & 1.02 $\pm$ 0.08 & 2.41 $\pm$ 0.13 & 0.00991 & 0.00705 & 21.99 \\
-3. + Phase 3/4 Curriculum (AR(1)+DAgger, No Lookahead/Handover) & 56 / 18 / 40 & 38.0 $\pm$ 19.1 & 1.53 $\pm$ 0.59 & 3.27 $\pm$ 1.13 & 0.00589 & 0.00354 & 11.17 \\
+3a. + Phase 3/4 Curriculum (\texttt{phase\_4}, No Lookahead/Handover) & 56 / 18 / 40 & 38.0 $\pm$ 19.1 & 1.53 $\pm$ 0.59 & 3.27 $\pm$ 1.13 & 0.00589 & 0.00354 & 11.17 \\
+3b. + $N=25$ Validation Checkpoint Selection (Val-Sel., No Lookahead/Handover) & 56 / 44 / 48 & 49.3 $\pm$ 6.1 & 1.00 $\pm$ 0.16 & 2.29 $\pm$ 0.23 & 0.00921 & 0.00659 & 21.18 \\
 4a. + 2-Stage SE(3) Lookahead (Val-Sel., $w_t \equiv 0$) & 58 / 62 / 62 & 60.7 $\pm$ 2.3 & 0.88 $\pm$ 0.11 & 2.01 $\pm$ 0.12 & 0.00931 & 0.00663 & 21.14 \\
 \textbf{4b. + Residual Rejection Gate (Full SPWM, Val-Sel.)} & 58 / 62 / 62 & \textbf{60.7 $\pm$ 2.3} & \textbf{0.88 $\pm$ 0.11} & \textbf{2.01 $\pm$ 0.12} & 0.00931 & 0.00663 & 21.14 \\
 \bottomrule
@@ -102,27 +103,27 @@ SPWM-v0.12.4 ($N=6$ Tier-2, 3 seeds) & 58.0 $\pm$ 27.1 & 0.90 $\pm$ 0.04 & 2.23 
 \end{table}
 ```
 
-> **Honest Negative/Mixed-Result Diagnostic (Stage 2 vs. Stage 3):** Comparing Stage 2 (`51.3 ± 9.5%`) against Stage 3 (`38.0 ± 19.1%`) across all 3 seeds shows that while Phase 3/4 AR(1)+DAgger replay substantially smooths control trajectories (`|Δ²q|: 0.00991 -> 0.00589 rad/step²`, `|Δ³q|: 0.00705 -> 0.00354 rad/step³`, flips `21.99 -> 11.17`), it **degrades 3-seed mean PIL grasp success by `-13.3 pp`** (`56.0% / 18.0% / 40.0%`) and **doubles inter-seed standard deviation (`9.5% -> 19.1%`)**. Because on-policy DAgger overfitting can raise single-seed performance (e.g., Seed 42 validation `92.0%`) while destabilizing other seeds (`18.0%` on Seed 101 at `phase_4`), **$N=25$ validation-split (`[3200, 3224]`) checkpoint selection** is mandatory to select pre-overfit checkpoints where needed (`101: phase_1`, `2024: phase_2`), enabling 2-Stage SE(3) Lookahead (`Stage 4a/4b`) to achieve **`60.7 ± 2.3%`** (`58.0% / 62.0% / 62.0%`).
+> **Honest Disentangled Diagnostic (Stage 2 vs. Stage 3a vs. Stage 3b vs. Stage 4a):** Comparing Stage 2 (`51.3 ± 9.5%`) against Stage 3a (`38.0 ± 19.1%`) across all 3 seeds shows that while Phase 3/4 AR(1)+DAgger replay (`checkpoint_phase_4.pt`) smooths control trajectories (`|Δ²q|: 0.00991 -> 0.00589 rad/step²`, flips `21.99 -> 11.17`), it **degrades 3-seed mean PIL grasp success by `-13.3 pp`** (`56.0% / 18.0% / 40.0%`) and **doubles inter-seed standard deviation (`9.5% -> 19.1%`)**. Isolating **$N=25$ validation-split (`[3200, 3224]`) checkpoint selection** *without* Lookahead (`Stage 3b`, `42: phase_4`, `101: phase_1`, `2024: phase_2`) recovers 3-seed PIL success to **`49.3 ± 6.1%`** (`56.0% / 44.0% / 48.0%`, `+11.3 pp` from checkpoint selection alone). Applying **2-Stage SE(3) Lookahead** to those exact same $N=25$ validation-selected checkpoints (`Stage 4a/4b`) then contributes a further **`+11.3 pp`** gain (`49.3% -> 60.7 ± 2.3%`, `58.0% / 62.0% / 62.0%`), cleanly separating validation checkpoint selection from 2-Stage SE(3) Lookahead.
 
-### Table 4: Symmetric 3-Seed Zero-Shot Sim-to-Real PIL Robustness Stress Test — SPWM vs. ANN-Rate (`50` Test Episodes, $t \ge t_c$)
+### Table 4: Symmetric 3-Seed Zero-Shot Sim-to-Real PIL Robustness Stress Test — SPWM ($N=25$ Val-Sel.) vs. ANN-Rate vs. Equalized Deep GRU (`50` Test Episodes, $t \ge t_c$)
 
 ```latex
 \begin{table}[t]
 \centering
-\caption{\textbf{Zero-Shot Physical \& Sensory Robustness Stress Test in PIL (`50` Test Episodes `[3600, 3649]`, $t \ge t_c$, $N=6$ Tier-2 Checkpoints).} Symmetric 3-seed comparison ($42, 101, 2024$) of frozen SPWM-v0.12.4 vs. parameter-matched ANN-Rate. Relative success retention ($\Delta_{\text{rel}}$) is computed against each model's Nominal Baseline.}
+\caption{\textbf{Zero-Shot Physical \& Sensory Robustness Stress Test in PIL (`50` Test Episodes `[3600, 3649]`, $t \ge t_c$).} Symmetric 3-seed comparison ($42, 101, 2024$) of frozen SPWM-v0.12.4 ($N=25$ validation-selected checkpoints: `42: phase\_4`, `101: phase\_1`, `2024: phase\_2`), parameter-matched ANN-Rate, and Equalized Deep GRU (Residual-Gated Online). Relative success retention ($\Delta_{\text{rel}}$) is computed against each model's Nominal Baseline.}
 \label{tab:pil_robustness}
 \resizebox{\textwidth}{!}{%
-\begin{tabular}{lcccccc}
+\begin{tabular}{lccccccccc}
 \toprule
-\textbf{Perturbation Condition} & \multicolumn{3}{c}{\textbf{SPWM-v0.12.4 (3-Seed Mean $\pm$ Std)}} & \multicolumn{3}{c}{\textbf{ANN-Rate (3-Seed Mean $\pm$ Std)}} \\
-\cmidrule(lr){2-4} \cmidrule(lr){5-7}
- & \textbf{Succ (\%)} & \textbf{Min Err (cm)} & \textbf{Term Err (cm)} & \textbf{Succ (\%)} & \textbf{Min Err (cm)} & \textbf{Term Err (cm)} \\
+\textbf{Perturbation Condition} & \multicolumn{3}{c}{\textbf{SPWM-v0.12.4 ($N=25$ Val-Sel., 3 Seeds)}} & \multicolumn{3}{c}{\textbf{ANN-Rate (3 Seeds)}} & \multicolumn{3}{c}{\textbf{Equalized Deep GRU (Residual-Gated, 3 Seeds)}} \\
+\cmidrule(lr){2-4} \cmidrule(lr){5-7} \cmidrule(lr){8-10}
+ & \textbf{Succ (\%)} & \textbf{Min Err (cm)} & \textbf{Term Err (cm)} & \textbf{Succ (\%)} & \textbf{Min Err (cm)} & \textbf{Term Err (cm)} & \textbf{Succ (\%)} & \textbf{Min Err (cm)} & \textbf{Term Err (cm)} \\
 \midrule
-Nominal Baseline & \textbf{58.0 $\pm$ 27.1} & \textbf{0.90 $\pm$ 0.04} & \textbf{2.23 $\pm$ 0.68} & 37.3 $\pm$ 9.5 & 1.07 $\pm$ 0.28 & 2.98 $\pm$ 0.46 \\
-Sensory Noise Injection (1.0\%) & \textbf{55.3 $\pm$ 19.4 (-4.6\% rel)} & \textbf{0.90 $\pm$ 0.09} & \textbf{2.34 $\pm$ 0.63} & 30.0 $\pm$ 3.5 (-19.6\% rel) & 1.04 $\pm$ 0.18 & 3.36 $\pm$ 0.53 \\
-Payload Extrapolation (4.80 kg) & \textbf{39.3 $\pm$ 33.7 (-32.2\% rel)} & \textbf{1.18 $\pm$ 0.15} & \textbf{2.50 $\pm$ 0.62} & 26.7 $\pm$ 16.2 (-28.6\% rel) & 1.36 $\pm$ 0.20 & 3.64 $\pm$ 0.80 \\
-Actuator Drift (0.80$\times$ Friction) & \textbf{40.7 $\pm$ 27.3 (-29.9\% rel)} & \textbf{1.19 $\pm$ 0.11} & \textbf{2.61 $\pm$ 0.54} & 30.7 $\pm$ 14.0 (-17.9\% rel) & 1.42 $\pm$ 0.22 & 3.74 $\pm$ 0.83 \\
-Actuator Drift (1.20$\times$ Friction) & \textbf{44.0 $\pm$ 28.0 (-24.1\% rel)} & \textbf{1.22 $\pm$ 0.11} & \textbf{2.53 $\pm$ 0.56} & 33.3 $\pm$ 16.7 (-10.7\% rel) & 1.34 $\pm$ 0.21 & 3.51 $\pm$ 1.21 \\
+Nominal Baseline & \textbf{60.7 $\pm$ 2.3} & \textbf{0.88 $\pm$ 0.11} & \textbf{2.01 $\pm$ 0.12} & 37.3 $\pm$ 9.5 & 1.07 $\pm$ 0.28 & 2.98 $\pm$ 0.46 & 76.7 $\pm$ 5.0 & 1.14 $\pm$ 0.31 & 1.90 $\pm$ 0.18 \\
+Sensory Noise Injection (1.0\%) & \textbf{54.7 $\pm$ 1.2 (-9.9\% rel)} & \textbf{0.92 $\pm$ 0.24} & \textbf{2.26 $\pm$ 0.45} & 30.0 $\pm$ 3.5 (-19.6\% rel) & 1.04 $\pm$ 0.18 & 3.36 $\pm$ 0.53 & 74.7 $\pm$ 3.1 (-2.6\% rel) & 1.52 $\pm$ 0.30 & 1.85 $\pm$ 0.23 \\
+Payload Extrapolation (4.80 kg) & \textbf{44.7 $\pm$ 13.3 (-26.4\% rel)} & \textbf{1.31 $\pm$ 0.41} & \textbf{2.49 $\pm$ 0.29} & 26.7 $\pm$ 16.2 (-28.6\% rel) & 1.36 $\pm$ 0.20 & 3.64 $\pm$ 0.80 & 23.3 $\pm$ 12.9 (-69.6\% rel) & 3.21 $\pm$ 1.47 & 4.35 $\pm$ 1.06 \\
+Actuator Drift (0.80$\times$ Friction) & \textbf{52.7 $\pm$ 13.3 (-13.2\% rel)} & \textbf{1.31 $\pm$ 0.35} & \textbf{2.39 $\pm$ 0.26} & 30.7 $\pm$ 14.0 (-17.9\% rel) & 1.42 $\pm$ 0.22 & 3.74 $\pm$ 0.83 & 26.7 $\pm$ 23.9 (-65.2\% rel) & 3.24 $\pm$ 1.45 & 4.38 $\pm$ 1.00 \\
+Actuator Drift (1.20$\times$ Friction) & \textbf{48.0 $\pm$ 19.3 (-20.9\% rel)} & \textbf{1.29 $\pm$ 0.46} & \textbf{2.28 $\pm$ 0.29} & 33.3 $\pm$ 16.7 (-10.7\% rel) & 1.34 $\pm$ 0.21 & 3.51 $\pm$ 1.21 & 30.0 $\pm$ 15.1 (-60.9\% rel) & 3.10 $\pm$ 1.34 & 4.19 $\pm$ 1.03 \\
 \bottomrule
 \end{tabular}%
 }
@@ -153,7 +154,7 @@ Continuous ConvLSTM (Orin GPU) & 2,359,296 MACs & 2123.37 & 42.467 mW & 1.00$\ti
 ```
 
 > **Recalibrated Energy Interpretation:**
-> - **Primary Advantage Over `ANN-Rate`:** `SPWM`'s advantage over `ANN-Rate` is **closed-loop dynamical stability and noise robustness** (`+23.4 pp` 3-seed PIL grasp success, `4.3×` better relative retention under `1.0%` sensory noise), **not** end-to-end closed-loop energy savings: saving `48.14 nJ/step` on Loihi-2 (`60.36 -> 12.22 nJ/step`) atop `1.0971 mJ/step` of dense GPU MPPI rollouts is a **`0.004%`** end-to-end difference (`1.0979 mJ/step` / `21.96 mW` @ `20 Hz` for both).
+> - **Primary Advantage Over `ANN-Rate`:** `SPWM`'s advantage over `ANN-Rate` is **closed-loop dynamical stability and noise/dynamics robustness** (`+23.4 pp` nominal 3-seed PIL grasp success, `+24.7 pp` and `2.0×` better relative retention under `1.0%` sensory noise with $N=25$ validation-selected checkpoints), **not** end-to-end closed-loop energy savings: saving `48.14 nJ/step` on Loihi-2 (`60.36 -> 12.22 nJ/step`) atop `1.0971 mJ/step` of dense GPU MPPI rollouts is a **`0.004%`** end-to-end difference (`1.0979 mJ/step` / `21.96 mW` @ `20 Hz` for both).
 > - **Always-On Standby Benefit & `M1` Rollout Compactness:** The `4.94×` Loihi-2 recurrent core reduction (`12.22 ± 0.19 nJ/step`, `0.244 mW` @ `20 Hz`, computed from synaptic SOPs excluding passive membrane leak) is specifically an **always-on, sub-milliwatt standby state-estimation benefit** when batched MPPI planning is dormant. The `1.93×` E2E energy reduction vs. `Continuous RSSM` (`2.1236 mJ/step`) and `1.59×` reduction vs. `Deep GRU` (`1.7490 mJ/step`) stem from `M1`'s compact MLP rollout architecture (`1.219 GMACs` vs. `2.358 GMACs` and `1.942 GMACs`).
 
 ---
@@ -164,9 +165,9 @@ Continuous ConvLSTM (Orin GPU) & 2,359,296 MACs & 2123.37 & 42.467 mW & 1.00$\ti
 | :--- | :---: | :---: | :---: | :---: |
 | **Nominal Baseline** | `0.0% / 0.0% / 0.000` | `0.0% / 0.0% / 0.000` | `0.0% / 0.0% / 0.000` | `0.00 ± 0.00%` |
 | **Sensory Noise Injection (1.0%)** | `0.0% / 0.0% / 0.000` | `0.0% / 0.0% / 0.000` | `0.0% / 0.0% / 0.000` | `0.00 ± 0.00%` |
-| **Payload Extrapolation (4.80 kg)** | `0.0% / 0.0% / 0.000` | `0.0% / 0.0% / 0.000` | `4.0% / 0.5% / 0.165` | `0.17 ± 0.29%` |
-| **Actuator Drift (0.80x Friction)** | `0.0% / 0.0% / 0.000` | `0.0% / 0.0% / 0.000` | `4.0% / 0.5% / 0.229` | `0.17 ± 0.29%` |
-| **Actuator Drift (1.20x Friction)** | `0.0% / 0.0% / 0.000` | `0.0% / 0.0% / 0.000` | `4.0% / 0.5% / 0.169` | `0.17 ± 0.29%` |
+| **Payload Extrapolation (4.80 kg)** | `0.0% / 0.0% / 0.000` | `0.0% / 0.0% / 0.000` | `0.0% / 0.0% / 0.000` | `0.00 ± 0.00%` |
+| **Actuator Drift (0.80x Friction)** | `0.0% / 0.0% / 0.000` | `0.0% / 0.0% / 0.000` | `0.0% / 0.0% / 0.000` | `0.00 ± 0.00%` |
+| **Actuator Drift (1.20x Friction)** | `0.0% / 0.0% / 0.000` | `0.0% / 0.0% / 0.000` | `0.0% / 0.0% / 0.000` | `0.00 ± 0.00%` |
 
 | Seed & Threshold $\tau$ | Nominal (Succ / Ep $w_t>0$) | 1.0% Noise (Succ / Ep $w_t>0$) | 4.80 kg Payload (Succ / Ep $w_t>0$) | 0.80$\times$ Friction (Succ / Ep $w_t>0$) | 1.20$\times$ Friction (Succ / Ep $w_t>0$) |
 | :--- | :---: | :---: | :---: | :---: | :---: |

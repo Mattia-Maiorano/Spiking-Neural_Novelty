@@ -59,10 +59,16 @@ from spwm.evaluation.robustness import (
 )
 from experiments.benchmark_mppi_control import (
     EpisodeResult,
+    _BaselineModelWrapper,
+    _DeepGRUDecoderAdapter,
+    _DeepGRUPredictorAdapter,
+    _RSSMDecoderAdapter,
+    _RSSMPredictorAdapter,
     run_episode,
     summarize_handover_telemetry,
 )
 from spwm.models.ann_ablation import ANNWorldModel
+from spwm.models.baselines import ContinuousRSSM, DeepGRUPredictor
 from spwm.models.kinematics import DifferentiableForwardKinematics, classify_elevation, compute_rot_error
 from spwm.models.rollout import ground_initial_state
 from spwm.models.world_model import SPWM
@@ -246,7 +252,7 @@ def run_mppi_single_episode(
 
 
 def evaluate_mppi_suite(
-    model: SPWM,
+    model: Any,
     controller: LatentMPPIController,
     fk: DifferentiableForwardKinematics,
     episode_ids: List[int],
@@ -255,6 +261,7 @@ def evaluate_mppi_suite(
     seed: int = 42,
     physics_in_loop: bool = False,
     handover_dist_threshold: float = 0.026,
+    baseline_handover_mode: str = "residual_gated",
 ) -> List[MPPIPerturbationResult]:
     """Evaluates closed-loop Latent MPPI robustness across the 5 shifted conditions."""
     mppi_conditions = [
@@ -349,6 +356,7 @@ def evaluate_mppi_suite(
                 physics_in_loop=physics_in_loop,
                 physics_damping_scale=damping_scale,
                 handover_dist_threshold=handover_dist_threshold,
+                baseline_handover_mode=baseline_handover_mode,
             )
             ep_results.append(ep_res)
             min_errors.append(ep_res.min_placement_error_cm)
@@ -629,8 +637,15 @@ def main() -> None:
         "--model-type",
         type=str,
         default="spwm",
-        choices=["spwm", "ann_rate"],
-        help="Model architecture to evaluate: 'spwm' (ALIF) or 'ann_rate' (continuous leaky rate).",
+        choices=["spwm", "ann_rate", "deep_gru", "rssm"],
+        help="Model architecture to evaluate: 'spwm', 'ann_rate', 'deep_gru', or 'rssm'.",
+    )
+    parser.add_argument(
+        "--baseline-handover-mode",
+        type=str,
+        default="residual_gated",
+        choices=["open_loop", "ungated", "residual_gated"],
+        help="Online sensory handover regime for RSSM/Deep GRU during phi_t == 1 in PIL.",
     )
     parser.add_argument(
         "--split",
@@ -666,18 +681,64 @@ def main() -> None:
     mppi_eval_ids = split_ids_all[: min(args.num_mppi_episodes, len(split_ids_all))]
 
     chronicle.log_info(f"Loading strictly frozen {args.model_type.upper()} checkpoint: {args.checkpoint} on {device}")
-    if args.model_type == "ann_rate":
-        model = ANNWorldModel.from_config(cfg).to(device)
-    else:
-        model = SPWM.from_config(cfg).to(device)
     ckpt = torch.load(args.checkpoint, map_location=device, weights_only=False)
     state_dict = ckpt["model_state"] if isinstance(ckpt, dict) and "model_state" in ckpt else ckpt
-    model.load_state_dict(state_dict, strict=True)
-    model.eval()
 
-    # Verify no retraining constraints
-    for p in model.parameters():
-        p.requires_grad = False
+    if args.model_type == "spwm":
+        spwm_model = SPWM.from_config(cfg).to(device)
+        spwm_model.load_state_dict(state_dict, strict=True)
+        spwm_model.eval()
+        for p in spwm_model.parameters():
+            p.requires_grad = False
+        model: Any = spwm_model
+        mppi_predictor: Any = spwm_model.m1
+        mppi_decoder: Any = spwm_model.physical_decoder
+    elif args.model_type == "ann_rate":
+        ann_model = ANNWorldModel.from_config(cfg).to(device)
+        ann_model.load_state_dict(state_dict, strict=True)
+        ann_model.eval()
+        for p in ann_model.parameters():
+            p.requires_grad = False
+        model = ann_model
+        mppi_predictor = ann_model.m1
+        mppi_decoder = ann_model.physical_decoder
+    elif args.model_type == "deep_gru":
+        gru_model = DeepGRUPredictor(
+            in_channels=cfg.model.in_channels,
+            height=cfg.environment.height,
+            width=cfg.environment.width,
+            encoder_dim=cfg.model.encoder_dim,
+            hidden_dim=164,
+            action_dim=cfg.environment.action_dim,
+            joint_count=cfg.environment.joint_count,
+        ).to(device)
+        gru_model.load_state_dict(state_dict, strict=True)
+        gru_model.eval()
+        for p in gru_model.parameters():
+            p.requires_grad = False
+        mppi_predictor = _DeepGRUPredictorAdapter(gru_model).to(device)
+        mppi_decoder = _DeepGRUDecoderAdapter(gru_model).to(device)
+        model = _BaselineModelWrapper(gru_model, "deep_gru", mppi_predictor, mppi_decoder)
+    elif args.model_type == "rssm":
+        rssm_model = ContinuousRSSM(
+            in_channels=cfg.model.in_channels,
+            height=cfg.environment.height,
+            width=cfg.environment.width,
+            encoder_dim=cfg.model.encoder_dim,
+            deterministic_dim=256,
+            stochastic_dim=32,
+            action_dim=cfg.environment.action_dim,
+            joint_count=cfg.environment.joint_count,
+        ).to(device)
+        rssm_model.load_state_dict(state_dict, strict=True)
+        rssm_model.eval()
+        for p in rssm_model.parameters():
+            p.requires_grad = False
+        mppi_predictor = _RSSMPredictorAdapter(rssm_model).to(device)
+        mppi_decoder = _RSSMDecoderAdapter(rssm_model).to(device)
+        model = _BaselineModelWrapper(rssm_model, "rssm", mppi_predictor, mppi_decoder)
+    else:
+        raise ValueError(f"Unsupported --model-type: {args.model_type}")
 
     t_start_total = time.perf_counter()
 
@@ -685,6 +746,8 @@ def main() -> None:
     sensor_results: List[SensorPerturbationResult] = []
     t_sensor = 0.0
     if not args.skip_sensor_suite:
+        if args.model_type not in ("spwm", "ann_rate"):
+            raise ValueError("--skip-sensor-suite is required for baseline model types ('deep_gru', 'rssm').")
         chronicle.log_info(f"--- Starting Suite 1: Visual Stream Perturbations ({len(sensor_eval_ids)} trajectories) ---")
         t0_sensor = time.perf_counter()
         with torch.no_grad():
@@ -705,8 +768,8 @@ def main() -> None:
     )
     fk = DifferentiableForwardKinematics().to(device)
     controller = LatentMPPIController(
-        predictor=model.m1,
-        physical_decoder=model.physical_decoder,
+        predictor=mppi_predictor,
+        physical_decoder=mppi_decoder,
         config=cfg.mppi,
         forward_kinematics=fk,
         device=device,
@@ -724,6 +787,7 @@ def main() -> None:
             seed=cfg.project.seed,
             physics_in_loop=args.physics_in_loop,
             handover_dist_threshold=args.handover_dist_threshold,
+            baseline_handover_mode=args.baseline_handover_mode,
         )
     t_mppi = time.perf_counter() - t0_mppi
     chronicle.log_success(f"Suite 2 completed in {t_mppi:.1f}s")

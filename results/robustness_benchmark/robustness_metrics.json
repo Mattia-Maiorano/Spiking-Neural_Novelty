@@ -1,285 +1,285 @@
 {
   "benchmark_name": "Zero-Shot Sim-to-Real Domain Gap & Robustness Stress Test",
   "version": "SPWM-v0.12.3",
-  "checkpoint": "results/spwm_v0_12_4_train_m1/best_model.pt",
+  "checkpoint": "results/spwm_v0_12_4_train_m1/checkpoint_phase_4.pt",
   "split": "test",
   "handover_dist_threshold": 0.026,
-  "total_benchmark_time_sec": 579.821102707996,
-  "sensor_benchmark_time_sec": 306.1516772499308,
-  "mppi_benchmark_time_sec": 273.6689721249277,
+  "total_benchmark_time_sec": 540.10493016697,
+  "sensor_benchmark_time_sec": 290.17435620795004,
+  "mppi_benchmark_time_sec": 249.930085292086,
   "sensor_suite": [
     {
       "condition_name": "Nominal Baseline",
       "condition_description": "Clean events (theta = 0.08, 0% noise)",
       "evaluated_trajectories": 400,
       "pos_mae_per_horizon": {
-        "1": 0.021866663430745784,
-        "10": 0.0280087895404834,
-        "50": 0.08357812464237213,
-        "100": 0.10119512734504846
+        "1": 0.023200019764212463,
+        "10": 0.02914743970793027,
+        "50": 0.09496219055010723,
+        "100": 0.12599697594459242
       },
       "pos_mse_per_horizon": {
-        "1": 8.261299920447457e-05,
-        "10": 0.00025150049791241495,
-        "50": 0.0018420498728608857,
-        "100": 0.0025279655461557782
+        "1": 9.270948458624144e-05,
+        "10": 0.0002862775447563483,
+        "50": 0.002346467746135134,
+        "100": 0.0037753761101227542
       },
       "vel_mae_per_horizon": {
-        "1": 0.043133348799668826,
-        "10": 0.2146205615538817,
-        "50": 0.2703980757639958,
-        "100": 0.28352354352290815
+        "1": 0.03487798657554846,
+        "10": 0.193737920660239,
+        "50": 0.2915314229635092,
+        "100": 0.3264090854388017
       },
       "vel_mse_per_horizon": {
-        "1": 0.0003449317278304639,
-        "10": 0.01601280694684157,
-        "50": 0.020913268081270732,
-        "100": 0.021970406317940123
+        "1": 0.00023363830741100872,
+        "10": 0.017213198069769602,
+        "50": 0.02561490022792266,
+        "100": 0.028923398456894435
       },
       "latent_mse_per_horizon": {
-        "1": 0.0036323230821066177,
-        "10": 0.029199937501778968,
-        "50": 0.1523307068989827,
-        "100": 0.4701635379057664
+        "1": 0.0034456770473088208,
+        "10": 0.03336573793337895,
+        "50": 0.14944499616439527,
+        "100": 0.4552898705005646
       },
-      "mean_spike_rate": 0.16886679369669694,
-      "drift_ratio": 4.627826630502864,
-      "rollout_mae": 0.058662176239662446,
-      "rollout_vel_mae": 0.20291888241011363
+      "mean_spike_rate": 0.16886679484294012,
+      "drift_ratio": 5.430899508928476,
+      "rollout_mae": 0.0683266564917106,
+      "rollout_vel_mae": 0.21163910390952462
     },
     {
       "condition_name": "Threshold Shift (theta = 0.05)",
       "condition_description": "Hypersensitive contrast threshold (excessive triggers)",
       "evaluated_trajectories": 400,
       "pos_mae_per_horizon": {
-        "1": 0.02434844022186903,
-        "10": 0.0311208377377345,
-        "50": 0.08291540753382903,
-        "100": 0.10027076017398101
+        "1": 0.024730355837024175,
+        "10": 0.029505800885649826,
+        "50": 0.09451624636466686,
+        "100": 0.12587882234500006
       },
       "pos_mse_per_horizon": {
-        "1": 0.00010200044422302968,
-        "10": 0.00027270377680766757,
-        "50": 0.0017328091019477982,
-        "100": 0.0024490583455190063
+        "1": 0.00010471417548475214,
+        "10": 0.00028009701838107925,
+        "50": 0.0022852978257175824,
+        "100": 0.0037466236748374426
       },
       "vel_mae_per_horizon": {
-        "1": 0.04525788472248958,
-        "10": 0.21077184837598067,
-        "50": 0.2722240182069632,
-        "100": 0.2828080172722156
+        "1": 0.03602095349476887,
+        "10": 0.19536264813863313,
+        "50": 0.29220786919960606,
+        "100": 0.3215826107905461
       },
       "vel_mse_per_horizon": {
-        "1": 0.0004267896068855547,
-        "10": 0.015791650001819316,
-        "50": 0.021022879017087128,
-        "100": 0.021868897745242484
+        "1": 0.0002907233182878162,
+        "10": 0.017898809666243885,
+        "50": 0.02550199284003331,
+        "100": 0.028077146038413048
       },
       "latent_mse_per_horizon": {
-        "1": 0.0036948650108220484,
-        "10": 0.02638488678404918,
-        "50": 0.10624228360561225,
-        "100": 0.379447503731801
+        "1": 0.003464652905957057,
+        "10": 0.03037899976166395,
+        "50": 0.1060851405446346,
+        "100": 0.3690155813327202
       },
-      "mean_spike_rate": 0.16239957282176384,
-      "drift_ratio": 4.118159490311863,
-      "rollout_mae": 0.0596638614168534,
-      "rollout_vel_mae": 0.20276544214441228
+      "mean_spike_rate": 0.16239805290332207,
+      "drift_ratio": 5.090053017213163,
+      "rollout_mae": 0.06865780635808523,
+      "rollout_vel_mae": 0.21129352040588856
     },
     {
       "condition_name": "Threshold Shift (theta = 0.12)",
       "condition_description": "Hyposensitive contrast threshold (event dropout)",
       "evaluated_trajectories": 400,
       "pos_mae_per_horizon": {
-        "1": 0.02378764204107798,
-        "10": 0.030523547616142493,
-        "50": 0.09119394077704503,
-        "100": 0.1088219560109652
+        "1": 0.023581712291790888,
+        "10": 0.031107897082200416,
+        "50": 0.10158508614851879,
+        "100": 0.13018850409067595
       },
       "pos_mse_per_horizon": {
-        "1": 9.874529832114394e-05,
-        "10": 0.0002712722623702855,
-        "50": 0.002337033027568116,
-        "100": 0.0029515724163502455
+        "1": 9.633198687179874e-05,
+        "10": 0.00029724174573157844,
+        "50": 0.0028267552932867636,
+        "100": 0.004083285967891033
       },
       "vel_mae_per_horizon": {
-        "1": 0.04488573853786175,
-        "10": 0.21711571858479425,
-        "50": 0.2768082320690155,
-        "100": 0.2975696875498845
+        "1": 0.03636597756009836,
+        "10": 0.19551872519346383,
+        "50": 0.2999404966831207,
+        "100": 0.3458442504589374
       },
       "vel_mse_per_horizon": {
-        "1": 0.00035693880188493774,
-        "10": 0.016278337973814744,
-        "50": 0.022404052317142487,
-        "100": 0.024400545713993218
+        "1": 0.0002451437097848751,
+        "10": 0.017195390394100778,
+        "50": 0.02750812370616656,
+        "100": 0.032117279103169076
       },
       "latent_mse_per_horizon": {
-        "1": 0.0036737392119203624,
-        "10": 0.033397352179655664,
-        "50": 0.2237849900355706,
-        "100": 0.6997736096382141
+        "1": 0.0034971129185018632,
+        "10": 0.037674871201698594,
+        "50": 0.21911612153053284,
+        "100": 0.6815015031741216
       },
-      "mean_spike_rate": 0.18293448021778694,
-      "drift_ratio": 4.574726482895811,
-      "rollout_mae": 0.06358177161130768,
-      "rollout_vel_mae": 0.20909484418538898
+      "mean_spike_rate": 0.18293510606655708,
+      "drift_ratio": 5.520740075180899,
+      "rollout_mae": 0.0716157999032965,
+      "rollout_vel_mae": 0.2194173624739051
     },
     {
       "condition_name": "Background Activity (0.5%)",
       "condition_description": "Thermal dark current Poisson flip noise (0.5% rate)",
       "evaluated_trajectories": 400,
       "pos_mae_per_horizon": {
-        "1": 0.30989960523752064,
-        "10": 0.283331403365502,
-        "50": 0.21347965987829062,
-        "100": 0.1741357113306339
+        "1": 0.31446244854193467,
+        "10": 0.3130458914316617,
+        "50": 0.24148339835497049,
+        "100": 0.1990219675577604
       },
       "pos_mse_per_horizon": {
-        "1": 0.017396035962379895,
-        "10": 0.015061042844676055,
-        "50": 0.010069513191970495,
-        "100": 0.007026396297778075
+        "1": 0.017893086689022872,
+        "10": 0.018401766195893288,
+        "50": 0.012290612006416688,
+        "100": 0.008773094723717524
       },
       "vel_mae_per_horizon": {
-        "1": 0.28225606221419114,
-        "10": 0.4105911667530353,
-        "50": 0.6197603803414565,
-        "100": 0.4707247775334578
+        "1": 0.2884048590293297,
+        "10": 0.407500127187142,
+        "50": 0.6605527217571552,
+        "100": 0.5391311874756446
       },
       "vel_mse_per_horizon": {
-        "1": 0.01515914098574565,
-        "10": 0.06220898691278238,
-        "50": 0.09822860933267154,
-        "100": 0.06217856533252276
+        "1": 0.015800764569296286,
+        "10": 0.06501392991496967,
+        "50": 0.11117749374646407,
+        "100": 0.0750805540726735
       },
       "latent_mse_per_horizon": {
-        "1": 0.012375020851882605,
-        "10": 0.04393538202230747,
-        "50": 0.14769999568278974,
-        "100": 0.42187062822855437
+        "1": 0.012719172841081252,
+        "10": 0.04755970147939829,
+        "50": 0.14018257879293883,
+        "100": 0.40129072620318484
       },
-      "mean_spike_rate": 0.16496152717333573,
-      "drift_ratio": 0.5619100779336865,
-      "rollout_mae": 0.24521159495298678,
-      "rollout_vel_mae": 0.44583309671053517
+      "mean_spike_rate": 0.16496412112162664,
+      "drift_ratio": 0.6328958146849134,
+      "rollout_mae": 0.2670034264715818,
+      "rollout_vel_mae": 0.47389722386231786
     },
     {
       "condition_name": "Background Activity (1.0%)",
       "condition_description": "Thermal dark current Poisson flip noise (1.0% rate)",
       "evaluated_trajectories": 400,
       "pos_mae_per_horizon": {
-        "1": 0.3967986267346602,
-        "10": 0.3823115940277393,
-        "50": 0.26958138667620146,
-        "100": 0.21231906574506026
+        "1": 0.40155811034716093,
+        "10": 0.4219544736238626,
+        "50": 0.30423943125284636,
+        "100": 0.24146529344411996
       },
       "pos_mse_per_horizon": {
-        "1": 0.027938672413046543,
-        "10": 0.02713170790901551,
-        "50": 0.015920649425914653,
-        "100": 0.010550613443438824
+        "1": 0.028586954021683104,
+        "10": 0.03298173343332914,
+        "50": 0.01928400004712435,
+        "100": 0.013036714723476997
       },
       "vel_mae_per_horizon": {
-        "1": 0.41660942710362947,
-        "10": 0.48122223294698274,
-        "50": 0.7480433491560129,
-        "100": 0.5626890888580909
+        "1": 0.42406835693579453,
+        "10": 0.4751130457107837,
+        "50": 0.7700750873639033,
+        "100": 0.6146105619577261
       },
       "vel_mse_per_horizon": {
-        "1": 0.03242027917160438,
-        "10": 0.07405852612394553,
-        "50": 0.13276195239562255,
-        "100": 0.08351876586675644
+        "1": 0.0335168858560232,
+        "10": 0.07526819837781099,
+        "50": 0.1416193166604409,
+        "100": 0.0936875704389352
       },
       "latent_mse_per_horizon": {
-        "1": 0.013969818201775733,
-        "10": 0.05016351806429716,
-        "50": 0.14118089240330917,
-        "100": 0.37954342594513524
+        "1": 0.014243993979807083,
+        "10": 0.05295944815644851,
+        "50": 0.13227384480146262,
+        "100": 0.3583175264872037
       },
-      "mean_spike_rate": 0.16082481810679802,
-      "drift_ratio": 0.5350801425203477,
-      "rollout_mae": 0.3152526682959153,
-      "rollout_vel_mae": 0.552141024516179
+      "mean_spike_rate": 0.16082660624614128,
+      "drift_ratio": 0.6013209227311206,
+      "rollout_mae": 0.34230432716699744,
+      "rollout_vel_mae": 0.570966762992052
     },
     {
       "condition_name": "Refractory Dropout (10%)",
       "condition_description": "Dead-time/bus saturation active event masking (10% rate)",
       "evaluated_trajectories": 400,
       "pos_mae_per_horizon": {
-        "1": 0.023128399052298985,
-        "10": 0.02896793272632819,
-        "50": 0.08507037793214504,
-        "100": 0.10247140778945042
+        "1": 0.023716040098896392,
+        "10": 0.029676143223276504,
+        "50": 0.09631844552663657,
+        "100": 0.1269878871165789
       },
       "pos_mse_per_horizon": {
-        "1": 9.313903025870856e-05,
-        "10": 0.0002581641937677677,
-        "50": 0.0019213098119227933,
-        "100": 0.002592817987673558
+        "1": 9.798971195078384e-05,
+        "10": 0.00029030294144132105,
+        "50": 0.002433990334303906,
+        "100": 0.003845633276236745
       },
       "vel_mae_per_horizon": {
-        "1": 0.04307255234855872,
-        "10": 0.21461740938516763,
-        "50": 0.2702915072441101,
-        "100": 0.2851291230091682
+        "1": 0.03561046060461264,
+        "10": 0.1951288626744197,
+        "50": 0.2929766751252688,
+        "100": 0.3297435549589304
       },
       "vel_mse_per_horizon": {
-        "1": 0.0003505987786831191,
-        "10": 0.015979128459898326,
-        "50": 0.02102163118811754,
-        "100": 0.02227333947443045
+        "1": 0.00024922941520344466,
+        "10": 0.017276655739316575,
+        "50": 0.025928828578728896,
+        "100": 0.02948701438995508
       },
       "latent_mse_per_horizon": {
-        "1": 0.0036899231625004457,
-        "10": 0.030018638962736495,
-        "50": 0.1686514042890989,
-        "100": 0.5061306701256678
+        "1": 0.003493771906225727,
+        "10": 0.034238147047849804,
+        "50": 0.16500934729209313,
+        "100": 0.49022589509303754
       },
-      "mean_spike_rate": 0.1711532209928219,
-      "drift_ratio": 4.43054478426014,
-      "rollout_mae": 0.059909529375055656,
-      "rollout_vel_mae": 0.20327764799675113
+      "mean_spike_rate": 0.17115286336495325,
+      "drift_ratio": 5.354514775107342,
+      "rollout_mae": 0.0691746289913471,
+      "rollout_vel_mae": 0.21336488834080788
     },
     {
       "condition_name": "Refractory Dropout (20%)",
       "condition_description": "Dead-time/bus saturation active event masking (20% rate)",
       "evaluated_trajectories": 400,
       "pos_mae_per_horizon": {
-        "1": 0.024738904948417958,
-        "10": 0.029932929202914238,
-        "50": 0.08702022926165508,
-        "100": 0.10421608503048237
+        "1": 0.024733260560494203,
+        "10": 0.030587169986504775,
+        "50": 0.0973021611571312,
+        "100": 0.12772450882654923
       },
       "pos_mse_per_horizon": {
-        "1": 0.00010756217502953055,
-        "10": 0.00026523186086426274,
-        "50": 0.002029965604798725,
-        "100": 0.0026821902630707393
+        "1": 0.0001075945547199808,
+        "10": 0.00029786214313039987,
+        "50": 0.0024925051615215265,
+        "100": 0.003891697314639504
       },
       "vel_mae_per_horizon": {
-        "1": 0.043136574901067294,
-        "10": 0.21473453365839446,
-        "50": 0.27093966878377473,
-        "100": 0.28750301553652835
+        "1": 0.0367551466020254,
+        "10": 0.19575042449511015,
+        "50": 0.29445403126569897,
+        "100": 0.3328194045103513
       },
       "vel_mse_per_horizon": {
-        "1": 0.00035260149161331356,
-        "10": 0.0160292827595885,
-        "50": 0.02124805347277568,
-        "100": 0.022672553188525714
+        "1": 0.0002661194347848113,
+        "10": 0.0173449946853977,
+        "50": 0.02626550254913477,
+        "100": 0.03003255292200125
       },
       "latent_mse_per_horizon": {
-        "1": 0.0037681947354800426,
-        "10": 0.030889696943072174,
-        "50": 0.1845304725261835,
-        "100": 0.5457320488416232
+        "1": 0.0035658765476770126,
+        "10": 0.035167103490004174,
+        "50": 0.18052387122924513,
+        "100": 0.5291586151489844
       },
-      "mean_spike_rate": 0.1735646678851201,
-      "drift_ratio": 4.21263937299484,
-      "rollout_mae": 0.06147703711086741,
-      "rollout_vel_mae": 0.2040784482199412
+      "mean_spike_rate": 0.1735653831408574,
+      "drift_ratio": 5.16407889344603,
+      "rollout_mae": 0.07008677513266985,
+      "rollout_vel_mae": 0.21494475171829644
     }
   ],
   "mppi_suite": [
@@ -287,50 +287,50 @@
       "condition_name": "Nominal Baseline",
       "condition_description": "Nominal visual telemetry, calibrated dynamics and friction",
       "episodes_evaluated": 50,
-      "grasp_success_rate_pct": 86.0,
-      "min_placement_error_mean_cm": 0.8552020224928856,
-      "min_placement_error_std_cm": 0.7991095820631844,
-      "terminal_placement_error_mean_cm": 1.5668222349882126,
-      "terminal_velocity_mean": 0.32701518952846526,
-      "mean_latency_ms": 36.05713042749771,
+      "grasp_success_rate_pct": 57.99999999999999,
+      "min_placement_error_mean_cm": 0.9966417002677918,
+      "min_placement_error_std_cm": 0.7168366082198878,
+      "terminal_placement_error_mean_cm": 2.117010636925697,
+      "terminal_velocity_mean": 0.37095459580421447,
+      "mean_latency_ms": 32.431992493769116,
       "elevation_plane_breakdown": {
         "Low": {
           "count": 22.0,
-          "success_rate_pct": 86.36363636363636,
-          "mean_error_cm": 0.855392383580858,
-          "mean_terminal_error_cm": 1.9869136796756224
+          "success_rate_pct": 40.909090909090914,
+          "mean_error_cm": 0.9283917966214094,
+          "mean_terminal_error_cm": 2.744907847859643
         },
         "Mid": {
           "count": 18.0,
-          "success_rate_pct": 77.77777777777779,
-          "mean_error_cm": 1.054786902334955,
-          "mean_terminal_error_cm": 1.3530784381760492
+          "success_rate_pct": 61.111111111111114,
+          "mean_error_cm": 1.3163958506451712,
+          "mean_terminal_error_cm": 1.8659200933244493
         },
         "High": {
           "count": 10.0,
-          "success_rate_pct": 100.0,
-          "mean_error_cm": 0.4955304443836212,
-          "mean_terminal_error_cm": 1.0273598909378052
+          "success_rate_pct": 90.0,
+          "mean_error_cm": 0.5712340176105499,
+          "mean_terminal_error_cm": 1.187599751353264
         }
       },
       "mass_tier_breakdown": {
         "Light (1.2 - 2.3 kg)": {
           "count": 17.0,
-          "success_rate_pct": 82.35294117647058,
-          "mean_error_cm": 0.6789520838681389,
-          "mean_terminal_error_cm": 1.643607579609927
+          "success_rate_pct": 41.17647058823529,
+          "mean_error_cm": 0.8797548360684339,
+          "mean_terminal_error_cm": 2.0735019743442535
         },
         "Medium (2.3 - 3.4 kg)": {
           "count": 17.0,
-          "success_rate_pct": 100.0,
-          "mean_error_cm": 0.767013340311892,
-          "mean_terminal_error_cm": 1.453135742860682
+          "success_rate_pct": 82.35294117647058,
+          "mean_error_cm": 0.8255256133921006,
+          "mean_terminal_error_cm": 2.0967908571748173
         },
         "Heavy (3.4 - 4.5+ kg)": {
           "count": 16.0,
-          "success_rate_pct": 75.0,
-          "mean_error_cm": 1.1361680570989847,
-          "mean_terminal_error_cm": 1.6060297042131424
+          "success_rate_pct": 50.0,
+          "mean_error_cm": 1.3026448357850313,
+          "mean_terminal_error_cm": 2.1847221069037914
         }
       },
       "episodes_with_handover_pct": 0.0,
@@ -344,50 +344,50 @@
       "condition_name": "Sensory Noise Injection (1.0%)",
       "condition_description": "Visual events corrupted with 1.0% Background Activity noise",
       "episodes_evaluated": 50,
-      "grasp_success_rate_pct": 72.0,
-      "min_placement_error_mean_cm": 0.9837424418330193,
-      "min_placement_error_std_cm": 0.8029913824759806,
-      "terminal_placement_error_mean_cm": 1.8598396837711335,
-      "terminal_velocity_mean": 0.2989905294775963,
-      "mean_latency_ms": 34.990572020690095,
+      "grasp_success_rate_pct": 54.0,
+      "min_placement_error_mean_cm": 1.1959887701272964,
+      "min_placement_error_std_cm": 0.891931935595883,
+      "terminal_placement_error_mean_cm": 2.683878175020218,
+      "terminal_velocity_mean": 0.33141832798719406,
+      "mean_latency_ms": 32.060862347789936,
       "elevation_plane_breakdown": {
         "Low": {
           "count": 22.0,
-          "success_rate_pct": 63.63636363636363,
-          "mean_error_cm": 1.1564414731480859,
-          "mean_terminal_error_cm": 2.533061908050017
+          "success_rate_pct": 50.0,
+          "mean_error_cm": 1.377844351259145,
+          "mean_terminal_error_cm": 3.0191407068209215
         },
         "Mid": {
           "count": 18.0,
-          "success_rate_pct": 66.66666666666666,
-          "mean_error_cm": 0.9351571831438277,
-          "mean_terminal_error_cm": 1.383733461300532
+          "success_rate_pct": 33.33333333333333,
+          "mean_error_cm": 1.1520791616704729,
+          "mean_terminal_error_cm": 2.761846797333823
         },
         "High": {
           "count": 10.0,
           "success_rate_pct": 100.0,
-          "mean_error_cm": 0.6912580385804177,
-          "mean_terminal_error_cm": 1.2357419908046723
+          "mean_error_cm": 0.8749437868595124,
+          "mean_terminal_error_cm": 1.8059570848941804
         }
       },
       "mass_tier_breakdown": {
         "Light (1.2 - 2.3 kg)": {
           "count": 17.0,
-          "success_rate_pct": 82.35294117647058,
-          "mean_error_cm": 0.8425054918317234,
-          "mean_terminal_error_cm": 1.7817925039459677
+          "success_rate_pct": 52.94117647058824,
+          "mean_error_cm": 0.97267567059573,
+          "mean_terminal_error_cm": 2.49932455665925
         },
         "Medium (2.3 - 3.4 kg)": {
           "count": 17.0,
-          "success_rate_pct": 82.35294117647058,
-          "mean_error_cm": 0.9956889766104081,
-          "mean_terminal_error_cm": 1.9012414111810572
+          "success_rate_pct": 64.70588235294117,
+          "mean_error_cm": 1.1479233976672678,
+          "mean_terminal_error_cm": 2.8443444406285003
         },
         "Heavy (3.4 - 4.5+ kg)": {
           "count": 16.0,
-          "success_rate_pct": 50.0,
-          "mean_error_cm": 1.1211135080084205,
-          "mean_terminal_error_cm": 1.898775476962328
+          "success_rate_pct": 43.75,
+          "mean_error_cm": 1.4843283966183662,
+          "mean_terminal_error_cm": 2.7094709873199463
         }
       },
       "episodes_with_handover_pct": 0.0,
@@ -401,50 +401,50 @@
       "condition_name": "Payload Extrapolation (4.80 kg)",
       "condition_description": "Out-of-distribution heavy payload (m=4.80 kg vs [1.20, 4.50] kg)",
       "episodes_evaluated": 50,
-      "grasp_success_rate_pct": 78.0,
-      "min_placement_error_mean_cm": 1.245790022313595,
-      "min_placement_error_std_cm": 1.0984275509927777,
-      "terminal_placement_error_mean_cm": 1.7834283006191254,
-      "terminal_velocity_mean": 0.43445359870791433,
-      "mean_latency_ms": 37.20313749923503,
+      "grasp_success_rate_pct": 56.00000000000001,
+      "min_placement_error_mean_cm": 1.7644587180018425,
+      "min_placement_error_std_cm": 1.8775155414354365,
+      "terminal_placement_error_mean_cm": 2.4560093522071837,
+      "terminal_velocity_mean": 0.5556513021886349,
+      "mean_latency_ms": 32.58270962906839,
       "elevation_plane_breakdown": {
         "Low": {
           "count": 22.0,
-          "success_rate_pct": 77.27272727272727,
-          "mean_error_cm": 1.1498750068924644,
-          "mean_terminal_error_cm": 2.083613170818849
+          "success_rate_pct": 63.63636363636363,
+          "mean_error_cm": 1.4761234576051885,
+          "mean_terminal_error_cm": 2.2185537300326605
         },
         "Mid": {
           "count": 18.0,
-          "success_rate_pct": 77.77777777777779,
-          "mean_error_cm": 1.4548369869589806,
-          "mean_terminal_error_cm": 1.7425566514333088
+          "success_rate_pct": 38.88888888888889,
+          "mean_error_cm": 2.432745859854751,
+          "mean_terminal_error_cm": 3.117100712325838
         },
         "High": {
           "count": 10.0,
-          "success_rate_pct": 80.0,
-          "mean_error_cm": 1.0805185198783875,
-          "mean_terminal_error_cm": 1.1965905547142028
+          "success_rate_pct": 70.0,
+          "mean_error_cm": 1.1958794355392457,
+          "mean_terminal_error_cm": 1.7884472727775573
         }
       },
       "mass_tier_breakdown": {
         "Light (1.2 - 2.3 kg)": {
           "count": 17.0,
-          "success_rate_pct": 76.47058823529412,
-          "mean_error_cm": 0.876447988783612,
-          "mean_terminal_error_cm": 1.3729157938676722
+          "success_rate_pct": 58.82352941176471,
+          "mean_error_cm": 1.0763100201592726,
+          "mean_terminal_error_cm": 1.8543823571766125
         },
         "Medium (2.3 - 3.4 kg)": {
           "count": 17.0,
-          "success_rate_pct": 88.23529411764706,
-          "mean_error_cm": 1.072767906329211,
-          "mean_terminal_error_cm": 1.7970439546248491
+          "success_rate_pct": 70.58823529411765,
+          "mean_error_cm": 1.6607786907869226,
+          "mean_terminal_error_cm": 2.4388887181001553
         },
         "Heavy (3.4 - 4.5+ kg)": {
           "count": 16.0,
-          "success_rate_pct": 68.75,
-          "mean_error_cm": 1.8220519311726093,
-          "mean_terminal_error_cm": 2.205131206661463
+          "success_rate_pct": 37.5,
+          "mean_error_cm": 2.6057767383754253,
+          "mean_terminal_error_cm": 3.113428708165884
         }
       },
       "episodes_with_handover_pct": 0.0,
@@ -458,50 +458,50 @@
       "condition_name": "Actuator Drift (0.80x Friction)",
       "condition_description": "Mechanical wear / loose joints (-20% friction/damping)",
       "episodes_evaluated": 50,
-      "grasp_success_rate_pct": 70.0,
-      "min_placement_error_mean_cm": 1.3162081634998322,
-      "min_placement_error_std_cm": 1.1690919022908202,
-      "terminal_placement_error_mean_cm": 2.0683961123228074,
-      "terminal_velocity_mean": 0.3934475040435791,
-      "mean_latency_ms": 36.6571082404878,
+      "grasp_success_rate_pct": 68.0,
+      "min_placement_error_mean_cm": 1.7202977061271667,
+      "min_placement_error_std_cm": 1.8452188046070126,
+      "terminal_placement_error_mean_cm": 2.383537862300873,
+      "terminal_velocity_mean": 0.4953418381512165,
+      "mean_latency_ms": 33.133227099747344,
       "elevation_plane_breakdown": {
         "Low": {
           "count": 22.0,
-          "success_rate_pct": 63.63636363636363,
-          "mean_error_cm": 1.1889834607189351,
-          "mean_terminal_error_cm": 2.53419767184691
+          "success_rate_pct": 72.72727272727273,
+          "mean_error_cm": 1.3773770914836363,
+          "mean_terminal_error_cm": 2.070421573790637
         },
         "Mid": {
           "count": 18.0,
-          "success_rate_pct": 72.22222222222221,
-          "mean_error_cm": 1.5544826421472762,
-          "mean_terminal_error_cm": 1.7902768933110766
+          "success_rate_pct": 50.0,
+          "mean_error_cm": 2.5278382500012717,
+          "mean_terminal_error_cm": 3.2292134364446006
         },
         "High": {
           "count": 10.0,
-          "success_rate_pct": 80.0,
-          "mean_error_cm": 1.1672084480524063,
-          "mean_terminal_error_cm": 1.5442472755908967
+          "success_rate_pct": 90.0,
+          "mean_error_cm": 1.021150079369545,
+          "mean_terminal_error_cm": 1.550177663564682
         }
       },
       "mass_tier_breakdown": {
         "Light (1.2 - 2.3 kg)": {
           "count": 17.0,
           "success_rate_pct": 88.23529411764706,
-          "mean_error_cm": 0.8253367402974296,
-          "mean_terminal_error_cm": 1.5288092020679922
+          "mean_error_cm": 1.0297587829477646,
+          "mean_terminal_error_cm": 1.9232896531329435
         },
         "Medium (2.3 - 3.4 kg)": {
           "count": 17.0,
-          "success_rate_pct": 70.58823529411765,
-          "mean_error_cm": 1.1374130424331217,
-          "mean_terminal_error_cm": 2.021532507503734
+          "success_rate_pct": 76.47058823529412,
+          "mean_error_cm": 1.6581512759713566,
+          "mean_terminal_error_cm": 2.3134185040698334
         },
         "Heavy (3.4 - 4.5+ kg)": {
           "count": 16.0,
-          "success_rate_pct": 50.0,
-          "mean_error_cm": 2.0277288667857647,
-          "mean_terminal_error_cm": 2.691499784588814
+          "success_rate_pct": 37.5,
+          "mean_error_cm": 2.5200258940458298,
+          "mean_terminal_error_cm": 2.947053402662277
         }
       },
       "episodes_with_handover_pct": 0.0,
@@ -515,50 +515,50 @@
       "condition_name": "Actuator Drift (1.20x Friction)",
       "condition_description": "Mechanical wear / stiff transmission (+20% friction/damping)",
       "episodes_evaluated": 50,
-      "grasp_success_rate_pct": 76.0,
-      "min_placement_error_mean_cm": 1.3224645945429803,
-      "min_placement_error_std_cm": 1.2224200163900485,
-      "terminal_placement_error_mean_cm": 1.9732722735404968,
-      "terminal_velocity_mean": 0.3801573750376701,
-      "mean_latency_ms": 36.835968496259994,
+      "grasp_success_rate_pct": 70.0,
+      "min_placement_error_mean_cm": 1.787329178750515,
+      "min_placement_error_std_cm": 1.8200874079923721,
+      "terminal_placement_error_mean_cm": 2.4599468809366227,
+      "terminal_velocity_mean": 0.49150543451309203,
+      "mean_latency_ms": 33.69387655897015,
       "elevation_plane_breakdown": {
         "Low": {
           "count": 22.0,
-          "success_rate_pct": 72.72727272727273,
-          "mean_error_cm": 1.1845615858381444,
-          "mean_terminal_error_cm": 2.3086387406695974
+          "success_rate_pct": 68.18181818181817,
+          "mean_error_cm": 1.4700086469000035,
+          "mean_terminal_error_cm": 2.166050752455538
         },
         "Mid": {
           "count": 18.0,
-          "success_rate_pct": 72.22222222222221,
-          "mean_error_cm": 1.6079355710082583,
-          "mean_terminal_error_cm": 1.8520427114433713
+          "success_rate_pct": 66.66666666666666,
+          "mean_error_cm": 2.5528457396560245,
+          "mean_terminal_error_cm": 3.327590372827318
         },
         "High": {
           "count": 10.0,
-          "success_rate_pct": 90.0,
-          "mean_error_cm": 1.112003456056118,
-          "mean_terminal_error_cm": 1.4536792576313018
+          "success_rate_pct": 80.0,
+          "mean_error_cm": 1.1075045391917229,
+          "mean_terminal_error_cm": 1.5447600781917572
         }
       },
       "mass_tier_breakdown": {
         "Light (1.2 - 2.3 kg)": {
           "count": 17.0,
-          "success_rate_pct": 100.0,
-          "mean_error_cm": 0.8716237729086596,
-          "mean_terminal_error_cm": 1.2805503992473377
+          "success_rate_pct": 82.35294117647058,
+          "mean_error_cm": 1.001258819418795,
+          "mean_terminal_error_cm": 1.8067133040989147
         },
         "Medium (2.3 - 3.4 kg)": {
           "count": 17.0,
-          "success_rate_pct": 76.47058823529412,
-          "mean_error_cm": 1.0381577838869656,
-          "mean_terminal_error_cm": 2.0561175486620735
+          "success_rate_pct": 82.35294117647058,
+          "mean_error_cm": 1.7711794867235071,
+          "mean_terminal_error_cm": 2.4717557535452
         },
         "Heavy (3.4 - 4.5+ kg)": {
           "count": 16.0,
-          "success_rate_pct": 50.0,
-          "mean_error_cm": 2.1035589538514614,
-          "mean_terminal_error_cm": 2.621266160160303
+          "success_rate_pct": 43.75,
+          "mean_error_cm": 2.6396879833191633,
+          "mean_terminal_error_cm": 3.1414606291800737
         }
       },
       "episodes_with_handover_pct": 0.0,
